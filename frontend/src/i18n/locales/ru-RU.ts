@@ -3821,7 +3821,18 @@ export default {
       issueFixSingle: 'Исправить',
       fixStartError: 'Не удалось запустить помощник исправления',
       issueFixPromptSingle: 'Пожалуйста, исправьте проблему (ID: {id}) на странице [[{slug}]].',
-      issueFixPromptAutoStart: 'Пожалуйста, исправьте следующие проблемы на странице [[{slug}]]:'
+      issueFixPromptAutoStart: 'Пожалуйста, исправьте следующие проблемы на странице [[{slug}]]:',
+      editor: {
+        bold: 'Жирный',
+        italic: 'Курсив',
+        heading: 'Заголовок {level}',
+        orderedList: 'Нумерованный список',
+        bulletList: 'Маркированный список',
+        inlineCode: 'Встроенный код',
+        codeBlock: 'Блок кода',
+        link: 'Ссылка',
+        fallbackHint: 'WYSIWYG-редактор недоступен — используется обычное текстовое поле Markdown.',
+      },
     },
     indexing: {
       title: 'Стратегия индексации',

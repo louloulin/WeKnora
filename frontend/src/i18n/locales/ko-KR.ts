@@ -3821,7 +3821,18 @@ export default {
       issueFixSingle: '수정',
       fixStartError: '수정 도우미 시작 실패',
       issueFixPromptSingle: '페이지 [[{slug}]] 의 문제(ID: {id})를 수정해 주세요.',
-      issueFixPromptAutoStart: '페이지 [[{slug}]] 의 다음 문제들을 수정해 주세요:'
+      issueFixPromptAutoStart: '페이지 [[{slug}]] 의 다음 문제들을 수정해 주세요:',
+      editor: {
+        bold: '굵게',
+        italic: '기울임',
+        heading: '제목 {level}',
+        orderedList: '번호 매기기 목록',
+        bulletList: '글머리 목록',
+        inlineCode: '인라인 코드',
+        codeBlock: '코드 블록',
+        link: '링크',
+        fallbackHint: 'WYSIWYG 편집기를 사용할 수 없어 마크다운 텍스트 영역으로 대체됩니다.',
+      },
     },
     indexing: {
       title: '인덱싱 전략',

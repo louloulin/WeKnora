@@ -3823,7 +3823,18 @@ export default {
       issueFixSingle: '修复',
       fixStartError: '启动修复助手失败',
       issueFixPromptSingle: '请修复页面 [[{slug}]] 上的问题 (ID: {id})。',
-      issueFixPromptAutoStart: '请修复页面 [[{slug}]] 上的以下问题：'
+      issueFixPromptAutoStart: '请修复页面 [[{slug}]] 上的以下问题：',
+      editor: {
+        bold: '加粗',
+        italic: '斜体',
+        heading: '标题 {level}',
+        orderedList: '有序列表',
+        bulletList: '无序列表',
+        inlineCode: '行内代码',
+        codeBlock: '代码块',
+        link: '链接',
+        fallbackHint: '富文本编辑器不可用，已降级为 Markdown 文本框。',
+      },
     },
     indexing: {
       title: '索引策略',

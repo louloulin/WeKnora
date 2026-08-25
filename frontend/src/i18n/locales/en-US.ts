@@ -2734,7 +2734,18 @@ export default {
       issueFixSingle: 'Fix',
       fixStartError: 'Failed to start fix assistant',
       issueFixPromptSingle: 'Please fix the issue (ID: {id}) on page [[{slug}]].',
-      issueFixPromptAutoStart: 'Please fix the following issues on page [[{slug}]]:'
+      issueFixPromptAutoStart: 'Please fix the following issues on page [[{slug}]]:',
+      editor: {
+        bold: 'Bold',
+        italic: 'Italic',
+        heading: 'Heading {level}',
+        orderedList: 'Ordered list',
+        bulletList: 'Bullet list',
+        inlineCode: 'Inline code',
+        codeBlock: 'Code block',
+        link: 'Link',
+        fallbackHint: 'The WYSIWYG editor is unavailable — falling back to the raw markdown textarea.',
+      },
     },
     buttons: {
       create: 'Create Knowledge Base',

@@ -566,11 +566,18 @@
                 @click="handleContentClick">
               </div>
 
-              <!-- Inline markdown editor (canEdit only). Saves are guarded by
-                   the page version captured at edit start; the backend answers
-                   409 when someone (or the pipeline) edited in between. -->
+              <!-- Inline editor (canEdit only). Saves are guarded by the
+                   page version captured at edit start; the backend answers
+                   409 when someone (or the pipeline) edited in between.
+                   When the runtime feature flag is on we mount the Tiptap
+                   WYSIWYG editor (Build #2b); otherwise we fall back to
+                   the plain markdown textarea. -->
               <div v-else class="wiki-page-editor">
-                <t-textarea v-model="editForm.content" class="wiki-edit-field wiki-edit-field--content"
+                <WikiTiptapEditor v-if="wysiwygEnabled"
+                  v-model="tiptapEditorValue"
+                  :placeholder="$t('knowledgeEditor.wikiBrowser.editContentPlaceholder')"
+                  class="wiki-edit-field wiki-edit-field--content" />
+                <t-textarea v-else v-model="editForm.content" class="wiki-edit-field wiki-edit-field--content"
                   :autosize="{ minRows: 16, maxRows: 40 }"
                   :placeholder="$t('knowledgeEditor.wikiBrowser.editContentPlaceholder')" />
                 <t-alert v-if="editConflictVersion !== null" theme="warning" class="wiki-page-editor-conflict"
@@ -791,7 +798,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, reactive, onMounted, onUnmounted, watch, nextTick, defineAsyncComponent } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useMenuStore } from '@/stores/menu'
 import { useSettingsStore } from '@/stores/settings'
@@ -799,11 +806,20 @@ import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { RecycleScroller } from 'vue-virtual-scroller'
-import { hydrateProtectedFileImages, sanitizeMarkdownHTML } from '@/utils/security'
+import { hydrateProtectedFileImages, sanitizeHTML, sanitizeMarkdownHTML } from '@/utils/security'
 import type { ProtectedFileAccessContext } from '@/utils/protectedFileAccess'
 import picturePreview from '@/components/picture-preview.vue'
 import WikiFolderActions from './WikiFolderActions.vue'
 import WikiRevisionDrawer from './WikiRevisionDrawer.vue'
+import { useFeatureFlagsStore } from '@/stores/featureFlags'
+
+// Tiptap + DOMPurify are heavy — split the WYSIWYG editor into its own
+// chunk and only fetch it when the runtime flag says it's enabled. When
+// the chunk fails to load (network error, older build) we fall back to
+// the legacy textarea path, so the wiki remains editable.
+const WikiTiptapEditor = defineAsyncComponent(
+  () => import('@/components/wiki/WikiTiptapEditor.vue'),
+)
 import {
   expandedWikiDirectoryPaths,
   expandWikiDirectoryPath,
@@ -833,6 +849,7 @@ import {
   type WikiGraphData,
   type WikiStats,
   type WikiPageIssue,
+  type WikiPageUpdatePayload,
   type WikiIndexGroup,
   type WikiIndexEntryDTO,
 } from '@/api/wiki'
@@ -1989,6 +2006,15 @@ function getPageIcon(page: WikiPage): string {
 
 const renderedContent = computed(() => {
   if (!selectedPage.value) return ''
+  // Build #2b Decision 2: when the page carries a cached `content_html`,
+  // it is the sanitized render produced by the WYSIWYG editor — reuse
+  // it instead of re-running marked. We still re-sanitize here because
+  // the wire payload crosses tenant boundaries and may include user
+  // edits from older builds; defence-in-depth, not paranoia.
+  const cachedHtml = (selectedPage.value.content_html || '').trim()
+  if (cachedHtml) {
+    return sanitizeHTML(cachedHtml)
+  }
   const body = stripDuplicateLeadingTitle(selectedPage.value.content || '', selectedPage.value.title)
   return renderMarkdown(body)
 })
@@ -2895,11 +2921,20 @@ async function loadStats() {
 
 const editingPage = ref(false)
 const savingPage = ref(false)
-const editForm = ref({ title: '', summary: '', content: '' })
+// editForm.content keeps the legacy markdown round-trip (saves the canonical
+// value); editForm.content_html carries the sanitized HTML render when the
+// WYSIWYG editor is active. The wiki save payload sends both per
+// Build #2b Decision 2.
+const editForm = ref({ title: '', summary: '', content: '', content_html: '' })
 // Version the user started editing from — the optimistic-lock guard sent
 // with the save. 409 → someone (or the pipeline) edited in between.
 const editBaseVersion = ref(0)
 const editConflictVersion = ref<number | null>(null)
+const featureFlags = useFeatureFlagsStore()
+// Make sure the flag is loaded the first time we mount the editor area.
+// ensureLoaded() is idempotent so this is cheap on subsequent visits.
+featureFlags.ensureLoaded()
+const wysiwygEnabled = computed(() => featureFlags.flags?.wiki_wysiwyg === true)
 
 const showRevisionDrawer = ref(false)
 
@@ -2915,12 +2950,26 @@ watch(() => selectedPage.value?.slug, () => {
   editConflictVersion.value = null
 })
 
+// Two-way bridge between the WikiTiptapEditor v-model and editForm. The
+// editor emits { html, markdown } on every keystroke; we feed markdown back
+// into the canonical `editForm.content` and stash html for the save payload.
+// A computed getter avoids stale-closure bugs if the editor is mounted later
+// than the watcher.
+const tiptapEditorValue = computed({
+  get: () => ({ html: editForm.value.content_html, markdown: editForm.value.content }),
+  set: (next: { html: string; markdown: string }) => {
+    editForm.value.content = next.markdown || ''
+    editForm.value.content_html = next.html || ''
+  },
+})
+
 function startEditPage() {
   if (!selectedPage.value) return
   editForm.value = {
     title: selectedPage.value.title,
     summary: selectedPage.value.summary || '',
     content: selectedPage.value.content || '',
+    content_html: selectedPage.value.content_html || '',
   }
   editBaseVersion.value = selectedPage.value.version
   editConflictVersion.value = null
@@ -2937,12 +2986,20 @@ async function savePageEdit(versionOverride?: number) {
   const slug = selectedPage.value.slug
   savingPage.value = true
   try {
-    const res = await updateWikiPage(props.knowledgeBaseId, slug, {
+    // Build #2b Decision 2: when the WYSIWYG flag is on and the editor
+    // produced new HTML, dual-write the cached render so the reader view
+    // doesn't re-run marked. Otherwise drop the cached field to its empty
+    // sentinel so the server-side fallback to markdown kicks in.
+    const payload: WikiPageUpdatePayload = {
       title: editForm.value.title,
       summary: editForm.value.summary,
       content: editForm.value.content,
       version: versionOverride ?? editBaseVersion.value,
-    })
+    }
+    if (wysiwygEnabled.value) {
+      payload.content_html = editForm.value.content_html || null
+    }
+    const res = await updateWikiPage(props.knowledgeBaseId, slug, payload)
     const updated = ((res as any).data || res) as WikiPage
     selectedPage.value = updated
     editingPage.value = false

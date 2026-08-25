@@ -18,6 +18,11 @@ export interface WikiPage {
   page_type: string;
   status: string;
   content: string;
+  // Sanitized HTML render cached by the WYSIWYG editor (Build #2b).
+  // Empty string / null means "use the legacy markdown render". Callers
+  // MUST treat it as untrusted text and pipe it through the same
+  // sanitizer used by the editor before injecting into `v-html`.
+  content_html?: string;
   summary: string;
   aliases: string[];
   parent_slug?: string;
@@ -189,6 +194,12 @@ export function getWikiPage(kbId: string, slug: string) {
 export interface WikiPageUpdatePayload {
   title?: string;
   content?: string;
+  // content_html is the sanitized render produced by the WYSIWYG editor
+  // (Build #2b Decision 2). It is dual-written with `content` so existing
+  // markdown consumers keep working while the new editor path stores a
+  // pre-rendered cache. Absent / empty clears the cached HTML on the
+  // server side and falls back to `content` for rendering.
+  content_html?: string | null;
   summary?: string;
   page_type?: string;
   status?: string;
