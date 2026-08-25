@@ -583,6 +583,15 @@ func LoadConfig() (*Config, error) {
 	applyAuthAndTenantDefaults(&cfg)
 	applyAuditDefaults(&cfg)
 
+	// Runtime feature flags. Unlike the apply* functions above, these
+	// are NOT mirrored into the Config struct — handler/features.go
+	// re-reads them at request time so a process restart is not needed
+	// for an env-only toggle to take effect. Listed here as the
+	// canonical operator-facing documentation; grep this block when
+	// wiring a new flag.
+	//   - WEKNORA_FEATURE_WIKI_WYSIWYG (true|1|yes -> on, else off;
+	//     Build #2b; gates the Tiptap wiki editor at runtime).
+
 	if err := ValidateConfig(&cfg); err != nil {
 		return nil, err
 	}

@@ -217,12 +217,19 @@ func RegisterAuthRoutes(r *gin.RouterGroup, handler *handler.AuthHandler, g *rba
 func RegisterSystemRoutes(
 	r *gin.RouterGroup,
 	handler *handler.SystemHandler,
+	featuresHandler *handler.FeaturesHandler,
 	g *rbacGuards,
 ) {
 	systemRoutes := g.apiKeyGroup(r.Group("/system"), apiKeyManageVectorStores(apiKeyFullAccess()))
 	{
 		systemRoutes.With(apiKeyAny()).GET("/capabilities", g.Viewer(), handler.GetDeploymentCapabilities)
 		systemRoutes.GET("/info", g.Viewer(), handler.GetSystemInfo)
+		// /features is a runtime feature-flag endpoint introduced in Build
+		// #2b. It returns types.FeaturesResponse (env-driven; see
+		// handler/features.go) and gates whether the frontend renders the
+		// Tiptap editor for wiki pages. Mounted on /system alongside the
+		// other capability surfaces so URL space stays grouped.
+		systemRoutes.GET("/features", g.Viewer(), featuresHandler.GetFeatures)
 		systemRoutes.GET("/parser-engines", g.Viewer(), handler.ListParserEngines)
 		systemRoutes.POST("/parser-engines/check", g.Admin(), handler.CheckParserEngines)
 		systemRoutes.POST("/docreader/reconnect", g.Admin(), handler.ReconnectDocReader)
