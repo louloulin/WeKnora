@@ -76,7 +76,10 @@ import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import { Markdown } from 'tiptap-markdown'
 import { EditorContent } from '@tiptap/vue-3'
-import { sanitizeHTML } from '@/utils/security'
+// sanitizeWysiwygHTML is the spec-shaped exit sanitizer (returns '' on
+// DOMPurify throw + console.warn) — distinct from utils/security.ts's
+// generic sanitizeHTML which falls back to escapeHTML.
+import { sanitizeWysiwygHTML } from '@/utils/sanitize/wysiwyg'
 
 /**
  * WikiTiptapEditor — Tiptap v2 wrapper for the Wiki page WYSIWYG flow.
@@ -131,7 +134,7 @@ watch(
       // External change (load from server, conflict reload, undo): rewrite
       // the document via the markdown parser so the editor stays consistent.
       // Tiptap v2 signature: setContent(content, emitUpdate, parseOptions).
-      editor.value.commands.setContent(sanitizeHTML(next?.html ?? ''), false)
+      editor.value.commands.setContent(sanitizeWysiwygHTML(next?.html ?? ''), false)
     }
     fallbackMarkdown.value = nextMarkdown
   },
@@ -142,7 +145,7 @@ const placeholder = computed(() => props.placeholder)
 
 function emitUpdate() {
   if (!editor.value) return
-  const html = sanitizeHTML(editor.value.getHTML())
+  const html = sanitizeWysiwygHTML(editor.value.getHTML())
   // tiptap-markdown exposes getMarkdown() via storage; fall back to empty
   // string when the extension isn't initialised yet.
   const markdown =
@@ -190,7 +193,7 @@ function promptForLink() {
 
 try {
   const initialMarkdown = props.modelValue?.markdown ?? ''
-  const initialHTML = sanitizeHTML(props.modelValue?.html ?? '')
+  const initialHTML = sanitizeWysiwygHTML(props.modelValue?.html ?? '')
   editor.value = new Editor({
     content: initialHTML,
     extensions: [
