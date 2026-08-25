@@ -332,3 +332,31 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		wiki.PUT("/issues/:issue_id/status", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.UpdateIssueStatus)
 	}
 }
+
+// RegisterWikiCollabRoutes wires the Y.js CRDT WebSocket endpoint
+// registered in Build #8.
+//
+// URL: WS /api/v1/wiki/collab/:kb_id/*slug?token=:jwt
+//
+// The route lives OUTSIDE the `/knowledgebase/:kb_id/wiki` REST prefix
+// because WebSocket upgrades don't survive the same middleware chain
+// (KB ownership guard, KBAccessRead middleware) — those middleware
+// would have to short-circuit before the upgrade, otherwise the
+// connection is already hijacked and 403s can't be returned cleanly.
+//
+// We attach Viewer+ as the role floor (collaboration is a read+write
+// action and the handler validates KB existence + wiki-enabled +
+// tenant boundary + page-level ACL before completing the upgrade).
+// Once the connection is upgraded, every subsequent frame is opaque
+// y-protocol bytes; the handler fans them out per-room.
+//
+// The catch-all `:slug` is needed because wiki slugs may contain
+// forward slashes (e.g. "guides/runbooks/db-failover"). Gin treats
+// `*slug` as a wildcard — the leading slash is stripped by the
+// handler.
+func RegisterWikiCollabRoutes(r *gin.RouterGroup, wikiCollabHandler *handler.WikiCollabHandler, g *rbacGuards) {
+	collab := g.apiKeyGroup(r.Group("/wiki/collab"), apiKeyRetrieve(apiKeyFullAccess()))
+	{
+		collab.GET("/:kb_id/*slug", g.Viewer(), wikiCollabHandler.HandleCollab)
+	}
+}
