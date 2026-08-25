@@ -764,10 +764,15 @@
           </t-select>
         </div>
         <div class="wiki-create-page-field">
-          <label>{{ $t('knowledgeEditor.wikiBrowser.newPageTemplateLabel') }}</label>
+          <div class="wiki-create-page-template-header">
+            <label>{{ $t('knowledgeEditor.wikiBrowser.newPageTemplateLabel') }}</label>
+            <t-link theme="primary" size="small" @click="openUserTemplateDialog">
+              {{ $t('knowledgeEditor.wikiBrowser.newPageTemplateManage') }}
+            </t-link>
+          </div>
           <t-select v-model="createPageForm.templateId">
-            <t-option v-for="tmpl in WIKI_PAGE_TEMPLATES" :key="tmpl.id" :value="tmpl.id"
-              :label="$t(`knowledgeEditor.wikiBrowser.${tmpl.labelKey}`)" />
+            <t-option v-for="tmpl in allTemplates" :key="tmpl.id" :value="tmpl.id"
+              :label="resolveTemplateLabel(tmpl)" />
           </t-select>
         </div>
         <div class="wiki-create-page-field">
@@ -777,6 +782,9 @@
         </div>
       </div>
     </t-dialog>
+
+    <!-- Manage user-defined templates (Build #4). Controlled via showUserTemplateDialog. -->
+    <WikiUserTemplateDialog v-model="showUserTemplateDialog" />
 
     <!-- In-place move confirmation, anchored at the drop point. Confirming runs
          the actual move API; cancelling discards the staged move. -->
@@ -827,7 +835,14 @@ import { useFeatureFlagsStore } from '@/stores/featureFlags'
 const WikiTiptapEditor = defineAsyncComponent(
   () => import('@/components/wiki/WikiTiptapEditor.vue'),
 )
-import { WIKI_PAGE_TEMPLATES, DEFAULT_TEMPLATE_ID, templateContentById } from '@/components/wiki/templates'
+import WikiUserTemplateDialog from '@/components/wiki/UserTemplateDialog.vue'
+import {
+  WIKI_PAGE_TEMPLATES,
+  DEFAULT_TEMPLATE_ID,
+  templateContentById,
+  type WikiPageTemplate,
+} from '@/components/wiki/templates'
+import { useUserTemplates } from '@/composables/useUserTemplates'
 import {
   expandedWikiDirectoryPaths,
   expandWikiDirectoryPath,
@@ -2950,6 +2965,31 @@ const showCreatePageDialog = ref(false)
 const creatingPage = ref(false)
 const createPageForm = ref({ title: '', slug: '', pageType: 'concept', templateId: DEFAULT_TEMPLATE_ID, content: '' })
 const createPageSlugTouched = ref(false)
+const showUserTemplateDialog = ref(false)
+
+// Merge built-in and user-defined templates for the new-page selector.
+// User-defined entries take priority so a future server-supplied template
+// with id `meeting` cannot collide with the built-in (the composable
+// namespaced user ids with `user_`).
+const userTemplates = useUserTemplates()
+const allTemplates = computed<WikiPageTemplate[]>(() => [
+  ...WIKI_PAGE_TEMPLATES,
+  ...userTemplates.templates.value.map<WikiPageTemplate>(r => ({
+    id: r.id,
+    label: r.label,
+    content: r.content,
+  })),
+])
+
+function resolveTemplateLabel(tmpl: WikiPageTemplate): string {
+  if (tmpl.label) return tmpl.label
+  if (tmpl.labelKey) return t(`knowledgeEditor.wikiBrowser.${tmpl.labelKey}`)
+  return tmpl.id
+}
+
+function openUserTemplateDialog() {
+  showUserTemplateDialog.value = true
+}
 
 // Navigating to another page (or view) silently drops an in-progress edit;
 // the editor is inline, so a route-level guard would be overkill here.
@@ -3086,6 +3126,11 @@ function openCreatePageDialog() {
 // surprising and risks data loss on accidental re-selection.
 watch(() => createPageForm.value.templateId, (next) => {
   if (!next || next === DEFAULT_TEMPLATE_ID) return
+  const userMatch = userTemplates.findUserTemplate(next)
+  if (userMatch) {
+    createPageForm.value.content = userMatch.content
+    return
+  }
   createPageForm.value.content = templateContentById(next)
 })
 
@@ -5811,6 +5856,18 @@ onUnmounted(() => {
     display: flex;
     flex-direction: column;
     gap: 6px;
+
+    label {
+      font-size: 13px;
+      color: var(--td-text-color-secondary);
+    }
+  }
+
+  .wiki-create-page-template-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
 
     label {
       font-size: 13px;
