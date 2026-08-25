@@ -3,7 +3,7 @@ name: weknora-wiki-wysiwyg-storage
 language: zh-CN
 phase: archive
 status: active
-state_version: 10
+state_version: 11
 brief: brief.md
 spec_changes:
   - capability: wiki-pages-html-storage
@@ -13,7 +13,7 @@ workspace:
   isolation: branch
   change_branch: lumos0826
   target_branch: main
-  finish: null
+  finish: keep
 loop:
   stage: archive-ready
   goal_cycle: 1
