@@ -764,6 +764,13 @@
           </t-select>
         </div>
         <div class="wiki-create-page-field">
+          <label>{{ $t('knowledgeEditor.wikiBrowser.newPageTemplateLabel') }}</label>
+          <t-select v-model="createPageForm.templateId">
+            <t-option v-for="tmpl in WIKI_PAGE_TEMPLATES" :key="tmpl.id" :value="tmpl.id"
+              :label="$t(`knowledgeEditor.wikiBrowser.${tmpl.labelKey}`)" />
+          </t-select>
+        </div>
+        <div class="wiki-create-page-field">
           <label>{{ $t('knowledgeEditor.wikiBrowser.newPageContentLabel') }}</label>
           <t-textarea v-model="createPageForm.content" :autosize="{ minRows: 6, maxRows: 16 }"
             :placeholder="$t('knowledgeEditor.wikiBrowser.editContentPlaceholder')" />
@@ -820,6 +827,7 @@ import { useFeatureFlagsStore } from '@/stores/featureFlags'
 const WikiTiptapEditor = defineAsyncComponent(
   () => import('@/components/wiki/WikiTiptapEditor.vue'),
 )
+import { WIKI_PAGE_TEMPLATES, DEFAULT_TEMPLATE_ID, templateContentById } from '@/components/wiki/templates'
 import {
   expandedWikiDirectoryPaths,
   expandWikiDirectoryPath,
@@ -2940,7 +2948,7 @@ const showRevisionDrawer = ref(false)
 
 const showCreatePageDialog = ref(false)
 const creatingPage = ref(false)
-const createPageForm = ref({ title: '', slug: '', pageType: 'concept', content: '' })
+const createPageForm = ref({ title: '', slug: '', pageType: 'concept', templateId: DEFAULT_TEMPLATE_ID, content: '' })
 const createPageSlugTouched = ref(false)
 
 // Navigating to another page (or view) silently drops an in-progress edit;
@@ -3067,10 +3075,19 @@ function onPageReverted(page: WikiPage) {
 }
 
 function openCreatePageDialog() {
-  createPageForm.value = { title: '', slug: '', pageType: 'concept', content: '' }
+  createPageForm.value = { title: '', slug: '', pageType: 'concept', templateId: DEFAULT_TEMPLATE_ID, content: '' }
   createPageSlugTouched.value = false
   showCreatePageDialog.value = true
 }
+
+// When the user picks a non-blank template, autofill the body so they get
+// the skeleton without re-typing. Switching back to "blank" leaves whatever
+// the user has already typed in the textarea — wiping it would be
+// surprising and risks data loss on accidental re-selection.
+watch(() => createPageForm.value.templateId, (next) => {
+  if (!next || next === DEFAULT_TEMPLATE_ID) return
+  createPageForm.value.content = templateContentById(next)
+})
 
 // syncCreatePageSlug derives "<type>/<slugified-title>" while the user has
 // not touched the slug field themselves. Only ASCII-ish titles produce a
