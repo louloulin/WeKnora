@@ -539,6 +539,13 @@
                             <span v-if="commentCount > 0" class="wiki-action-btn-badge">{{ commentCount }}</span>
                           </button>
                         </t-tooltip>
+                        <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.shareBtn')" placement="top">
+                          <button type="button" class="wiki-action-btn wiki-action-btn--share"
+                            :aria-label="$t('knowledgeEditor.wikiBrowser.shareBtn')" @click="openShareDialog">
+                            <t-icon name="share" />
+                            <span v-if="activeShareCount > 0" class="wiki-action-btn-badge">{{ activeShareCount }}</span>
+                          </button>
+                        </t-tooltip>
                         <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.viewInGraph')" placement="top">
                           <button type="button" class="wiki-action-btn"
                             :aria-label="$t('knowledgeEditor.wikiBrowser.viewInGraph')"
@@ -753,6 +760,16 @@
       :page-title="selectedPage.title"
     />
 
+    <!-- Public share link dialog (Build #6). Manages share links for
+         the currently selected page; copying issues a fresh public URL. -->
+    <WikiShareDialog
+      v-if="selectedPage"
+      v-model="showShareDialog"
+      :kb-id="props.knowledgeBaseId"
+      :slug="selectedPage.slug"
+      :page-title="selectedPage.title"
+    />
+
     <!-- Create page dialog -->
     <t-dialog v-model:visible="showCreatePageDialog" :header="$t('knowledgeEditor.wikiBrowser.newPageTitle')"
       :confirm-btn="{ content: $t('common.confirm'), loading: creatingPage }" :cancel-btn="$t('common.cancel')"
@@ -844,6 +861,8 @@ import WikiFolderActions from './WikiFolderActions.vue'
 import WikiRevisionDrawer from './WikiRevisionDrawer.vue'
 import WikiCommentDrawer from '@/components/wiki/WikiCommentDrawer.vue'
 import { useWikiCommentsStore } from '@/stores/wikiComments'
+import WikiShareDialog from '@/components/wiki/WikiShareDialog.vue'
+import { useWikiShareLinksStore } from '@/stores/wikiShareLinks'
 import { useFeatureFlagsStore } from '@/stores/featureFlags'
 
 // Tiptap + DOMPurify are heavy — split the WYSIWYG editor into its own
@@ -2990,6 +3009,18 @@ const commentCount = computed(() => {
 })
 function openCommentDrawer(): void {
   showCommentDrawer.value = true
+}
+// Build #6 — share link dialog state. Mirrors the comment-drawer state
+// pattern so the toolbar stays self-contained.
+const showShareDialog = ref(false)
+const wikiShareStore = useWikiShareLinksStore()
+const activeShareCount = computed(() => {
+  const slug = selectedPage.value?.slug
+  if (!slug) return 0
+  return wikiShareStore.linksFor(props.knowledgeBaseId, slug).length
+})
+function openShareDialog(): void {
+  showShareDialog.value = true
 }
 
 const showCreatePageDialog = ref(false)

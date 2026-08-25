@@ -73,6 +73,15 @@ const router = createRouter({
       component: () => import("../views/auth/WorkspaceOnboarding.vue"),
       meta: { requiresAuth: true, requiresInit: false, requiresTenant: false }
     },
+    // Public wiki share viewer (Build #6). Anonymous viewers see a
+    // sanitized snapshot of a single page with a token-derived
+    // watermark. No auth, no tenant context — the token IS the gate.
+    {
+      path: "/wiki/share/:token",
+      name: "wikiPublicShare",
+      component: () => import("../views/wiki/WikiPublicShareView.vue"),
+      meta: { requiresAuth: false, requiresInit: false }
+    },
     {
       path: "/join",
       name: "joinOrganization",
