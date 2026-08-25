@@ -86,6 +86,7 @@ type RouterParams struct {
 	DataSourceCredentialsHandler *handler.DataSourceCredentialsHandler
 	WeKnoraCloudHandler          *handler.WeKnoraCloudHandler
 	WikiPageHandler              *handler.WikiPageHandler
+	WikiAclHandler               *handler.WikiAclHandler
 	MemoryHandler                *handler.MemoryHandler
 }
 
@@ -284,7 +285,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterEmbedChannelRoutes(v1, params.EmbedChannelHandler, rbacGuards)
 		RegisterDataSourceRoutes(v1, params.DataSourceHandler, params.DataSourceCredentialsHandler, rbacGuards)
 		RegisterWeKnoraCloudRoutes(v1, params.WeKnoraCloudHandler, rbacGuards)
-		RegisterWikiPageRoutes(v1, params.WikiPageHandler, rbacGuards)
+		RegisterWikiPageRoutes(v1, params.WikiPageHandler, params.WikiAclHandler, rbacGuards)
 		RegisterMemoryRoutes(v1, params.MemoryHandler, rbacGuards)
 		RegisterChunkerDebugRoutes(v1, rbacGuards)
 

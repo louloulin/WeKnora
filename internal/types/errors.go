@@ -1,6 +1,14 @@
 package types
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+// ErrWikiPageAclRevisionConflict is returned by WikiAclService.PutAcl when
+// the caller's BaseRevision no longer matches the stored ACL revision
+// (i.e. someone else saved in between). Handler maps this to HTTP 409.
+var ErrWikiPageAclRevisionConflict = errors.New("wiki page acl revision conflict")
 
 // StorageQuotaExceededError represents the storage quota exceeded error
 type StorageQuotaExceededError struct {

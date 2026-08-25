@@ -846,3 +846,101 @@ func (p *WikiPage) BuiltFrom(knowledgeIDs map[string]struct{}) bool {
 	}
 	return false
 }
+
+// -----------------------------------------------------------------------------
+// Page-level ACL (Build #7 backend)
+//
+// WikiPageAcl carries the per-page access control payload stored in the
+// `acl` JSON column on wiki_pages. The shape mirrors the frontend contract
+// in frontend/src/api/wiki/acl.ts — any change here must be paired with
+// the matching change in the wikiPageAcl Pinia store + WikiAclDialog.
+// -----------------------------------------------------------------------------
+
+// WikiPageAclMode enumerates the three access modes a page can carry.
+// Stored as a plain string in JSON, validated by IsValidWikiPageAclMode.
+const (
+	// WikiPageAclModeInherit — every KB member can read; legacy default
+	// for rows where the column is NULL.
+	WikiPageAclModeInherit = "inherit"
+	// WikiPageAclModePrivate — only the page owner (and KB admin) can read.
+	WikiPageAclModePrivate = "private"
+	// WikiPageAclModeAllowList — owner + KB admin + users/groups listed in
+	// AllowUserIDs / AllowGroupIDs can read.
+	WikiPageAclModeAllowList = "allow_list"
+)
+
+// IsValidWikiPageAclMode reports whether mode is one of the known
+// WikiPageAclMode constants. Empty is treated as inherit (legacy NULL).
+func IsValidWikiPageAclMode(mode string) bool {
+	switch mode {
+	case "", WikiPageAclModeInherit, WikiPageAclModePrivate, WikiPageAclModeAllowList:
+		return true
+	}
+	return false
+}
+
+// WikiPageAcl is the per-page access control record. Stored as JSON on
+// wiki_pages.acl. The struct is also what the GET/PUT /api/v1/.../acl REST
+// endpoints marshal to and from.
+type WikiPageAcl struct {
+	Mode          string   `json:"mode"`
+	AllowUserIDs  []string `json:"allow_user_ids"`
+	AllowGroupIDs []string `json:"allow_group_ids"`
+	DenyInherited bool     `json:"deny_inherited"`
+	Revision      int64    `json:"revision,omitempty"`
+	UpdatedAt     string   `json:"updated_at,omitempty"`
+}
+
+// Value implements driver.Valuer so GORM can write the column as JSON.
+func (c WikiPageAcl) Value() (driver.Value, error) {
+	return json.Marshal(c)
+}
+
+// Scan implements sql.Scanner so GORM can read the column back into the
+// struct. Mirrors WikiConfig.Scan (this file:608).
+func (c *WikiPageAcl) Scan(value interface{}) error {
+	if value == nil {
+		*c = WikiPageAcl{Mode: WikiPageAclModeInherit}
+		return nil
+	}
+	b, ok := value.([]byte)
+	if !ok {
+		*c = WikiPageAcl{Mode: WikiPageAclModeInherit}
+		return nil
+	}
+	if len(b) == 0 {
+		*c = WikiPageAcl{Mode: WikiPageAclModeInherit}
+		return nil
+	}
+	if err := json.Unmarshal(b, c); err != nil {
+		return err
+	}
+	if c.Mode == "" {
+		c.Mode = WikiPageAclModeInherit
+	}
+	return nil
+}
+
+// WikiPageAclSaveRequest is what the PUT endpoint accepts. BaseRevision is
+// the optimistic-lock token: when set, the server only accepts the write
+// if the stored revision still equals BaseRevision. Stale writes get 409.
+type WikiPageAclSaveRequest struct {
+	Mode          string   `json:"mode"`
+	AllowUserIDs  []string `json:"allow_user_ids"`
+	AllowGroupIDs []string `json:"allow_group_ids"`
+	DenyInherited bool     `json:"deny_inherited"`
+	BaseRevision  int64    `json:"base_revision"`
+}
+
+// WikiPageAclDecision is the enum returned by WikiAclService.Resolve. It
+// expresses the outcome of evaluating ACL for one caller against one page.
+const (
+	// WikiPageAclAllow — caller may read the page content.
+	WikiPageAclAllow = "allow"
+	// WikiPageAclDenyPrivate — page is private and caller is not owner/admin.
+	// Handler maps this to HTTP 404 (not 403) to avoid leaking page existence.
+	WikiPageAclDenyPrivate = "deny_private"
+	// WikiPageAclDenyAllowList — page is allow_list and caller is not in
+	// the allow list (nor owner/admin). Same 404 mapping as deny_private.
+	WikiPageAclDenyAllowList = "deny_allow_list"
+)

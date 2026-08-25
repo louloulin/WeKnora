@@ -47,15 +47,21 @@ type wikiPageService struct {
 	kbService       interfaces.KnowledgeBaseService
 	taskPendingRepo interfaces.TaskPendingOpsRepository
 	redisClient     *redis.Client
+	aclService      WikiAclService
 }
 
-// NewWikiPageService creates a new wiki page service
+// NewWikiPageService creates a new wiki page service.
+//
+// aclService may be nil — older callers (and a couple of legacy tests)
+// construct the service without it, in which case the read paths skip the
+// ACL gate. Production always wires a non-nil value via the DI container.
 func NewWikiPageService(
 	repo interfaces.WikiPageRepository,
 	chunkRepo interfaces.ChunkRepository,
 	kbService interfaces.KnowledgeBaseService,
 	taskPendingRepo interfaces.TaskPendingOpsRepository,
 	redisClient *redis.Client,
+	aclService WikiAclService,
 ) interfaces.WikiPageService {
 	return &wikiPageService{
 		repo:            repo,
@@ -63,6 +69,7 @@ func NewWikiPageService(
 		kbService:       kbService,
 		taskPendingRepo: taskPendingRepo,
 		redisClient:     redisClient,
+		aclService:      aclService,
 	}
 }
 
@@ -347,6 +354,9 @@ func (s *wikiPageService) GetPageBySlug(ctx context.Context, kbID string, slug s
 	if err != nil {
 		return nil, err
 	}
+	if err := s.gateWikiPageAccess(ctx, kbID, slug); err != nil {
+		return nil, err
+	}
 	stripWikiPageInlineChunkCitations(page)
 	return page, nil
 }
@@ -367,7 +377,11 @@ func (s *wikiPageService) ListPages(ctx context.Context, req *types.WikiPageList
 	if err != nil {
 		return nil, err
 	}
-	for _, page := range pages {
+	// Filter out pages the caller cannot read per ACL. The total stays at
+	// the repo count — we don't want directory pagination to shuffle when
+	// an admin toggles someone's permissions mid-scroll.
+	visible := s.filterReadablePages(ctx, req.KnowledgeBaseID, pages)
+	for _, page := range visible {
 		stripWikiPageInlineChunkCitations(page)
 		normalizeWikiHierarchy(page)
 	}
@@ -386,7 +400,7 @@ func (s *wikiPageService) ListPages(ctx context.Context, req *types.WikiPageList
 	}
 
 	return &types.WikiPageListResponse{
-		Pages:      pages,
+		Pages:      visible,
 		Total:      total,
 		Page:       page,
 		PageSize:   pageSize,
@@ -433,7 +447,63 @@ func (s *wikiPageService) GetIndex(ctx context.Context, kbID string) (*types.Wik
 		}
 		return nil, err
 	}
+	if err := s.gateWikiPageAccess(ctx, kbID, "index"); err != nil {
+		return nil, err
+	}
 	return page, nil
+}
+
+// gateWikiPageAccess consults the per-page ACL for one page read. Returns
+// nil when ACL is unset (legacy build path) or when the decision is allow.
+// Maps both deny outcomes to repository.ErrWikiPageNotFound so the handler
+// layer can translate both into a single 404 — the spec mandates that
+// private/allow_list mismatches never leak page existence.
+func (s *wikiPageService) gateWikiPageAccess(ctx context.Context, kbID string, slug string) error {
+	if s.aclService == nil {
+		return nil
+	}
+	userID, _ := types.UserIDFromContext(ctx)
+	decision, err := s.aclService.Resolve(ctx, kbID, slug, userID)
+	if err != nil {
+		return err
+	}
+	switch decision {
+	case types.WikiPageAclAllow, "":
+		return nil
+	case types.WikiPageAclDenyPrivate, types.WikiPageAclDenyAllowList:
+		return repository.ErrWikiPageNotFound
+	default:
+		// Unknown decision value: be conservative and deny. The service
+		// contract guarantees only the constants above, so this branch
+		// should never fire in practice — it exists purely so a stale
+		// or hand-mutated implementation cannot accidentally allow.
+		return repository.ErrWikiPageNotFound
+	}
+}
+
+// filterReadablePages applies the ACL decision to every row of a list
+// result. Rows that fail the gate are dropped silently so a private page
+// doesn't disappear from the row count (the UI relies on Total being
+// stable mid-paging). When aclService is nil the input is returned as-is.
+func (s *wikiPageService) filterReadablePages(ctx context.Context, kbID string, pages []*types.WikiPage) []*types.WikiPage {
+	if s.aclService == nil || len(pages) == 0 {
+		return pages
+	}
+	out := make([]*types.WikiPage, 0, len(pages))
+	for _, page := range pages {
+		if page == nil || page.Slug == "" {
+			continue
+		}
+		decision, err := s.aclService.Resolve(ctx, kbID, page.Slug, "")
+		if err != nil {
+			logger.Warnf(ctx, "wiki acl list filter: resolve %s failed: %v", page.Slug, err)
+			continue
+		}
+		if decision == types.WikiPageAclAllow || decision == "" {
+			out = append(out, page)
+		}
+	}
+	return out
 }
 
 // wikiIndexContentPageTypes enumerates the page types that make up a wiki's

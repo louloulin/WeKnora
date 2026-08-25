@@ -291,7 +291,10 @@ func RegisterKnowledgeTagRoutes(r *gin.RouterGroup, tagHandler *handler.TagHandl
 // honour per-KB ownership via OwnedWikiKBOrAdmin (PR 5, #1303): the URL
 // :kb_id resolves directly to the owning KB so a Contributor who owns
 // the KB can manage its wiki, while a non-owner Contributor gets 403.
-func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHandler, g *rbacGuards) {
+//
+// wikiAclHandler is the Build #7 surface — it is independent of the page
+// CRUD so a future split of the handler package can pass either alone.
+func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHandler, wikiAclHandler *handler.WikiAclHandler, g *rbacGuards) {
 	wiki := g.apiKeyGroup(r.Group("/knowledgebase/:kb_id/wiki"), apiKeyIngest(apiKeyFullAccess()))
 	wikiRead := wiki.With(apiKeyRetrieve(apiKeyFullAccess()))
 	{
@@ -302,6 +305,13 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		wikiRead.GET("/pages/*slug", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetPage)
 		wiki.PUT("/pages/*slug", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.UpdatePage)
 		wiki.DELETE("/pages/*slug", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.DeletePage)
+
+		// Page-level ACL (Build #7). GET follows the page-read guard so a
+		// KB member can inspect the ACL they currently live under; PUT is
+		// gated by KB-write ownership so only the KB owner / tenant admin
+		// can mutate the policy.
+		wikiRead.GET("/pages/*slug/acl", g.Viewer(), g.KBAccessRead("kb_id"), wikiAclHandler.GetAcl)
+		wiki.PUT("/pages/*slug/acl", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiAclHandler.PutAcl)
 
 		// Revision history (slug is a catch-all like /pages; revert carries
 		// the slug in the body for the same reason move-page does)
