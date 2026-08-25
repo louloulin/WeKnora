@@ -6528,5 +6528,15 @@ export default {
     capabilityRequired: 'Select at least one capability',
     loadFailed: 'Failed to load platform API keys',
     createFailed: 'Failed to create platform API key'
+  },
+  wiki: {
+    search: {
+      placeholder: 'Search pages…',
+      ariaLabel: 'Search pages in the current knowledge base',
+      resultsLabel: 'Search results',
+      loading: 'Searching…',
+      error: 'Search failed, please retry',
+      empty: 'No matching pages'
+    }
   }
 }

@@ -6528,5 +6528,15 @@ export default {
     myChats: 'Мои чаты',
     apiChats: 'Сессии API',
     noSessions: 'Пока нет диалогов'
+  },
+  wiki: {
+    search: {
+      placeholder: 'Поиск страниц…',
+      ariaLabel: 'Поиск страниц в текущей базе знаний',
+      resultsLabel: 'Результаты поиска',
+      loading: 'Поиск…',
+      error: 'Не удалось выполнить поиск, попробуйте ещё раз',
+      empty: 'Совпадений не найдено'
+    }
   }
 }

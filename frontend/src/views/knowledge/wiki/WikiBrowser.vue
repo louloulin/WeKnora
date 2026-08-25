@@ -165,6 +165,8 @@
     <template v-else>
       <!-- Left Panel: Page List -->
       <aside class="wiki-sidebar">
+        <WikiSearchBar :kb-id="props.knowledgeBaseId" />
+
         <div class="wiki-sidebar-header">
           <div v-if="stats && (stats.pending_tasks > 0 || stats.is_active)" class="wiki-queue-status">
             <t-loading size="small" />
@@ -885,6 +887,8 @@ import WikiShareDialog from '@/components/wiki/WikiShareDialog.vue'
 import { useWikiShareLinksStore } from '@/stores/wikiShareLinks'
 import WikiAclDialog from '@/components/wiki/WikiAclDialog.vue'
 import { useWikiPageAclStore } from '@/stores/wikiPageAcl'
+import WikiSearchBar from '@/components/wiki/WikiSearchBar.vue'
+import { useWikiSearchStore } from '@/stores/wikiSearch'
 import { useFeatureFlagsStore } from '@/stores/featureFlags'
 
 // Tiptap + DOMPurify are heavy — split the WYSIWYG editor into its own
@@ -967,6 +971,10 @@ const kbFileAccess = computed<ProtectedFileAccessContext>(() => ({
 }))
 const pages = ref<WikiPage[]>([])
 const selectedPage = ref<WikiPage | null>(null)
+
+watch(() => props.knowledgeBaseId, (next) => {
+  wikiSearchStore.setKbId(next)
+}, { immediate: true })
 
 // Per-type pagination state for the sidebar. 4万-page wikis used to load
 // the entire page list into `pages.value` at startup (50 pages of 500 =
@@ -3047,6 +3055,7 @@ function openShareDialog(): void {
 // Build #7 — page-level ACL dialog state + viewer banner.
 const showAclDialog = ref(false)
 const wikiAclStore = useWikiPageAclStore()
+const wikiSearchStore = useWikiSearchStore()
 const aclRestricted = computed(() => {
   const slug = selectedPage.value?.slug
   if (!slug) return false

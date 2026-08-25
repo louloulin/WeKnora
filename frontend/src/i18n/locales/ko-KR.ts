@@ -6528,5 +6528,15 @@ export default {
     myChats: '내 대화',
     apiChats: 'API 세션',
     noSessions: '대화가 없습니다'
+  },
+  wiki: {
+    search: {
+      placeholder: '페이지 검색…',
+      ariaLabel: '현재 지식베이스에서 페이지 검색',
+      resultsLabel: '검색 결과',
+      loading: '검색 중…',
+      error: '검색 실패, 다시 시도해 주세요',
+      empty: '일치하는 페이지가 없습니다'
+    }
   }
 }

@@ -6504,6 +6504,16 @@ export default {
       references: '引用'
     }
   },
+  wiki: {
+    search: {
+      placeholder: '搜索页面…',
+      ariaLabel: '在当前知识库中搜索页面',
+      resultsLabel: '搜索结果',
+      loading: '正在搜索…',
+      error: '搜索出错，请重试',
+      empty: '没有匹配的页面'
+    }
+  },
   menu: {
     knowledgeBase: '知识库',
     agents: '智能体',
