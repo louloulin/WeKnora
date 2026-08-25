@@ -54,6 +54,15 @@
         @click.prevent="promptForLink" :title="$t('knowledgeEditor.wikiBrowser.editor.link')">
         <span class="wiki-tiptap-btn-label">🔗</span>
       </button>
+      <span v-if="collab" class="wiki-tiptap-divider" aria-hidden="true" />
+      <WikiCollabPresence
+        v-if="collab"
+        :status="collab.status.value"
+        :peer-list="collab.peerList.value"
+        :self-name="props.displayName || props.userId"
+        class="wiki-tiptap-presence"
+        @reconnect="collab.reconnect()"
+      />
     </div>
 
     <EditorContent v-if="editor" :editor="editor" class="wiki-tiptap-content" />
@@ -76,6 +85,8 @@ import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import { Markdown } from 'tiptap-markdown'
 import { EditorContent } from '@tiptap/vue-3'
+import { useWikiCollab } from '@/composables/useWikiCollab'
+import WikiCollabPresence from './WikiCollabPresence.vue'
 // sanitizeWysiwygHTML is the spec-shaped exit sanitizer (returns '' on
 // DOMPurify throw + console.warn) — distinct from utils/security.ts's
 // generic sanitizeHTML which falls back to escapeHTML.
@@ -112,8 +123,22 @@ interface WikiEditorValue {
 const props = withDefaults(defineProps<{
   modelValue: WikiEditorValue
   placeholder?: string
+  /** Real-time collaboration identifiers. When `collabEnabled` is true,
+   *  the editor binds to a Y.js document + awareness through the
+   *  `useWikiCollab` composable. When false / omitted, behaviour matches
+   *  the existing solo-editing path (no network deps loaded). */
+  kbId?: string
+  slug?: string
+  userId?: string
+  displayName?: string
+  collabEnabled?: boolean
 }>(), {
   placeholder: '',
+  kbId: '',
+  slug: '',
+  userId: '',
+  displayName: '',
+  collabEnabled: false,
 })
 
 const emit = defineEmits<{
@@ -125,6 +150,19 @@ const headingLevels = [1, 2, 3] as const
 const editor = shallowRef<Editor | null>(null)
 const isEmpty = ref(true)
 const fallbackMarkdown = ref<string>(props.modelValue?.markdown ?? '')
+
+// Build #8 — Y.js CRDT collaboration. The composable is called eagerly
+// when `collabEnabled` is true so its lifecycle hooks attach before the
+// Editor is constructed; the resulting `ydoc` / `provider` are then
+// passed to the Collaboration + CollaborationCursor extensions below.
+const collab = props.collabEnabled && props.kbId && props.slug
+  ? useWikiCollab({
+      kbId: props.kbId,
+      slug: props.slug,
+      userId: props.userId || 'anonymous',
+      displayName: props.displayName || props.userId || 'Anonymous',
+    })
+  : null
 
 watch(
   () => props.modelValue,
@@ -194,30 +232,55 @@ function promptForLink() {
 try {
   const initialMarkdown = props.modelValue?.markdown ?? ''
   const initialHTML = sanitizeWysiwygHTML(props.modelValue?.html ?? '')
+  // When collaboration is enabled we disable StarterKit's history
+  // extension — the CRDT manages undo / redo via Y.UndoManager, and
+  // having both causes state divergence between peers.
+  const extensions: Array<unknown> = [
+    StarterKit.configure({
+      heading: { levels: [1, 2, 3] },
+      history: collab ? false : {},
+    }),
+    Link.configure({
+      // Restrict to safe protocols — Tiptap's default allows javascript:
+      // URLs which DOMPurify would later strip anyway, but rejecting
+      // them at insertion time keeps the editor in a clean state.
+      openOnClick: false,
+      autolink: true,
+      protocols: ['http', 'https', 'mailto'],
+    }),
+    Markdown.configure({
+      // tiptap-markdown parses round-trip markdown; transformPastedText
+      // lets paste-as-markdown flow through. We keep the default copy-
+      // paste behaviour (HTML) for compatibility with rich clipboard
+      // sources.
+      transformPastedText: true,
+      breaks: true,
+      linkify: false,
+    }),
+  ]
+  if (collab && collab.provider.value) {
+    // Lazy import the CRDT extensions so the no-collab path doesn't pay
+    // the y-prosemirror bundle cost.
+    const [{ Collaboration }, { CollaborationCursor }] = await Promise.all([
+      import('@tiptap/extension-collaboration'),
+      import('@tiptap/extension-collaboration-cursor'),
+    ])
+    extensions.push(
+      Collaboration.configure({
+        document: collab.ydoc,
+      }),
+      CollaborationCursor.configure({
+        provider: collab.provider.value,
+        user: {
+          name: props.displayName || props.userId || 'Anonymous',
+          color: collab.color.value,
+        },
+      }),
+    )
+  }
   editor.value = new Editor({
     content: initialHTML,
-    extensions: [
-      StarterKit.configure({
-        heading: { levels: [1, 2, 3] },
-      }),
-      Link.configure({
-        // Restrict to safe protocols — Tiptap's default allows javascript:
-        // URLs which DOMPurify would later strip anyway, but rejecting
-        // them at insertion time keeps the editor in a clean state.
-        openOnClick: false,
-        autolink: true,
-        protocols: ['http', 'https', 'mailto'],
-      }),
-      Markdown.configure({
-        // tiptap-markdown parses round-trip markdown; transformPastedText
-        // lets paste-as-markdown flow through. We keep the default copy-
-        // paste behaviour (HTML) for compatibility with rich clipboard
-        // sources.
-        transformPastedText: true,
-        breaks: true,
-        linkify: false,
-      }),
-    ],
+    extensions: extensions as Parameters<typeof Editor>[0]['extensions'],
     editorProps: {
       attributes: {
         class: 'wiki-tiptap-surface',

@@ -18,6 +18,8 @@
   "dependencies": {
     "@microsoft/fetch-event-source": "^2.0.1",
     "@tiptap/core": "^2.10.3",
+    "@tiptap/extension-collaboration": "^2.10.3",
+    "@tiptap/extension-collaboration-cursor": "^2.10.3",
     "@tiptap/extension-link": "^2.10.3",
     "@tiptap/pm": "^2.10.3",
     "@tiptap/starter-kit": "^2.10.3",
@@ -46,7 +48,10 @@
     "vue-router": "^4.5.0",
     "vue-virtual-scroller": "^2.0.0-beta.8",
     "webpack": "^5.106.2",
-    "xlsx": "file:./packages/xlsx-0.20.2.tgz"
+    "xlsx": "file:./packages/xlsx-0.20.2.tgz",
+    "y-prosemirror": "^1.2.15",
+    "y-websocket": "^2.1.0",
+    "yjs": "^13.6.27"
   },
   "devDependencies": {
     "@tsconfig/node22": "^22.0.5",

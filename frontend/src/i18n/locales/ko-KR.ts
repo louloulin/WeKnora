@@ -3815,6 +3815,16 @@ export default {
           saveFailed: '권한 설정 저장에 실패했습니다',
         },
       },
+      collab: {
+        reconnect: '재연결',
+        status: {
+          off: '연결 끊김',
+          connecting: '연결 중',
+          connected: '연결됨',
+          reconnecting: '재연결 중',
+          error: '연결 오류',
+        },
+      },
       revisionCurrent: '현재 버전',
       revisionCurrentHint: '현재 버전입니다. 왼쪽에서 이전 버전을 선택하면 비교하거나 롤백할 수 있습니다.',
       revisionSelectHint: '왼쪽에서 버전을 선택하세요',

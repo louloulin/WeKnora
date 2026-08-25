@@ -3817,6 +3817,16 @@ export default {
           saveFailed: '保存权限设置失败',
         },
       },
+      collab: {
+        reconnect: '重新连接',
+        status: {
+          off: '未连接',
+          connecting: '正在连接',
+          connected: '已连接',
+          reconnecting: '重新连接中',
+          error: '连接失败',
+        },
+      },
       revisionCurrent: '当前版本',
       revisionCurrentHint: '这是页面的当前版本，选择左侧的历史版本可查看差异或回滚。',
       revisionSelectHint: '选择左侧的版本查看内容',

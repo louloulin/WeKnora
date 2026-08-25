@@ -2728,6 +2728,16 @@ export default {
           saveFailed: 'Failed to save permissions',
         },
       },
+      collab: {
+        reconnect: 'Reconnect',
+        status: {
+          off: 'Offline',
+          connecting: 'Connecting',
+          connected: 'Connected',
+          reconnecting: 'Reconnecting',
+          error: 'Connection error',
+        },
+      },
       revisionCurrent: 'Current',
       revisionCurrentHint: 'This is the current version. Pick a historical version on the left to diff or revert.',
       revisionSelectHint: 'Select a version on the left',

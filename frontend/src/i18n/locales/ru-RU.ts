@@ -3815,6 +3815,16 @@ export default {
           saveFailed: 'Не удалось сохранить настройки прав',
         },
       },
+      collab: {
+        reconnect: 'Переподключиться',
+        status: {
+          off: 'Не подключено',
+          connecting: 'Подключение',
+          connected: 'Подключено',
+          reconnecting: 'Переподключение',
+          error: 'Ошибка соединения',
+        },
+      },
       revisionCurrent: 'Текущая',
       revisionCurrentHint: 'Это текущая версия. Выберите историческую версию слева для сравнения или отката.',
       revisionSelectHint: 'Выберите версию слева',
