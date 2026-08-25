@@ -187,6 +187,23 @@ export function getWikiPage(kbId: string, slug: string) {
   return get(`/api/v1/knowledgebase/${kbId}/wiki/pages/${encodeSlugPath(slug)}`);
 }
 
+// Re-exported from `backlinksTypes.ts` so consumers can keep
+// importing from the canonical `api/wiki` entry point while
+// the helpers module + Node tests pull the same shape.
+import type { WikiPageBacklink } from './backlinksTypes';
+export type { WikiPageBacklink };
+
+// getWikiPageBacklinks returns the set of pages that link to
+// `slug` within `kbId`, ordered by updatedAt desc with the
+// backend handling orphan filtering. The server contract is
+// empty-array + 200 when the page exists but has no inbound
+// links; 404 when the page itself does not exist.
+export function getWikiPageBacklinks(kbId: string, slug: string) {
+  return get<WikiPageBacklink[]>(
+    `/api/v1/knowledgebase/${kbId}/wiki/pages/${encodeSlugPath(slug)}/backlinks`,
+  );
+}
+
 // WikiPageUpdatePayload is a partial update: absent fields keep their stored
 // value. `version` is the optimistic-lock guard — send the version the page
 // had when the user started editing; the backend answers 409 (with

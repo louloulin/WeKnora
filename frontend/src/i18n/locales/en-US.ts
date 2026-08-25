@@ -2704,6 +2704,13 @@ export default {
       aclReadOnlyHint: 'Read-only view',
       aclBannerPrivate: 'This page is private — only the author and admins can view it',
       aclBannerAllowList: 'This page is restricted to {count} designated members',
+      backlinks: {
+        title: 'Backlinks',
+        count: '{n}',
+        empty: 'No backlinks yet',
+        emptyHint: 'Add [[{slug}]] from another page to link here.',
+        loadFailed: 'Failed to load backlinks',
+      },
       acl: {
         header: 'Page permissions',
         headerFor: 'Permissions for "{title}"',

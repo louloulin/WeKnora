@@ -124,6 +124,13 @@ type WikiPageService interface {
 	// the pre-batch ListAllPages dump.
 	ListBySlugs(ctx context.Context, kbID string, slugs []string) (map[string]*types.WikiPageLite, error)
 
+	// ListPageBacklinks returns the set of pages within `kbID` that link
+	// to `slug`, projected into `WikiPageBacklink` shape (slug + title +
+	// page_type + status + updated_at), ordered by updated_at desc with
+	// slug alphabetical as tiebreaker. Orphans and self-links are
+	// excluded. Build #11.
+	ListPageBacklinks(ctx context.Context, kbID string, slug string) ([]*types.WikiPageBacklink, error)
+
 	// ListSummariesByKnowledgeIDs returns summary-page content keyed by
 	// the knowledge id that authored it. Used by the retract / reparse
 	// branches of reduceSlugUpdates for "what was this doc's

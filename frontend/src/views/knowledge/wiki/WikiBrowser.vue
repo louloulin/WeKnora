@@ -601,6 +601,13 @@
                         {{ formatDate(selectedPage.updated_at) }}
                       </span>
                     </div>
+                    <WikiBacklinksPanel
+                      v-if="!editingPage && selectedPage"
+                      :kb-id="props.knowledgeBaseId"
+                      :slug="selectedPage.slug"
+                      class="wiki-reader-aside-backlinks"
+                      @navigate="onBacklinkNavigate"
+                    />
                   </div>
                 </div>
               </div>
@@ -905,6 +912,8 @@ import { useWikiShareLinksStore } from '@/stores/wikiShareLinks'
 import WikiAclDialog from '@/components/wiki/WikiAclDialog.vue'
 import { useWikiPageAclStore } from '@/stores/wikiPageAcl'
 import { aclToolbarVisibility } from './wikiBrowserAclVisibility'
+import WikiBacklinksPanel from '@/components/wiki/WikiBacklinksPanel.vue'
+import { useWikiBacklinksStore } from '@/stores/wikiBacklinks'
 import WikiSearchBar from '@/components/wiki/WikiSearchBar.vue'
 import { useWikiSearchStore } from '@/stores/wikiSearch'
 import { useFeatureFlagsStore } from '@/stores/featureFlags'
@@ -3828,6 +3837,14 @@ async function selectPage(page: WikiPage) {
   } catch (e) {
     console.error('Failed to load wiki page:', e)
   }
+}
+
+async function onBacklinkNavigate(slug: string): Promise<void> {
+  // WikiBacklinksPanel emits `navigate(slug)` when the user clicks
+  // a backlink row. We just forward to the existing reader-level
+  // `navigateToSlug` so the click is indistinguishable from a
+  // body `[[slug]]` click (D6 — same code path, same back-stack).
+  await navigateToSlug(slug)
 }
 
 async function navigateToSlug(slug: string) {

@@ -3791,6 +3791,13 @@ export default {
       aclReadOnlyHint: '읽기 전용 보기',
       aclBannerPrivate: '이 페이지는 비공개입니다 — 작성자와 관리자만 볼 수 있습니다',
       aclBannerAllowList: '이 페이지는 지정된 {count}명에게만 제한됩니다',
+      backlinks: {
+        title: '역링크',
+        count: '{n}',
+        empty: '역링크 없음',
+        emptyHint: '다른 페이지 본문에서 [[{slug}]]를 추가하면 역링크가 생성됩니다.',
+        loadFailed: '역링크를 불러오지 못했습니다',
+      },
       acl: {
         header: '페이지 권한',
         headerFor: '"{title}" 권한',

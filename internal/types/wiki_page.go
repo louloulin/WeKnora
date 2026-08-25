@@ -799,12 +799,30 @@ type WikiIndexResponse struct {
 // included so dead-link cleanup can determine which pages reference a
 // given dead slug without a second query.
 type WikiPageLite struct {
-	Slug     string      `json:"slug"`
-	Title    string      `json:"title"`
-	PageType string      `json:"page_type"`
-	Status   string      `json:"status"`
-	Aliases  StringArray `json:"aliases,omitempty"`
-	OutLinks StringArray `json:"out_links,omitempty"`
+	Slug      string      `json:"slug"`
+	Title     string      `json:"title"`
+	PageType  string      `json:"page_type"`
+	Status    string      `json:"status"`
+	Aliases   StringArray `json:"aliases,omitempty"`
+	OutLinks  StringArray `json:"out_links,omitempty"`
+	UpdatedAt time.Time   `json:"updated_at,omitempty"`
+}
+
+// WikiPageBacklink is the resolved-row shape returned by
+// `GET /wiki/pages/:slug/backlinks`. It carries only the fields
+// the panel needs (slug + title + page_type + status + updated_at)
+// and is intentionally a separate public type from `WikiPageLite`
+// so the backlinks endpoint can evolve its payload without leaking
+// the lite projection's internal fields (aliases / out_links) into
+// the panel's HTTP response.
+//
+// Build #11.
+type WikiPageBacklink struct {
+	Slug      string    `json:"slug"`
+	Title     string    `json:"title"`
+	PageType  string    `json:"page_type"`
+	Status    string    `json:"status"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // WikiSourceKnowledgeID extracts the knowledge id from a source_refs entry,

@@ -1025,6 +1025,74 @@ func (s *wikiPageService) ListBySlugs(ctx context.Context, kbID string, slugs []
 	return s.repo.ListBySlugs(ctx, kbID, slugs)
 }
 
+// ListPageBacklinks returns the set of pages within `kbID` that link
+// to `slug`, projected into the panel-friendly `WikiPageBacklink`
+// shape (slug + title + page_type + status + updated_at). Ordering
+// is `updated_at` desc with slug alphabetical as the tiebreaker so
+// the UI gets a stable list even when two source pages share a
+// timestamp.
+//
+// Build #11.
+//
+// Implementation notes:
+//   - Uses the existing `ListBySlugs` repo method (single IN query),
+//     no N+1. The repo's SELECT was extended with `updated_at` so the
+//     timestamp is available without a second query.
+//   - Orphans (slugs in `in_links` whose target page no longer
+//     exists) are dropped at the `ListBySlugs` boundary because the
+//     repo returns a map keyed by slug — slugs absent from the map
+//     have no live row and never make it to the response.
+//   - The target page's own slug (if it somehow appears in its own
+//     `in_links` due to a historical write) is defensively excluded.
+//   - Returns an empty slice (not nil) when no live links exist so
+//     the HTTP response is `[]` rather than `null`.
+func (s *wikiPageService) ListPageBacklinks(
+	ctx context.Context, kbID string, slug string,
+) ([]*types.WikiPageBacklink, error) {
+	page, err := s.repo.GetBySlug(ctx, kbID, slug)
+	if err != nil {
+		return nil, err
+	}
+	if page == nil {
+		return []*types.WikiPageBacklink{}, nil
+	}
+	inLinks := make([]string, 0, len(page.InLinks))
+	for _, s := range page.InLinks {
+		if s == "" || s == slug {
+			continue
+		}
+		inLinks = append(inLinks, s)
+	}
+	if len(inLinks) == 0 {
+		return []*types.WikiPageBacklink{}, nil
+	}
+	lites, err := s.repo.ListBySlugs(ctx, kbID, inLinks)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*types.WikiPageBacklink, 0, len(lites))
+	for _, srcSlug := range inLinks {
+		lite, ok := lites[srcSlug]
+		if !ok || lite == nil {
+			continue
+		}
+		out = append(out, &types.WikiPageBacklink{
+			Slug:      lite.Slug,
+			Title:     lite.Title,
+			PageType:  lite.PageType,
+			Status:    lite.Status,
+			UpdatedAt: lite.UpdatedAt,
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].UpdatedAt.Equal(out[j].UpdatedAt) {
+			return out[i].Slug < out[j].Slug
+		}
+		return out[i].UpdatedAt.After(out[j].UpdatedAt)
+	})
+	return out, nil
+}
+
 // ListSummariesByKnowledgeIDs is the lazy fetcher for the retract /
 // reparse branches of reduceSlugUpdates. Returns the content of each
 // surviving summary page keyed by its source knowledge id.

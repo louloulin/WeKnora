@@ -3793,6 +3793,13 @@ export default {
       aclReadOnlyHint: '只读视图',
       aclBannerPrivate: '此页为私有，仅作者和管理员可访问',
       aclBannerAllowList: '此页受限：仅 {count} 名指定成员可访问',
+      backlinks: {
+        title: '反向链接',
+        count: '{n} 条',
+        empty: '暂无反向链接',
+        emptyHint: '在其它页面正文使用 [[{slug}]] 即可创建。',
+        loadFailed: '反向链接加载失败',
+      },
       acl: {
         header: '页面权限',
         headerFor: '「{title}」的访问权限',

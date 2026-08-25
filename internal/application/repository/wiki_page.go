@@ -538,9 +538,11 @@ func (r *wikiPageRepository) ListSlugsBySourceRef(ctx context.Context, kbID stri
 }
 
 // ListBySlugs returns lightweight projections (slug, title, page_type,
-// status, aliases, out_links) for the given slugs in one IN query.
-// Used by wiki ingest's lazy fetcher path to resolve slug -> title /
-// out-links during Map/Reduce without paying for a full ListAll scan.
+// status, aliases, out_links, updated_at) for the given slugs in one
+// IN query. Used by wiki ingest's lazy fetcher path to resolve slug ->
+// title / out-links during Map/Reduce without paying for a full ListAll
+// scan. `updated_at` was added in Build #11 so the backlinks endpoint
+// can resolve `in_links -> WikiPageBacklink` rows in a single query.
 //
 // Empty input returns nil, nil. Slugs not present in the KB are silently
 // dropped from the returned map (caller treats absent slugs as "no
@@ -556,7 +558,7 @@ func (r *wikiPageRepository) ListBySlugs(
 	var rows []types.WikiPageLite
 	if err := r.db.WithContext(ctx).
 		Model(&types.WikiPage{}).
-		Select("slug", "title", "page_type", "status", "aliases", "out_links").
+		Select("slug", "title", "page_type", "status", "aliases", "out_links", "updated_at").
 		Where("knowledge_base_id = ? AND slug IN ?", kbID, slugs).
 		Scan(&rows).Error; err != nil {
 		return nil, err

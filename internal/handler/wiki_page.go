@@ -439,6 +439,51 @@ func (h *WikiPageHandler) GetPage(c *gin.Context) {
 	c.JSON(http.StatusOK, page)
 }
 
+// GetPageBacklinks godoc
+// @Summary      List pages that link to this wiki page
+// @Description  Returns the resolved set of pages within the knowledge base
+// @Description  whose body contains a [[<slug>]] reference to this page.
+// @Description  Result is ordered by updated_at desc with slug alphabetical
+// @Description  as the tiebreaker. Orphan slugs (in_links entries whose
+// @Description  target page has been deleted) are filtered server-side.
+// @Description  An empty array + 200 is returned when the page exists
+// @Description  but has no inbound links; 404 when the page itself does
+// @Description  not exist. Build #11.
+// @Tags         Wiki
+// @Produce      json
+// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        slug   path  string  true  "Page slug"
+// @Success      200  {array}  types.WikiPageBacklink
+// @Failure      400  {object}  errors.AppError
+// @Failure      404  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/pages/{slug}/backlinks [get]
+func (h *WikiPageHandler) GetPageBacklinks(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	slug := getSlugParam(c)
+	if slug == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Page slug is required"})
+		return
+	}
+	backlinks, err := h.wikiService.ListPageBacklinks(c.Request.Context(), kbID, slug)
+	if err != nil {
+		if stderrors.Is(err, repository.ErrWikiPageNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Wiki page not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if backlinks == nil {
+		backlinks = []*types.WikiPageBacklink{}
+	}
+	c.JSON(http.StatusOK, backlinks)
+}
+
 // UpdatePage godoc
 // @Summary      Update a wiki page
 // @Description  Partially update a wiki page by slug. Absent fields keep
