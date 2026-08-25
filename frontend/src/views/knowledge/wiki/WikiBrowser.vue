@@ -532,6 +532,13 @@
                             <t-icon name="history" />
                           </button>
                         </t-tooltip>
+                        <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.commentsBtn')" placement="top">
+                          <button type="button" class="wiki-action-btn wiki-action-btn--comments"
+                            :aria-label="$t('knowledgeEditor.wikiBrowser.commentsBtn')" @click="openCommentDrawer">
+                            <t-icon name="chat" />
+                            <span v-if="commentCount > 0" class="wiki-action-btn-badge">{{ commentCount }}</span>
+                          </button>
+                        </t-tooltip>
                         <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.viewInGraph')" placement="top">
                           <button type="button" class="wiki-action-btn"
                             :aria-label="$t('knowledgeEditor.wikiBrowser.viewInGraph')"
@@ -737,6 +744,15 @@
       :slug="selectedPage?.slug || ''" :current-page="selectedPage" :can-edit="props.canEdit"
       @reverted="onPageReverted" />
 
+    <!-- Page comments + @mention drawer (Build #5). -->
+    <WikiCommentDrawer
+      v-if="selectedPage"
+      v-model:visible="showCommentDrawer"
+      :kb-id="props.knowledgeBaseId"
+      :slug="selectedPage.slug"
+      :page-title="selectedPage.title"
+    />
+
     <!-- Create page dialog -->
     <t-dialog v-model:visible="showCreatePageDialog" :header="$t('knowledgeEditor.wikiBrowser.newPageTitle')"
       :confirm-btn="{ content: $t('common.confirm'), loading: creatingPage }" :cancel-btn="$t('common.cancel')"
@@ -826,6 +842,8 @@ import type { ProtectedFileAccessContext } from '@/utils/protectedFileAccess'
 import picturePreview from '@/components/picture-preview.vue'
 import WikiFolderActions from './WikiFolderActions.vue'
 import WikiRevisionDrawer from './WikiRevisionDrawer.vue'
+import WikiCommentDrawer from '@/components/wiki/WikiCommentDrawer.vue'
+import { useWikiCommentsStore } from '@/stores/wikiComments'
 import { useFeatureFlagsStore } from '@/stores/featureFlags'
 
 // Tiptap + DOMPurify are heavy — split the WYSIWYG editor into its own
@@ -2960,6 +2978,19 @@ featureFlags.ensureLoaded()
 const wysiwygEnabled = computed(() => featureFlags.flags?.wiki_wysiwyg === true)
 
 const showRevisionDrawer = ref(false)
+// Build #5 — page-level comments drawer state. Comment count is the
+// running badge on the toolbar button; it updates whenever the
+// store mutates the entry for the currently selected page slug.
+const showCommentDrawer = ref(false)
+const wikiCommentsStore = useWikiCommentsStore()
+const commentCount = computed(() => {
+  const slug = selectedPage.value?.slug
+  if (!slug) return 0
+  return wikiCommentsStore.commentsFor(slug).length
+})
+function openCommentDrawer(): void {
+  showCommentDrawer.value = true
+}
 
 const showCreatePageDialog = ref(false)
 const creatingPage = ref(false)
@@ -5794,6 +5825,27 @@ onUnmounted(() => {
   &.wiki-action-btn--danger:hover {
     color: var(--td-error-color);
   }
+
+  &--comments {
+    position: relative;
+  }
+}
+
+.wiki-action-btn-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--td-brand-color, #0052d9);
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  font-weight: 600;
+  pointer-events: none;
 }
 
 .wiki-reader-aliases {
