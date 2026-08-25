@@ -503,6 +503,10 @@
                       </span>
                     </div>
                     <p v-if="!editingPage && selectedPage.summary" class="wiki-reader-lead">{{ selectedPage.summary }}</p>
+                    <div v-if="!editingPage && aclRestricted" class="wiki-acl-banner">
+                      <t-icon name="lock-on" size="14px" />
+                      <span class="wiki-acl-banner__text">{{ aclBannerText }}</span>
+                    </div>
                     <t-textarea v-if="editingPage" v-model="editForm.summary"
                       class="wiki-edit-field wiki-edit-field--summary" :autosize="{ minRows: 2, maxRows: 4 }"
                       :placeholder="$t('knowledgeEditor.wikiBrowser.editSummaryPlaceholder')" />
@@ -544,6 +548,13 @@
                             :aria-label="$t('knowledgeEditor.wikiBrowser.shareBtn')" @click="openShareDialog">
                             <t-icon name="share" />
                             <span v-if="activeShareCount > 0" class="wiki-action-btn-badge">{{ activeShareCount }}</span>
+                          </button>
+                        </t-tooltip>
+                        <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.aclBtn')" placement="top">
+                          <button type="button" class="wiki-action-btn wiki-action-btn--acl"
+                            :aria-label="$t('knowledgeEditor.wikiBrowser.aclBtn')" @click="openAclDialog">
+                            <t-icon name="lock-on" />
+                            <span v-if="aclRestricted" class="wiki-action-btn-acl-dot" />
                           </button>
                         </t-tooltip>
                         <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.viewInGraph')" placement="top">
@@ -770,6 +781,15 @@
       :page-title="selectedPage.title"
     />
 
+    <!-- Page-level ACL dialog (Build #7). Mode picker + allow-list editor. -->
+    <WikiAclDialog
+      v-if="selectedPage && props.canEdit"
+      v-model="showAclDialog"
+      :kb-id="props.knowledgeBaseId"
+      :slug="selectedPage.slug"
+      :page-title="selectedPage.title"
+    />
+
     <!-- Create page dialog -->
     <t-dialog v-model:visible="showCreatePageDialog" :header="$t('knowledgeEditor.wikiBrowser.newPageTitle')"
       :confirm-btn="{ content: $t('common.confirm'), loading: creatingPage }" :cancel-btn="$t('common.cancel')"
@@ -863,6 +883,8 @@ import WikiCommentDrawer from '@/components/wiki/WikiCommentDrawer.vue'
 import { useWikiCommentsStore } from '@/stores/wikiComments'
 import WikiShareDialog from '@/components/wiki/WikiShareDialog.vue'
 import { useWikiShareLinksStore } from '@/stores/wikiShareLinks'
+import WikiAclDialog from '@/components/wiki/WikiAclDialog.vue'
+import { useWikiPageAclStore } from '@/stores/wikiPageAcl'
 import { useFeatureFlagsStore } from '@/stores/featureFlags'
 
 // Tiptap + DOMPurify are heavy — split the WYSIWYG editor into its own
@@ -3022,6 +3044,40 @@ const activeShareCount = computed(() => {
 function openShareDialog(): void {
   showShareDialog.value = true
 }
+// Build #7 — page-level ACL dialog state + viewer banner.
+const showAclDialog = ref(false)
+const wikiAclStore = useWikiPageAclStore()
+const aclRestricted = computed(() => {
+  const slug = selectedPage.value?.slug
+  if (!slug) return false
+  return wikiAclStore.isRestricted(props.knowledgeBaseId, slug)
+})
+const aclBannerText = computed(() => {
+  const slug = selectedPage.value?.slug
+  if (!slug) return ''
+  const acl = wikiAclStore.aclFor(props.knowledgeBaseId, slug)
+  if (acl.mode === 'private') return t('knowledgeEditor.wikiBrowser.aclBannerPrivate')
+  if (acl.mode === 'allow_list') {
+    return t('knowledgeEditor.wikiBrowser.aclBannerAllowList', {
+      count: acl.allowUserIds.length,
+    })
+  }
+  return ''
+})
+function openAclDialog(): void {
+  if (!props.canEdit) return
+  showAclDialog.value = true
+}
+// Re-fetch ACL whenever the selected page changes.
+watch(
+  () => selectedPage.value?.slug,
+  (next, prev) => {
+    if (next && next !== prev) {
+      void wikiAclStore.fetchAcl(props.knowledgeBaseId, next)
+    }
+  },
+  { immediate: true },
+)
 
 const showCreatePageDialog = ref(false)
 const creatingPage = ref(false)
@@ -5644,6 +5700,27 @@ onUnmounted(() => {
   color: var(--td-text-color-secondary);
 }
 
+// ACL banner shown in the reader header whenever the selected page
+// is non-inherit. Hidden for editors when nothing is restricted so it
+// doesn't add visual noise on the common path.
+.wiki-acl-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: var(--td-warning-color-light, #fff7e6);
+  color: var(--td-warning-color, #d27a00);
+  font-size: 12px;
+  border: 1px solid rgba(210, 122, 0, 0.2);
+  max-width: 100%;
+
+  &__text {
+    line-height: 1.4;
+  }
+}
+
 .wiki-reader-title-block {
   flex: 1;
   min-width: 0;
@@ -5876,6 +5953,17 @@ onUnmounted(() => {
   line-height: 16px;
   text-align: center;
   font-weight: 600;
+  pointer-events: none;
+}
+
+.wiki-action-btn-acl-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--td-warning-color, #e37318);
   pointer-events: none;
 }
 
