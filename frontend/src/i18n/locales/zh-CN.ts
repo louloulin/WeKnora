@@ -3826,6 +3826,10 @@ export default {
           reconnecting: '重新连接中',
           error: '连接失败',
         },
+        recents: {
+          summary: '最近 {count} 位协作者已离线',
+          lastSeen: '最后活动 {ago}前',
+        },
       },
       revisionCurrent: '当前版本',
       revisionCurrentHint: '这是页面的当前版本，选择左侧的历史版本可查看差异或回滚。',

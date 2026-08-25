@@ -3824,6 +3824,10 @@ export default {
           reconnecting: '재연결 중',
           error: '연결 오류',
         },
+        recents: {
+          summary: '최근 {count}명의 협업자가 오프라인 상태입니다',
+          lastSeen: '마지막 활동 {ago} 전',
+        },
       },
       revisionCurrent: '현재 버전',
       revisionCurrentHint: '현재 버전입니다. 왼쪽에서 이전 버전을 선택하면 비교하거나 롤백할 수 있습니다.',

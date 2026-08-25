@@ -1,7 +1,32 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
-import { useWikiCollabStore } from '../stores/wikiCollab'
+import { useWikiCollabStore, type WikiCollabRecentPeer } from '../stores/wikiCollab'
+
+/**
+ * Magic header the Build #8.1 server prepends to non-y-protocol frames
+ * so the frontend can recognise the recent-collaborators replay payload
+ * and route it to the store instead of Y.applyUpdate.
+ *
+ * The first byte 'W' = 0x57 never appears as a y-protocol messageType
+ * because the protocol only uses values 0..127 and 'W' is far outside
+ * any reserved range. Even if a future protocol extension adopted it,
+ * the trailing version byte lets us evolve without collision.
+ */
+const WCA1_MAGIC = 'WCA1'
+
+interface WCA1ReplayPayload {
+  magic: string
+  version: number
+  as_of: string
+  entries: Array<{
+    client_id: string
+    user_id: string
+    display_name: string
+    color: string
+    last_seen_at: string
+  }>
+}
 
 /**
  * Wiki Y.js CRDT session composable (Build #8).
@@ -123,6 +148,21 @@ export function useWikiCollab(opts: UseWikiCollabOptions) {
       if (isSynced) store.markConnected()
     })
 
+    // Build #8.1 — server pushes a "recent collaborators" replay frame
+    // as the first message after handshake. y-websocket forwards raw
+    // WS frames to its `message` handler; we intercept the WCA1 magic
+    // bytes before they reach Y.applyUpdate, parse the JSON body, and
+    // surface the entries to the store.
+    //
+    // Cast through `unknown` because y-websocket's `.on()` typed
+    // signatures don't include `'message'` (it's emitted by the
+    // underlying ws/lib0 stack, not exposed in the public API surface).
+    ;(p as unknown as {
+      on: (event: 'message', cb: (data: ArrayBuffer | Blob | Uint8Array | string) => void) => void
+    }).on('message', (data) => {
+      void handleServerFrame(data)
+    })
+
     // Awareness — sync the local user into the peer roster.
     p.awareness.setLocalState({
       user: { id: opts.userId, displayName: opts.displayName },
@@ -189,11 +229,60 @@ export function useWikiCollab(opts: UseWikiCollabOptions) {
     status: computed(() => store.status),
     peerList: computed(() => store.peerList),
     peerCount: computed(() => store.peerCount),
+    recentCollaborators: computed(() => store.recentPeers),
     isLive: computed(() => store.isLive),
     lastError: computed(() => store.lastError),
     reconnect: connect,
     disconnect: teardown,
   }
+}
+
+/**
+ * Inspect raw WS frames for the WCA1 replay magic and route the
+ * payload to the store. y-websocket calls this for every inbound
+ * message BEFORE handing it to the y-protocol sync handler, so we
+ * can swallow non-y-protocol frames here without poisoning the doc.
+ */
+async function handleServerFrame(
+  data: ArrayBuffer | Blob | Uint8Array | string,
+): Promise<void> {
+  const bytes = await toBytes(data)
+  if (bytes.length < WCA1_MAGIC.length) return
+  for (let i = 0; i < WCA1_MAGIC.length; i += 1) {
+    if (bytes[i] !== WCA1_MAGIC.charCodeAt(i)) return
+  }
+  // Slice off the magic prefix; the rest is JSON.
+  const json = new TextDecoder('utf-8').decode(bytes.subarray(WCA1_MAGIC.length))
+  let parsed: WCA1ReplayPayload
+  try {
+    parsed = JSON.parse(json) as WCA1ReplayPayload
+  } catch {
+    // Malformed payload — drop silently. The next connection attempt
+    // will get a fresh replay.
+    return
+  }
+  if (parsed.magic !== WCA1_MAGIC || parsed.version !== 1) return
+  const store = useWikiCollabStore()
+  const entries: WikiCollabRecentPeer[] = (parsed.entries || []).map((e) => ({
+    clientId: e.client_id,
+    userId: e.user_id,
+    displayName: e.display_name || e.user_id,
+    color: e.color || '#888',
+    lastSeenAt: e.last_seen_at,
+  }))
+  store.setRecentPeers(entries)
+}
+
+async function toBytes(data: ArrayBuffer | Blob | Uint8Array | string): Promise<Uint8Array> {
+  if (typeof data === 'string') return new TextEncoder().encode(data)
+  if (data instanceof Uint8Array) return data
+  if (data instanceof ArrayBuffer) return new Uint8Array(data)
+  if (typeof Blob !== 'undefined' && data instanceof Blob) {
+    const ab = await data.arrayBuffer()
+    return new Uint8Array(ab)
+  }
+  // Defensive fallback: coerce via DataView if it's an exotic typed array.
+  return new Uint8Array((data as { buffer?: ArrayBuffer }).buffer || [])
 }
 
 function errMsg(err: unknown): string {

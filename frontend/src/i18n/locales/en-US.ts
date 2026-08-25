@@ -2737,6 +2737,10 @@ export default {
           reconnecting: 'Reconnecting',
           error: 'Connection error',
         },
+        recents: {
+          summary: '{count} recent collaborators have gone offline',
+          lastSeen: 'last seen {ago} ago',
+        },
       },
       revisionCurrent: 'Current',
       revisionCurrentHint: 'This is the current version. Pick a historical version on the left to diff or revert.',

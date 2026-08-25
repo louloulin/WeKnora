@@ -3824,6 +3824,10 @@ export default {
           reconnecting: 'Переподключение',
           error: 'Ошибка соединения',
         },
+        recents: {
+          summary: '{count} недавних соавторов сейчас не в сети',
+          lastSeen: 'последний раз {ago} назад',
+        },
       },
       revisionCurrent: 'Текущая',
       revisionCurrentHint: 'Это текущая версия. Выберите историческую версию слева для сравнения или отката.',

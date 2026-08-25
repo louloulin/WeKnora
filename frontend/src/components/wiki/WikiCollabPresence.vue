@@ -18,6 +18,30 @@
         +{{ peerList.length - 6 }}
       </span>
     </div>
+    <!-- Build #8.1: ghost avatars for users who were here recently
+         but are no longer connected. Rendered after live peers so
+         the avatar stack stays in recency order (live → recent). -->
+    <div
+      v-if="recentCollaborators.length"
+      class="wiki-collab-presence__recents"
+      :title="recentsTitle"
+    >
+      <span
+        v-for="peer in recentCollaborators.slice(0, 4)"
+        :key="peer.clientId"
+        class="wiki-collab-presence__peer wiki-collab-presence__peer--ghost"
+        :style="{ backgroundColor: peer.color }"
+        :title="recentsItemTitle(peer)"
+      >
+        {{ initials(peer.displayName) }}
+      </span>
+      <span
+        v-if="recentCollaborators.length > 4"
+        class="wiki-collab-presence__more"
+      >
+        +{{ recentCollaborators.length - 4 }}
+      </span>
+    </div>
     <button
       v-if="status !== 'connected'"
       type="button"
@@ -32,19 +56,20 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { WikiCollabStatus } from '../../stores/wikiCollab'
+import type { WikiCollabRecentPeer, WikiCollabStatus } from '../../stores/wikiCollab'
 
 const props = defineProps<{
   status: WikiCollabStatus
   peerList: { clientId: number; displayName: string; color: string }[]
   selfName?: string
+  recentCollaborators?: WikiCollabRecentPeer[]
 }>()
 
 const emit = defineEmits<{
   (e: 'reconnect'): void
 }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const statusText = computed(() => {
   switch (props.status) {
@@ -66,12 +91,36 @@ const statusTitle = computed(() => {
   return statusText.value
 })
 
+const recentsTitle = computed(() => {
+  const list = props.recentCollaborators || []
+  if (!list.length) return ''
+  return t('wiki.collab.recents.summary', { count: list.length })
+})
+
+function recentsItemTitle(peer: WikiCollabRecentPeer): string {
+  const ago = formatRelativeTime(peer.lastSeenAt, locale.value)
+  return `${peer.displayName} · ${t('wiki.collab.recents.lastSeen', { ago })}`
+}
+
 function initials(name: string): string {
   if (!name) return '?'
   const trimmed = name.trim()
   if (/[一-龥]/.test(trimmed)) return trimmed.slice(-2)
   const parts = trimmed.split(/\s+/)
   return (parts[0]?.[0] ?? '?') + (parts[1]?.[0] ?? '')
+}
+
+function formatRelativeTime(iso: string, _locale: string): string {
+  const t = Date.parse(iso)
+  if (!Number.isFinite(t)) return iso
+  const deltaSec = Math.max(1, Math.floor((Date.now() - t) / 1000))
+  if (deltaSec < 60) return `${deltaSec}s`
+  const m = Math.floor(deltaSec / 60)
+  if (m < 60) return `${m}m`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h`
+  const d = Math.floor(h / 24)
+  return `${d}d`
 }
 </script>
 
@@ -141,6 +190,20 @@ function initials(name: string): string {
     &:first-child {
       margin-left: 0;
     }
+
+    &--ghost {
+      opacity: 0.4;
+      filter: grayscale(60%);
+    }
+  }
+
+  &__recents {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding-left: 4px;
+    margin-left: 4px;
+    border-left: 1px solid var(--component-border, #dcdfe6);
   }
 
   &__more {

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -283,6 +284,7 @@ type WikiCollabHandler struct {
 	userService interfaces.UserService
 	kbService   interfaces.KnowledgeBaseService
 	wikiService interfaces.WikiPageService
+	awareness   wikiCollabAwarenessStore
 }
 
 // NewWikiCollabHandler constructs a new handler with its hub. The hub
@@ -292,17 +294,25 @@ type WikiCollabHandler struct {
 // table is not yet applied — in that case the handler falls through
 // to KB-level access only (the legacy behaviour). Production wiring
 // passes the same WikiPageService the REST handlers use.
+//
+// awareness is optional — when nil, awareness frames are still
+// forwarded but not persisted, and no recent-collaborators replay is
+// sent to new joiners. Prototype / single-tenant deployments pass an
+// InMemoryWikiCollabAwarenessStore; multi-tenant production should
+// pass an SQLWikiCollabAwarenessStore.
 func NewWikiCollabHandler(
 	userService interfaces.UserService,
 	kbService interfaces.KnowledgeBaseService,
 	wikiService interfaces.WikiPageService,
 	snapshots wikiCollabSnapshotStore,
+	awareness wikiCollabAwarenessStore,
 ) *WikiCollabHandler {
 	return &WikiCollabHandler{
 		hub:         newWikiCollabHub(snapshots),
 		userService: userService,
 		kbService:   kbService,
 		wikiService: wikiService,
+		awareness:   awareness,
 	}
 }
 
@@ -430,6 +440,16 @@ func (h *WikiCollabHandler) HandleCollab(c *gin.Context) {
 
 	logger.Infof(ctx, "[wiki-collab] join room=%s user=%s", roomKey, userID)
 
+	// Build #8.1: send a "recent collaborators" replay frame as the
+	// first thing the new joiner receives. The frame is wrapped with a
+	// leading `WCA1` magic + JSON body so the frontend can distinguish
+	// it from raw y-protocol bytes — the wrapper never collides with
+	// y-protocol because y-protocol frames start with a varint 0-7
+	// (ASCII 0x00..0x07) and "W" is 0x57.
+	if h.awareness != nil {
+		h.enqueueRecentCollaborators(ctx, client, roomKey)
+	}
+
 	go h.writeLoop(client)
 	h.readLoop(client)
 }
@@ -437,11 +457,22 @@ func (h *WikiCollabHandler) HandleCollab(c *gin.Context) {
 // readLoop consumes frames from the client and forwards them to the
 // room's broadcast queue. Heartbeats (ping) are handled implicitly by
 // gorilla's SetPongHandler in the upgrade path.
+//
+//	Origin filtering (Build #8.1):
+//	  y-frames carry a varint messageType in the leading byte(s). We
+//	  parse it for every incoming frame and:
+//	    - sync / awareness (allowed)         → fan out to the room
+//	    - auth / queryAwareness / unknown    → silently drop + count
+//	    - 3 bad frames within window         → close 1011 (policy)
+//	  The bad-frame counter is per-client so a single transient
+//	  parse error doesn't lock out an otherwise well-behaved peer.
 func (h *WikiCollabHandler) readLoop(c *wikiCollabClient) {
 	defer func() {
 		h.hub.leave(c)
 		c.close(ws.CloseNormalClosure, "client closed")
 	}()
+	const badFrameLimit = 3
+	badFrames := 0
 	for {
 		messageType, data, err := c.conn.ReadMessage()
 		if err != nil {
@@ -463,6 +494,39 @@ func (h *WikiCollabHandler) readLoop(c *wikiCollabClient) {
 		if len(data) == 0 {
 			continue
 		}
+		kind, _, perr := parseYFrame(data)
+		if perr != nil {
+			badFrames++
+			logger.Warnf(context.Background(), "[wiki-collab] client %s sent bad frame #%d: %v", c.userID, badFrames, perr)
+			if badFrames >= badFrameLimit {
+				logger.Warnf(context.Background(), "[wiki-collab] client %s exceeded bad-frame limit; closing", c.userID)
+				c.close(ws.ClosePolicyViolation, "too many bad frames")
+				return
+			}
+			continue
+		}
+		if !isAllowedForward(kind) {
+			badFrames++
+			logger.Warnf(context.Background(), "[wiki-collab] client %s sent disallowed kind=%d", c.userID, kind)
+			if badFrames >= badFrameLimit {
+				c.close(ws.ClosePolicyViolation, "disallowed frame type")
+				return
+			}
+			continue
+		}
+		// Reset the counter on a clean frame — only persistent abuse
+		// trips the policy.
+		badFrames = 0
+
+		// Build #8.1: awareness frames get persisted before fan-out so
+		// late joiners see "who was here recently" without the live
+		// awareness channel needing to round-trip through Y.applyUpdate.
+		if isAwareness(kind) && h.awareness != nil {
+			if err := h.awareness.NoteAwareness(c.room.key, c.userID, data); err != nil {
+				logger.Warnf(context.Background(), "[wiki-collab] awareness persist failed: %v", err)
+			}
+		}
+
 		select {
 		case c.room.broadcast <- data:
 		default:
@@ -497,6 +561,63 @@ func (h *WikiCollabHandler) writeLoop(c *wikiCollabClient) {
 			}
 		}
 	}
+}
+
+// enqueueRecentCollaborators pushes the persisted "recent collaborators"
+// list to a freshly-joined client as the first frame on the wire.
+//
+// Wire format (Build #8.1):
+//
+//	"WCA1" + JSON(wikiCollabAwarenessReplay{Entries, AsOf})
+//
+// The "WCA1" magic (4 bytes) lets the frontend reject this frame as
+// non-y-protocol before it reaches Y.applyUpdate. The version byte
+// (currently '1') lets us evolve the format later without breaking
+// older clients.
+const wikiCollabReplayMagic = "WCA1"
+
+// wikiCollabAwarenessReplay is the JSON body inside the WCA1 frame.
+type wikiCollabAwarenessReplay struct {
+	Magic   string                       `json:"magic"`
+	Version int                          `json:"version"`
+	AsOf    time.Time                    `json:"as_of"`
+	Entries []wikiCollabAwarenessEntry   `json:"entries"`
+}
+
+func (h *WikiCollabHandler) enqueueRecentCollaborators(ctx context.Context, c *wikiCollabClient, roomKey string) {
+	const maxAge = 24 * time.Hour
+	const limit = 16
+	entries, err := h.awareness.LoadRecent(ctx, roomKey, limit, maxAge)
+	if err != nil {
+		logger.Warnf(ctx, "[wiki-collab] LoadRecent failed for %s: %v", roomKey, err)
+		return
+	}
+	if len(entries) == 0 {
+		return
+	}
+	// Filter the joiner themselves out — they shouldn't see their own
+	// ghost entry.
+	filtered := make([]wikiCollabAwarenessEntry, 0, len(entries))
+	for _, e := range entries {
+		if e.UserID == c.userID {
+			continue
+		}
+		filtered = append(filtered, e)
+	}
+	if len(filtered) == 0 {
+		return
+	}
+	body, err := json.Marshal(wikiCollabAwarenessReplay{
+		Magic:   wikiCollabReplayMagic,
+		Version: 1,
+		AsOf:    time.Now().UTC(),
+		Entries: filtered,
+	})
+	if err != nil {
+		logger.Warnf(ctx, "[wiki-collab] replay marshal failed: %v", err)
+		return
+	}
+	c.enqueue(body)
 }
 
 // --- ACL bridge (Build #7) -------------------------------------------------

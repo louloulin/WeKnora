@@ -30,6 +30,24 @@ export interface WikiCollabPeer {
   lastSeen: string
 }
 
+/**
+ * Recent collaborator entry (Build #8.1).
+ *
+ * Unlike WikiCollabPeer (which tracks a live y-websocket awareness
+ * state), `WikiCollabRecentPeer` represents a user who was active in
+ * this room recently but is no longer connected. The presence stack
+ * renders these as ghost avatars with a "5 minutes ago" tooltip.
+ */
+export interface WikiCollabRecentPeer {
+  /** Server-assigned client identifier (hash of userID for now). */
+  clientId: string
+  userId: string
+  displayName: string
+  color: string
+  /** ISO timestamp of the last awareness frame from this user. */
+  lastSeenAt: string
+}
+
 export interface WikiCollabSessionMeta {
   kbId: string
   slug: string
@@ -41,6 +59,7 @@ export const useWikiCollabStore = defineStore('wikiCollab', () => {
   const status = ref<WikiCollabStatus>('idle')
   const session = ref<WikiCollabSessionMeta | null>(null)
   const peers = ref<Record<number, WikiCollabPeer>>({})
+  const recentPeers = ref<WikiCollabRecentPeer[]>([])
   const lastError = ref<string | null>(null)
   /** Increments on every connection attempt; lets UI reset transient state. */
   const attempt = ref(0)
@@ -58,6 +77,7 @@ export const useWikiCollabStore = defineStore('wikiCollab', () => {
   function beginSession(meta: WikiCollabSessionMeta): void {
     session.value = meta
     peers.value = {}
+    recentPeers.value = []
     lastError.value = null
     status.value = 'connecting'
     attempt.value += 1
@@ -66,6 +86,7 @@ export const useWikiCollabStore = defineStore('wikiCollab', () => {
   function endSession(): void {
     session.value = null
     peers.value = {}
+    recentPeers.value = []
     status.value = 'idle'
     lastError.value = null
   }
@@ -101,10 +122,15 @@ export const useWikiCollabStore = defineStore('wikiCollab', () => {
     peers.value = {}
   }
 
+  function setRecentPeers(next: WikiCollabRecentPeer[]): void {
+    recentPeers.value = next
+  }
+
   return {
     status,
     session,
     peers,
+    recentPeers,
     lastError,
     attempt,
     peerCount,
@@ -119,5 +145,6 @@ export const useWikiCollabStore = defineStore('wikiCollab', () => {
     upsertPeer,
     removePeer,
     clearPeers,
+    setRecentPeers,
   }
 })

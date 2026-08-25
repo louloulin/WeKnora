@@ -59,6 +59,7 @@
         v-if="collab"
         :status="collab.status.value"
         :peer-list="collab.peerList.value"
+        :recent-collaborators="collab.recentCollaborators.value"
         :self-name="props.displayName || props.userId"
         class="wiki-tiptap-presence"
         @reconnect="collab.reconnect()"
