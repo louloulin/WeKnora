@@ -3788,6 +3788,7 @@ export default {
         },
       },
       aclBtn: '권한',
+      aclReadOnlyHint: '읽기 전용 보기',
       aclBannerPrivate: '이 페이지는 비공개입니다 — 작성자와 관리자만 볼 수 있습니다',
       aclBannerAllowList: '이 페이지는 지정된 {count}명에게만 제한됩니다',
       acl: {
@@ -3810,9 +3811,14 @@ export default {
         denyInherited: '목록에 없는 지식 베이스 멤버에게는 이 페이지를 숨깁니다',
         removeAria: '{name} 제거',
         saveSuccess: '권한이 저장되었습니다',
+        updatedAt: '{time}에 업데이트',
         error: {
           loadFailed: '권한 설정을 불러오지 못했습니다',
           saveFailed: '권한 설정 저장에 실패했습니다',
+          conflict: '다른 사용자가 권한을 업데이트했습니다 — 최신 버전으로 새로 고침되었습니다',
+          network: '네트워크 오류, 다시 시도해 주세요',
+          denied: '이 페이지의 권한을 변경할 권한이 없습니다',
+          generic: '저장에 실패했습니다, 잠시 후 다시 시도해 주세요',
         },
       },
       revisionCurrent: '현재 버전',

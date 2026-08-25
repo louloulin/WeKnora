@@ -2701,6 +2701,7 @@ export default {
         },
       },
       aclBtn: 'Permissions',
+      aclReadOnlyHint: 'Read-only view',
       aclBannerPrivate: 'This page is private — only the author and admins can view it',
       aclBannerAllowList: 'This page is restricted to {count} designated members',
       acl: {
@@ -2723,9 +2724,14 @@ export default {
         denyInherited: 'Hide this page from KB members not on the list',
         removeAria: 'Remove {name}',
         saveSuccess: 'Permissions saved',
+        updatedAt: 'Updated {time}',
         error: {
           loadFailed: 'Failed to load permissions',
           saveFailed: 'Failed to save permissions',
+          conflict: 'Page permissions were updated by someone else — refreshed to the latest version',
+          network: 'Network error, please retry',
+          denied: 'You do not have permission to change this page',
+          generic: 'Save failed, please try again later',
         },
       },
       revisionCurrent: 'Current',

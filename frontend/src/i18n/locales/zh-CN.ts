@@ -3790,6 +3790,7 @@ export default {
         },
       },
       aclBtn: '权限',
+      aclReadOnlyHint: '只读视图',
       aclBannerPrivate: '此页为私有，仅作者和管理员可访问',
       aclBannerAllowList: '此页受限：仅 {count} 名指定成员可访问',
       acl: {
@@ -3812,9 +3813,14 @@ export default {
         denyInherited: '对未在名单中的知识库成员隐藏此页',
         removeAria: '移除 {name}',
         saveSuccess: '权限已保存',
+        updatedAt: '更新于 {time}',
         error: {
           loadFailed: '加载权限设置失败',
           saveFailed: '保存权限设置失败',
+          conflict: '页面权限已被更新，已自动刷新到最新版本',
+          network: '网络错误，请重试',
+          denied: '无权修改此页面权限',
+          generic: '保存失败，请稍后再试',
         },
       },
       revisionCurrent: '当前版本',

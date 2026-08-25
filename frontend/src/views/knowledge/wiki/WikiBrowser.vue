@@ -552,12 +552,29 @@
                             <span v-if="activeShareCount > 0" class="wiki-action-btn-badge">{{ activeShareCount }}</span>
                           </button>
                         </t-tooltip>
-                        <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.aclBtn')" placement="top">
+                        <t-tooltip
+                          v-if="pageAclWritable"
+                          :content="$t('knowledgeEditor.wikiBrowser.aclBtn')"
+                          placement="top"
+                        >
                           <button type="button" class="wiki-action-btn wiki-action-btn--acl"
                             :aria-label="$t('knowledgeEditor.wikiBrowser.aclBtn')" @click="openAclDialog">
                             <t-icon name="lock-on" />
                             <span v-if="aclRestricted" class="wiki-action-btn-acl-dot" />
                           </button>
+                        </t-tooltip>
+                        <t-tooltip
+                          v-else-if="aclRestricted"
+                          :content="$t('knowledgeEditor.wikiBrowser.aclReadOnlyHint')"
+                          placement="top"
+                        >
+                          <span
+                            class="wiki-action-btn wiki-action-btn--acl is-readonly"
+                            :aria-label="$t('knowledgeEditor.wikiBrowser.aclReadOnlyHint')"
+                          >
+                            <t-icon name="lock-on" />
+                            <span class="wiki-action-btn-acl-dot" />
+                          </span>
                         </t-tooltip>
                         <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.viewInGraph')" placement="top">
                           <button type="button" class="wiki-action-btn"
@@ -887,6 +904,7 @@ import WikiShareDialog from '@/components/wiki/WikiShareDialog.vue'
 import { useWikiShareLinksStore } from '@/stores/wikiShareLinks'
 import WikiAclDialog from '@/components/wiki/WikiAclDialog.vue'
 import { useWikiPageAclStore } from '@/stores/wikiPageAcl'
+import { aclToolbarVisibility } from './wikiBrowserAclVisibility'
 import WikiSearchBar from '@/components/wiki/WikiSearchBar.vue'
 import { useWikiSearchStore } from '@/stores/wikiSearch'
 import { useFeatureFlagsStore } from '@/stores/featureFlags'
@@ -3073,6 +3091,17 @@ const aclBannerText = computed(() => {
   }
   return ''
 })
+// Build #10 — gate the ACL edit button on the parent's `canEdit`.
+// We can't strictly distinguish owner / KB admin / tenant admin here
+// (WikiPage DTO doesn't expose `created_by`); a stricter gate is a
+// follow-up once the backend exposes owner info on the page response.
+// `aclToolbarVisibility` centralizes the rule so it's unit-tested.
+const pageAclWritable = computed(() =>
+  aclToolbarVisibility(
+    wikiAclStore.aclFor(props.knowledgeBaseId, selectedPage.value?.slug ?? ''),
+    props.canEdit,
+  ) === 'writable',
+)
 function openAclDialog(): void {
   if (!props.canEdit) return
   showAclDialog.value = true
@@ -5974,6 +6003,11 @@ onUnmounted(() => {
   border-radius: 50%;
   background: var(--td-warning-color, #e37318);
   pointer-events: none;
+}
+
+.wiki-action-btn--acl.is-readonly {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .wiki-reader-aliases {

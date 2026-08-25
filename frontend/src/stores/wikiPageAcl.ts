@@ -9,14 +9,26 @@ import {
   putWikiPageAcl,
   searchWikiAclCandidates,
 } from '../api/wiki/acl'
+import {
+  decodeAclError,
+  emitAclEvent,
+  errMsg,
+  errStatus,
+  normalizeAcl,
+  onAclEvent,
+  type AclEvent,
+} from './wikiPageAclConflict'
 
-function errMsg(err: unknown, fallback: string): string {
-  if (err && typeof err === 'object' && 'message' in err) {
-    const m = (err as { message?: unknown }).message
-    if (typeof m === 'string' && m) return m
-  }
-  return fallback
-}
+export { normalizeAcl, onAclEvent, emitAclEvent } from './wikiPageAclConflict'
+
+// Discriminated result for saveAcl so callers can branch on
+// `conflict: true` (server has a newer revision → toast + refetch)
+// vs. genuine failures (network / denied / unknown).
+// `conflict` carries the canonical ACL the server now holds.
+export type SaveAclResult =
+  | { ok: true; acl: WikiPageAcl }
+  | { ok: false; conflict: true; current: WikiPageAcl }
+  | { ok: false; conflict: false; error: string }
 
 export const useWikiPageAclStore = defineStore('wikiPageAcl', () => {
   /** Keyed by `${kbId}::${slug}`. */
@@ -57,15 +69,29 @@ export const useWikiPageAclStore = defineStore('wikiPageAcl', () => {
     loadingPages.value[key] = true
     error.value = null
     try {
-      const res = await getWikiPageAcl(kbId, slug)
-      byPage.value[key] = normalizeAcl(res.data)
+      // The backend wraps the body as `{ data: WikiPageAcl }`. The
+      // typed `get<WikiPageAcl>` signature lies about this — the
+      // runtime axios interceptor unwraps the response but keeps
+      // the inner `{ data }` envelope. A pre-existing pattern across
+      // the wiki stores; tracked separately as a typing cleanup.
+      const res = (await getWikiPageAcl(kbId, slug)) as { data?: unknown }
+      const next = normalizeAcl(res.data)
+      byPage.value[key] = next
+      emitAclEvent({ kind: 'updated', kbId, slug, acl: next })
     } catch (err) {
-      const msg = errMsg(err, 'acl.loadFailed')
-      // 404 / missing column → default (inherit). No error toast.
-      if (msg.includes('404') || msg.toLowerCase().includes('not found')) {
-        byPage.value[key] = defaultWikiPageAcl()
+      // Backend now exists and returns 200 for both "no ACL" and a
+      // configured ACL. A 404 here means the route is genuinely gone
+      // (old backend / route not deployed) — still fall back to
+      // inherit so the UI stays usable, but record nothing in `error`
+      // so we don't spam toasts. Real errors (500 / network) set
+      // `error` and leave `byPage` untouched.
+      const status = errStatus(err)
+      if (status === 404) {
+        const fallback = defaultWikiPageAcl()
+        byPage.value[key] = fallback
+        emitAclEvent({ kind: 'updated', kbId, slug, acl: fallback })
       } else {
-        error.value = msg
+        error.value = errMsg(err, 'acl.loadFailed')
       }
     } finally {
       loadingPages.value[key] = false
@@ -76,18 +102,30 @@ export const useWikiPageAclStore = defineStore('wikiPageAcl', () => {
     kbId: string,
     slug: string,
     payload: WikiAclSaveRequest,
-  ): Promise<WikiPageAcl | null> {
+  ): Promise<SaveAclResult> {
     const key = pageKey(kbId, slug)
     savingPages.value[key] = true
     error.value = null
     try {
-      const res = await putWikiPageAcl(kbId, slug, payload)
+      const res = (await putWikiPageAcl(kbId, slug, payload)) as { data?: unknown }
       const next = normalizeAcl(res.data)
       byPage.value[key] = next
-      return next
+      emitAclEvent({ kind: 'updated', kbId, slug, acl: next })
+      return { ok: true, acl: next }
     } catch (err) {
-      error.value = errMsg(err, 'acl.saveFailed')
-      return null
+      const decoded = decodeAclError(err, 'acl.saveFailed')
+      if (decoded.kind === 'conflict') {
+        // Optimistic-lock conflict — backend returns the canonical ACL
+        // under `currentAcl` (or `current_acl` / `data` depending on
+        // shape; `decodeAclError` tolerates both). Adopt the server's
+        // view, surface the conflict event, and let the dialog close +
+        // reset.
+        byPage.value[key] = decoded.current
+        emitAclEvent({ kind: 'conflict', kbId, slug, current: decoded.current })
+        return { ok: false, conflict: true, current: decoded.current }
+      }
+      error.value = decoded.message
+      return { ok: false, conflict: false, error: decoded.message }
     } finally {
       savingPages.value[key] = false
     }
@@ -116,7 +154,7 @@ export const useWikiPageAclStore = defineStore('wikiPageAcl', () => {
     candidateLoading.value = true
     candidateQuery.value = trimmed
     try {
-      const res = await searchWikiAclCandidates(trimmed, 10)
+      const res = (await searchWikiAclCandidates(trimmed, 10)) as { data?: { candidates?: WikiUserCandidate[] } }
       const list = res.data?.candidates ?? []
       candidateList.value = list
       candidateOpen.value = list.length > 0
@@ -149,28 +187,4 @@ export const useWikiPageAclStore = defineStore('wikiPageAcl', () => {
   }
 })
 
-function normalizeAcl(input: unknown): WikiPageAcl {
-  const fallback = defaultWikiPageAcl()
-  if (!input || typeof input !== 'object') return fallback
-  const src = input as Record<string, unknown>
-  const modeRaw = src.mode
-  const mode: WikiPageAcl['mode'] =
-    modeRaw === 'private' || modeRaw === 'allow_list' ? modeRaw : 'inherit'
-  const allowUserIds = Array.isArray(src.allowUserIds)
-    ? src.allowUserIds.filter((x): x is string => typeof x === 'string')
-    : []
-  const allowGroupIds = Array.isArray(src.allowGroupIds)
-    ? src.allowGroupIds.filter((x): x is string => typeof x === 'string')
-    : []
-  const denyInherited = Boolean(src.denyInherited)
-  const revision = typeof src.revision === 'number' ? src.revision : undefined
-  const updatedAt = typeof src.updatedAt === 'string' ? src.updatedAt : undefined
-  return {
-    mode,
-    allowUserIds,
-    allowGroupIds,
-    denyInherited,
-    revision,
-    updatedAt,
-  }
-}
+// `normalizeAcl` is exported via `wikiPageAclConflict.ts` re-export above.

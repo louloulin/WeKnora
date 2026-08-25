@@ -113,6 +113,9 @@
         </div>
 
         <div class="wiki-acl-dialog__section wiki-acl-dialog__actions">
+          <span v-if="updatedAtText" class="wiki-acl-dialog__updated">
+            {{ t('wiki.acl.updatedAt', { time: updatedAtText }) }}
+          </span>
           <TButton variant="text" @click="visible = false">
             {{ t('common.cancel') }}
           </TButton>
@@ -131,7 +134,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import {
   Button as TButton,
   Dialog as TDialog,
@@ -140,13 +143,17 @@ import {
   Skeleton as TSkeleton,
 } from 'tdesign-vue-next'
 import { useI18n } from 'vue-i18n'
-import { useWikiPageAclStore } from '../../stores/wikiPageAcl'
+import { onAclEvent, useWikiPageAclStore } from '../../stores/wikiPageAcl'
 import {
   type WikiAclMode,
   type WikiPageAcl,
   type WikiUserCandidate,
   defaultWikiPageAcl,
 } from '../../api/wiki/acl'
+import {
+  formatAclUpdatedAt,
+  isAclDraftDirty,
+} from './wikiAclDialogLogic'
 
 const props = defineProps<{
   visible: boolean
@@ -159,7 +166,7 @@ const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void
 }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const store = useWikiPageAclStore()
 
 const visible = computed({
@@ -200,15 +207,12 @@ const loading = computed(() => store.isLoading(props.kbId, props.slug))
 
 const isDirty = computed(() => {
   const original = store.aclFor(props.kbId, props.slug)
-  if (draft.mode !== original.mode) return true
-  if (draft.denyInherited !== original.denyInherited) return true
-  const draftIds = new Set(draft.allowUserIds)
-  const originalIds = new Set(original.allowUserIds)
-  if (draftIds.size !== originalIds.size) return true
-  for (const id of draftIds) {
-    if (!originalIds.has(id)) return true
-  }
-  return false
+  return isAclDraftDirty(draft, original)
+})
+
+const updatedAtText = computed(() => {
+  const src = store.aclFor(props.kbId, props.slug)
+  return formatAclUpdatedAt(src.updatedAt, locale.value)
 })
 
 async function onOpen(): Promise<void> {
@@ -230,6 +234,20 @@ watch(
     }
   },
 )
+
+// Out-of-band ACL updates (another admin's save via 409, or a future
+// websocket push) should drop the user's local draft — server wins.
+const unsubscribeAclEvents = onAclEvent((event) => {
+  if (event.kind !== 'conflict' && event.kind !== 'updated') return
+  if (event.kbId !== props.kbId || event.slug !== props.slug) return
+  resetDraft()
+  if (event.kind === 'conflict') {
+    MessagePlugin.warning(t('wiki.acl.error.conflict'))
+  }
+})
+onBeforeUnmount(() => {
+  unsubscribeAclEvents()
+})
 
 function resetDraft(): void {
   const src = store.aclFor(props.kbId, props.slug)
@@ -279,18 +297,33 @@ async function submit(): Promise<void> {
   if (!isDirty.value || saving.value) return
   saving.value = true
   try {
-    const saved = await store.saveAcl(props.kbId, props.slug, {
+    const result = await store.saveAcl(props.kbId, props.slug, {
       mode: draft.mode,
       allowUserIds: draft.allowUserIds,
       allowGroupIds: draft.allowGroupIds,
       denyInherited: draft.denyInherited,
       baseRevision: draft.revision,
     })
-    if (saved) {
+    if (result.ok) {
       MessagePlugin.success(t('wiki.acl.saveSuccess'))
       visible.value = false
-    } else if (store.error) {
-      MessagePlugin.error(t('wiki.acl.error.' + store.error))
+      return
+    }
+    if (result.conflict) {
+      // Store has already adopted the canonical ACL; resetDraft() runs
+      // via the conflict event listener. Toast + close so the user can
+      // re-open with the fresh state.
+      MessagePlugin.warning(t('wiki.acl.error.conflict'))
+      visible.value = false
+      return
+    }
+    const msg = result.error || ''
+    if (msg === 'acl.denied') {
+      MessagePlugin.error(t('wiki.acl.error.denied'))
+    } else if (msg === 'acl.network') {
+      MessagePlugin.error(t('wiki.acl.error.network'))
+    } else {
+      MessagePlugin.error(t('wiki.acl.error.generic'))
     }
   } finally {
     saving.value = false
@@ -466,6 +499,13 @@ async function submit(): Promise<void> {
     margin-top: 8px;
     border-top: 1px solid var(--component-border, #dcdfe6);
     padding-top: 12px;
+  }
+
+  &__updated {
+    flex: 1;
+    align-self: center;
+    color: var(--text-color-placeholder, #999);
+    font-size: 12px;
   }
 }
 </style>
