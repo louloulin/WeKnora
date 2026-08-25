@@ -506,6 +506,9 @@ func (h *WikiPageHandler) UpdatePage(c *gin.Context) {
 	if req.Content != nil {
 		page.Content = *req.Content
 	}
+	if req.ContentHTML != nil {
+		page.ContentHTML = *req.ContentHTML
+	}
 	if req.Summary != nil {
 		page.Summary = *req.Summary
 	}

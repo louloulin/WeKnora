@@ -1,0 +1,21 @@
+-- Migration 000090: wiki_pages.content_html
+--
+-- Adds a parallel HTML projection of the page body, written by the Build #2b
+-- Tiptap editor (when FEATURE_WIKI_WYSIWYG is on). Markdown in `content`
+-- remains the authoritative source of truth; this column is purely additive
+-- and NULL on every existing row, so legacy reads keep going through the
+-- markdown rendering path with zero behaviour change.
+--
+-- Forward-only contract:
+--   * up   adds the column as TEXT NULL (no default — historical pages stay NULL).
+--   * down drops the column. No data migration: nothing else references it
+--     yet (revision snapshot table, search index, and frontend render path
+--     all switch to it later in Build #2b, after this column ships).
+--
+-- Why TEXT and not JSONB: the HTML is an opaque serialized string from Tiptap,
+-- not a structured document. Storing it as TEXT matches the markdown column
+-- on the same row and keeps GORM auto-mapping trivial. JSONB would force a
+-- stringify on every write for no benefit — the round-trip cost outweighs
+-- any indexability we'd never use.
+
+ALTER TABLE wiki_pages ADD COLUMN IF NOT EXISTS content_html TEXT;

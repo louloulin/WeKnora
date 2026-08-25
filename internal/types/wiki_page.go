@@ -182,6 +182,13 @@ type WikiPage struct {
 	Status string `json:"status" gorm:"type:varchar(32);default:'published'"`
 	// Full markdown content
 	Content string `json:"content" gorm:"type:text"`
+	// ContentHTML is an optional HTML projection of Content, written by the
+	// WYSIWYG editor (Build #2b, feature-flag gated). NULL on every legacy
+	// row and on pages that have never been edited through the rich editor —
+	// readers fall back to Content in that case. Not part of revision
+	// snapshots; the markdown column remains the authoritative source for
+	// versioning and rollback.
+	ContentHTML string `json:"content_html,omitempty" gorm:"column:content_html;type:text"`
 	// One-line summary for index listing
 	Summary string `json:"summary" gorm:"type:text"`
 	// Alternate names, abbreviations, acronyms or translated names
@@ -355,10 +362,14 @@ type WikiRevisionPruneRequest struct {
 type WikiPageUpdateRequest struct {
 	Title    *string      `json:"title,omitempty"`
 	Content  *string      `json:"content,omitempty"`
-	Summary  *string      `json:"summary,omitempty"`
-	PageType *string      `json:"page_type,omitempty"`
-	Status   *string      `json:"status,omitempty"`
-	Aliases  *StringArray `json:"aliases,omitempty"`
+	// ContentHTML is the WYSIWYG editor's HTML projection, optional. nil =
+	// leave the stored column untouched (so a markdown-only client doesn't
+	// accidentally clobber an HTML value the WYSIWYG editor previously wrote).
+	ContentHTML *string     `json:"content_html,omitempty"`
+	Summary     *string     `json:"summary,omitempty"`
+	PageType    *string     `json:"page_type,omitempty"`
+	Status      *string     `json:"status,omitempty"`
+	Aliases     *StringArray `json:"aliases,omitempty"`
 	// Version is the optimistic-lock guard: when > 0 the update is rejected
 	// with a conflict if the stored version differs (someone else edited the
 	// page since the client loaded it). 0 skips the check (legacy clients).
