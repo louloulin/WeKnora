@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
+	"gorm.io/gorm"
 )
 
 // WikiPageService defines the wiki page service interface.
@@ -653,6 +654,31 @@ type WikiBacklinksCacheRepository interface {
 	// ListByKB returns cache statuses (slim payload) for one KB, used
 	// by the admin / debug GET /backlinks/cache-status endpoint.
 	ListByKB(ctx context.Context, kbID string, limit int, offset int) ([]*types.WikiBacklinksCacheStatus, int64, error)
+
+	// DeleteStale removes cache rows whose updated_at is strictly
+	// older than `before`, up to `limit` rows per call. Returns the
+	// number of rows actually deleted. Used by the Build #22 sweeper
+	// to evict idle cache rows (default TTL 30d).
+	//
+	// The caller (CleanupService) is responsible for re-calling with
+	// the same `before` until RowsAffected < limit, so the sweeper
+	// drains the stale set in batches rather than holding one giant
+	// transaction open.
+	DeleteStale(ctx context.Context, before time.Time, limit int) (int64, error)
+
+	// CountRows returns the total number of cache rows across all KBs.
+	// Used by the sweeper's stale-monitoring gauge so the alert fires
+	// when the table grows past the configured threshold regardless
+	// of TTL state.
+	CountRows(ctx context.Context) (int64, error)
+
+	// ListStaleForUpdate returns up to `limit` stale (kb_id, slug)
+	// pairs under SELECT ... FOR UPDATE SKIP LOCKED for the duration
+	// of the surrounding transaction. Used by the multi-instance
+	// cleanup coordination path (D5) — each instance grabs a disjoint
+	// slice of the stale set under row-level locks so two sweeps
+	// running concurrently do not duplicate work.
+	ListStaleForUpdate(ctx context.Context, tx *gorm.DB, before time.Time, limit int) ([]string, error)
 }
 
 // WikiBacklinksCacheInvalidator centralises the rule that maps a

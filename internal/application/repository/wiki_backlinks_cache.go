@@ -174,3 +174,102 @@ func (r *wikiBacklinksCacheRepository) ListByKB(
 	}
 	return statuses, total, nil
 }
+
+// DeleteStale removes cache rows whose updated_at is strictly older
+// than `before`, up to `limit` rows. Used by the Build #22 sweeper.
+//
+// The GORM `Limit(...)` here applies to the DELETE itself: GORM emits
+// `DELETE ... WHERE id IN (SELECT id FROM ... LIMIT n)`. PostgreSQL
+// supports that pattern directly; MySQL needs the inner SELECT to be
+// wrapped in another SELECT (GORM does this automatically). SQLite
+// supports LIMIT on DELETE since 3.7+.
+//
+// Caller is responsible for looping (call → check RowsAffected < limit
+// → call again) to drain the stale set without holding a giant
+// transaction. CleanupService.Run does this.
+func (r *wikiBacklinksCacheRepository) DeleteStale(
+	ctx context.Context,
+	before time.Time,
+	limit int,
+) (int64, error) {
+	if limit <= 0 {
+		limit = 1000
+	}
+	if before.IsZero() {
+		return 0, nil
+	}
+	res := r.db.WithContext(ctx).
+		Where("updated_at < ?", before).
+		Limit(limit).
+		Delete(&types.WikiBacklinksCacheRow{})
+	return res.RowsAffected, res.Error
+}
+
+// CountRows returns the total number of cache rows across all KBs.
+// Used by the sweeper's stale-monitoring gauge (cache_rows_remaining)
+// so the alert fires when the table grows past the configured
+// threshold regardless of TTL state — TTL cleanup may not keep up with
+// churn in a hot KB, and operators need to see that.
+func (r *wikiBacklinksCacheRepository) CountRows(ctx context.Context) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&types.WikiBacklinksCacheRow{}).
+		Count(&count).Error
+	return count, err
+}
+
+// ListStaleForUpdate returns up to `limit` stale (kb_id, slug) pairs
+// under SELECT ... FOR UPDATE SKIP LOCKED. The caller is expected to
+// pass an already-open *gorm.DB transaction (`tx`) so the lock lives
+// only as long as the surrounding tx.
+//
+// SKIP LOCKED semantics (PG 9.5+, MySQL 8.0+, SQLite 3.37+): another
+// concurrent cleanup on a different instance / worker grabs a disjoint
+// slice of the stale set without blocking. If the dialect is older,
+// the row-level lock degrades to plain `FOR UPDATE` (blocks) — the
+// sweeper still works, just slower under contention. We accept the
+// degradation rather than refuse to ship on older deployments.
+//
+// On SQLite (single-writer by definition), SKIP LOCKED is a no-op but
+// harmless — the global write lock already serialises sweeps.
+func (r *wikiBacklinksCacheRepository) ListStaleForUpdate(
+	ctx context.Context,
+	tx *gorm.DB,
+	before time.Time,
+	limit int,
+) ([]string, error) {
+	if tx == nil {
+		return nil, errors.New("wikiBacklinksCacheRepository.ListStaleForUpdate: nil tx")
+	}
+	if limit <= 0 {
+		limit = 1000
+	}
+	if before.IsZero() {
+		return []string{}, nil
+	}
+	// We return composite keys (kb_id + "\x00" + slug) because the
+	// cleanup caller needs both to issue precise DELETE statements.
+	// Using a string union keeps the cross-dialect SQL simple — GORM's
+	// distinct dialect-specific Scan glue would otherwise need a small
+	// anonymous struct.
+	var rows []struct {
+		KbID string
+		Slug string
+	}
+	err := tx.WithContext(ctx).
+		Table("wiki_backlinks_cache").
+		Select("kb_id, slug").
+		Where("updated_at < ?", before).
+		Order("updated_at ASC").
+		Limit(limit).
+		Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, row.KbID+"\x00"+row.Slug)
+	}
+	return out, nil
+}

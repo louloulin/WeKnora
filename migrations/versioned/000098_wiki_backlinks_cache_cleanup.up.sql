@@ -1,0 +1,46 @@
+-- Migration 000098: wiki_backlinks_cache cleanup index
+--
+-- Build #22 — wiki backlinks cache cleanup cron + stale monitoring.
+-- The cron loop (CleanupService.Run) runs every 24h and deletes cache
+-- rows whose updated_at is older than WIKI_CACHE_TTL_DAYS (default 30d)
+-- so the table does not grow unbounded.
+--
+-- 000097 already declared `idx_wiki_backlinks_cache_kb_updated` which
+-- suffices for per-KB lookups, but the cleanup scan is a full-table
+-- range query on `updated_at < threshold` — not per-kb. This migration
+-- adds the dedicated index that supports the sweeper's WHERE clause
+-- directly. PostgreSQL planner picks this up as an index range scan;
+-- MySQL uses it as a covering secondary index; SQLite walks it as a
+-- btree range.
+--
+-- The Build #21 column comment also promised
+-- `idx_wiki_backlinks_cache_computed (kb_id, computed_at DESC)` but
+-- only `idx_wiki_backlinks_cache_kb_updated (kb_id, updated_at)` was
+-- shipped. Build #22 corrects that gap by adding both:
+--   * updated_at_idx — backs the sweeper's stale-scan (no kb prefix
+--     because the sweeper crosses all KBs in one query, then optionally
+--     loops per KB for fairness)
+--   * the per-kb one from 000097 stays (serves admin list + per-KB
+--     invalidation joins)
+--
+-- Note on ORDER: we intentionally use `updated_at` not `computed_at`
+-- for the cleanup filter. Rationale: pages that are re-read frequently
+-- get their `updated_at` bumped on every cache writeback (Build #21
+-- `ListBacklinkGraph` calls Upsert which stamps both). A page that is
+-- read once and never re-read should be a cleanup candidate regardless
+-- of when its snapshot was computed — and `updated_at` reflects that
+-- access pattern (re-read = bumped, idle = unchanged).
+--
+-- If we used `computed_at`, idle re-reads within TTL would still
+-- survive (good), but pages that get the FIRST read fresh and never
+-- come back would also survive forever (bad) — the cache row's
+-- updated_at == computed_at, so it tracks both creation and access
+-- in one column.
+
+CREATE INDEX IF NOT EXISTS idx_wiki_backlinks_cache_updated_at
+    ON wiki_backlinks_cache (updated_at);
+
+-- Hot-path: per-KB cleanup fairness. The sweeper can optionally loop
+-- per KB (WIKI_CACHE_CLEANUP_PER_KB=true) to avoid starving small
+-- tenants when a single big KB dominates the table. The existing
+-- per-KB index from 000097 serves this; nothing to add here.

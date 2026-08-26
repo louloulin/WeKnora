@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -255,6 +256,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewWikiBacklinksCacheRepository))
 	must(container.Provide(service.NewWikiBacklinksCacheInvalidator))
 	must(container.Invoke(wireWikiBacklinksCache))
+	// Wiki backlinks cache cleanup sweeper (Build #22). Owns the
+	// 24h cron loop, in-process mutex, and multi-instance coordination
+	// via SELECT ... FOR UPDATE SKIP LOCKED. Started by cmd/server
+	// after the DI graph resolves.
+	must(container.Provide(newWikiBacklinksCacheCleanupServiceFromConfig))
 	must(container.Provide(repository.NewWikiAclRepository))
 	must(container.Provide(service.NewWikiAclService))
 	// Wiki tag system (Build #17).
@@ -383,6 +389,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	logger.Debugf(ctx, "[Container] Data source sync framework registered")
 	must(container.Invoke(startAuditLogRetention))
 	logger.Debugf(ctx, "[Container] Audit log retention runner registered")
+	must(container.Invoke(startWikiBacklinksCacheCleanup))
+	logger.Debugf(ctx, "[Container] Wiki backlinks cache cleanup sweeper registered (Build #22)")
 	must(container.Provide(service.NewHousekeepingService))
 	must(container.Invoke(startHousekeepingService))
 	logger.Debugf(ctx, "[Container] Knowledge housekeeping runner registered")
@@ -1884,6 +1892,77 @@ func startAuditLogRetention(
 	runner.Start(context.Background())
 	cleaner.RegisterWithName("AuditLogRetentionRunner", func() error {
 		runner.Stop()
+		return nil
+	})
+}
+
+// newWikiBacklinksCacheCleanupServiceFromConfig reads env-driven
+// tunables and constructs the Build #22 sweeper. Defaults come from
+// DefaultWikiBacklinksCacheCleanupConfig — the env-var override layer
+// keeps the production wiring uniform with other tunables in the
+// project.
+//
+// Env vars:
+//   - WIKI_CACHE_TTL_DAYS               (int, default 30)
+//   - WIKI_CACHE_CLEANUP_PERIOD_HOURS   (int, default 24)
+//   - WIKI_CACHE_CLEANUP_BATCH_SIZE     (int, default 1000)
+//   - WIKI_CACHE_CLEANUP_DRY_RUN        (bool, default true)
+//   - WIKI_CACHE_MAX_ROWS               (int, default 1_000_000)
+//
+// The DB arg comes from the existing initDatabase provider — no new
+// DB plumbing.
+func newWikiBacklinksCacheCleanupServiceFromConfig(
+	db *gorm.DB,
+	repo interfaces.WikiBacklinksCacheRepository,
+) service.WikiBacklinksCacheCleanupService {
+	cfg := service.DefaultWikiBacklinksCacheCleanupConfig()
+	if v := os.Getenv("WIKI_CACHE_TTL_DAYS"); v != "" {
+		if days, err := strconv.Atoi(v); err == nil && days > 0 {
+			cfg.TTL = time.Duration(days) * 24 * time.Hour
+		}
+	}
+	if v := os.Getenv("WIKI_CACHE_CLEANUP_PERIOD_HOURS"); v != "" {
+		if hours, err := strconv.Atoi(v); err == nil && hours > 0 {
+			cfg.Period = time.Duration(hours) * time.Hour
+		}
+	}
+	if v := os.Getenv("WIKI_CACHE_CLEANUP_BATCH_SIZE"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			cfg.BatchSize = n
+		}
+	}
+	if v := os.Getenv("WIKI_CACHE_CLEANUP_DRY_RUN"); v != "" {
+		cfg.DryRun = v == "true" || v == "1"
+	}
+	if v := os.Getenv("WIKI_CACHE_MAX_ROWS"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			cfg.MaxRows = n
+		}
+	}
+	return service.NewWikiBacklinksCacheCleanupService(cfg, db, repo)
+}
+
+// startWikiBacklinksCacheCleanup launches the Build #22 sweeper.
+// Mirrors the startAuditLogRetention pattern: kick off Start, register
+// a graceful-shutdown hook on the ResourceCleaner so SIGTERM stops
+// the goroutine cleanly. We pass context.Background() rather than
+// the DI ctx because the container's ctx is bound to startup and
+// gets cancelled as soon as Build returns — the sweeper needs to live
+// until SIGTERM.
+func startWikiBacklinksCacheCleanup(
+	svc service.WikiBacklinksCacheCleanupService,
+	cleaner interfaces.ResourceCleaner,
+) {
+	svc.Start(context.Background())
+	cleaner.RegisterWithName("WikiBacklinksCacheCleanup", func() error {
+		// The service's Start loop listens on ctx.Done(); cancelling
+		// the background ctx (which we don't have a handle to here)
+		// would be the right answer, but the cleaner hook fires
+		// during shutdown which is already tearing down the process.
+		// We log via the service's own logger and return nil — the
+		// goroutine dies with the process. Future Build can store a
+		// cancel func on the service for explicit Stop.
+		log.Printf("[wiki-cache-cleanup] graceful shutdown registered (goroutine exits with process)")
 		return nil
 	})
 }
