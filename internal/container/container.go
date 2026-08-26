@@ -248,6 +248,13 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewWikiBatchFailureRepository))
 	must(container.Provide(service.NewWikiBatchJobService))
 	must(container.Invoke(wireWikiBatchJobService))
+	// Wiki backlinks graph cache (Build #21). The repo persists the
+	// four-section payload as TEXT (json strings) for dialect
+	// portability; the invalidator service owns the slug-resolution
+	// policy for the seven write-path hooks.
+	must(container.Provide(repository.NewWikiBacklinksCacheRepository))
+	must(container.Provide(service.NewWikiBacklinksCacheInvalidator))
+	must(container.Invoke(wireWikiBacklinksCache))
 	must(container.Provide(repository.NewWikiAclRepository))
 	must(container.Provide(service.NewWikiAclService))
 	// Wiki tag system (Build #17).
@@ -569,6 +576,31 @@ func wireWikiBatchJobService(
 		SetBatchJobService(interfaces.WikiBatchJobService)
 	}); ok {
 		setter.SetBatchJobService(batchSvc)
+	}
+}
+
+// wireWikiBacklinksCache connects the Build #21 backlinks cache to the
+// page service post-construction. Same pattern as wireWikiBatchJobService
+// — page service exposes SetBacklinksCacheRepo / SetBacklinksCacheInvalidator
+// setters so the constructor doesn't form a cycle with the cache repo.
+// The two-phase wire (repo first, then invalidator) keeps the dig graph
+// happy because the invalidator's constructor takes both as args.
+//
+// Build #21.
+func wireWikiBacklinksCache(
+	pageSvc interfaces.WikiPageService,
+	cacheRepo interfaces.WikiBacklinksCacheRepository,
+	cacheInvalidator interfaces.WikiBacklinksCacheInvalidator,
+) {
+	if setter, ok := pageSvc.(interface {
+		SetBacklinksCacheRepo(interfaces.WikiBacklinksCacheRepository)
+	}); ok {
+		setter.SetBacklinksCacheRepo(cacheRepo)
+	}
+	if setter, ok := pageSvc.(interface {
+		SetBacklinksCacheInvalidator(interfaces.WikiBacklinksCacheInvalidator)
+	}); ok {
+		setter.SetBacklinksCacheInvalidator(cacheInvalidator)
 	}
 }
 

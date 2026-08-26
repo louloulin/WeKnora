@@ -1359,6 +1359,70 @@ type WikiBacklinkGraphRequest struct {
 	JaccardThreshold float64
 }
 
+// Build #21 — persisted cache for the backlinks graph payload. The four
+// sections + stats are stored as raw JSON strings (TEXT in SQL) so the
+// repository layer can hand them straight to GORM's column driver
+// without a custom Scan/Value pair per dialect. The strings are
+// canonicalised JSON (json.Marshal) so equality and indexing behave
+// uniformly. source_event_id records which wiki_event produced this
+// snapshot; nullable because the very first snapshot has no event yet
+// (cold read → write).
+type WikiBacklinksCacheRow struct {
+	KbID          string `gorm:"primaryKey;column:kb_id;size:64"`
+	Slug          string `gorm:"primaryKey;column:slug;size:512"`
+	DirectJSON    string `gorm:"column:direct_json;type:text;not null"`
+	IndirectJSON  string `gorm:"column:indirect_json;type:text;not null"`
+	RelatedJSON   string `gorm:"column:related_json;type:text;not null"`
+	BrokenJSON    string `gorm:"column:broken_json;type:text;not null"`
+	StatsJSON     string `gorm:"column:stats_json;type:text;not null"`
+	SourceEventID string `gorm:"column:source_event_id;size:64"`
+	ComputedAt    time.Time `gorm:"column:computed_at;not null"`
+	UpdatedAt     time.Time `gorm:"column:updated_at;not null"`
+}
+
+// TableName pins the GORM-pluralised default to the migration's
+// singular name. Mirrors the pattern in WikiPageRepo (Build #11).
+func (WikiBacklinksCacheRow) TableName() string {
+	return "wiki_backlinks_cache"
+}
+
+// WikiBacklinksCacheStatus is the slim payload returned by
+// GET /pages/:slug/backlinks/cache-status. Only the timestamps +
+// source_event_id — never the full graph — so admin / debug callers
+// can confirm the cache is fresh without paying the column scan cost.
+type WikiBacklinksCacheStatus struct {
+	Slug          string    `json:"slug"`
+	ComputedAt    time.Time `json:"computed_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	SourceEventID string    `json:"source_event_id,omitempty"`
+}
+
+// BacklinkCacheInvalidateOp enumerates the seven write paths that
+// invalidate one or more (kb_id, slug) cache rows. ResolveAffectedSlugs
+// (in service/wiki_backlinks_cache.go) maps each op to its slug set.
+type BacklinkCacheInvalidateOp string
+
+const (
+	BacklinkCacheInvalidateCreatePage  BacklinkCacheInvalidateOp = "create_page"
+	BacklinkCacheInvalidateUpdatePage  BacklinkCacheInvalidateOp = "update_page"
+	BacklinkCacheInvalidateDeletePage  BacklinkCacheInvalidateOp = "delete_page"
+	BacklinkCacheInvalidateMovePage    BacklinkCacheInvalidateOp = "move_page"
+	BacklinkCacheInvalidateBatchMove   BacklinkCacheInvalidateOp = "batch_move"
+	BacklinkCacheInvalidateBatchDelete BacklinkCacheInvalidateOp = "batch_delete"
+	BacklinkCacheInvalidateBatchStatus BacklinkCacheInvalidateOp = "batch_status"
+)
+
+// BacklinkCacheInvalidateRequest is the input to
+// WikiPageService.InvalidateBacklinksCache. AffectedSlugs is the slug
+// set the caller has already resolved (e.g. A + A.out_links for
+// UpdatePage); the service then runs the cache wipe in one DELETE
+// statement with IN (?, ?, ...) batching.
+type BacklinkCacheInvalidateRequest struct {
+	KbID          string
+	Op            BacklinkCacheInvalidateOp
+	AffectedSlugs []string
+}
+
 // WikiSourceKnowledgeID extracts the knowledge id from a source_refs entry,
 // stored as "uuid" or "uuid|title".
 func WikiSourceKnowledgeID(ref string) string {

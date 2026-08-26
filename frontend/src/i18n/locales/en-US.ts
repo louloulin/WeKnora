@@ -2712,6 +2712,7 @@ export default {
         loadFailed: 'Failed to load backlinks',
       },
       // Build #20 — backlinks graph v2 (4-section panel)
+      // Build #21 — cache-status footer (last computed at)
       backlinksGraph: {
         sections: {
           direct: 'Direct',
@@ -2724,6 +2725,14 @@ export default {
         viewFullGraph: 'View full graph →',
         loadFailedToast: 'Advanced sections unavailable, showing direct only',
         brokenHint: 'Target deleted or renamed',
+        lastComputed: 'Last computed',
+        neverComputed: 'Not yet computed',
+        lastComputedUnits: {
+          seconds: '{n} seconds ago',
+          minutes: '{n} minutes ago',
+          hours: '{n} hours ago',
+          days: '{n} days ago',
+        },
       },
       acl: {
         header: 'Page permissions',

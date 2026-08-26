@@ -1168,6 +1168,46 @@ func (h *WikiPageHandler) GetPageBacklinks(c *gin.Context) {
 	c.JSON(http.StatusOK, backlinks)
 }
 
+// GetPageBacklinksCacheStatus godoc
+// @Summary      Return slim cache metadata for a page's backlink graph
+// @Description  Returns `computed_at`, `updated_at`, and (when set)
+// @Description  `source_event_id` for the cached payload backing
+// @Description  GET `/backlinks/graph`. The panel uses this to render a
+// @Description  "last computed at" footer without paying the full graph cost.
+// @Description  When the cache is cold the endpoint returns 200 with
+// @Description  `{ "slug": "...", "computed_at": null, "updated_at": null }`
+// @Description  so the panel can render the cold state instead of 404.
+// @Description  Build #21.
+// @Tags         Wiki
+// @Produce      json
+// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        slug   path  string  true  "Page slug"
+// @Success      200  {object}  types.WikiBacklinksCacheStatus
+// @Failure      400  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/pages/{slug}/backlinks/cache-status [get]
+func (h *WikiPageHandler) GetPageBacklinksCacheStatus(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	slug := getSlugParam(c)
+	if slug == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Page slug is required"})
+		return
+	}
+	status, err := h.wikiService.GetPageBacklinksCacheStatus(c.Request.Context(), kbID, slug)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if status == nil {
+		status = &types.WikiBacklinksCacheStatus{Slug: slug}
+	}
+	c.JSON(http.StatusOK, status)
+}
+
 // GetPageBacklinksGraph godoc
 // @Summary      List the four-section backlink graph for a wiki page
 // @Description  Bundles four views of the backlink picture around a page

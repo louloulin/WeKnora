@@ -55,6 +55,16 @@ type wikiPageService struct {
 	// the three Batch* methods always run synchronously — older callers
 	// (tests) keep working unchanged.
 	batchSvc interfaces.WikiBatchJobService
+	// cacheRepo backs the Build #21 backlinks graph cache. nil disables
+	// caching — every ListBacklinkGraph call recomputes, and the
+	// write-time hooks become silent no-ops. Production wires a real
+	// instance via SetBacklinksCacheRepo; older callers (Build #20 +
+	// earlier tests) keep working unchanged.
+	cacheRepo interfaces.WikiBacklinksCacheRepository
+	// cacheInvalidator encapsulates the slug-resolution policy for
+	// cache wipes (which slugs to wipe for which write op). Lives
+	// behind its own interface so tests can swap a stub.
+	cacheInvalidator interfaces.WikiBacklinksCacheInvalidator
 }
 
 // SetBatchJobService wires the async batch service post-construction.
@@ -65,6 +75,21 @@ type wikiPageService struct {
 // Build #13.
 func (s *wikiPageService) SetBatchJobService(svc interfaces.WikiBatchJobService) {
 	s.batchSvc = svc
+}
+
+// SetBacklinksCacheRepo wires the Build #21 backlinks cache repository
+// post-construction. Mirrors the SetBatchJobService pattern (DI module
+// registers them after both services have been constructed to break the
+// circular dependency that would arise from a direct constructor arg).
+func (s *wikiPageService) SetBacklinksCacheRepo(repo interfaces.WikiBacklinksCacheRepository) {
+	s.cacheRepo = repo
+}
+
+// SetBacklinksCacheInvalidator wires the slug-resolution policy for the
+// Build #21 cache wipe hooks. Same post-construction pattern as
+// SetBacklinksCacheRepo.
+func (s *wikiPageService) SetBacklinksCacheInvalidator(inv interfaces.WikiBacklinksCacheInvalidator) {
+	s.cacheInvalidator = inv
 }
 
 // NewWikiPageService creates a new wiki page service.
@@ -134,10 +159,36 @@ func (s *wikiPageService) CreatePage(ctx context.Context, page *types.WikiPage) 
 	// Update inbound links on target pages
 	s.updateInLinks(ctx, page.KnowledgeBaseID, page.Slug, page.OutLinks)
 
+	// Build #21 — the new page may have changed which slugs resolve
+	// to it as a backlink target; wipe the cache for [self] ∪ out_links
+	// so the next panel read recomputes direct + indirect counts.
+	if s.cacheRepo != nil && s.cacheInvalidator != nil {
+		if slugs, err := s.resolveBacklinkInvalidation(ctx,
+			types.BacklinkCacheInvalidateCreatePage,
+			page.KnowledgeBaseID, page.Slug); err == nil {
+			s.InvalidateBacklinksCache(ctx, types.BacklinkCacheInvalidateRequest{
+				KbID:          page.KnowledgeBaseID,
+				Op:            types.BacklinkCacheInvalidateCreatePage,
+				AffectedSlugs: slugs,
+			})
+		}
+	}
+
 	return page, nil
 }
 
-// UpdatePage updates an existing wiki page.
+// resolveBacklinkInvalidation resolves the affected-slug set for an op.
+// Wraps the invalidator's Resolve so the write-time hooks can stay
+// single-line. Returns the slug list and a non-nil error only on
+// contract violation (unknown op) — pure no-ops (empty kb/slug)
+// return ([], nil).
+//
+// Build #21.
+func (s *wikiPageService) resolveBacklinkInvalidation(
+	ctx context.Context, op types.BacklinkCacheInvalidateOp, kbID, slug string,
+) ([]string, error) {
+	return s.cacheInvalidator.Resolve(ctx, op, kbID, slug)
+}
 //
 // Version bump policy: the `version` column is intended to track the user-
 // visible content revision, not every row rewrite. We therefore bump it only
@@ -227,6 +278,21 @@ func (s *wikiPageService) UpdatePage(ctx context.Context, page *types.WikiPage) 
 	// oldOutLinks == existing.OutLinks and these calls are effectively no-ops.
 	s.removeInLinks(ctx, existing.KnowledgeBaseID, existing.Slug, oldOutLinks)
 	s.updateInLinks(ctx, existing.KnowledgeBaseID, existing.Slug, existing.OutLinks)
+
+	// Build #21 — invalidate the backlinks graph cache for [self] ∪
+	// out_links so the next panel read sees fresh direct + indirect
+	// counts (old targets lost [slug] in removeInLinks above).
+	if s.cacheRepo != nil && s.cacheInvalidator != nil {
+		if slugs, err := s.resolveBacklinkInvalidation(ctx,
+			types.BacklinkCacheInvalidateUpdatePage,
+			existing.KnowledgeBaseID, existing.Slug); err == nil {
+			s.InvalidateBacklinksCache(ctx, types.BacklinkCacheInvalidateRequest{
+				KbID:          existing.KnowledgeBaseID,
+				Op:            types.BacklinkCacheInvalidateUpdatePage,
+				AffectedSlugs: slugs,
+			})
+		}
+	}
 
 	return existing, nil
 }
@@ -461,6 +527,22 @@ func (s *wikiPageService) DeletePage(ctx context.Context, kbID string, slug stri
 
 	// Delete synced chunk
 	s.deleteChunkForPage(ctx, page)
+
+	// Build #21 — the page is gone, so its own cache row is stale and
+	// every page that used to link to it lost a backlink source. Wipe
+	// [self] ∪ in_links so the next panel read recomputes from the
+	// remaining graph (removeInLinks above already trimmed the targets).
+	if s.cacheRepo != nil && s.cacheInvalidator != nil {
+		if slugs, err := s.resolveBacklinkInvalidation(ctx,
+			types.BacklinkCacheInvalidateDeletePage,
+			kbID, slug); err == nil {
+			s.InvalidateBacklinksCache(ctx, types.BacklinkCacheInvalidateRequest{
+				KbID:          kbID,
+				Op:            types.BacklinkCacheInvalidateDeletePage,
+				AffectedSlugs: slugs,
+			})
+		}
+	}
 
 	return nil
 }
@@ -1147,7 +1229,343 @@ func (s *wikiPageService) ListPageBacklinks(
 	return out, nil
 }
 
-// ListBacklinkGraph bundles four views of the backlink picture around
+// -----------------------------------------------------------------------------
+// Build #21 — backlinks graph cache payload helpers.
+//
+// WikiPageBacklink + WikiBacklinkIndirect + WikiPageBacklinkRelated are the
+// ergonomic public types returned to the panel. Two of them embed
+// *WikiPageBacklink (pointer embed), which encoding/json inlines at marshal
+// time but cannot auto-allocate at unmarshal time — so a naive round-trip
+// through json.Marshal/Unmarshal drops the embedded rows. We sidestep this
+// by mirroring the structure with value-typed cachedBacklink / cachedIndirect
+// / cachedRelated structs. The wire format is identical, so conversion is
+// a pure structural remap and the public types stay unchanged.
+
+// cachedBacklink is the cache-only mirror of WikiPageBacklink.
+type cachedBacklink struct {
+	Slug      string    `json:"slug"`
+	Title     string    `json:"title"`
+	PageType  string    `json:"page_type"`
+	Status    string    `json:"status"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// cachedIndirect mirrors WikiBacklinkIndirect with a value-typed embed.
+type cachedIndirect struct {
+	cachedBacklink
+	Via string `json:"via"`
+}
+
+// cachedRelated mirrors WikiPageBacklinkRelated with a value-typed embed.
+type cachedRelated struct {
+	cachedBacklink
+	Jaccard float64 `json:"jaccard"`
+}
+
+// cachedBroken mirrors WikiBacklinkBroken.
+type cachedBroken struct {
+	TargetSlug string `json:"target_slug"`
+}
+
+// graphToCachedGraph converts the public payload into a parallel cached-only
+// struct. Drops any rows whose inner pointer is nil — encoding/json would
+// silently omit those fields, leaving the row ambiguous on unmarshal.
+func graphToCachedGraph(g *types.WikiBacklinkGraph) *cachedGraph {
+	if g == nil {
+		return &cachedGraph{}
+	}
+	out := &cachedGraph{Stats: g.Stats}
+	out.Direct = make([]cachedBacklink, 0, len(g.Direct))
+	for _, d := range g.Direct {
+		if d == nil {
+			continue
+		}
+		out.Direct = append(out.Direct, cachedBacklink{
+			Slug:      d.Slug,
+			Title:     d.Title,
+			PageType:  d.PageType,
+			Status:    d.Status,
+			UpdatedAt: d.UpdatedAt,
+		})
+	}
+	out.Indirect = make([]cachedIndirect, 0, len(g.Indirect))
+	for _, ind := range g.Indirect {
+		if ind == nil || ind.WikiPageBacklink == nil {
+			continue
+		}
+		out.Indirect = append(out.Indirect, cachedIndirect{
+			cachedBacklink: cachedBacklink{
+				Slug:      ind.Slug,
+				Title:     ind.Title,
+				PageType:  ind.PageType,
+				Status:    ind.Status,
+				UpdatedAt: ind.UpdatedAt,
+			},
+			Via: ind.Via,
+		})
+	}
+	out.Related = make([]cachedRelated, 0, len(g.Related))
+	for _, rel := range g.Related {
+		if rel == nil || rel.WikiPageBacklink == nil {
+			continue
+		}
+		out.Related = append(out.Related, cachedRelated{
+			cachedBacklink: cachedBacklink{
+				Slug:      rel.Slug,
+				Title:     rel.Title,
+				PageType:  rel.PageType,
+				Status:    rel.Status,
+				UpdatedAt: rel.UpdatedAt,
+			},
+			Jaccard: rel.Jaccard,
+		})
+	}
+	out.Broken = make([]cachedBroken, 0, len(g.Broken))
+	for _, brk := range g.Broken {
+		if brk == nil {
+			continue
+		}
+		out.Broken = append(out.Broken, cachedBroken{TargetSlug: brk.TargetSlug})
+	}
+	return out
+}
+
+// cachedGraph is the JSON-friendly wrapper that binds the four section arrays.
+type cachedGraph struct {
+	Direct   []cachedBacklink                 `json:"direct"`
+	Indirect []cachedIndirect                 `json:"indirect"`
+	Related  []cachedRelated                  `json:"related"`
+	Broken   []cachedBroken                   `json:"broken"`
+	Stats    types.WikiBacklinkGraphStats     `json:"stats"`
+}
+
+// cachedGraphToGraph inverts graphToCachedGraph.
+func cachedGraphToGraph(c *cachedGraph) *types.WikiBacklinkGraph {
+	if c == nil {
+		return &types.WikiBacklinkGraph{
+			Direct:   []*types.WikiPageBacklink{},
+			Indirect: []*types.WikiBacklinkIndirect{},
+			Related:  []*types.WikiPageBacklinkRelated{},
+			Broken:   []*types.WikiBacklinkBroken{},
+		}
+	}
+	direct := make([]*types.WikiPageBacklink, 0, len(c.Direct))
+	for i := range c.Direct {
+		d := c.Direct[i]
+		direct = append(direct, &types.WikiPageBacklink{
+			Slug:      d.Slug,
+			Title:     d.Title,
+			PageType:  d.PageType,
+			Status:    d.Status,
+			UpdatedAt: d.UpdatedAt,
+		})
+	}
+	indirect := make([]*types.WikiBacklinkIndirect, 0, len(c.Indirect))
+	for i := range c.Indirect {
+		ind := c.Indirect[i]
+		indirect = append(indirect, &types.WikiBacklinkIndirect{
+			WikiPageBacklink: &types.WikiPageBacklink{
+				Slug:      ind.Slug,
+				Title:     ind.Title,
+				PageType:  ind.PageType,
+				Status:    ind.Status,
+				UpdatedAt: ind.UpdatedAt,
+			},
+			Via: ind.Via,
+		})
+	}
+	related := make([]*types.WikiPageBacklinkRelated, 0, len(c.Related))
+	for i := range c.Related {
+		rel := c.Related[i]
+		related = append(related, &types.WikiPageBacklinkRelated{
+			WikiPageBacklink: &types.WikiPageBacklink{
+				Slug:      rel.Slug,
+				Title:     rel.Title,
+				PageType:  rel.PageType,
+				Status:    rel.Status,
+				UpdatedAt: rel.UpdatedAt,
+			},
+			Jaccard: rel.Jaccard,
+		})
+	}
+	broken := make([]*types.WikiBacklinkBroken, 0, len(c.Broken))
+	for i := range c.Broken {
+		brk := c.Broken[i]
+		broken = append(broken, &types.WikiBacklinkBroken{TargetSlug: brk.TargetSlug})
+	}
+	return &types.WikiBacklinkGraph{
+		Direct:   direct,
+		Indirect: indirect,
+		Related:  related,
+		Broken:   broken,
+		Stats:    c.Stats,
+	}
+}
+
+// encodeCacheRow serialises the four sections + stats into the cache-row
+// columns. Returns (nil, false) on the first marshal failure — the caller
+// treats that as a no-op so a malformed payload never crashes the read path.
+func encodeCacheRow(kbID, slug string, g *types.WikiBacklinkGraph) (*types.WikiBacklinksCacheRow, bool) {
+	cg := graphToCachedGraph(g)
+	directJSON, err := json.Marshal(cg.Direct)
+	if err != nil {
+		return nil, false
+	}
+	indirectJSON, err := json.Marshal(cg.Indirect)
+	if err != nil {
+		return nil, false
+	}
+	relatedJSON, err := json.Marshal(cg.Related)
+	if err != nil {
+		return nil, false
+	}
+	brokenJSON, err := json.Marshal(cg.Broken)
+	if err != nil {
+		return nil, false
+	}
+	statsJSON, err := json.Marshal(cg.Stats)
+	if err != nil {
+		return nil, false
+	}
+	return &types.WikiBacklinksCacheRow{
+		KbID:         kbID,
+		Slug:         slug,
+		DirectJSON:   string(directJSON),
+		IndirectJSON: string(indirectJSON),
+		RelatedJSON:  string(relatedJSON),
+		BrokenJSON:   string(brokenJSON),
+		StatsJSON:    string(statsJSON),
+		// SourceEventID stays empty for cold-read writebacks — only the
+		// write-time hooks stamp it from the wiki_event id.
+	}, true
+}
+
+// decodeCacheRow reverses encodeCacheRow. Returns (nil, false) if any of
+// the five JSON columns fails to unmarshal — caller falls back to a
+// recompute, never serves a partial graph.
+func decodeCacheRow(row *types.WikiBacklinksCacheRow) (*types.WikiBacklinkGraph, bool) {
+	if row == nil {
+		return nil, false
+	}
+	var direct []cachedBacklink
+	if err := json.Unmarshal([]byte(row.DirectJSON), &direct); err != nil {
+		return nil, false
+	}
+	var indirect []cachedIndirect
+	if err := json.Unmarshal([]byte(row.IndirectJSON), &indirect); err != nil {
+		return nil, false
+	}
+	var related []cachedRelated
+	if err := json.Unmarshal([]byte(row.RelatedJSON), &related); err != nil {
+		return nil, false
+	}
+	var broken []cachedBroken
+	if err := json.Unmarshal([]byte(row.BrokenJSON), &broken); err != nil {
+		return nil, false
+	}
+	var stats types.WikiBacklinkGraphStats
+	if err := json.Unmarshal([]byte(row.StatsJSON), &stats); err != nil {
+		return nil, false
+	}
+	return cachedGraphToGraph(&cachedGraph{
+		Direct:   direct,
+		Indirect: indirect,
+		Related:  related,
+		Broken:   broken,
+		Stats:    stats,
+	}), true
+}
+
+// InvalidateBacklinksCache wipes the cache rows whose slugs are no longer
+// safe to serve — typically called after a write path mutates wiki_pages
+// in a way that invalidates a derived graph. Best-effort: a failed wipe
+// just means the next read recomputes on miss, so the system self-heals.
+//
+// Build #21.
+func (s *wikiPageService) InvalidateBacklinksCache(
+	ctx context.Context,
+	req types.BacklinkCacheInvalidateRequest,
+) {
+	if s.cacheRepo == nil || req.KbID == "" || len(req.AffectedSlugs) == 0 {
+		return
+	}
+	affected, err := s.cacheRepo.Delete(ctx, req.KbID, req.AffectedSlugs)
+	if err != nil {
+		logger.Warnf(ctx,
+			"wiki backlinks cache wipe failed (op=%s kb=%s slugs=%v): %v",
+			req.Op, req.KbID, req.AffectedSlugs, err)
+		return
+	}
+	if affected > 0 {
+		logger.Warnf(ctx,
+			"wiki backlinks cache wiped %d rows (op=%s kb=%s slugs=%v)",
+			affected, req.Op, req.KbID, req.AffectedSlugs)
+	}
+}
+
+// GetPageBacklinksCacheStatus returns the slim metadata for one slug's
+// cached graph (computed_at + updated_at + source_event_id), or
+// (nil, nil) if no cache row exists. The panel footer uses this to
+// render a "last computed at" line without paying the full graph cost.
+//
+// Build #21.
+func (s *wikiPageService) GetPageBacklinksCacheStatus(
+	ctx context.Context, kbID string, slug string,
+) (*types.WikiBacklinksCacheStatus, error) {
+	if s.cacheRepo == nil || kbID == "" || slug == "" {
+		return nil, nil
+	}
+	row, err := s.cacheRepo.Get(ctx, kbID, slug)
+	if err != nil {
+		return nil, err
+	}
+	if row == nil {
+		return nil, nil
+	}
+	return &types.WikiBacklinksCacheStatus{
+		Slug:          row.Slug,
+		ComputedAt:    row.ComputedAt,
+		UpdatedAt:     row.UpdatedAt,
+		SourceEventID: row.SourceEventID,
+	}, nil
+}
+
+// ListBacklinkGraph wraps computeBacklinkGraph with a cache-first read and
+// writeback. Cache lookups are best-effort: a missing row, a malformed
+// payload, or a transient repo error all fall through to a fresh compute.
+// Compute failures still bubble up unchanged — the cache never shadows
+// an honest error.
+//
+// Build #21.
+func (s *wikiPageService) ListBacklinkGraph(
+	ctx context.Context, req types.WikiBacklinkGraphRequest,
+) (*types.WikiBacklinkGraph, error) {
+	if s.cacheRepo != nil && req.KbID != "" && req.Slug != "" {
+		if row, err := s.cacheRepo.Get(ctx, req.KbID, req.Slug); err == nil && row != nil {
+			if graph, ok := decodeCacheRow(row); ok {
+				return graph, nil
+			}
+		}
+	}
+	graph, err := s.computeBacklinkGraph(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if s.cacheRepo != nil && req.KbID != "" && req.Slug != "" {
+		if row, ok := encodeCacheRow(req.KbID, req.Slug, graph); ok {
+			// Best-effort writeback — the read path never fails on a
+			// failed write because the next miss will simply recompute.
+			if werr := s.cacheRepo.Upsert(ctx, row); werr != nil {
+				logger.Warnf(ctx,
+					"wiki backlinks cache writeback failed (kb=%s slug=%s): %v",
+					req.KbID, req.Slug, werr)
+			}
+		}
+	}
+	return graph, nil
+}
+
+// computeBacklinkGraph bundles four views of the backlink picture around
 // a single page into one payload so the panel renders the full graph
 // in a single round-trip. The four sections are:
 //
@@ -1172,7 +1590,7 @@ func (s *wikiPageService) ListPageBacklinks(
 // change, no new index, no full-KB lint traversal.
 //
 // Build #20.
-func (s *wikiPageService) ListBacklinkGraph(
+func (s *wikiPageService) computeBacklinkGraph(
 	ctx context.Context, req types.WikiBacklinkGraphRequest,
 ) (*types.WikiBacklinkGraph, error) {
 	kbID := req.KbID
@@ -2101,6 +2519,24 @@ func (s *wikiPageService) MovePage(
 	if err := s.repo.UpdateMeta(ctx, page); err != nil {
 		return nil, fmt.Errorf("move wiki page: %w", err)
 	}
+
+	// Build #21 — MovePage doesn't change slug or out_links (folder
+	// move only), but the cached `folder_path` is derived from FolderID
+	// and may show up in WikiPageLite titles / status filters that the
+	// panel uses for display. Wipe [slug] ∪ out_links defensively; the
+	// over-invalidate is harmless because the next read recomputes.
+	if s.cacheRepo != nil && s.cacheInvalidator != nil {
+		if slugs, err := s.resolveBacklinkInvalidation(ctx,
+			types.BacklinkCacheInvalidateMovePage,
+			kbID, slug); err == nil {
+			s.InvalidateBacklinksCache(ctx, types.BacklinkCacheInvalidateRequest{
+				KbID:          kbID,
+				Op:            types.BacklinkCacheInvalidateMovePage,
+				AffectedSlugs: slugs,
+			})
+		}
+	}
+
 	return page, nil
 }
 
@@ -2165,6 +2601,28 @@ func (s *wikiPageService) BatchMovePages(
 		_ = page
 		result.Succeeded = append(result.Succeeded, slug)
 	}
+
+	// Build #21 — each row's MovePage already invalidated its own slug
+	// + out_links, but a batch-level wipe covers any rows whose
+	// out_links were rewritten by a concurrent in-flight UpdatePage
+	// that we can't see from here. Best-effort.
+	if s.cacheRepo != nil && len(clean) > 0 {
+		slugs := make([]string, 0, len(clean))
+		for _, slug := range clean {
+			if list, err := s.resolveBacklinkInvalidation(ctx,
+				types.BacklinkCacheInvalidateBatchMove, kbID, slug); err == nil {
+				slugs = append(slugs, list...)
+			}
+		}
+		if len(slugs) > 0 {
+			s.InvalidateBacklinksCache(ctx, types.BacklinkCacheInvalidateRequest{
+				KbID:          kbID,
+				Op:            types.BacklinkCacheInvalidateBatchMove,
+				AffectedSlugs: slugs,
+			})
+		}
+	}
+
 	return result, nil
 }
 
@@ -2192,6 +2650,28 @@ func (s *wikiPageService) BatchDeletePages(
 		}
 		result.Succeeded = append(result.Succeeded, slug)
 	}
+
+	// Build #21 — defense-in-depth: each row's DeletePage already
+	// invalidated [self] ∪ in_links, but the batch-level wipe handles
+	// concurrent rewrites by UpdatePage that landed between row N's
+	// refetch and row N+1's start.
+	if s.cacheRepo != nil && len(clean) > 0 {
+		all := make([]string, 0, len(clean))
+		for _, slug := range clean {
+			if list, err := s.resolveBacklinkInvalidation(ctx,
+				types.BacklinkCacheInvalidateBatchDelete, kbID, slug); err == nil {
+				all = append(all, list...)
+			}
+		}
+		if len(all) > 0 {
+			s.InvalidateBacklinksCache(ctx, types.BacklinkCacheInvalidateRequest{
+				KbID:          kbID,
+				Op:            types.BacklinkCacheInvalidateBatchDelete,
+				AffectedSlugs: all,
+			})
+		}
+	}
+
 	return result, nil
 }
 
@@ -2237,7 +2717,45 @@ func (s *wikiPageService) BatchUpdatePageStatus(
 			continue
 		}
 		result.Succeeded = append(result.Succeeded, slug)
+
+		// Build #21 — status is not a backlink signal, but the cached
+		// payload might carry the page's old status into the panel
+		// header chips. Per-row wipe keeps the cache coherent; we also
+		// do a batch-level coalesced wipe below.
+		if s.cacheRepo != nil && s.cacheInvalidator != nil {
+			if list, err := s.resolveBacklinkInvalidation(ctx,
+				types.BacklinkCacheInvalidateBatchStatus, kbID, slug); err == nil && len(list) > 0 {
+				s.InvalidateBacklinksCache(ctx, types.BacklinkCacheInvalidateRequest{
+					KbID:          kbID,
+					Op:            types.BacklinkCacheInvalidateBatchStatus,
+					AffectedSlugs: list,
+				})
+			}
+		}
 	}
+
+	// Build #21 — defense-in-depth: one coalesced wipe per KB so we
+	// don't issue N round-trips for an N-row batch. Per-row wipes
+	// above are the canonical source of truth; this is a belt-and-
+	// suspenders against any row where the per-row wipe silently
+	// failed.
+	if s.cacheRepo != nil && len(result.Succeeded) > 0 {
+		all := make([]string, 0, len(result.Succeeded))
+		for _, slug := range result.Succeeded {
+			if list, err := s.resolveBacklinkInvalidation(ctx,
+				types.BacklinkCacheInvalidateBatchStatus, kbID, slug); err == nil {
+				all = append(all, list...)
+			}
+		}
+		if len(all) > 0 {
+			s.InvalidateBacklinksCache(ctx, types.BacklinkCacheInvalidateRequest{
+				KbID:          kbID,
+				Op:            types.BacklinkCacheInvalidateBatchStatus,
+				AffectedSlugs: all,
+			})
+		}
+	}
+
 	return result, nil
 }
 

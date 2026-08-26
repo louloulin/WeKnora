@@ -3799,6 +3799,7 @@ export default {
         loadFailed: '역링크를 불러오지 못했습니다',
       },
       // Build #20 — backlinks graph v2 (4-section panel)
+      // Build #21 — cache-status footer (last computed at)
       backlinksGraph: {
         sections: {
           direct: '직접',
@@ -3811,6 +3812,14 @@ export default {
         viewFullGraph: '전체 그래프 보기 →',
         loadFailedToast: '고급 정보를 불러오지 못해 직접 참조만 표시합니다',
         brokenHint: '대상이 삭제되었거나 이름이 변경되었습니다',
+        lastComputed: '최근 계산 시각',
+        neverComputed: '아직 계산되지 않음',
+        lastComputedUnits: {
+          seconds: '{n}초 전',
+          minutes: '{n}분 전',
+          hours: '{n}시간 전',
+          days: '{n}일 전',
+        },
       },
       acl: {
         header: '페이지 권한',

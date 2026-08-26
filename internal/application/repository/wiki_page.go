@@ -117,6 +117,7 @@ func updateWikiPageRow(db *gorm.DB, page *types.WikiPage) error {
 			"last_editor_id":   page.LastEditorID,
 			"version":          page.Version,
 			"updated_at":       page.UpdatedAt,
+			"content_ts_zh":    page.ContentTSZh,
 		})
 	if result.Error != nil {
 		page.Version = expectedVersion
@@ -230,9 +231,10 @@ func (r *wikiPageRepository) UpdateAutoLinkedContent(ctx context.Context, page *
 		Model(page).
 		Where("id = ?", page.ID).
 		Updates(map[string]interface{}{
-			"content":    page.Content,
-			"out_links":  page.OutLinks,
-			"updated_at": page.UpdatedAt,
+			"content":       page.Content,
+			"out_links":     page.OutLinks,
+			"content_ts_zh": page.ContentTSZh,
+			"updated_at":    page.UpdatedAt,
 		})
 	if result.Error != nil {
 		return result.Error
@@ -303,6 +305,47 @@ func (r *wikiPageRepository) GetBySlug(ctx context.Context, kbID string, slug st
 		return nil, err
 	}
 	return &page, nil
+}
+
+// FindPagesMissingTSZh returns up to `limit` wiki_pages whose
+// `content_ts_zh` is NULL or empty. Used by the Build #19.x startup
+// backfill to fill in rows that pre-date migration 000096 or whose jieba
+// tokens were never computed. Soft-deleted rows are skipped — they will not
+// be served by the search repo anyway.
+func (r *wikiPageRepository) FindPagesMissingTSZh(ctx context.Context, limit int) ([]*types.WikiPage, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	var pages []*types.WikiPage
+	err := r.db.WithContext(ctx).
+		Model(&types.WikiPage{}).
+		Where("content_ts_zh IS NULL OR content_ts_zh = ''").
+		Where("deleted_at IS NULL").
+		Order("id ASC").
+		Limit(limit).
+		Find(&pages).Error
+	if err != nil {
+		return nil, err
+	}
+	return pages, nil
+}
+
+// UpdateContentTSZh writes the jieba-tokenized string for a single page.
+// Used by the Build #19.x startup backfill loop; update paths through the
+// service layer (CreatePage / UpdatePage / UpdateAutoLinkedContent) write
+// the column inline via the regular `Updates` map and never call this.
+func (r *wikiPageRepository) UpdateContentTSZh(ctx context.Context, id string, tsZh string) error {
+	result := r.db.WithContext(ctx).
+		Model(&types.WikiPage{}).
+		Where("id = ?", id).
+		Update("content_ts_zh", tsZh)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrWikiPageNotFound
+	}
+	return nil
 }
 
 // GetBySlugAcrossKB retrieves a wiki page by slug without scoping to a

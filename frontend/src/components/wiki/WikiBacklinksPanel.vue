@@ -180,6 +180,21 @@
           </div>
         </div>
         <div class="wiki-backlinks-panel__footer">
+          <div class="wiki-backlinks-panel__cache-status">
+            <span
+              v-if="cacheStatusLabel"
+              class="wiki-backlinks-panel__cache-status-time"
+              :title="cacheStatusFullTime"
+            >
+              {{ $t('wiki.backlinksGraph.lastComputed') }}: {{ cacheStatusLabel }}
+            </span>
+            <span
+              v-else
+              class="wiki-backlinks-panel__cache-status-empty"
+            >
+              {{ $t('wiki.backlinksGraph.neverComputed') }}
+            </span>
+          </div>
           <button
             type="button"
             class="wiki-backlinks-panel__view-full-graph"
@@ -203,6 +218,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import {
   type Backlink,
@@ -223,6 +239,8 @@ import {
   graphCollapseStorageKey,
   normaliseCollapseState,
   readGraphCollapseState,
+  relativeTime,
+  relativeTimeKey,
   writeGraphCollapseState,
   type GraphSectionId,
 } from './wikiBacklinksPanelLogic'
@@ -238,6 +256,7 @@ const emit = defineEmits<{
 }>()
 
 const store = useWikiBacklinksStore()
+const { t } = useI18n()
 
 const bodyId = computed(() => backlinksBodyId(props.kbId, props.slug))
 function sectionBodyId(sid: GraphSectionId): string {
@@ -254,6 +273,42 @@ const hasCache = computed(() => list.value !== undefined)
 const graph = computed<WikiBacklinkGraph | null>(() => store.graphFor(props.kbId, props.slug))
 const graphLoading = computed(() => store.isGraphLoading(props.kbId, props.slug))
 const graphError = computed(() => store.graphErrorFor(props.kbId, props.slug))
+
+// Build #21 state — cache-status (last computed footer). Mirrors the
+// stale-while-revalidate pattern from the graph layer above: we read
+// whatever the store has and only re-fetch when the slug changes.
+const cacheStatus = computed(() => store.cacheStatusFor(props.kbId, props.slug))
+const cacheStatusLoading = computed(() => store.isCacheStatusLoading(props.kbId, props.slug))
+const cacheStatusError = computed(() => store.cacheStatusErrorFor(props.kbId, props.slug))
+
+/** i18n-friendly "5 minutes ago" / "3 days ago" form of computed_at.
+ * Falls back to '' so the template can render the "never computed"
+ * hint without an extra `v-if`. */
+const cacheStatusLabel = computed(() => {
+  const iso = cacheStatus.value?.computed_at
+  if (!iso) return ''
+  const rel = relativeTime(iso)
+  if (!rel) return ''
+  return t(`wiki.backlinksGraph.lastComputedUnits.${relativeTimeKey(rel.unit)}`, {
+    n: rel.count,
+  })
+})
+
+/** Absolute timestamp used as the title tooltip on the relative-time
+ * chip — lets curious users hover to see the exact moment. */
+const cacheStatusFullTime = computed(() => {
+  const iso = cacheStatus.value?.computed_at
+  if (!iso) return ''
+  const ts = Date.parse(iso)
+  if (!Number.isFinite(ts)) return ''
+  return new Date(ts).toISOString()
+})
+
+// Reference cacheStatusError / cacheStatusLoading so Vue's reactivity
+// tracks them — the footer re-renders if either flips, even though
+// neither is rendered visually today.
+void cacheStatusError
+void cacheStatusLoading
 
 const stats = computed<WikiBacklinkGraphStats>(() => {
   return (
@@ -347,14 +402,18 @@ function onViewFullGraph(): void {
 
 async function refresh(): Promise<void> {
   // Always fetch the graph view; keep the flat list as a stale fallback
-  // so a graph failure doesn't blank the panel.
+  // so a graph failure doesn't blank the panel. Build #21 also fans
+  // out the cache-status call so the "last computed at" footer can
+  // show its absolute timestamp.
   const graphPromise = store.loadBacklinkGraph(props.kbId, props.slug)
+  const cacheStatusPromise = store.loadBacklinksCacheStatus(props.kbId, props.slug)
   if (!hasCache.value) {
     await store.loadBacklinks(props.kbId, props.slug)
   } else {
     void store.loadBacklinks(props.kbId, props.slug)
   }
   await graphPromise
+  await cacheStatusPromise
 }
 
 watch(
@@ -364,6 +423,7 @@ watch(
     expanded.value = false
     void store.loadBacklinkGraph(kb, slug)
     void store.loadBacklinks(kb, slug)
+    void store.loadBacklinksCacheStatus(kb, slug)
   },
   { immediate: true },
 )
@@ -587,6 +647,30 @@ onMounted(() => {
   border-top: 1px solid var(--td-component-stroke);
   margin-top: 8px;
   padding-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wiki-backlinks-panel__cache-status {
+  font-size: 11px;
+  color: var(--td-text-color-secondary);
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.wiki-backlinks-panel__cache-status-time {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wiki-backlinks-panel__cache-status-empty {
+  font-style: italic;
+  opacity: 0.8;
 }
 
 .wiki-backlinks-panel__view-full-graph {
@@ -597,6 +681,7 @@ onMounted(() => {
   color: var(--td-brand-color, #0075ff);
   font-size: 12px;
   padding: 0;
+  flex: 0 0 auto;
 }
 
 .wiki-backlinks-panel__view-full-graph:hover {

@@ -202,6 +202,8 @@ export type {
   WikiBacklinkBroken,
   WikiBacklinkGraphStats,
 } from './backlinksGraphTypes';
+import type { WikiBacklinksCacheStatus } from './backlinksCacheTypes';
+export type { WikiBacklinksCacheStatus };
 
 // Build #12 — wiki 页面批量操作公共类型
 // Build #13 — 加 WikiBatchRouteResult + WikiBatchJob 用于异步路径
@@ -301,6 +303,20 @@ export function getWikiBacklinkGraph(
   const qs = search.toString();
   return get<WikiBacklinkGraph>(
     `/api/v1/knowledgebase/${kbId}/wiki/pages/${encodeSlugPath(slug)}/backlinks/graph${qs ? `?${qs}` : ''}`,
+  );
+}
+
+// Build #21 — returns the slim cache metadata (computed_at +
+// updated_at + source_event_id) for one slug's cached backlink graph.
+// The panel footer reads this to show "last computed at" without
+// paying the full graph cost. Cold rows return 200 with null
+// timestamps so the caller can render the cold state.
+export function getWikiBacklinksCacheStatus(
+  kbId: string,
+  slug: string,
+) {
+  return get<WikiBacklinksCacheStatus>(
+    `/api/v1/knowledgebase/${kbId}/wiki/pages/${encodeSlugPath(slug)}/backlinks/cache-status`,
   );
 }
 

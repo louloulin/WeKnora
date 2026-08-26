@@ -3799,6 +3799,7 @@ export default {
         loadFailed: 'Не удалось загрузить обратные ссылки',
       },
       // Build #20 — backlinks graph v2 (4-section panel)
+      // Build #21 — cache-status footer (last computed at)
       backlinksGraph: {
         sections: {
           direct: 'Прямые',
@@ -3811,6 +3812,14 @@ export default {
         viewFullGraph: 'Показать весь граф →',
         loadFailedToast: 'Расширенные разделы недоступны, только прямые ссылки',
         brokenHint: 'Цель удалена или переименована',
+        lastComputed: 'Последний расчёт',
+        neverComputed: 'Ещё не вычислялось',
+        lastComputedUnits: {
+          seconds: '{n} сек. назад',
+          minutes: '{n} мин. назад',
+          hours: '{n} ч. назад',
+          days: '{n} дн. назад',
+        },
       },
       acl: {
         header: 'Права страницы',

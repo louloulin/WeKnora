@@ -344,6 +344,11 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		// one round-trip so the panel can render the full graph without
 		// additional calls.
 		wikiRead.GET("/pages/*slug/backlinks/graph", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetPageBacklinksGraph)
+		// Cache-status probe (Build #21) — returns the slim metadata
+		// (computed_at + source_event_id) for the cached graph. Panel
+		// footer reads this to show "last computed at" without paying
+		// the full graph cost.
+		wikiRead.GET("/pages/*slug/backlinks/cache-status", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetPageBacklinksCacheStatus)
 		wiki.PUT("/pages/*slug", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.UpdatePage)
 		wiki.DELETE("/pages/*slug", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.DeletePage)
 

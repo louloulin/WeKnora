@@ -141,6 +141,28 @@ type WikiPageService interface {
 	// excluded. Build #11.
 	ListPageBacklinks(ctx context.Context, kbID string, slug string) ([]*types.WikiPageBacklink, error)
 
+	// ListBacklinkGraph bundles the four-section backlinks graph for
+	// `slug` (direct / indirect / related / broken) + stats into one
+	// payload so the panel renders the full picture in a single round
+	// trip. Build #20 added the compute; Build #21 added a cache-first
+	// wrapper — the public signature is unchanged.
+	ListBacklinkGraph(ctx context.Context, req types.WikiBacklinkGraphRequest) (*types.WikiBacklinkGraph, error)
+
+	// InvalidateBacklinksCache wipes the cached graphs whose slugs
+	// depend on a just-written wiki_pages row. Called by the
+	// CreatePage / UpdatePage / DeletePage / MovePage / BatchMove /
+	// BatchDelete / BatchStatus write hooks (Build #21). The hook
+	// resolves the slug set per op before calling; the service then
+	// runs one DELETE on the cache table.
+	InvalidateBacklinksCache(ctx context.Context, req types.BacklinkCacheInvalidateRequest)
+
+	// GetPageBacklinksCacheStatus returns the slim cache metadata
+	// (computed_at + updated_at + source_event_id) for one slug, or
+	// (nil, nil) if the row is cold. Lets the panel render a
+	// "last computed at" footer without paying the full graph cost.
+	// Build #21.
+	GetPageBacklinksCacheStatus(ctx context.Context, kbID string, slug string) (*types.WikiBacklinksCacheStatus, error)
+
 	// ListSummariesByKnowledgeIDs returns summary-page content keyed by
 	// the knowledge id that authored it. Used by the retract / reparse
 	// branches of reduceSlugUpdates for "what was this doc's
@@ -496,6 +518,15 @@ type WikiPageRepository interface {
 	// surface candidate merge targets server-side.
 	FindSimilarPages(ctx context.Context, kbID string, query string, pageTypes []string, limit int) ([]*types.WikiPageLite, error)
 
+	// FindPagesMissingTSZh returns up to `limit` wiki_pages whose
+	// `content_ts_zh` is NULL or empty. Used by the Build #19.x startup
+	// backfill loop (see service.BackfillContentTSZh).
+	FindPagesMissingTSZh(ctx context.Context, limit int) ([]*types.WikiPage, error)
+
+	// UpdateContentTSZh writes the jieba-tokenized string for a single
+	// page. Used by the Build #19.x startup backfill loop.
+	UpdateContentTSZh(ctx context.Context, id string, tsZh string) error
+
 	// ListDistinctCategoryPaths returns the materialized paths of existing
 	// wiki folders (split into segments), capped at maxPaths. Used by the
 	// wiki ingest taxonomy planner as the pool of folders to reuse.
@@ -593,4 +624,53 @@ type WikiPageRepository interface {
 
 	// UpdateIssueStatus updates an issue's status.
 	UpdateIssueStatus(ctx context.Context, issueID string, status string) error
+}
+
+// WikiBacklinksCacheRepository persists the Build #21 cached payload of
+// GET /pages/:slug/backlinks/graph. The repository speaks JSON strings
+// (the dialect-agnostic column type declared in migration 000097) so
+// callers can hand a WikiBacklinkGraph straight in and read a fully-
+// populated WikiBacklinkGraph straight back without per-dialect Scan
+// glue.
+type WikiBacklinksCacheRepository interface {
+	// Get returns the cached row for (kbID, slug) or (nil, nil) on miss.
+	// Errors other than "not found" bubble up so the service can decide
+	// between "log + recompute" vs. "bubble up to handler".
+	Get(ctx context.Context, kbID string, slug string) (*types.WikiBacklinksCacheRow, error)
+
+	// Upsert writes a new row or replaces the existing one. Called by
+	// ListBacklinkGraph after a cache miss recompute. The sourceEventID
+	// is optional — empty means "no triggering event, this is the cold
+	// snapshot". The repository stamps computed_at and updated_at.
+	Upsert(ctx context.Context, row *types.WikiBacklinksCacheRow) error
+
+	// Delete removes the rows for (kbID, slug IN (..., ...)). Used by
+	// InvalidateBacklinksCache after a write. Returns affected row
+	// count for observability — caller logs warning if 0 but doesn't
+	// treat it as an error (cold row was already gone).
+	Delete(ctx context.Context, kbID string, slugs []string) (int64, error)
+
+	// ListByKB returns cache statuses (slim payload) for one KB, used
+	// by the admin / debug GET /backlinks/cache-status endpoint.
+	ListByKB(ctx context.Context, kbID string, limit int, offset int) ([]*types.WikiBacklinksCacheStatus, int64, error)
+}
+
+// WikiBacklinksCacheInvalidator centralises the rule that maps a
+// write op (CreatePage / UpdatePage / DeletePage / MovePage / batch
+// variants) to the slug set whose cache must be wiped. Keeping the
+// mapping outside the service means tests can drive it without
+// touching the DB; the service just calls Resolve + Invalidate.
+type WikiBacklinksCacheInvalidator interface {
+	// Resolve returns the slug set whose cache row must be wiped for
+	// the given op. The implementation lives next to
+	// WikiPageService.CreatePage / UpdatePage / DeletePage / MovePage
+	// so it can read the just-written wiki_page row directly. Always
+	// returns a non-nil slice (possibly empty) — callers don't need
+	// a nil check.
+	Resolve(ctx context.Context, op types.BacklinkCacheInvalidateOp, kbID string, slug string) ([]string, error)
+
+	// Invalidate runs DELETE for the given slug set. Returns the
+	// affected count; never fails — warnings only — because the read
+	// path recomputes on miss anyway.
+	Invalidate(ctx context.Context, req types.BacklinkCacheInvalidateRequest) (int64, error)
 }

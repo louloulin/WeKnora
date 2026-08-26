@@ -3801,6 +3801,7 @@ export default {
         loadFailed: '反向链接加载失败',
       },
       // Build #20 — backlinks graph v2 (4-section panel)
+      // Build #21 — cache-status footer (last computed at)
       backlinksGraph: {
         sections: {
           direct: '直接',
@@ -3813,6 +3814,14 @@ export default {
         viewFullGraph: '查看完整图谱 →',
         loadFailedToast: '高级信息加载失败，仅显示直接引用',
         brokenHint: '目标已删除或重命名',
+        lastComputed: '最近计算于',
+        neverComputed: '尚未计算',
+        lastComputedUnits: {
+          seconds: '{n} 秒前',
+          minutes: '{n} 分钟前',
+          hours: '{n} 小时前',
+          days: '{n} 天前',
+        },
       },
       acl: {
         header: '页面权限',

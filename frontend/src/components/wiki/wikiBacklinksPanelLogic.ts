@@ -178,3 +178,69 @@ export function displayVia(via: string | undefined | null): string {
   if (!via) return ''
   return via
 }
+
+// Build #21 — cache-status footer ("最近计算于 / Last computed ...").
+
+/**
+ * One-second unit (in ms) — used by `relativeTime` for "x seconds ago"
+ * outputs. Lifted to a named constant so callers can override the
+ * freshness threshold without re-deriving the math.
+ */
+const ONE_SECOND_MS = 1000
+const ONE_MINUTE_MS = 60 * ONE_SECOND_MS
+const ONE_HOUR_MS = 60 * ONE_MINUTE_MS
+const ONE_DAY_MS = 24 * ONE_HOUR_MS
+
+/**
+ * Resolve the panel footer "last computed at" label. Returns the
+ * appropriate unit (seconds/minutes/hours/days) so the caller can
+ * feed it to the i18n template. The function stays pure so the
+ * logic can be tested in Node without DOM dependencies.
+ *
+ * Inputs:
+ *   - `iso`: RFC3339 timestamp from the cache status payload.
+ *   - `now`: current epoch ms — exposed so tests can pin the clock.
+ *
+ * Output:
+ *   - `null` when input is empty / unparseable (caller hides the footer)
+ *   - `{ unit: 'seconds'|'minutes'|'hours'|'days', count: number }` otherwise
+ *
+ * Anything ≥ 30 days returns `days` with the day count so the user
+ * still sees "31 days ago" rather than "never".
+ */
+export interface RelativeTime {
+  unit: 'seconds' | 'minutes' | 'hours' | 'days'
+  count: number
+}
+
+export function relativeTime(
+  iso: string | null | undefined,
+  now: number = Date.now(),
+): RelativeTime | null {
+  if (!iso) return null
+  const ts = Date.parse(iso)
+  if (!Number.isFinite(ts)) return null
+  const delta = now - ts
+  if (delta < 0) {
+    // Clock skew between server and browser — treat as "just now" so
+    // the footer still renders instead of blanking.
+    return { unit: 'seconds', count: 0 }
+  }
+  if (delta < ONE_MINUTE_MS) {
+    const seconds = Math.max(0, Math.floor(delta / ONE_SECOND_MS))
+    return { unit: 'seconds', count: seconds }
+  }
+  if (delta < ONE_HOUR_MS) {
+    return { unit: 'minutes', count: Math.floor(delta / ONE_MINUTE_MS) }
+  }
+  if (delta < ONE_DAY_MS) {
+    return { unit: 'hours', count: Math.floor(delta / ONE_HOUR_MS) }
+  }
+  return { unit: 'days', count: Math.floor(delta / ONE_DAY_MS) }
+}
+
+/** Build the i18n key suffix for a relative-time unit. Pure mapping so
+ * the template can interpolate without hard-coding all four keys. */
+export function relativeTimeKey(unit: RelativeTime['unit']): string {
+  return unit
+}

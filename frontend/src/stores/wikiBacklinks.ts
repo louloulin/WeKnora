@@ -1,7 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-import { getWikiBacklinkGraph, getWikiPageBacklinks } from '../api/wiki'
+import {
+  getWikiBacklinkGraph,
+  getWikiBacklinksCacheStatus,
+  getWikiPageBacklinks,
+} from '../api/wiki'
+import type { WikiBacklinksCacheStatus } from '../api/wiki/backlinksCacheTypes'
 import type { WikiBacklinkGraph } from '../api/wiki/backlinksGraphTypes'
 import {
   type Backlink,
@@ -138,6 +143,58 @@ export const useWikiBacklinksStore = defineStore('wikiBacklinks', () => {
     delete graphErrorByKey.value[k]
   }
 
+  // Build #21 — cache-status (slim "last computed at" payload). Same
+  // stale-while-revalidate strategy as the graph layer above: we keep
+  // whatever is cached and only flip an error flag when the request
+  // fails. A cold cache returns 200 with computed_at=null, so the
+  // panel can render the "never computed" hint without re-querying.
+  const cacheStatusByKey = ref<Record<string, WikiBacklinksCacheStatus | null>>({})
+  const cacheStatusLoadingByKey = ref<Record<string, boolean>>({})
+  const cacheStatusErrorByKey = ref<Record<string, string | null>>({})
+
+  function cacheStatusFor(kbId: string, slug: string): WikiBacklinksCacheStatus | null {
+    return cacheStatusByKey.value[key(kbId, slug)] ?? null
+  }
+
+  function isCacheStatusLoading(kbId: string, slug: string): boolean {
+    return Boolean(cacheStatusLoadingByKey.value[key(kbId, slug)])
+  }
+
+  function cacheStatusErrorFor(kbId: string, slug: string): string | null {
+    return cacheStatusErrorByKey.value[key(kbId, slug)] ?? null
+  }
+
+  async function loadBacklinksCacheStatus(
+    kbId: string,
+    slug: string,
+  ): Promise<WikiBacklinksCacheStatus | null> {
+    const k = key(kbId, slug)
+    cacheStatusLoadingByKey.value[k] = true
+    cacheStatusErrorByKey.value[k] = null
+    try {
+      const res = (await getWikiBacklinksCacheStatus(kbId, slug)) as { data?: unknown }
+      const payload = res?.data as WikiBacklinksCacheStatus | undefined
+      cacheStatusByKey.value[k] = payload ?? null
+      return cacheStatusByKey.value[k]
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : 'wiki.backlinksGraph.cacheStatusLoadFailed'
+      cacheStatusErrorByKey.value[k] = msg
+      // Preserve whatever payload we had so the footer can still show
+      // a stale "last computed" instead of blanking on transient errors.
+      return cacheStatusByKey.value[k] ?? null
+    } finally {
+      cacheStatusLoadingByKey.value[k] = false
+    }
+  }
+
+  function invalidateCacheStatus(kbId: string, slug: string): void {
+    const k = key(kbId, slug)
+    delete cacheStatusByKey.value[k]
+    delete cacheStatusLoadingByKey.value[k]
+    delete cacheStatusErrorByKey.value[k]
+  }
+
   return {
     byKey,
     loadingByKey,
@@ -157,5 +214,14 @@ export const useWikiBacklinksStore = defineStore('wikiBacklinks', () => {
     graphErrorFor,
     loadBacklinkGraph,
     invalidateGraph,
+    // Build #21 — cache-status (last computed at footer)
+    cacheStatusByKey,
+    cacheStatusLoadingByKey,
+    cacheStatusErrorByKey,
+    cacheStatusFor,
+    isCacheStatusLoading,
+    cacheStatusErrorFor,
+    loadBacklinksCacheStatus,
+    invalidateCacheStatus,
   }
 })

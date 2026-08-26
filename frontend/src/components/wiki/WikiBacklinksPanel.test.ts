@@ -15,6 +15,8 @@ import {
   graphSectionLabelKey,
   normaliseCollapseState,
   readGraphCollapseState,
+  relativeTime,
+  relativeTimeKey,
   writeGraphCollapseState,
 } from './wikiBacklinksPanelLogic.ts'
 import type { Backlink } from '../../api/wiki/backlinksHelpers'
@@ -447,6 +449,9 @@ test('all four locales carry the backlinksGraph block with required keys', () =>
     'viewFullGraph',
     'loadFailedToast',
     'brokenHint',
+    // Build #21 — cache-status footer
+    'lastComputed',
+    'neverComputed',
   ]
   for (const locale of locales) {
     assert.match(
@@ -469,5 +474,141 @@ test('all four locales carry the backlinksGraph block with required keys', () =>
     // via + jaccard must be template strings so the {slug} / {n} interpolations work.
     assert.match(locale, /via:\s*['`][^'"`]*\{slug\}[^'"`]*['`]/)
     assert.match(locale, /jaccard:\s*['`][^'"`]*\{n\}[^'"`]*['`]/)
+    // Build #21 — lastComputedUnits must carry seconds/minutes/hours/days
+    // with {n} interpolation, so the relative-time footer renders.
+    assert.match(
+      locale,
+      /lastComputedUnits:\s*{/,
+      'lastComputedUnits sub-block missing',
+    )
+    for (const unit of ['seconds', 'minutes', 'hours', 'days']) {
+      assert.match(
+        locale,
+        new RegExp(`${unit}:\\s*['\`][^'"\`]*\\{n\\}[^'"\`]*['\`]`),
+        `${unit} template missing in lastComputedUnits`,
+      )
+    }
   }
+})
+
+// -------------------------------------------------------------------
+// Build #21 — cache-status helpers (relativeTime + relativeTimeKey)
+// -------------------------------------------------------------------
+
+test('relativeTime returns null for empty / unparseable input', () => {
+  assert.equal(relativeTime(null), null)
+  assert.equal(relativeTime(undefined), null)
+  assert.equal(relativeTime(''), null)
+  assert.equal(relativeTime('not-a-date'), null)
+})
+
+test('relativeTime uses seconds when delta < 1 minute', () => {
+  const now = Date.parse('2026-08-22T10:00:45Z')
+  const iso = '2026-08-22T10:00:00Z'
+  const out = relativeTime(iso, now)
+  assert.deepEqual(out, { unit: 'seconds', count: 45 })
+})
+
+test('relativeTime uses minutes when delta < 1 hour', () => {
+  const now = Date.parse('2026-08-22T10:30:00Z')
+  const out = relativeTime('2026-08-22T10:00:00Z', now)
+  assert.deepEqual(out, { unit: 'minutes', count: 30 })
+})
+
+test('relativeTime crosses from seconds to minutes at the 60s boundary', () => {
+  // Just below 1 minute → seconds; at/above 1 minute → minutes.
+  const justBelow = relativeTime(
+    '2026-08-22T10:00:00Z',
+    Date.parse('2026-08-22T10:00:59Z'),
+  )
+  assert.equal(justBelow?.unit, 'seconds')
+  const atMinute = relativeTime(
+    '2026-08-22T10:00:00Z',
+    Date.parse('2026-08-22T10:01:00Z'),
+  )
+  assert.equal(atMinute?.unit, 'minutes')
+})
+
+test('relativeTime uses hours when delta < 1 day', () => {
+  const now = Date.parse('2026-08-22T15:00:00Z')
+  const out = relativeTime('2026-08-22T10:00:00Z', now)
+  assert.deepEqual(out, { unit: 'hours', count: 5 })
+})
+
+test('relativeTime uses days when delta >= 1 day', () => {
+  const now = Date.parse('2026-08-25T10:00:00Z')
+  const out = relativeTime('2026-08-22T10:00:00Z', now)
+  assert.deepEqual(out, { unit: 'days', count: 3 })
+})
+
+test('relativeTime clamps negative delta (clock skew) to 0 seconds', () => {
+  const now = Date.parse('2026-08-22T09:59:00Z')
+  const out = relativeTime('2026-08-22T10:00:00Z', now)
+  assert.deepEqual(out, { unit: 'seconds', count: 0 })
+})
+
+test('relativeTimeKey returns the unit id verbatim for i18n suffix', () => {
+  assert.equal(relativeTimeKey('seconds'), 'seconds')
+  assert.equal(relativeTimeKey('minutes'), 'minutes')
+  assert.equal(relativeTimeKey('hours'), 'hours')
+  assert.equal(relativeTimeKey('days'), 'days')
+})
+
+// -------------------------------------------------------------------
+// Build #21 — template + store + API wiring
+// -------------------------------------------------------------------
+
+// Pinia store exposes the cache-status layer (cacheStatusByKey +
+// cacheStatusLoadingByKey + cacheStatusErrorByKey + helpers) so the
+// panel can render the footer without taking on raw fetch plumbing.
+test('store exposes the cache-status layer (Build #21)', () => {
+  assert.match(store, /cacheStatusByKey/)
+  assert.match(store, /cacheStatusLoadingByKey/)
+  assert.match(store, /cacheStatusErrorByKey/)
+  assert.match(store, /function cacheStatusFor/)
+  assert.match(store, /function isCacheStatusLoading/)
+  assert.match(store, /function cacheStatusErrorFor/)
+  assert.match(store, /function loadBacklinksCacheStatus/)
+  assert.match(store, /function invalidateCacheStatus/)
+  // Build #11 + #20 layers must still be present — no regression.
+  assert.match(store, /byKey/)
+  assert.match(store, /graphByKey/)
+})
+
+// Panel renders a cache-status footer that switches between "last
+// computed" (with relative time) and the "never computed" hint, and
+// loads the cache status alongside the graph layer.
+test('panel renders the cache-status footer (Build #21)', () => {
+  // Footer block.
+  assert.match(
+    panel,
+    /wiki-backlinks-panel__cache-status/,
+    'cache-status footer block missing',
+  )
+  // Conditional labels: timestamp vs never-computed hint.
+  assert.match(panel, /wiki-backlinks-panel__cache-status-time/)
+  assert.match(panel, /wiki-backlinks-panel__cache-status-empty/)
+  assert.match(panel, /t\('wiki\.backlinksGraph\.lastComputed'\)/)
+  assert.match(panel, /t\('wiki\.backlinksGraph\.neverComputed'\)/)
+  // Rel-time label drives the {n} interpolation.
+  assert.match(
+    panel,
+    /t\(`wiki\.backlinksGraph\.lastComputedUnits\.\$\{relativeTimeKey\(rel\.unit\)\}/,
+  )
+  // Refresh pipeline also kicks off the cache-status fetch.
+  assert.match(panel, /loadBacklinksCacheStatus\(kb, slug\)/)
+  assert.match(panel, /loadBacklinksCacheStatus\(props\.kbId, props\.slug\)/)
+})
+
+// API client exposes the cache-status endpoint so the panel can fetch.
+test('api/index.ts exposes getWikiBacklinksCacheStatus (Build #21)', () => {
+  assert.match(apiIndex, /export\s+function getWikiBacklinksCacheStatus/)
+  assert.match(apiIndex, /backlinks\/cache-status/)
+})
+
+// Logic module exposes the relativeTime / relativeTimeKey helpers so
+// the panel can compute the footer label without DOM dependencies.
+test('logic module exposes relativeTime + relativeTimeKey (Build #21)', () => {
+  assert.match(logic, /export function relativeTime/)
+  assert.match(logic, /export function relativeTimeKey/)
 })
