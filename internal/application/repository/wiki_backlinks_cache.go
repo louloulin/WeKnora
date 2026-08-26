@@ -371,3 +371,93 @@ func (r *wikiBacklinksCacheRepository) SumPayloadSizeByKB(
 	}
 	return total, nil
 }
+
+// DeleteByKB removes every cache row for one KB. Used by the Build #24
+// ACL→cache hook small-KB path (≤10k cached rows). Returns the
+// affected count for the invalidation-log Details payload.
+//
+// Implementation note: the table primary key is (kb_id, slug), so
+// WHERE kb_id = ? is an index-only range scan in PG/MySQL/SQLite and
+// is safe to run without a LIMIT — the per-KB row count is bounded by
+// the cache population policy (one row per cached page; rows are added
+// on cache miss and evicted on TTL/sweeper).
+func (r *wikiBacklinksCacheRepository) DeleteByKB(
+	ctx context.Context, kbID string,
+) (int64, error) {
+	if kbID == "" {
+		return 0, nil
+	}
+	res := r.db.WithContext(ctx).
+		Where("kb_id = ?", kbID).
+		Delete(&types.WikiBacklinksCacheRow{})
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	return res.RowsAffected, nil
+}
+
+// FindReferencingSlugs returns every (slug) whose cache row references
+// `slug` in any of its payload JSON arrays (direct_json, indirect_json,
+// related_json). Used by the Build #24 ACL→cache hook large-KB path —
+// when a page's ACL changes we need to wipe not just the affected
+// slug's own row but also the rows of every page that lists it in
+// its backlink panel.
+//
+// Dialect handling: PostgreSQL and MySQL both speak JSON_CONTAINS(json,
+// ?) for an element-string match; SQLite has no JSON_CONTAINS and
+// instead walks the array via json_each(). We branch on
+// r.db.Dialector.Name() so the caller's dialect doesn't leak into the
+// service. Both branches return the same []string shape so the caller
+// stays dialect-neutral.
+//
+// Returned slugs include the affected slug itself if its own cache row
+// contains a self-reference (rare but possible — a page can link to
+// itself). The caller dedupes before passing the result to Delete.
+func (r *wikiBacklinksCacheRepository) FindReferencingSlugs(
+	ctx context.Context, kbID string, slug string,
+) ([]string, error) {
+	if kbID == "" || slug == "" {
+		return []string{}, nil
+	}
+	dialect := r.db.Dialector.Name()
+	var rows []string
+	var err error
+	switch dialect {
+	case "sqlite":
+		// SQLite has no JSON_CONTAINS; use json_each to walk each
+		// payload array and compare elements as text.
+		err = r.db.WithContext(ctx).
+			Raw(`SELECT DISTINCT slug FROM wiki_backlinks_cache, json_each(direct_json)
+WHERE kb_id = ? AND json_each.value = ?
+UNION
+SELECT DISTINCT slug FROM wiki_backlinks_cache, json_each(indirect_json)
+WHERE kb_id = ? AND json_each.value = ?
+UNION
+SELECT DISTINCT slug FROM wiki_backlinks_cache, json_each(related_json)
+WHERE kb_id = ? AND json_each.value = ?`,
+				kbID, slug, kbID, slug, kbID, slug,
+			).
+			Scan(&rows).Error
+	default:
+		// PostgreSQL and MySQL both expose JSON_CONTAINS with the same
+		// (json, scalar, $path) signature. We pass an empty path so
+		// the match is against the top-level array elements.
+		err = r.db.WithContext(ctx).
+			Raw(`SELECT slug FROM wiki_backlinks_cache
+WHERE kb_id = ? AND (
+  JSON_CONTAINS(direct_json, JSON_QUOTE(?)) OR
+  JSON_CONTAINS(indirect_json, JSON_QUOTE(?)) OR
+  JSON_CONTAINS(related_json, JSON_QUOTE(?))
+) GROUP BY slug`,
+				kbID, slug, slug, slug,
+			).
+			Scan(&rows).Error
+	}
+	if err != nil {
+		return nil, err
+	}
+	if rows == nil {
+		rows = []string{}
+	}
+	return rows, nil
+}

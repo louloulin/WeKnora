@@ -242,6 +242,69 @@ func (r *wikiAclRepository) GroupMembers(ctx context.Context, tenantID uint64, g
 	return []string{}, nil
 }
 
+// ListAudit returns audit rows for one KB, newest-first, with an
+// optional Since lower bound on created_at. Implementation notes:
+//
+//   - The migration's (knowledge_base_id, slug, created_at DESC)
+//     covering index makes (kb, created_at DESC) lookups cheap; we
+//     rely on Postgres/MySQL planner to collapse the second WHERE
+//     clause into the same index range scan.
+//   - Total count uses a SELECT COUNT(*) over the same WHERE clause.
+//     For the audit-events fan-out the merge service relies on the
+//     sum of per-source totals — a single COUNT here costs an extra
+//     round-trip but is bounded by the same index. We accept the cost
+//     to keep the API contract uniform across all four sources.
+//   - pageSize is enforced server-side: caller-supplied pageSize < 1
+//     falls back to 50; > 200 is clamped to 200 (matching the handler
+//     cap so a rogue caller cannot exhaust the connection pool).
+//   - Empty KB / empty result returns ([]*WikiAclAuditEntry{}, 0, nil)
+//     so the merge service can render the other three sources without
+//     a special-case branch.
+//
+// Build #24 B3 — first read path for wiki_page_acl_audit (was
+// write-only since migration 000091).
+func (r *wikiAclRepository) ListAudit(ctx context.Context, kbID string, since time.Time, page, pageSize int) ([]*types.WikiAclAuditEntry, int64, error) {
+	if kbID == "" {
+		return nil, 0, errors.New("wiki_acl repo: list audit: kb_id is required")
+	}
+	if pageSize < 1 {
+		pageSize = 50
+	}
+	if pageSize > 200 {
+		pageSize = 200
+	}
+	if page < 1 {
+		page = 1
+	}
+	offset := (page - 1) * pageSize
+
+	var rows []*types.WikiAclAuditEntry
+	findErr := r.db.WithContext(ctx).
+		Table("wiki_page_acl_audit").
+		Where("knowledge_base_id = ? AND created_at >= ?", kbID, since).
+		Order("created_at DESC, id DESC").
+		Limit(pageSize).
+		Offset(offset).
+		Find(&rows).Error
+	if findErr != nil {
+		return nil, 0, fmt.Errorf("wiki_acl repo: list audit find: %w", findErr)
+	}
+
+	var total int64
+	countErr := r.db.WithContext(ctx).
+		Table("wiki_page_acl_audit").
+		Where("knowledge_base_id = ? AND created_at >= ?", kbID, since).
+		Count(&total).Error
+	if countErr != nil {
+		return nil, 0, fmt.Errorf("wiki_acl repo: list audit count: %w", countErr)
+	}
+
+	if rows == nil {
+		rows = []*types.WikiAclAuditEntry{}
+	}
+	return rows, total, nil
+}
+
 // isNoRows reports whether err is the driver-agnostic "no rows in result
 // set" error. Keeps the repo free of database/sql imports.
 func isNoRows(err error) bool {

@@ -1351,12 +1351,17 @@ type WikiBacklinkGraph struct {
 // directly.
 //
 // Build #20.
+// Build #24 — UserID is the per-caller id used by the D3 ACL defense
+// filter. Empty means "treat the call as anonymous / KB-inherit only";
+// the ACL service still runs ResolveBulk so the per-slug decision
+// matches what the page-level read path would produce.
 type WikiBacklinkGraphRequest struct {
 	KbID             string
 	Slug             string
 	MaxIndirect      int
 	MaxRelated       int
 	JaccardThreshold float64
+	UserID           string
 }
 
 // Build #21 — persisted cache for the backlinks graph payload. The four
@@ -1451,6 +1456,42 @@ func (WikiBacklinksCacheInvalidationLogEntry) TableName() string {
 // existing 7-op const block to keep the public API surface stable —
 // service-layer code already switches on string equality.
 const BacklinkCacheInvalidateSweep BacklinkCacheInvalidateOp = "cleanup_sweep"
+
+// BacklinkCacheInvalidateAclChange is the ninth op, used by Build #24's
+// ACL → cache invalidation hook. Appended (not enumerated) for the
+// same reason as BacklinkCacheInvalidateSweep: keeping the public
+// enum's surface additive. The op is intentionally broad — the fine-
+// grained mode change (set_inherit / set_private / set_allow_list)
+// lives in the audit row's Details JSON, and operators can join on
+// wiki_page_acl_audit.action for forensics.
+const BacklinkCacheInvalidateAclChange BacklinkCacheInvalidateOp = "acl_change"
+
+// WikiAclAuditEntry is the Build #24 projection of a single row in the
+// wiki_page_acl_audit table (migration 000091). The migration predates
+// the unified WikiAuditEvent shape, so this type is the read-side
+// DTO — the existing UPDATE path keeps writing raw tx.Table(...) rows
+// in wiki_acl.go's UpdateAclWithRevision.
+//
+// The struct deliberately omits the wiki_page_id column (internal join
+// key) — it is not part of the public audit-event surface.
+type WikiAclAuditEntry struct {
+	ID         uint64    `gorm:"primaryKey;column:id;autoIncrement"`
+	KbID       string    `gorm:"column:knowledge_base_id;size:64;not null"`
+	Slug       string    `gorm:"column:slug;not null"`
+	Action     string    `gorm:"column:action;not null"` // set_inherit | set_private | set_allow_list
+	Actor      string    `gorm:"column:actor_user_id"`
+	ActorRole  string    `gorm:"column:actor_role"`  // tenant role at write time; surfaces in Details
+	Before     string    `gorm:"column:before_acl;type:text"` // JSON-encoded WikiPageAcl
+	After      string    `gorm:"column:after_acl;type:text"`  // JSON-encoded WikiPageAcl
+	CreatedAt  time.Time `gorm:"column:created_at;not null;default:CURRENT_TIMESTAMP"`
+}
+
+// TableName pins the GORM-pluralised default to the migration's
+// singular name (the migration uses singular; GORM would otherwise
+// pluralise).
+func (WikiAclAuditEntry) TableName() string {
+	return "wiki_page_acl_audit"
+}
 
 // BacklinkCacheInvalidateOp enumerates the seven write paths that
 // invalidate one or more (kb_id, slug) cache rows. ResolveAffectedSlugs

@@ -205,6 +205,22 @@ export type {
 import type { WikiBacklinksCacheStatus } from './backlinksCacheTypes';
 export type { WikiBacklinksCacheStatus };
 
+// Build #24 — unified 4-source audit endpoint types
+import type {
+  WikiAuditEvent,
+  WikiAuditEventListResponse,
+  WikiAuditFilter,
+  WikiAuditSource,
+  WikiAuditActorKind,
+} from './auditTypes';
+export type {
+  WikiAuditEvent,
+  WikiAuditEventListResponse,
+  WikiAuditFilter,
+  WikiAuditSource,
+  WikiAuditActorKind,
+};
+
 // Build #12 — wiki 页面批量操作公共类型
 // Build #13 — 加 WikiBatchRouteResult + WikiBatchJob 用于异步路径
 // Build #14 — 加审计事件类型
@@ -466,6 +482,25 @@ export function listWikiBatchAudit(
 ) {
   return get<WikiBatchAuditListResponse>(
     `/api/v1/knowledgebase/${kbId}/wiki/batch-audit`,
+    filter as Record<string, unknown>,
+  );
+}
+
+// listWikiAuditEvents lists the unified 4-source audit log for a KB
+// (Build #24). The endpoint merges `audit_logs`,
+// `wiki_batch_job_audit`, `wiki_backlinks_cache_invalidation_log`,
+// and `wiki_page_acl_audit`, ordered by (timestamp DESC, source rank
+// ASC, id ASC). Each call returns an envelope with `source_counts`
+// so the drawer can render per-source filter chips without a second
+// round-trip.
+//
+// Build #24.
+export function listWikiAuditEvents(
+  kbId: string,
+  filter: WikiAuditFilter = {},
+) {
+  return get<WikiAuditEventListResponse>(
+    `/api/v1/knowledgebase/${kbId}/wiki/audit-events`,
     filter as Record<string, unknown>,
   );
 }

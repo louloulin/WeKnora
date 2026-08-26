@@ -262,7 +262,17 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// after the DI graph resolves.
 	must(container.Provide(newWikiBacklinksCacheCleanupServiceFromConfig))
 	must(container.Provide(repository.NewWikiAclRepository))
+	// Build #24: wiki audit service is a 4-source fan-out — it pulls
+	// dependencies (audit log svc, batch job repo, backlinks cache repo,
+	// ACL repo) from the DI graph rather than asking the caller to
+	// thread them through. The wiring helper builds the dep bag.
+	must(container.Provide(newWikiAuditServiceFromConfig))
 	must(container.Provide(service.NewWikiAclService))
+	// Build #24: ACL service has a cacheRepo setter so the same DI entry
+	// keeps the legacy 2-arg constructor; container.go injects the
+	// backlinks cache repo via wireWikiAclCacheRepo below (mirrors
+	// wireWikiBacklinksCache).
+	must(container.Invoke(wireWikiAclCacheRepo))
 	// Wiki tag system (Build #17).
 	must(container.Provide(repository.NewWikiTagRepository))
 	must(container.Provide(service.NewWikiTagService))
@@ -609,6 +619,24 @@ func wireWikiBacklinksCache(
 		SetBacklinksCacheInvalidator(interfaces.WikiBacklinksCacheInvalidator)
 	}); ok {
 		setter.SetBacklinksCacheInvalidator(cacheInvalidator)
+	}
+}
+
+// wireWikiAclCacheRepo wires the Build #24 backlinks cache repo into
+// the ACL service after the DI graph resolves it. The ACL service
+// exposes SetCacheRepo so the constructor signature stays at 2 args
+// (matching every existing harness / call site); the wipe hook is
+// inert until the setter runs. Mirrors wireWikiBacklinksCache.
+//
+// Build #24.
+func wireWikiAclCacheRepo(
+	aclSvc interfaces.WikiAclService,
+	cacheRepo interfaces.WikiBacklinksCacheRepository,
+) {
+	if setter, ok := aclSvc.(interface {
+		SetCacheRepo(interfaces.WikiBacklinksCacheRepository)
+	}); ok {
+		setter.SetCacheRepo(cacheRepo)
 	}
 }
 
@@ -1965,4 +1993,51 @@ func startWikiBacklinksCacheCleanup(
 		log.Printf("[wiki-cache-cleanup] graceful shutdown registered (goroutine exits with process)")
 		return nil
 	})
+}
+
+// newWikiAuditServiceFromConfig builds the Build #24 unified audit
+// service by gathering the four source dependencies + a small KB→tenant
+// adapter from the DI graph, then handing the dep bag to the service
+// constructor.
+//
+// The TenantResolver adapter wraps KnowledgeBaseRepository so the
+// audit_logs source can fan out by tenant id. Unknown KB ids map to
+// (0, nil) per the audit service contract (silently skip — no
+// tenant-scoped rows means audit_logs contributes nothing).
+func newWikiAuditServiceFromConfig(
+	auditSvc interfaces.AuditLogService,
+	batchJobRepo interfaces.WikiBatchJobRepository,
+	backlinksCacheRepo interfaces.WikiBacklinksCacheRepository,
+	aclRepo interfaces.WikiAclRepository,
+	kbRepo interfaces.KnowledgeBaseRepository,
+) service.WikiAuditService {
+	resolver := &kbAuditTenantResolver{kbRepo: kbRepo}
+	return service.NewWikiAuditService(service.WikiAuditServiceDeps{
+		AuditLogSvc:        auditSvc,
+		BatchJobRepo:       batchJobRepo,
+		BacklinksCacheRepo: backlinksCacheRepo,
+		AclRepo:            aclRepo,
+		TenantResolver:     resolver,
+	})
+}
+
+// kbAuditTenantResolver is the KB→tenant adapter for the audit service.
+// Lives next to the wiring helper so the resolver type stays internal.
+type kbAuditTenantResolver struct {
+	kbRepo interfaces.KnowledgeBaseRepository
+}
+
+// ResolveTenantID looks up a KB and returns its tenant id. An unknown
+// KB returns (0, nil) per the audit service contract — callers fan out
+// to audit_logs only when tenantID > 0, so a missing KB is a graceful
+// empty result, not an error.
+func (r *kbAuditTenantResolver) ResolveTenantID(ctx context.Context, kbID string) (uint64, error) {
+	if kbID == "" {
+		return 0, nil
+	}
+	kb, err := r.kbRepo.GetKnowledgeBaseByID(ctx, kbID)
+	if err != nil || kb == nil {
+		return 0, nil
+	}
+	return kb.TenantID, nil
 }

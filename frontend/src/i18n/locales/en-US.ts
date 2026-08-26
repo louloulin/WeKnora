@@ -3018,6 +3018,32 @@ export default {
           },
         },
       },
+      // Build #24 — unified 4-source audit log UI
+      audit: {
+        toolbarBtn: 'Audit log',
+        drawerTitle: 'Wiki audit log',
+        empty: 'No audit events yet',
+        filterActor: 'Filter by actor',
+        filterOp: 'Filter by action',
+        source: {
+          activity: 'Activity',
+          batch: 'Batch',
+          invalidation: 'Invalidation',
+          acl: 'ACL',
+        },
+        actorKind: {
+          user: 'User',
+          system: 'System',
+          sweep: 'Sweep',
+        },
+        table: {
+          timestamp: 'Time',
+          source: 'Source',
+          op: 'Action',
+          actor: 'Actor',
+          slug: 'Slug',
+        },
+      },
     },
     buttons: {
       create: 'Create Knowledge Base',

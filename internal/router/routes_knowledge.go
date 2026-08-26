@@ -334,6 +334,10 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		wikiRead.GET("/batch-jobs/:job_id/failures", g.OwnedWikiKBOrAdmin(), g.KBAccessRead("kb_id"), wikiHandler.GetBatchJobFailures)
 		wikiRead.GET("/batch-audit", g.OwnedWikiKBOrAdmin(), g.KBAccessRead("kb_id"), wikiHandler.ListBatchJobAudit)
 		wikiRead.GET("/batch-audit/export", g.OwnedWikiKBOrAdmin(), g.KBAccessRead("kb_id"), wikiHandler.ExportBatchJobAuditCsv)
+		// Build #24: unified wiki audit log. Same OwnedWikiKBOrAdmin +
+		// KBAccessRead guard as the batch-audit endpoints — operators
+		// and KB admins can read the merged 4-source audit stream.
+		wikiRead.GET("/audit-events", g.OwnedWikiKBOrAdmin(), g.KBAccessRead("kb_id"), wikiHandler.ListAuditEvents)
 		wikiRead.GET("/pages/*slug", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetPage)
 		// Page-level backlinks (Build #11) — sibling of GetPage, same
 		// KBAccessRead guard so a KB member can list inbound links to

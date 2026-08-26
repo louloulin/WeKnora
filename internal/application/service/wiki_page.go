@@ -1660,8 +1660,34 @@ func (s *wikiPageService) ListBacklinkGraph(
 			wikiCacheObsIncMiss(req.KbID)
 		default:
 			if graph, ok := decodeCacheRow(row); ok {
-				// Cache hit — bump the hit counter and return.
+				// Cache hit — bump the hit counter.
 				wikiCacheObsIncHit(req.KbID)
+				// Build #24 D3: post-filter each section through
+				// aclService.ResolveBulk so a row that references a
+				// now-private / restricted slug is dropped before the
+				// response leaves the service. Nil-safe: when the
+				// service was constructed without an aclService the
+				// filter is skipped (legacy Build #21/22/23 callers
+				// keep their original contract).
+				if s.aclService != nil {
+					filtered, filterErr := s.filterBacklinkGraphByAcl(ctx, req, graph)
+					if filterErr != nil {
+						// Fail-closed: drop the cached result rather
+						// than return a graph whose ACL decisions we
+						// could not verify. This avoids leaking
+						// restricted slugs if the ACL service is
+						// temporarily down. Fall through to recompute
+						// so the next request still has a chance to
+						// hit a cache row that survived filtering.
+						logger.Warnf(ctx,
+							"wiki backlinks D3 filter failed (kb=%s slug=%s): %v — falling back to recompute",
+							req.KbID, req.Slug, filterErr)
+						wikiCacheObsIncError(req.KbID)
+						// continue out of the switch's default arm
+						break
+					}
+					return filtered, nil
+				}
 				return graph, nil
 			}
 			// Row exists but payload decode failed — treat as a
@@ -1695,6 +1721,97 @@ func (s *wikiPageService) ListBacklinkGraph(
 		}
 	}
 	return graph, nil
+}
+
+// filterBacklinkGraphByAcl post-filters the four sections of a cached
+// backlink graph through aclService.ResolveBulk. Returns a new graph
+// with restricted slugs dropped; the Stats.Counts field is left
+// untouched (it now reflects "cached row counts, before per-user
+// filtering") and the UI renders it as best-effort.
+//
+// Build #24 D3 — defense layer complementing the ACL→cache wipe
+// hook (D4). Even when the wipe path misses a row (cache TTL race,
+// large-KB reverse-lookup dropped slugs not present in the index),
+// the read-time filter stops restricted slugs from leaking to
+// callers without read permission.
+func (s *wikiPageService) filterBacklinkGraphByAcl(
+	ctx context.Context, req types.WikiBacklinkGraphRequest, graph *types.WikiBacklinkGraph,
+) (*types.WikiBacklinkGraph, error) {
+	caller := req.UserID
+	if caller == "" {
+		// No caller context — fall back to KB-level public read;
+		// only inherit-mode pages are visible. We still call
+		// ResolveBulk so the per-slug decision matches what the
+		// page-level read path would have produced.
+		caller = ""
+	}
+
+	items := make([]AclResolveItem, 0, len(graph.Direct)+len(graph.Indirect)+len(graph.Related)+len(graph.Broken))
+	for _, row := range graph.Direct {
+		items = append(items, AclResolveItem{KBID: req.KbID, Slug: row.Slug})
+	}
+	for _, row := range graph.Indirect {
+		items = append(items, AclResolveItem{KBID: req.KbID, Slug: row.Slug})
+	}
+	for _, row := range graph.Related {
+		items = append(items, AclResolveItem{KBID: req.KbID, Slug: row.Slug})
+	}
+	// Broken slugs do NOT exist as live pages — there is nothing to
+	// ACL-check. They survive filtering unchanged.
+	if len(items) == 0 {
+		return graph, nil
+	}
+
+	decisions, err := s.aclService.ResolveBulk(ctx, items, caller)
+	if err != nil {
+		return nil, err
+	}
+
+	allowed := func(slug string) bool {
+		d, ok := decisions[req.KbID+":"+slug]
+		if !ok {
+			// Missing decision — be conservative and drop. The ACL
+			// service guarantees a map entry for every input item
+			// (it maps errors to deny_allow_list internally); a
+			// missing key signals a contract drift and we should
+			// fail closed.
+			return false
+		}
+		return d == types.WikiPageAclAllow
+	}
+
+	filtered := &types.WikiBacklinkGraph{
+		KbID:         graph.KbID,
+		Slug:         graph.Slug,
+		ComputedAt:   graph.ComputedAt,
+		Stats:        graph.Stats, // approximate — see comment above
+		Broken:       graph.Broken,
+	}
+	if filtered.Direct == nil {
+		filtered.Direct = []types.WikiPageBacklink{}
+	}
+	if filtered.Indirect == nil {
+		filtered.Indirect = []types.WikiPageBacklink{}
+	}
+	if filtered.Related == nil {
+		filtered.Related = []types.WikiPageBacklink{}
+	}
+	for _, row := range graph.Direct {
+		if allowed(row.Slug) {
+			filtered.Direct = append(filtered.Direct, row)
+		}
+	}
+	for _, row := range graph.Indirect {
+		if allowed(row.Slug) {
+			filtered.Indirect = append(filtered.Indirect, row)
+		}
+	}
+	for _, row := range graph.Related {
+		if allowed(row.Slug) {
+			filtered.Related = append(filtered.Related, row)
+		}
+	}
+	return filtered, nil
 }
 
 // computeBacklinkGraph bundles four views of the backlink picture around

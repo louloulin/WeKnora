@@ -4112,6 +4112,32 @@ export default {
           },
         },
       },
+      // Build #24 — 统一 4 源审计日志 UI
+      audit: {
+        toolbarBtn: '审计日志',
+        drawerTitle: 'Wiki 审计日志',
+        empty: '暂无审计事件',
+        filterActor: '按操作者筛选',
+        filterOp: '按动作筛选',
+        source: {
+          activity: '活动',
+          batch: '批量',
+          invalidation: '失效',
+          acl: '权限',
+        },
+        actorKind: {
+          user: '用户',
+          system: '系统',
+          sweep: '清理',
+        },
+        table: {
+          timestamp: '时间',
+          source: '来源',
+          op: '动作',
+          actor: '操作者',
+          slug: 'Slug',
+        },
+      },
     },
     indexing: {
       title: '索引策略',

@@ -664,6 +664,27 @@ type WikiBacklinksCacheRepository interface {
 	// treat it as an error (cold row was already gone).
 	Delete(ctx context.Context, kbID string, slugs []string) (int64, error)
 
+	// DeleteByKB removes every cache row for one KB. Used by
+	// Build #24's ACL→cache hook when the row count is below the
+	// threshold (≤10k rows). For larger KBs the caller should run
+	// FindReferencingSlugs first and feed the result into Delete —
+	// that path keeps the wipe bounded while still being correct.
+	// Returns affected row count for the invalidation-log Details.
+	DeleteByKB(ctx context.Context, kbID string) (int64, error)
+
+	// FindReferencingSlugs returns the slug set whose cache row has
+	// `slug` anywhere in its (direct_json / indirect_json / related_json)
+	// payload. Used by Build #24's reverse-lookup path: when the
+	// affected page's ACL changes we need to wipe every row that may
+	// include it in its backlink panel, not just the row for the
+	// affected slug itself.
+	//
+	// The implementation is dialect-aware: PostgreSQL + MySQL use
+	// JSON_CONTAINS; SQLite uses json_each(). The repository hides
+	// the dialect behind this method so the service layer can stay
+	// dialect-neutral.
+	FindReferencingSlugs(ctx context.Context, kbID string, slug string) ([]string, error)
+
 	// ListByKB returns cache statuses (slim payload) for one KB, used
 	// by the admin / debug GET /backlinks/cache-status endpoint.
 	ListByKB(ctx context.Context, kbID string, limit int, offset int) ([]*types.WikiBacklinksCacheStatus, int64, error)
@@ -743,4 +764,29 @@ type WikiBacklinksCacheInvalidator interface {
 	// affected count; never fails — warnings only — because the read
 	// path recomputes on miss anyway.
 	Invalidate(ctx context.Context, req types.BacklinkCacheInvalidateRequest) (int64, error)
+}
+
+// WikiAclRepository is the read surface WikiAuditService needs from
+// the ACL storage (Build #24 B3). It deliberately does NOT include
+// the write methods (GetAclBySlug, UpdateAclWithRevision,
+// PageOwnerAndAdmin, GroupMembers) — those stay on the private
+// service.WikiAclRepo interface so only the ACL service can mutate
+// the ACL column. The audit read path is read-only and side-effect-
+// free.
+//
+// Implementation: the production *repository.wikiAclRepository
+// satisfies BOTH interfaces (it has GetAclBySlug etc. for the ACL
+// service and now ListAudit for the audit service), so the DI
+// container can hand the same instance to both consumers.
+type WikiAclRepository interface {
+	// ListAudit returns audit rows for one KB, newest-first, with
+	// optional Since lower bound on created_at. pageSize is enforced
+	// server-side (max 200, capped in the handler); offset is the
+	// number of rows to skip. Returns events + total count so the
+	// service can paginate large result sets.
+	//
+	// Empty result is not an error — a KB with no ACL writes returns
+	// ([]*WikiAclAuditEntry{}, 0, nil) so the audit-events envelope can
+	// still render the other 3 sources.
+	ListAudit(ctx context.Context, kbID string, since time.Time, page, pageSize int) ([]*types.WikiAclAuditEntry, int64, error)
 }

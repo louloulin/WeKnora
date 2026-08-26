@@ -4105,6 +4105,32 @@ export default {
           },
         },
       },
+      // Build #24 — 통합 4-출처 감사 로그 UI
+      audit: {
+        toolbarBtn: '감사 로그',
+        drawerTitle: 'Wiki 감사 로그',
+        empty: '감사 이벤트가 없습니다',
+        filterActor: '작업자 필터',
+        filterOp: '액션 필터',
+        source: {
+          activity: '활동',
+          batch: '일괄',
+          invalidation: '무효화',
+          acl: 'ACL',
+        },
+        actorKind: {
+          user: '사용자',
+          system: '시스템',
+          sweep: '정리',
+        },
+        table: {
+          timestamp: '시간',
+          source: '출처',
+          op: '액션',
+          actor: '작업자',
+          slug: '슬러그',
+        },
+      },
     },
     indexing: {
       title: '인덱싱 전략',

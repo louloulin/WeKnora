@@ -4105,6 +4105,32 @@ export default {
           },
         },
       },
+      // Build #24 — унифицированный аудит-лог из 4 источников
+      audit: {
+        toolbarBtn: 'Аудит',
+        drawerTitle: 'Аудит Wiki',
+        empty: 'Нет событий аудита',
+        filterActor: 'Фильтр по исполнителю',
+        filterOp: 'Фильтр по действию',
+        source: {
+          activity: 'Активность',
+          batch: 'Пакет',
+          invalidation: 'Сброс',
+          acl: 'ACL',
+        },
+        actorKind: {
+          user: 'Пользователь',
+          system: 'Система',
+          sweep: 'Очистка',
+        },
+        table: {
+          timestamp: 'Время',
+          source: 'Источник',
+          op: 'Действие',
+          actor: 'Исполнитель',
+          slug: 'Slug',
+        },
+      },
     },
     indexing: {
       title: 'Стратегия индексации',

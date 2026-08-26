@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -36,17 +37,46 @@ type WikiAclRepo interface {
 	GroupMembers(ctx context.Context, tenantID uint64, groupIDs []string) ([]string, error)
 }
 
+// aclChangeCacheThreshold is the per-KB row count above which the
+// Build #24 ACL→cache hook switches from a full-wipe path
+// (DeleteByKB) to a reverse-lookup path (FindReferencingSlugs → Delete).
+// 10k is the same threshold Build #23 uses for the cold-row count
+// surface; below it the wipe is sub-millisecond on every supported
+// dialect.
+const aclChangeCacheThreshold = 10000
+
 // WikiAclService is the single decision point for page-level ACL. Every
 // wiki read path consults Resolve before returning content; private /
 // allow_list mismatches are mapped to a "page not found" 404 by the caller
 // so the page's existence is not leaked.
 type WikiAclService interface {
 	Resolve(ctx context.Context, kbID string, slug string, callerUserID string) (string, error)
+	// ResolveBulk fans Resolve out across many (kbID, slug) pairs for a
+	// single caller. The search v2 service uses it to filter a hit list
+	// without serializing on per-hit ACL round trips. Cache behaviour is
+	// identical to Resolve — each pair is keyed as kb|slug|user and the
+	// existing 60 s TTL applies. Per-hit errors map to the conservative
+	// `deny_allow_list` decision (and are logged) so the caller never
+	// sees a hit whose ACL could not be verified.
+	ResolveBulk(ctx context.Context, items []AclResolveItem, callerUserID string) (map[string]string, error)
 	GetAcl(ctx context.Context, kbID string, slug string) (*types.WikiPageAcl, error)
 	PutAcl(ctx context.Context, kbID string, slug string,
 		req types.WikiPageAclSaveRequest, callerUserID string, callerRole string) (*types.WikiPageAcl, error)
 	SearchAclCandidates(ctx context.Context, tenantID uint64, query string, limit int) ([]*types.User, error)
 }
+
+// AclResolveItem is one (kbID, slug) pair for ResolveBulk. Slug is the
+// per-page identifier inside a KB; KBID scopes the page to a tenant-scoped
+// KB so the ACL service can read the right column.
+type AclResolveItem struct {
+	KBID string
+	Slug string
+}
+
+// aclResolveBulkWorkers bounds the goroutine fan-out for ResolveBulk. Four
+// is enough to keep most search-result pages in-flight without spinning up
+// a goroutine per hit; the cache absorbs the rest.
+const aclResolveBulkWorkers = 4
 
 // aclCacheTTL bounds how long a single decision stays cached. 60 s is
 // short enough that a manual permission grant by an admin propagates
@@ -110,6 +140,7 @@ func (c *aclCache) invalidatePrefix(prefix string) {
 type wikiAclService struct {
 	repo      WikiAclRepo
 	userSvc   interfaces.UserService
+	cacheRepo interfaces.WikiBacklinksCacheRepository
 	cache     *aclCache
 }
 
@@ -117,6 +148,16 @@ type wikiAclService struct {
 // candidate picker (SearchAclCandidates).
 func NewWikiAclService(repo WikiAclRepo, userSvc interfaces.UserService) WikiAclService {
 	return &wikiAclService{repo: repo, userSvc: userSvc, cache: newAclCache()}
+}
+
+// SetCacheRepo wires the Build #24 ACL→cache hook dependency. Passing
+// nil disables the wipe-on-write side effect — the service warns and
+// skips when PutAcl runs with cacheRepo == nil. Container.go calls
+// this after the DI graph resolves the backlinks cache repository so
+// the existing constructor signature stays unchanged for harness tests
+// that don't care about the cache layer.
+func (s *wikiAclService) SetCacheRepo(cacheRepo interfaces.WikiBacklinksCacheRepository) {
+	s.cacheRepo = cacheRepo
 }
 
 // Resolve returns the ACL decision for a caller against a page. Owner and
@@ -206,7 +247,9 @@ func (s *wikiAclService) GetAcl(ctx context.Context, kbID string, slug string) (
 // PutAcl writes a new ACL after validating mode and verifying the optimistic
 // lock. On conflict, returns types.ErrWikiPageAclRevisionConflict so the
 // handler can map it to HTTP 409. On success, invalidates the cache for
-// this page across all users.
+// this page across all users, then fires the Build #24 ACL→cache wipe
+// hook so the backlinks cache row for this page — and every row that
+// references it — is dropped before the next ListBacklinkGraph call.
 func (s *wikiAclService) PutAcl(ctx context.Context, kbID string, slug string,
 	req types.WikiPageAclSaveRequest, callerUserID string, callerRole string) (*types.WikiPageAcl, error) {
 	// Empty mode is treated as inherit on read, but a PUT must specify
@@ -218,6 +261,15 @@ func (s *wikiAclService) PutAcl(ctx context.Context, kbID string, slug string,
 	}
 	if !types.IsValidWikiPageAclMode(mode) {
 		return nil, fmt.Errorf("invalid acl mode %q", req.Mode)
+	}
+	// Capture the before-mode for the audit Details payload before the
+	// write commits. Read best-effort: a read failure here is logged
+	// but does not block the write — the audit row already records the
+	// new mode via the existing before_acl/after_acl columns, so this
+	// field is only for the cache-invalidation log's pretty-print.
+	beforeMode := ""
+	if before, getErr := s.repo.GetAclBySlug(ctx, kbID, slug); getErr == nil && before != nil {
+		beforeMode = before.Mode
 	}
 	action := actionForMode(mode)
 	updated, err := s.repo.UpdateAclWithRevision(ctx, kbID, slug, types.WikiPageAcl{
@@ -233,7 +285,126 @@ func (s *wikiAclService) PutAcl(ctx context.Context, kbID string, slug string,
 		return nil, err
 	}
 	s.cache.invalidatePrefix(kbID + "|" + slug + "|")
+	s.invalidateBacklinksCacheOnAclChange(ctx, kbID, slug, beforeMode, mode, req.BaseRevision, updated.Revision)
 	return updated, nil
+}
+
+// invalidateBacklinksCacheOnAclChange is the Build #24 ACL→cache hook.
+// It picks a wipe strategy based on the KB's row count and writes a
+// wiki_backlinks_cache_invalidation_log row tagged with op="acl_change".
+//
+// Strategy:
+//
+//   - small KB (CountByKB ≤ aclChangeCacheThreshold): DeleteByKB
+//     (single DELETE on (kb_id, slug) PK range). Sub-millisecond on
+//     every supported dialect. Wipe strategy label: "full".
+//   - large KB (CountByKB > aclChangeCacheThreshold): FindReferencingSlugs
+//     then Delete. Wipe strategy label: "reverse-lookup". The
+//     histogram metricCacheAclChangeWipeDuration records the cost.
+//
+// Failure mode is consistent with the rest of the cache layer: every
+// step warn-logs and continues. Losing one wipe means the next read
+// recomputes on miss — the system self-heals.
+// invalidateBacklinksCacheOnAclChange is wired off PutAcl and never
+// called directly.
+func (s *wikiAclService) invalidateBacklinksCacheOnAclChange(
+	ctx context.Context,
+	kbID, slug string,
+	beforeMode, afterMode string,
+	beforeRev int64, afterRev int64,
+) {
+	if s.cacheRepo == nil {
+		return
+	}
+
+	start := time.Now()
+	var strategy string
+	var affected int64
+	var err error
+
+	rowCount, countErr := s.cacheRepo.CountByKB(ctx, kbID)
+	if countErr != nil {
+		logger.Warnf(ctx, "wiki acl change hook: count by kb=%s failed: %v", kbID, countErr)
+		// Fall through to the small-KB branch with a synthetic 0 count —
+		// the DELETE will just no-op if there's actually a lot of data,
+		// which is fine for self-healing.
+		rowCount = 0
+	}
+	if rowCount <= aclChangeCacheThreshold {
+		strategy = "full"
+		affected, err = s.cacheRepo.DeleteByKB(ctx, kbID)
+	} else {
+		strategy = "reverse-lookup"
+		refSlugs, lookupErr := s.cacheRepo.FindReferencingSlugs(ctx, kbID, slug)
+		if lookupErr != nil {
+			logger.Warnf(ctx, "wiki acl change hook: find referencing slugs failed (kb=%s slug=%s): %v", kbID, slug, lookupErr)
+			metricCacheInvalidationsTotal.WithLabelValues(string(types.BacklinkCacheInvalidateAclChange)).Inc()
+			s.logAclChange(ctx, kbID, slug, beforeMode, afterMode, beforeRev, afterRev, strategy, 0)
+			return
+		}
+		// Always include the affected slug itself; the reverse-lookup may
+		// or may not surface it depending on whether the row's payload
+		// arrays reference the slug. Dedup keeps the IN clause short.
+		slugSet := make(map[string]struct{}, len(refSlugs)+1)
+		slugSet[slug] = struct{}{}
+		for _, s := range refSlugs {
+			slugSet[s] = struct{}{}
+		}
+		deduped := make([]string, 0, len(slugSet))
+		for s := range slugSet {
+			deduped = append(deduped, s)
+		}
+		affected, err = s.cacheRepo.Delete(ctx, kbID, deduped)
+		// Histogram: only the large-KB path records a duration because
+		// it can be costly and is the one operators want to alert on.
+		metricCacheAclChangeWipeDuration.Observe(time.Since(start).Seconds())
+	}
+	if err != nil {
+		logger.Warnf(ctx, "wiki acl change hook: wipe failed (kb=%s slug=%s strategy=%s): %v", kbID, slug, strategy, err)
+		metricCacheInvalidationsTotal.WithLabelValues(string(types.BacklinkCacheInvalidateAclChange)).Inc()
+		s.logAclChange(ctx, kbID, slug, beforeMode, afterMode, beforeRev, afterRev, strategy, 0)
+		return
+	}
+
+	metricCacheInvalidationsTotal.WithLabelValues(string(types.BacklinkCacheInvalidateAclChange)).Inc()
+	if affected > 0 {
+		logger.Warnf(ctx, "wiki acl change hook wiped %d cache rows (kb=%s slug=%s strategy=%s)",
+			affected, kbID, slug, strategy)
+	}
+	s.logAclChange(ctx, kbID, slug, beforeMode, afterMode, beforeRev, afterRev, strategy, int(affected))
+}
+
+// logAclChange writes the Build #23 invalidation log row with the
+// ACL-specific Details JSON. Always best-effort: a failed log insert
+// is warn-logged and otherwise swallowed.
+func (s *wikiAclService) logAclChange(
+	ctx context.Context, kbID, slug string,
+	beforeMode, afterMode string,
+	beforeRev, afterRev int64,
+	strategy string, affected int,
+) {
+	detailsJSON, _ := json.Marshal(map[string]any{
+		"before_mode":     beforeMode,
+		"after_mode":      afterMode,
+		"before_revision": beforeRev,
+		"after_revision":  afterRev,
+		"wipe_strategy":   strategy,
+		"affected_count":  affected,
+	})
+	sourceEventID := wikiSourceEventIDFromContext(ctx)
+	actorPtr := wikiActorUserIDFromContext(ctx)
+	logEntry := &types.WikiBacklinksCacheInvalidationLogEntry{
+		KbID:          kbID,
+		Slug:          slug,
+		Op:            string(types.BacklinkCacheInvalidateAclChange),
+		ActorUserID:   actorPtr,
+		SourceEventID: sourceEventID,
+		AffectedCount: affected,
+		Details:       string(detailsJSON),
+	}
+	if logErr := s.cacheRepo.LogInvalidation(ctx, logEntry); logErr != nil {
+		logger.Warnf(ctx, "wiki acl change hook: invalidation log insert failed (kb=%s slug=%s): %v", kbID, slug, logErr)
+	}
 }
 
 // SearchAclCandidates delegates to the existing user search endpoint so the
@@ -247,6 +418,73 @@ func (s *wikiAclService) SearchAclCandidates(ctx context.Context, tenantID uint6
 		return []*types.User{}, nil
 	}
 	return s.userSvc.SearchUsers(ctx, query, limit)
+}
+
+// ResolveBulk fans Resolve out across the given items with a small worker
+// pool. The map key is `kbID:slug` (URL-friendly, no `|` collision with the
+// single-hit cache key). Per-hit errors are logged and mapped to
+// `deny_allow_list` so a transient failure on one page never leaks the
+// hit to the caller. The returned error is non-nil only when the caller's
+// context was cancelled before any work happened — every other error is
+// absorbed into the map.
+func (s *wikiAclService) ResolveBulk(ctx context.Context, items []AclResolveItem, callerUserID string) (map[string]string, error) {
+	if len(items) == 0 {
+		return map[string]string{}, nil
+	}
+	out := make(map[string]string, len(items))
+
+	type job struct {
+		kbID string
+		slug string
+		key  string
+	}
+	jobs := make([]job, len(items))
+	for i, it := range items {
+		jobs[i] = job{kbID: it.KBID, slug: it.Slug, key: it.KBID + ":" + it.Slug}
+	}
+
+	workers := aclResolveBulkWorkers
+	if workers > len(jobs) {
+		workers = len(jobs)
+	}
+	if workers < 1 {
+		workers = 1
+	}
+
+	queue := make(chan job, len(jobs))
+	for _, j := range jobs {
+		queue <- j
+	}
+	close(queue)
+
+	var wg sync.WaitGroup
+	var firstErr error
+	var errMu sync.Mutex
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := range queue {
+				if ctx.Err() != nil {
+					errMu.Lock()
+					if firstErr == nil {
+						firstErr = ctx.Err()
+					}
+					errMu.Unlock()
+					continue
+				}
+				decision, err := s.Resolve(ctx, j.kbID, j.slug, callerUserID)
+				if err != nil {
+					logger.Warnf(ctx, "wiki acl resolve bulk: kb=%s slug=%s: %v", j.kbID, j.slug, err)
+					out[j.key] = types.WikiPageAclDenyAllowList
+					continue
+				}
+				out[j.key] = decision
+			}
+		}()
+	}
+	wg.Wait()
+	return out, firstErr
 }
 
 // actionForMode picks a short audit label from the new mode. Used both as

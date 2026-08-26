@@ -38,6 +38,11 @@ type WikiPageHandler struct {
 	// batchFailureRepo exposes the per-slug failure ledger (Build #15).
 	// Same nil-safe semantics as batchAuditRepo above.
 	batchFailureRepo interfaces.WikiBatchFailureRepository
+	// wikiAuditSvc exposes the unified 4-source audit merge service
+	// (Build #24). May be nil for builds where the 4th source
+	// (wiki_page_acl_audit) hasn't been wired yet — the handler
+	// returns 503 in that case, mirroring batchAuditRepo above.
+	wikiAuditSvc service.WikiAuditService
 }
 
 // NewWikiPageHandler creates a new wiki page handler.
@@ -53,7 +58,10 @@ type WikiPageHandler struct {
 // batchFailureRepo is Build #15 — pass nil for builds without the
 // wiki_batch_job_failures table; same 503 semantics as batchAuditRepo.
 //
-// Build #14 + Build #15.
+// wikiAuditSvc is Build #24 — pass nil to disable the
+// GET /knowledgebase/:kb_id/wiki/audit-events endpoint (returns 503).
+//
+// Build #14 + Build #15 + Build #24.
 func NewWikiPageHandler(
 	wikiService interfaces.WikiPageService,
 	kbService interfaces.KnowledgeBaseService,
@@ -63,6 +71,7 @@ func NewWikiPageHandler(
 	batchJobService interfaces.WikiBatchJobService,
 	batchAuditRepo interfaces.WikiBatchAuditRepository,
 	batchFailureRepo interfaces.WikiBatchFailureRepository,
+	wikiAuditSvc service.WikiAuditService,
 ) *WikiPageHandler {
 	return &WikiPageHandler{
 		wikiService:      wikiService,
@@ -73,6 +82,7 @@ func NewWikiPageHandler(
 		batchJobService:  batchJobService,
 		batchAuditRepo:   batchAuditRepo,
 		batchFailureRepo: batchFailureRepo,
+		wikiAuditSvc:     wikiAuditSvc,
 	}
 }
 
@@ -1291,6 +1301,10 @@ func (h *WikiPageHandler) GetPageBacklinksGraph(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// Build #24 D3: the ACL defense filter needs the caller user id to
+	// post-filter cached backlink sections. validateWikiKB doesn't
+	// surface it so we pull it here directly.
+	userID, _ := types.UserIDFromContext(c.Request.Context())
 	slug := getSlugParam(c)
 	if slug == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Page slug is required"})
@@ -1348,6 +1362,7 @@ func (h *WikiPageHandler) GetPageBacklinksGraph(c *gin.Context) {
 		MaxIndirect:      maxIndirect,
 		MaxRelated:       maxRelated,
 		JaccardThreshold: threshold,
+		UserID:           userID,
 	})
 	if err != nil {
 		if stderrors.Is(err, repository.ErrWikiPageNotFound) {
@@ -2031,4 +2046,66 @@ func (h *WikiPageHandler) AutoFix(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"fixed": fixed, "message": fmt.Sprintf("Auto-fixed %d issues", fixed)})
+}
+
+// ListAuditEvents godoc
+// @Summary      Unified wiki audit log (4-source merge)
+// @Description  Returns merged audit events for a knowledge base from four sources:
+// @Description  * `audit_logs` (KB-scope projection of chat/KB activity)
+// @Description  * `wiki_batch_job_audit` (Build #14)
+// @Description  * `wiki_backlinks_cache_invalidation_log` (Build #23)
+// @Description  * `wiki_page_acl_audit` (Build #24 — was write-only before this endpoint)
+// @Description  Events are merged by (timestamp DESC, source rank ASC, id ASC) and
+// @Description  paginated; per-source counts are returned in the envelope so the
+// @Description  UI can render a filter chip group without a second round-trip.
+// @Description  `since` is RFC3339, defaults to 24h, capped at 90 days. `page`
+// @Description  defaults to 1, `page_size` defaults to 50 (clamped to [1, 200]).
+// @Tags         Wiki
+// @Produce      json
+// @Param        kb_id     path   string  true   "Knowledge base ID"
+// @Param        source    query  string  false  "Restrict to one source (audit_logs | wiki_batch_job_audit | wiki_backlinks_cache_invalidation_log | wiki_page_acl_audit)"
+// @Param        op        query  string  false  "Filter by action / op label"
+// @Param        actor     query  string  false  "Filter by actor id"
+// @Param        since     query  string  false  "Lower bound (RFC3339, default now-24h, capped at 90 days ago)"
+// @Param        page      query  int     false  "1-based page number (default 1)"
+// @Param        page_size query  int     false  "Page size, 1-200 (default 50)"
+// @Success      200  {object}  types.WikiAuditEventListResponse
+// @Failure      400  {object}  errors.AppError
+// @Failure      503  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/audit-events [get]
+//
+// Build #24.
+func (h *WikiPageHandler) ListAuditEvents(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if h.wikiAuditSvc == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "wiki audit service is not configured"})
+		return
+	}
+	filter := &types.WikiAuditFilter{}
+	if raw := strings.TrimSpace(c.Query("source")); raw != "" {
+		filter.Source = types.WikiAuditSource(raw)
+	}
+	filter.Op = strings.TrimSpace(c.Query("op"))
+	filter.Actor = strings.TrimSpace(c.Query("actor"))
+	if raw := strings.TrimSpace(c.Query("since")); raw != "" {
+		ts, perr := time.Parse(time.RFC3339, raw)
+		if perr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "since must be RFC3339"})
+			return
+		}
+		filter.Since = ts
+	}
+	filter.Page, filter.PageSize = parsePagination(c, 50, 200)
+
+	resp, err := h.wikiAuditSvc.ListAuditEvents(c.Request.Context(), kbID, filter)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
 }

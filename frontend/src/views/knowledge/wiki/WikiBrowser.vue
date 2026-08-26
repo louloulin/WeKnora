@@ -172,6 +172,12 @@
             <span>{{ $t('wiki.batchAudit.toolbarBtn') }}</span>
           </t-button>
         </div>
+        <div class="wiki-sidebar-audit-entry">
+          <t-button variant="text" theme="default" size="small" block @click="showUnifiedAudit = true">
+            <t-icon name="audit" />
+            <span>{{ $t('knowledgeEditor.wikiBrowser.audit.toolbarBtn') }}</span>
+          </t-button>
+        </div>
 
         <div class="wiki-sidebar-header">
           <div v-if="stats && (stats.pending_tasks > 0 || stats.is_active)" class="wiki-queue-status">
@@ -880,6 +886,15 @@
       :kb-id="props.knowledgeBaseId"
     />
 
+    <!-- Unified 4-source audit drawer (Build #24). Audit_logs +
+         wiki_batch_job_audit + wiki_backlinks_cache_invalidation_log +
+         wiki_page_acl_audit, merged and sorted by timestamp DESC. -->
+    <WikiAuditDrawer
+      v-if="showUnifiedAudit"
+      v-model:visible="showUnifiedAudit"
+      :kb-id="props.knowledgeBaseId"
+    />
+
     <!-- Batch failure drawer (Build #15). Per-slug failure ledger for
          one batch job. Opened from the partial-finalize toast on the
          polling watcher. -->
@@ -998,6 +1013,7 @@ import WikiShareDialog from '@/components/wiki/WikiShareDialog.vue'
 import { useWikiShareLinksStore } from '@/stores/wikiShareLinks'
 import WikiAclDialog from '@/components/wiki/WikiAclDialog.vue'
 import WikiBatchAuditPanel from '@/components/wiki/WikiBatchAuditPanel.vue'
+import WikiAuditDrawer from '@/components/wiki/WikiAuditDrawer.vue'
 import { useWikiPageAclStore } from '@/stores/wikiPageAcl'
 import { aclToolbarVisibility } from './wikiBrowserAclVisibility'
 import WikiBacklinksPanel from '@/components/wiki/WikiBacklinksPanel.vue'
@@ -3196,6 +3212,7 @@ function openShareDialog(): void {
 // Build #7 — page-level ACL dialog state + viewer banner.
 const showAclDialog = ref(false)
 const showAuditPanel = ref(false)
+const showUnifiedAudit = ref(false)
 // Build #15 — per-slug failure drawer (opened from the partial-finalize
 // toast or from the audit panel's job drawer).
 const showFailureDrawer = ref(false)

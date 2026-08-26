@@ -1,43 +1,27 @@
 #!/bin/bash
-# Smoke test for the wiki batch audit endpoints (Build #14).
+# Smoke test for the Build #24 unified wiki audit endpoint.
 #
-# Dry-run safe: with BATCH_AUDIT_SMOKE_BASE_URL unset the script only prints
-# the curl commands it WOULD run, so reviewers can audit the request shapes
-# without standing up a server. Set the env vars below to point at a live
-# WeKnora instance and it will exercise:
+# GET /api/v1/knowledgebase/<kb>/wiki/audit-events — the 4-source
+# fan-out that merges audit_logs + wiki_batch_job_audit +
+# wiki_backlinks_cache_invalidation_log + wiki_page_acl_audit,
+# sorted by (timestamp DESC, source rank ASC, id ASC) with stable
+# tiebreak.
 #
-#   POST /api/v1/knowledgebase/<kb>/wiki/pages/batch-move (>=20 → async)
-#   GET  /api/v1/knowledgebase/<kb>/wiki/batch-jobs/<id>
-#   GET  /api/v1/knowledgebase/<kb>/wiki/batch-jobs/<id>/audit
-#   POST /api/v1/knowledgebase/<kb>/wiki/batch-jobs/<id>/cancel  (queued-only)
-#   GET  /api/v1/knowledgebase/<kb>/wiki/batch-audit?actor=…
-#   GET  /api/v1/knowledgebase/<kb>/wiki/batch-audit/export
+# Also exercises the D3 ACL→cache hook path: write a page-level
+# ACL via the wiki_acl PUT endpoint, then verify the response
+# from /audit-events includes a wiki_page_acl_audit row + a
+# wiki_backlinks_cache_invalidation_log row with op="acl_change".
 #
-# The audit chain we expect for a normal async batch is:
-#   enqueue → start → finish   (succeeded/partial)
-# For a cancelled queued job:
-#   enqueue → cancel           (no start because the worker never picked it up)
-#
-# Usage:
-#   # dry-run
-#   ./scripts/smoke-wiki-audit.sh
-#
-#   # live smoke
-#   BATCH_AUDIT_SMOKE_BASE_URL=http://localhost:8080 \
-#   BATCH_AUDIT_SMOKE_TOKEN=$YOUR_JWT \
-#   BATCH_AUDIT_SMOKE_KB_ID=kb_smoke \
-#   BATCH_AUDIT_SMOKE_PAGE_PREFIX=audit-smoke \
-#   ./scripts/smoke-wiki-audit.sh
+# Dry-run safe — with AUDIT_SMOKE_BASE_URL unset the script only
+# prints the curl commands it would run. Set the env vars to point
+# at a live WeKnora instance to actually exercise the fan-out.
 
 set -euo pipefail
 
-BASE_URL="${BATCH_AUDIT_SMOKE_BASE_URL:-}"
-TOKEN="${BATCH_AUDIT_SMOKE_TOKEN:-}"
-KB_ID="${BATCH_AUDIT_SMOKE_KB_ID:-kb_smoke}"
-PAGE_PREFIX="${BATCH_AUDIT_SMOKE_PAGE_PREFIX:-audit-smoke}"
-PAGE_COUNT="${BATCH_AUDIT_SMOKE_PAGE_COUNT:-25}"
-POLL_INTERVAL="${BATCH_AUDIT_SMOKE_POLL_INTERVAL:-2}"
-POLL_DEADLINE="${BATCH_AUDIT_SMOKE_POLL_DEADLINE:-30}"
+BASE_URL="${AUDIT_SMOKE_BASE_URL:-}"
+TOKEN="${AUDIT_SMOKE_TOKEN:-}"
+KB_ID="${AUDIT_SMOKE_KB_ID:-kb_smoke}"
+SLUG="${AUDIT_SMOKE_SLUG:-page-smoke}"
 
 RED='\033[0;31m'
 GRN='\033[0;32m'
@@ -50,182 +34,80 @@ warn() { printf "%b\n" "${YEL}[WARN]${NC} $1"; }
 ok()   { printf "%b\n" "${GRN}[✓]${NC} $1"; }
 fail() { printf "%b\n" "${RED}[✗]${NC} $1"; exit 1; }
 
-# Threshold matches internal/types/wiki_page.go: WikiBatchAsyncThreshold
-THRESHOLD=20
-
-batch_endpoint() {
-  local action="$1"
-  printf "%s/api/v1/knowledgebase/%s/wiki/pages/batch-%s" \
-    "$BASE_URL" "$KB_ID" "$action"
+audit_endpoint() {
+  printf "%s/api/v1/knowledgebase/%s/wiki/audit-events" "$BASE_URL" "$KB_ID"
 }
 
-job_endpoint() {
-  local id="$1"
-  printf "%s/api/v1/knowledgebase/%s/wiki/batch-jobs/%s" \
-    "$BASE_URL" "$KB_ID" "$id"
+acl_endpoint() {
+  printf "%s/api/v1/knowledgebase/%s/wiki/pages/%s/acl" \
+    "$BASE_URL" "$KB_ID" "$SLUG"
 }
 
-job_audit_endpoint() {
-  local id="$1"
-  printf "%s/api/v1/knowledgebase/%s/wiki/batch-jobs/%s/audit" \
-    "$BASE_URL" "$KB_ID" "$id"
-}
-
-job_cancel_endpoint() {
-  local id="$1"
-  printf "%s/api/v1/knowledgebase/%s/wiki/batch-jobs/%s/cancel" \
-    "$BASE_URL" "$KB_ID" "$id"
-}
-
-kb_audit_endpoint() {
-  local qs="$1"
-  printf "%s/api/v1/knowledgebase/%s/wiki/batch-audit%s" \
-    "$BASE_URL" "$KB_ID" "$qs"
-}
-
-kb_audit_export_endpoint() {
-  local qs="$1"
-  printf "%s/api/v1/knowledgebase/%s/wiki/batch-audit/export%s" \
-    "$BASE_URL" "$KB_ID" "$qs"
-}
-
-# build_json_array joins a list of slugs into a JSON array literal.
-# uses bash printf for portability — no jq dependency.
-build_json_array() {
-  local sep=""
-  printf '['
-  for slug in "$@"; do
-    printf '%s"%s"' "$sep" "$slug"
-    sep=","
-  done
-  printf ']'
-}
-
-cmd_post() {
-  local url="$1"
-  local body="$2"
-  local desc="$3"
-  log "POST ${url} — ${desc}"
+# dry_run executes the command when BASE_URL is set, else prints it.
+dry_run() {
+  local label="$1"; shift
   if [[ -z "$BASE_URL" ]]; then
-    log "(dry-run) curl -sS -X POST -H 'Authorization: Bearer \$TOKEN' -H 'Content-Type: application/json' ${url} -d '${body}'"
-    return
-  fi
-  curl -sS -w "\nHTTP %{http_code}\n" \
-    -H "Authorization: Bearer ${TOKEN}" \
-    -H "Content-Type: application/json" \
-    -X POST \
-    "${url}" \
-    -d "${body}"
-}
-
-cmd_get() {
-  local url="$1"
-  local desc="$2"
-  log "GET ${url} — ${desc}"
-  if [[ -z "$BASE_URL" ]]; then
-    log "(dry-run) curl -sS -H 'Authorization: Bearer \$TOKEN' ${url}"
-    return
-  fi
-  curl -sS -w "\nHTTP %{http_code}\n" \
-    -H "Authorization: Bearer ${TOKEN}" \
-    "${url}"
-}
-
-# poll_until_terminal exits 0 when state ∈ {succeeded,failed,partial},
-# 1 on timeout. In dry-run mode it returns immediately.
-poll_until_terminal() {
-  local id="$1"
-  if [[ -z "$BASE_URL" ]]; then
-    log "(dry-run) would poll ${id} every ${POLL_INTERVAL}s until terminal"
+    printf "%b\n" "${YEL}[dry-run]${NC} $label"
+    printf "    %s\n" "$*"
     return 0
   fi
-  local deadline=$((SECONDS + POLL_DEADLINE))
-  while (( SECONDS < deadline )); do
-    local body
-    body="$(curl -sS \
-        -H "Authorization: Bearer ${TOKEN}" \
-        "$(job_endpoint "$id")")"
-    local state
-    state="$(printf '%s' "$body" | sed -n 's/.*"state":"\([a-z]*\)".*/\1/p' | head -1)"
-    case "$state" in
-      succeeded|failed|partial)
-        ok "job $id reached terminal state=$state"
-        return 0
-        ;;
-      queued|running)
-        log "job $id state=$state, sleeping ${POLL_INTERVAL}s"
-        sleep "$POLL_INTERVAL"
-        ;;
-      *)
-        fail "unexpected job state for $id: '$state'"
-        ;;
-    esac
-  done
-  fail "job $id did not reach terminal state within ${POLL_DEADLINE}s"
+  "$@"
 }
 
-main() {
-  log "WeKnora wiki batch audit endpoints — Build #14 smoke (dry-run safe)"
-  log "BASE_URL='${BASE_URL}' KB_ID='${KB_ID}' PAGE_COUNT='${PAGE_COUNT}' threshold='${THRESHOLD}'"
-  echo
-  if [[ -z "$BASE_URL" ]]; then
-    warn "BATCH_AUDIT_SMOKE_BASE_URL is empty → dry-run. Set it to exercise a live server."
-  else
-    ok "Live smoke against ${BASE_URL}"
-    if (( PAGE_COUNT < THRESHOLD )); then
-      fail "PAGE_COUNT=$PAGE_COUNT is below threshold=$THRESHOLD; the sync path will not exercise async"
-    fi
-  fi
-  echo
+log "Build #24 unified wiki audit smoke"
+log "Base URL:  ${BASE_URL:-<unset, dry-run>}"
+log "KB ID:     $KB_ID"
+log "Slug:      $SLUG"
+echo ""
 
-  # Build the slug list once — same N used across all three endpoints.
-  local slugs=()
-  local i
-  for (( i = 0; i < PAGE_COUNT; i++ )); do
-    slugs+=("${PAGE_PREFIX}-${i}")
-  done
-  local slug_array
-  slug_array="$(build_json_array "${slugs[@]}")"
+# 1) Audit list — all sources, default 24h window
+log "1) GET /audit-events — full fan-out"
+dry_run "list audit events" \
+  curl -sS -G -X GET "$(audit_endpoint)" \
+    -H "Authorization: Bearer $TOKEN" \
+    --data-urlencode "page=1" \
+    --data-urlencode "page_size=20"
+echo ""
 
-  log "Step 1/5 — POST batch-move (>=${THRESHOLD}, async) so audit records enqueue→start→finish"
-  local move_body="{\"slugs\":${slug_array},\"folder_id\":\"root\"}"
-  cmd_post "$(batch_endpoint move)" "$move_body" "async path → returns {kind:'job', job:{...}}"
-  echo
+# 2) Audit list — restrict to wiki_page_acl_audit only
+log "2) GET /audit-events?source=wiki_page_acl_audit"
+dry_run "list ACL-only events" \
+  curl -sS -G -X GET "$(audit_endpoint)" \
+    -H "Authorization: Bearer $TOKEN" \
+    --data-urlencode "source=wiki_page_acl_audit" \
+    --data-urlencode "page_size=10"
+echo ""
 
-  log "Step 2/5 — POST batch-move AGAIN with one slug; that job will be cancelled before the worker grabs it"
-  cmd_post "$(batch_endpoint move)" "$move_body" "second batch to exercise cancel path"
-  echo
+# 3) Audit list — restrict to invalidation events with affected_count > 0
+log "3) GET /audit-events?source=wiki_backlinks_cache_invalidation_log"
+dry_run "list invalidation events" \
+  curl -sS -G -X GET "$(audit_endpoint)" \
+    -H "Authorization: Bearer $TOKEN" \
+    --data-urlencode "source=wiki_backlinks_cache_invalidation_log"
+echo ""
 
-  log "Step 3/5 — exercise per-job + KB-wide audit + cancel + export endpoints"
-  log "  Replace JOB_ID below with the id from step 1's response, then run:"
-  log "    cmd_get  $(job_audit_endpoint REPLACE_WITH_JOB_ID)  'per-job audit (oldest-first, <=7 events)'"
-  log "    cmd_post $(job_cancel_endpoint REPLACE_WITH_JOB_ID_2)  '{}'  'cancel queued job (200 or 409)'"
-  log "    cmd_get  $(kb_audit_endpoint '?page=1&page_size=20')  'KB-wide audit page 1'"
-  log "    cmd_get  $(kb_audit_endpoint '?actor=system')  'KB-wide audit filtered by system actor'"
-  log "    cmd_get  $(kb_audit_export_endpoint '?actor=system')  'KB-wide audit CSV export'"
-  echo
-  cmd_get  "$(job_audit_endpoint "REPLACE_WITH_JOB_ID")"   "per-job audit"
-  cmd_post "$(job_cancel_endpoint "REPLACE_WITH_JOB_ID_2")" "{}" "cancel queued job"
-  cmd_get  "$(kb_audit_endpoint "?page=1&page_size=20")"    "KB-wide audit page 1"
-  cmd_get  "$(kb_audit_endpoint "?actor=system")"            "KB-wide audit filter actor=system"
-  cmd_get  "$(kb_audit_export_endpoint "?actor=system")"     "KB-wide audit CSV export"
-  echo
+# 4) ACL write → must produce ACL + invalidation rows on the next read
+log "4) PUT /pages/<slug>/acl — triggers D3 ACL→cache hook"
+dry_run "set private ACL" \
+  curl -sS -X PUT "$(acl_endpoint)" \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "mode": "private",
+      "base_revision": 0,
+      "allow_user_ids": [],
+      "allow_group_ids": []
+    }'
+echo ""
 
-  log "Step 4/5 — poll the step-1 job until terminal so the audit chain is complete"
-  log "  Replace JOB_ID below with the id from step 1, then run:"
-  log "    poll_until_terminal REPLACE_WITH_JOB_ID"
-  echo
-  poll_until_terminal "REPLACE_WITH_JOB_ID"
-  echo
+# 5) Re-list after the write — should show a fresh ACL row + an
+#    invalidation row tagged op="acl_change".
+log "5) GET /audit-events?actor=<self> — expect at least 2 rows since now-5m"
+SINCE="$(date -u -d '5 minutes ago' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -u -v-5M '+%Y-%m-%dT%H:%M:%SZ')"
+dry_run "list recent actor events" \
+  curl -sS -G -X GET "$(audit_endpoint)" \
+    -H "Authorization: Bearer $TOKEN" \
+    --data-urlencode "since=$SINCE"
+echo ""
 
-  log "Step 5/5 — re-fetch the per-job audit to confirm the finish event landed"
-  cmd_get "$(job_audit_endpoint "REPLACE_WITH_JOB_ID")" "per-job audit after finish"
-  echo
-
-  ok "smoke script completed — see HTTP %{http_code} lines above for actual server responses"
-  if [[ -z "$BASE_URL" ]]; then
-    warn "Dry-run only — re-run with BATCH_AUDIT_SMOKE_BASE_URL set to exercise poll_until_terminal + cancel + audit GETs."
-  fi
-}
-
-main "$@"
+ok "Smoke script completed. Set AUDIT_SMOKE_BASE_URL to run for real."

@@ -87,4 +87,15 @@ var (
 		Name: "wiki_cache_invalidations_total",
 		Help: "Total InvalidateBacklinksCache invocations, by op.",
 	}, []string{"op"})
+
+	// Build #24 — ACL-change reverse-lookup wipe duration. Only the
+	// large-KB path (>10k cache rows) records here — the small-KB
+	// path is sub-millisecond and not worth a histogram sample. The
+	// bucket range covers 5ms..~150s, matching the range of a real
+	// reverse-lookup against a 100k-row table on PG/MySQL.
+	metricCacheAclChangeWipeDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "wiki_cache_acl_change_wipe_duration_seconds",
+		Help:    "Wall-clock duration of the Build #24 ACL→cache reverse-lookup wipe (large-KB path only).",
+		Buckets: prometheus.ExponentialBuckets(0.005, 2, 14), // 5ms .. ~80s
+	})
 )
