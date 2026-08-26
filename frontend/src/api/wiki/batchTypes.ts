@@ -246,3 +246,48 @@ export interface WikiBatchAuditFilter {
   page?: number;
   page_size?: number;
 }
+
+// WikiBatchPreviewSummary — head-count triple on the dry-run response.
+// Pure metadata; the per-slug truth lives in WikiBatchPreviewResponse.
+//
+// Build #16.
+export interface WikiBatchPreviewSummary {
+  total: number;
+  will_succeed: number;
+  will_fail: number;
+}
+
+// WikiBatchPreviewResponse — dry-run analogue of WikiBatchResult. Returned
+// by the three POST /batch-preview-* endpoints. `success` holds slugs
+// that would apply; `failed` reuses WikiBatchFailure so the UI can share
+// the i18n key map (WikiBatchErrorCodeToI18nKey) with the real batch
+// error UI.
+//
+// Build #16.
+export interface WikiBatchPreviewResponse {
+  success: string[];
+  failed: WikiBatchFailure[];
+  summary: WikiBatchPreviewSummary;
+}
+
+// WikiBatchPreviewType — the three preview kinds. Matches the URL
+// suffix (`batch-preview-move` | `-delete` | `-status`) so the
+// WikiBulkActionBar can route to the right API without per-verb logic
+// in the preview dialog itself.
+//
+// Build #16.
+export type WikiBatchPreviewType = 'move' | 'delete' | 'status';
+
+// WikiBatchAsyncThreshold mirrors the Go-side constant in
+// `internal/types/wiki_page.go`. The WikiBulkActionBar uses it to decide
+// whether to surface the preview button (D7 = A: only when the slug
+// count reaches this threshold — small batches skip preview and go
+// straight to the synchronous batch-* call).
+//
+// Keep this value in sync with `internal/types/wiki_page.go`
+// (`WikiBatchAsyncThreshold`). If they drift, the preview UX will show
+// up too early (preview for small batches) or too late (no preview for
+// the async path).
+//
+// Build #16.
+export const WikiBatchAsyncThreshold = 20;

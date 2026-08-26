@@ -521,6 +521,32 @@ type WikiBatchResult struct {
 	Failed    []WikiPageBatchFailure `json:"failed"`
 }
 
+// WikiBatchPreviewSummary is the head-count triple the Build #16 preview
+// dialog renders next to the per-slug table. It is purely informational —
+// the authoritative per-slug outcome lives in WikiBatchPreviewResponse.
+type WikiBatchPreviewSummary struct {
+	Total       int `json:"total"`
+	WillSucceed int `json:"will_succeed"`
+	WillFail    int `json:"will_fail"`
+}
+
+// WikiBatchPreviewResponse is the dry-run analogue of WikiBatchResult.
+// Success holds slugs that would apply without error; Failed mirrors the
+// same {Slug, Code, Error} triple WikiBatchResult uses so the frontend can
+// reuse the i18n key map (WikiBatchErrorCodeToI18nKey) without a second
+// translation namespace.
+//
+// The preview is computed by reading the row + running only the
+// validation rules the matching real call would (folder_id resolve,
+// status validity, slug existence) — no writes, no cascades.
+//
+// Build #16.
+type WikiBatchPreviewResponse struct {
+	Success []string               `json:"success"`
+	Failed  []WikiPageBatchFailure `json:"failed"`
+	Summary WikiBatchPreviewSummary `json:"summary"`
+}
+
 // WikiBatchAsyncThreshold is the slug count above which the batch endpoints
 // enqueue an async job instead of executing synchronously. Below this the
 // whole request runs in-process and returns the WikiBatchResult directly;

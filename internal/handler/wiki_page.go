@@ -465,6 +465,120 @@ func (h *WikiPageHandler) BatchUpdatePageStatus(c *gin.Context) {
 	h.writeBatchRouteResult(c, result)
 }
 
+// BatchPreviewMove godoc
+// @Summary      Dry-run preview for a batch move
+// @Description  Read-only preview of POST /pages/batch-move. Returns the per-slug will-succeed / will-fail classification the real batch-move would produce, without writing anything. Use to confirm before committing a large move.
+// @Tags         Wiki
+// @Accept       json
+// @Produce      json
+// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        body   body  types.WikiPageBatchMoveRequest true "Batch move payload"
+// @Success      200  {object}  types.WikiBatchPreviewResponse
+// @Failure      400  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/pages/batch-preview-move [post]
+func (h *WikiPageHandler) BatchPreviewMove(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	var req types.WikiPageBatchMoveRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+	if err := validateBatchSlugs(req.Slugs); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	resp, err := h.wikiService.PreviewBatchMove(c.Request.Context(), kbID, req.Slugs, strings.TrimSpace(req.FolderID))
+	if err != nil {
+		if respondBatchServiceError(c, err) {
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// BatchPreviewDelete godoc
+// @Summary      Dry-run preview for a batch delete
+// @Description  Read-only preview of POST /pages/batch-delete. Returns per-slug existence check + would-have-failed classification, without writing anything.
+// @Tags         Wiki
+// @Accept       json
+// @Produce      json
+// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        body   body  types.WikiPageBatchDeleteRequest true "Batch delete payload"
+// @Success      200  {object}  types.WikiBatchPreviewResponse
+// @Failure      400  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/pages/batch-preview-delete [post]
+func (h *WikiPageHandler) BatchPreviewDelete(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	var req types.WikiPageBatchDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+	if err := validateBatchSlugs(req.Slugs); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	resp, err := h.wikiService.PreviewBatchDelete(c.Request.Context(), kbID, req.Slugs)
+	if err != nil {
+		if respondBatchServiceError(c, err) {
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// BatchPreviewStatus godoc
+// @Summary      Dry-run preview for a batch status update
+// @Description  Read-only preview of POST /pages/batch-status. Validates the status token + checks slug existence; returns per-slug will-succeed / will-fail classification without writing anything.
+// @Tags         Wiki
+// @Accept       json
+// @Produce      json
+// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        body   body  types.WikiPageBatchStatusRequest true "Batch status payload"
+// @Success      200  {object}  types.WikiBatchPreviewResponse
+// @Failure      400  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/pages/batch-preview-status [post]
+func (h *WikiPageHandler) BatchPreviewStatus(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	var req types.WikiPageBatchStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+	if err := validateBatchSlugs(req.Slugs); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	resp, err := h.wikiService.PreviewBatchStatus(c.Request.Context(), kbID, req.Slugs, req.Status)
+	if err != nil {
+		if respondBatchServiceError(c, err) {
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
 // writeBatchRouteResult centralises the HTTP-status decision for the
 // three Batch*Route responses: 200 for sync, 202 for queued async. The
 // response body shape is the same (WikiBatchRouteResult) — only the

@@ -4025,6 +4025,8 @@ export default {
       bulkDeletePartial: '{succeeded}개 삭제, {failed}개 실패',
       bulkDeleteFailed: '일괄 삭제 실패: {error}',
       bulkClear: '선택 해제',
+      // Build #16 — dry-run preview button (replaces "Confirm" copy for >= 20 slugs)
+      bulkPreview: '미리보기',
       bulkJobQueued: '일괄 작업이 큐에 등록되었습니다 (#{id}), 처리 중…',
       bulkJobProgress: '{processed}/{total} 처리됨',
       bulkJobViewFailures: '오류 보기',
@@ -4036,6 +4038,7 @@ export default {
       bulkJobUndoFailed: '실행 취소 실패: {error}',
       bulkJobUndoExpired: '실행 취소 기한이 지났습니다',
       bulkJobPollError: '진행 상황 조회 실패',
+      batchPreviewLoadFailed: '미리보기 실패: {detail}',
       bulkConfirmAsyncTitle: '일괄 작업을 백그라운드에서 실행하시겠습니까?',
       bulkConfirmAsyncHint: '선택한 페이지가 20개를 초과하여 백그라운드에서 실행됩니다. 완료되면 토스트로 진행 상황이 표시되며, 60초 이내에 실행 취소 버튼을 누르면 되돌릴 수 있습니다.',
       bulkConfirmAsyncConfirm: '시작',
@@ -6657,6 +6660,23 @@ export default {
       drawerTitle: '실패 상세 · #{jobId}',
       empty: '현재 필터에 실패 기록이 없습니다',
       tabAll: '전체'
+    },
+    batchPreview: {
+      title: '미리보기 · {type}',
+      summary: '총 {total}개 항목',
+      willSucceed: '{count}개 항목이 성공할 예정',
+      willFail: '{count}개 항목이 실패할 예정',
+      willSucceedTag: '성공 예상',
+      unknownCode: '알 수 없는 오류 코드 {code}',
+      confirm: '실행 확인',
+      cancel: '취소',
+      empty: '현재 선택 항목이 없습니다',
+      codeHeader: '상태',
+      typeLabel: {
+        move: '이동',
+        delete: '삭제',
+        status: '상태 변경',
+      }
     }
   }
 }

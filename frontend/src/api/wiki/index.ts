@@ -201,6 +201,7 @@ import {
   isWikiBatchJobUndoable,
   WikiBatchAuditActorSystem,
   WikiBatchErrorCodeToI18nKey,
+  WikiBatchAsyncThreshold,
 } from './batchTypes';
 import type {
   WikiBatchResult,
@@ -220,6 +221,9 @@ import type {
   WikiBatchFailureGroupCount,
   WikiBatchFailureListResponse,
   WikiBatchFailureFilter,
+  WikiBatchPreviewResponse,
+  WikiBatchPreviewSummary,
+  WikiBatchPreviewType,
 } from './batchTypes';
 export type {
   WikiBatchResult,
@@ -239,12 +243,16 @@ export type {
   WikiBatchFailureGroupCount,
   WikiBatchFailureListResponse,
   WikiBatchFailureFilter,
+  WikiBatchPreviewResponse,
+  WikiBatchPreviewSummary,
+  WikiBatchPreviewType,
 };
 export {
   WikiBatchJobTerminalStates,
   isWikiBatchJobUndoable,
   WikiBatchAuditActorSystem,
   WikiBatchErrorCodeToI18nKey,
+  WikiBatchAsyncThreshold,
 };
 
 // getWikiPageBacklinks returns the set of pages that link to
@@ -293,6 +301,42 @@ export function batchUpdateWikiPagesStatus(
   const body: WikiBatchStatusBody = { slugs, status };
   return post<WikiBatchRouteResult>(
     `/api/v1/knowledgebase/${kbId}/wiki/pages/batch-status`,
+    body,
+  );
+}
+
+// Build #16 — wiki 批量 dry-run 预览。同 batch-* 一致用 verb 拆三端点,
+// 服务端零写入。返回 WikiBatchPreviewResponse 让 UI 在执行前看一份
+// "会成功 / 会失败 / 摘要"。
+
+export function batchPreviewWikiPagesMove(
+  kbId: string,
+  slugs: string[],
+  folderId: string,
+) {
+  const body: WikiBatchMoveBody = { slugs, folder_id: folderId };
+  return post<WikiBatchPreviewResponse>(
+    `/api/v1/knowledgebase/${kbId}/wiki/pages/batch-preview-move`,
+    body,
+  );
+}
+
+export function batchPreviewWikiPagesDelete(kbId: string, slugs: string[]) {
+  const body: WikiBatchDeleteBody = { slugs };
+  return post<WikiBatchPreviewResponse>(
+    `/api/v1/knowledgebase/${kbId}/wiki/pages/batch-preview-delete`,
+    body,
+  );
+}
+
+export function batchPreviewWikiPagesStatus(
+  kbId: string,
+  slugs: string[],
+  status: string,
+) {
+  const body: WikiBatchStatusBody = { slugs, status };
+  return post<WikiBatchPreviewResponse>(
+    `/api/v1/knowledgebase/${kbId}/wiki/pages/batch-preview-status`,
     body,
   );
 }

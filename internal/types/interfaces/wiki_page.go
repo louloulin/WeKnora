@@ -237,6 +237,19 @@ type WikiPageService interface {
 	BatchDeletePagesRoute(ctx context.Context, kbID string, slugs []string, createdBy string) (*types.WikiBatchRouteResult, error)
 	BatchUpdatePageStatusRoute(ctx context.Context, kbID string, slugs []string, status string, createdBy string) (*types.WikiBatchRouteResult, error)
 
+	// PreviewBatch* are the Build #16 dry-run siblings of the sync
+	// Batch* methods. They read the same rows + run the same validation
+	// rules but never write, never enqueue a job, and never record
+	// audit / failure rows. The returned WikiBatchPreviewResponse carries
+	// the per-slug will-succeed / will-fail classification with the same
+	// {Code, Error} vocabulary classifyBatchError uses so the UI can
+	// reuse WikiBatchErrorCodeToI18nKey. Cross-KB slugs surface as
+	// ErrWikiBatchKBMismatch (handler maps to 400) — same as the real
+	// Batch* path.
+	PreviewBatchMove(ctx context.Context, kbID string, slugs []string, folderID string) (*types.WikiBatchPreviewResponse, error)
+	PreviewBatchDelete(ctx context.Context, kbID string, slugs []string) (*types.WikiBatchPreviewResponse, error)
+	PreviewBatchStatus(ctx context.Context, kbID string, slugs []string, status string) (*types.WikiBatchPreviewResponse, error)
+
 	// CountByType returns page counts grouped by type for a knowledge
 	// base. Re-exposed at the service layer so the index intro
 	// generation path can frame the LLM prompt with "showing N of M"

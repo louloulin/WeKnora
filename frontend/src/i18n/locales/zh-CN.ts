@@ -4027,6 +4027,8 @@ export default {
       bulkDeletePartial: '已删除 {succeeded} 页，{failed} 页失败',
       bulkDeleteFailed: '批量删除失败：{error}',
       bulkClear: '清空选择',
+      // Build #16 — dry-run 预览按钮(替换"确认"按钮文案,仅 >= 20 slugs)
+      bulkPreview: '预览',
       // Build #13 — async batch jobs + undo. The synchronous toast
       // keys above (bulkMoveSuccess / bulkStatusSuccess /
       // bulkDeleteSuccess + their partial / failed variants) double as
@@ -4043,6 +4045,7 @@ export default {
       bulkJobUndoFailed: '撤销失败：{error}',
       bulkJobUndoExpired: '已超过撤销时限',
       bulkJobPollError: '查询进度失败',
+      batchPreviewLoadFailed: '预览失败:{detail}',
       bulkConfirmAsyncTitle: '确认批量操作（后台执行）？',
       bulkConfirmAsyncHint: '所选页数超过 20 条，操作将在后台进行；完成后 toast 会显示进度，可在 60 秒内点撤销按钮撤回。',
       bulkConfirmAsyncConfirm: '开始',
@@ -6637,6 +6640,23 @@ export default {
       drawerTitle: '失败明细 · #{jobId}',
       empty: '当前筛选下没有失败记录',
       tabAll: '全部'
+    },
+    batchPreview: {
+      title: '预览 · {type}',
+      summary: '共 {total} 项',
+      willSucceed: '{count} 项预计会成功',
+      willFail: '{count} 项预计会失败',
+      willSucceedTag: '预计成功',
+      unknownCode: '未知错误码 {code}',
+      confirm: '确认执行',
+      cancel: '取消',
+      empty: '当前选择无可预览条目',
+      codeHeader: '状态',
+      typeLabel: {
+        move: '移动',
+        delete: '删除',
+        status: '状态更新',
+      }
     }
   },
   menu: {
