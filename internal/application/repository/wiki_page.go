@@ -1144,6 +1144,33 @@ func (r *wikiPageRepository) DeleteByID(ctx context.Context, id string) error {
 	return nil
 }
 
+// RestoreDeleted clears deleted_at on a previously soft-deleted row and
+// rewrites its slug to `newSlug` in a single Unscoped UPDATE. The
+// combined write guarantees that the row cannot become visible under
+// its old slug while still soft-deleted.
+//
+// Build #13 (undo-of-batch-delete).
+func (r *wikiPageRepository) RestoreDeleted(
+	ctx context.Context, kbID string, originalSlug string, newSlug string,
+) error {
+	res := r.db.WithContext(ctx).
+		Unscoped().
+		Model(&types.WikiPage{}).
+		Where("knowledge_base_id = ? AND slug = ?", kbID, originalSlug).
+		Updates(map[string]interface{}{
+			"deleted_at": nil,
+			"slug":       newSlug,
+			"updated_at": time.Now(),
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return ErrWikiPageNotFound
+	}
+	return nil
+}
+
 // escapeLikePattern escapes LIKE / ILIKE metacharacters so the returned string
 // can be safely concatenated with % wildcards without unintended matches.
 // Order matters: escape the backslash first, then the wildcards.

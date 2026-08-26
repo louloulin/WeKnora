@@ -4027,6 +4027,24 @@ export default {
       bulkDeletePartial: '已删除 {succeeded} 页，{failed} 页失败',
       bulkDeleteFailed: '批量删除失败：{error}',
       bulkClear: '清空选择',
+      // Build #13 — async batch jobs + undo. The synchronous toast
+      // keys above (bulkMoveSuccess / bulkStatusSuccess /
+      // bulkDeleteSuccess + their partial / failed variants) double as
+      // the final-copy source once the worker finishes, so we only add
+      // the async-specific keys here.
+      bulkJobQueued: '批量任务已入队 (#{id})，处理中…',
+      bulkJobProgress: '{processed}/{total} 已处理',
+      bulkJobFailed: '批量失败：{error}',
+      bulkJobUndoButton: '撤销',
+      bulkJobUndoHint: '60 秒内可点撤销',
+      bulkJobUndoing: '正在撤销…',
+      bulkJobUndoSucceeded: '已撤销',
+      bulkJobUndoFailed: '撤销失败：{error}',
+      bulkJobUndoExpired: '已超过撤销时限',
+      bulkJobPollError: '查询进度失败',
+      bulkConfirmAsyncTitle: '确认批量操作（后台执行）？',
+      bulkConfirmAsyncHint: '所选页数超过 20 条，操作将在后台进行；完成后 toast 会显示进度，可在 60 秒内点撤销按钮撤回。',
+      bulkConfirmAsyncConfirm: '开始',
       batch: {
         error: {
           notFound: '页面不存在或已被删除',
@@ -4035,6 +4053,36 @@ export default {
           folderNotEmpty: '目标文件夹非空，无法移入',
           kbMismatch: '页面与目标知识库不一致',
           internal: '服务器内部错误',
+        },
+        // Build #14 — wiki 批量操作审计日志 UI
+        audit: {
+          toolbarBtn: '审计日志',
+          jobDrawerTitle: '任务 {id} 的审计记录',
+          kbDrawerTitle: '批量操作审计日志',
+          empty: '暂无审计记录',
+          filterAction: '按事件筛选',
+          filterActor: '按操作者筛选',
+          export: '导出 CSV',
+          exportFailed: '导出失败，请稍后再试',
+          action: {
+            enqueue: '入队',
+            start: '开始执行',
+            finish: '执行完成',
+            undo_request: '撤销请求',
+            undo_done: '撤销完成',
+            cancel: '已取消',
+            expire: '已过期',
+          },
+          actor: {
+            system: '系统',
+            user: '{name}',
+          },
+          table: {
+            action: '事件',
+            actor: '操作者',
+            job: '任务',
+            occurred: '时间',
+          },
         },
       },
     },

@@ -7,6 +7,10 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
+
+	"encoding/csv"
+	"encoding/json"
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
@@ -20,27 +24,47 @@ import (
 
 // WikiPageHandler handles HTTP requests for wiki page operations
 type WikiPageHandler struct {
-	wikiService   interfaces.WikiPageService
-	kbService     interfaces.KnowledgeBaseService
-	lintService   *service.WikiLintService
-	auditService  interfaces.AuditLogService
-	memoryService interfaces.MemoryService
+	wikiService      interfaces.WikiPageService
+	kbService        interfaces.KnowledgeBaseService
+	lintService      *service.WikiLintService
+	auditService     interfaces.AuditLogService
+	memoryService    interfaces.MemoryService
+	batchJobService  interfaces.WikiBatchJobService
+	// batchAuditRepo exposes the wiki batch audit log (Build #14).
+	// May be nil for very old harness tests; the audit handlers return
+	// 503 in that case so callers see a clear "not configured" error
+	// rather than a misleading 500.
+	batchAuditRepo interfaces.WikiBatchAuditRepository
 }
 
-// NewWikiPageHandler creates a new wiki page handler
+// NewWikiPageHandler creates a new wiki page handler.
+//
+// batchJobService may be nil — older builds (pre-#13) construct the
+// handler without async batch support. The Batch* handlers fall back
+// to synchronous execution in that case (Batch*Route returns sync
+// when batchSvc is unset). Build #13.
+//
+// batchAuditRepo is Build #14 — pass nil for builds without the
+// wiki_batch_job_audit table.
+//
+// Build #14.
 func NewWikiPageHandler(
 	wikiService interfaces.WikiPageService,
 	kbService interfaces.KnowledgeBaseService,
 	lintService *service.WikiLintService,
 	auditService interfaces.AuditLogService,
 	memoryService interfaces.MemoryService,
+	batchJobService interfaces.WikiBatchJobService,
+	batchAuditRepo interfaces.WikiBatchAuditRepository,
 ) *WikiPageHandler {
 	return &WikiPageHandler{
-		wikiService:   wikiService,
-		kbService:     kbService,
-		lintService:   lintService,
-		auditService:  auditService,
-		memoryService: memoryService,
+		wikiService:     wikiService,
+		kbService:       kbService,
+		lintService:     lintService,
+		auditService:    auditService,
+		memoryService:   memoryService,
+		batchJobService: batchJobService,
+		batchAuditRepo:  batchAuditRepo,
 	}
 }
 
@@ -315,13 +339,14 @@ func (h *WikiPageHandler) MovePage(c *gin.Context) {
 
 // BatchMovePages godoc
 // @Summary      Batch-move wiki pages into a folder
-// @Description  Relocate up to MaxWikiBatchSize pages into the same folder. Per-page failures are returned in `failed`; HTTP 200 covers partial success. Slugs are deduped server-side.
+// @Description  Relocate up to MaxWikiBatchSize pages into the same folder. Requests below WikiBatchAsyncThreshold run synchronously and return the WikiBatchResult directly; larger requests enqueue an async job and return { kind: "job", job } with HTTP 202. Slugs are deduped server-side.
 // @Tags         Wiki
 // @Accept       json
 // @Produce      json
 // @Param        kb_id  path  string  true  "Knowledge base ID"
 // @Param        body   body  types.WikiPageBatchMoveRequest true "Batch move payload"
-// @Success      200  {object}  types.WikiBatchResult
+// @Success      200  {object}  types.WikiBatchRouteResult
+// @Success      202  {object}  types.WikiBatchRouteResult
 // @Failure      400  {object}  errors.AppError
 // @Security     Bearer
 // @Router       /knowledgebase/{kb_id}/wiki/pages/batch-move [post]
@@ -340,7 +365,8 @@ func (h *WikiPageHandler) BatchMovePages(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	result, err := h.wikiService.BatchMovePages(c.Request.Context(), kbID, req.Slugs, strings.TrimSpace(req.FolderID))
+	userID, _ := types.UserIDFromContext(c.Request.Context())
+	result, err := h.wikiService.BatchMovePagesRoute(c.Request.Context(), kbID, req.Slugs, strings.TrimSpace(req.FolderID), userID)
 	if err != nil {
 		if respondBatchServiceError(c, err) {
 			return
@@ -348,18 +374,19 @@ func (h *WikiPageHandler) BatchMovePages(c *gin.Context) {
 		writeWikiFolderError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, result)
+	h.writeBatchRouteResult(c, result)
 }
 
 // BatchDeletePages godoc
 // @Summary      Batch soft-delete wiki pages
-// @Description  Soft-delete up to MaxWikiBatchSize pages. Each successful row cascades removeInLinks + chunk deletion exactly like DeletePage. Per-page failures appear in `failed`.
+// @Description  Soft-delete up to MaxWikiBatchSize pages. Each successful row cascades removeInLinks + chunk deletion exactly like DeletePage. Auto-routes to async when >= WikiBatchAsyncThreshold slugs.
 // @Tags         Wiki
 // @Accept       json
 // @Produce      json
 // @Param        kb_id  path  string  true  "Knowledge base ID"
 // @Param        body   body  types.WikiPageBatchDeleteRequest true "Batch delete payload"
-// @Success      200  {object}  types.WikiBatchResult
+// @Success      200  {object}  types.WikiBatchRouteResult
+// @Success      202  {object}  types.WikiBatchRouteResult
 // @Failure      400  {object}  errors.AppError
 // @Security     Bearer
 // @Router       /knowledgebase/{kb_id}/wiki/pages/batch-delete [post]
@@ -378,7 +405,8 @@ func (h *WikiPageHandler) BatchDeletePages(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	result, err := h.wikiService.BatchDeletePages(c.Request.Context(), kbID, req.Slugs)
+	userID, _ := types.UserIDFromContext(c.Request.Context())
+	result, err := h.wikiService.BatchDeletePagesRoute(c.Request.Context(), kbID, req.Slugs, userID)
 	if err != nil {
 		if respondBatchServiceError(c, err) {
 			return
@@ -386,18 +414,19 @@ func (h *WikiPageHandler) BatchDeletePages(c *gin.Context) {
 		writeWikiFolderError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, result)
+	h.writeBatchRouteResult(c, result)
 }
 
 // BatchUpdatePageStatus godoc
 // @Summary      Batch update wiki page status
-// @Description  Rewrite `status` (draft / published / archived) for up to MaxWikiBatchSize pages. Bookkeeping-only — does not bump `version`. Per-page failures appear in `failed`.
+// @Description  Rewrite `status` (draft / published / archived) for up to MaxWikiBatchSize pages. Bookkeeping-only — does not bump `version`. Auto-routes to async when >= WikiBatchAsyncThreshold slugs; status jobs are NOT undoable.
 // @Tags         Wiki
 // @Accept       json
 // @Produce      json
 // @Param        kb_id  path  string  true  "Knowledge base ID"
 // @Param        body   body  types.WikiPageBatchStatusRequest true "Batch status payload"
-// @Success      200  {object}  types.WikiBatchResult
+// @Success      200  {object}  types.WikiBatchRouteResult
+// @Success      202  {object}  types.WikiBatchRouteResult
 // @Failure      400  {object}  errors.AppError
 // @Security     Bearer
 // @Router       /knowledgebase/{kb_id}/wiki/pages/batch-status [post]
@@ -416,7 +445,8 @@ func (h *WikiPageHandler) BatchUpdatePageStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	result, err := h.wikiService.BatchUpdatePageStatus(c.Request.Context(), kbID, req.Slugs, req.Status)
+	userID, _ := types.UserIDFromContext(c.Request.Context())
+	result, err := h.wikiService.BatchUpdatePageStatusRoute(c.Request.Context(), kbID, req.Slugs, req.Status, userID)
 	if err != nil {
 		if respondBatchServiceError(c, err) {
 			return
@@ -424,7 +454,339 @@ func (h *WikiPageHandler) BatchUpdatePageStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, result)
+	h.writeBatchRouteResult(c, result)
+}
+
+// writeBatchRouteResult centralises the HTTP-status decision for the
+// three Batch*Route responses: 200 for sync, 202 for queued async. The
+// response body shape is the same (WikiBatchRouteResult) — only the
+// status code differs.
+//
+// Build #13.
+func (h *WikiPageHandler) writeBatchRouteResult(c *gin.Context, r *types.WikiBatchRouteResult) {
+	if r == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "nil batch route result"})
+		return
+	}
+	status := http.StatusOK
+	if r.Kind == "job" {
+		status = http.StatusAccepted
+	}
+	c.JSON(status, r)
+}
+
+// GetBatchJob godoc
+// @Summary      Get an async batch job's status
+// @Description  Returns the WikiBatchJob row plus the worker pool's result blob. Use to poll progress after a 202 response from one of the batch-* endpoints.
+// @Tags         Wiki
+// @Produce      json
+// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        job_id path  string  true  "Batch job id"
+// @Success      200  {object}  types.WikiBatchJob
+// @Failure      404  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/batch-jobs/{job_id} [get]
+func (h *WikiPageHandler) GetBatchJob(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	jobID := strings.TrimSpace(c.Param("job_id"))
+	if jobID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "job_id is required"})
+		return
+	}
+	job, err := h.batchJobService.GetJob(c.Request.Context(), jobID)
+	if err != nil {
+		h.respondBatchJobError(c, kbID, err)
+		return
+	}
+	if job.KnowledgeBaseID != kbID {
+		// Same as "not found" to avoid leaking cross-KB existence.
+		c.JSON(http.StatusNotFound, gin.H{"error": "batch job not found"})
+		return
+	}
+	c.JSON(http.StatusOK, job)
+}
+
+// UndoBatchJob godoc
+// @Summary      Roll back a finished batch job
+// @Description  Reverses a `move` or `delete` job. Returns the updated WikiBatchJob with `expires_at` cleared. 422 for status / tag (not undoable), 410 when the 7-day window has passed.
+// @Tags         Wiki
+// @Produce      json
+// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        job_id path  string  true  "Batch job id"
+// @Success      200  {object}  types.WikiBatchJob
+// @Failure      404  {object}  errors.AppError
+// @Failure      410  {object}  errors.AppError
+// @Failure      422  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/batch-jobs/{job_id}/undo [post]
+func (h *WikiPageHandler) UndoBatchJob(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	jobID := strings.TrimSpace(c.Param("job_id"))
+	if jobID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "job_id is required"})
+		return
+	}
+	userID, _ := types.UserIDFromContext(c.Request.Context())
+	job, err := h.batchJobService.UndoJob(c.Request.Context(), kbID, jobID, userID)
+	if err != nil {
+		h.respondBatchJobError(c, kbID, err)
+		return
+	}
+	c.JSON(http.StatusOK, job)
+}
+
+// CancelBatchJob godoc
+// @Summary      Cancel a queued batch job
+// @Description  Aborts a queued batch job before any worker picks it up. Returns the cleared WikiBatchJob. 409 once the job has started running.
+// @Tags         Wiki
+// @Produce      json
+// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        job_id path  string  true  "Batch job id"
+// @Success      200  {object}  types.WikiBatchJob
+// @Failure      404  {object}  errors.AppError
+// @Failure      409  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/batch-jobs/{job_id}/cancel [post]
+//
+// Build #14.
+func (h *WikiPageHandler) CancelBatchJob(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	jobID := strings.TrimSpace(c.Param("job_id"))
+	if jobID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "job_id is required"})
+		return
+	}
+	userID, _ := types.UserIDFromContext(c.Request.Context())
+	job, err := h.batchJobService.CancelJob(c.Request.Context(), kbID, jobID, userID)
+	if err != nil {
+		h.respondBatchJobError(c, kbID, err)
+		return
+	}
+	c.JSON(http.StatusOK, job)
+}
+
+// GetBatchJobAudit godoc
+// @Summary      Audit log for one batch job
+// @Description  Returns every audit event recorded against a single batch job, oldest-first. Per-job cardinality is bounded (<= 7 events) so no pagination.
+// @Tags         Wiki
+// @Produce      json
+// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        job_id path  string  true  "Batch job id"
+// @Success      200  {array}   types.WikiBatchJobAuditEvent
+// @Failure      400  {object}  errors.AppError
+// @Failure      503  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/batch-jobs/{job_id}/audit [get]
+//
+// Build #14.
+func (h *WikiPageHandler) GetBatchJobAudit(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if h.batchAuditRepo == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "batch audit log is not configured"})
+		return
+	}
+	jobID := strings.TrimSpace(c.Param("job_id"))
+	if jobID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "job_id is required"})
+		return
+	}
+	events, err := h.batchAuditRepo.ListByJobID(c.Request.Context(), kbID, jobID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, events)
+}
+
+// ListBatchJobAudit godoc
+// @Summary      KB-wide audit log (paginated)
+// @Description  Lists audit events for a knowledge base, newest-first. Filterable by actor / action / since. `since` is bounded to the last 90 days per D4.
+// @Tags         Wiki
+// @Produce      json
+// @Param        kb_id     path  string  true   "Knowledge base ID"
+// @Param        actor     query string  false  "Filter by actor id"
+// @Param        action    query string  false  "Filter by action (enqueue, start, finish, undo_request, undo_done, cancel, expire)"
+// @Param        since     query string  false  "Lower bound (RFC3339). Capped at 90 days before now."
+// @Param        page      query int     false  "1-based page number (default 1)"
+// @Param        page_size query int     false  "Page size, 1-200 (default 50)"
+// @Success      200  {object}  map[string]interface{}
+// @Failure      400  {object}  errors.AppError
+// @Failure      503  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/batch-audit [get]
+//
+// Build #14.
+func (h *WikiPageHandler) ListBatchJobAudit(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if h.batchAuditRepo == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "batch audit log is not configured"})
+		return
+	}
+	page, pageSize := parsePagination(c, 50, 200)
+	actor := strings.TrimSpace(c.Query("actor"))
+	action := types.WikiBatchAuditAction(strings.TrimSpace(c.Query("action")))
+	if action != "" && !types.IsValidWikiBatchAuditAction(action) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid action filter"})
+		return
+	}
+	since, sinceErr := parseAuditSince(c, 90*24*time.Hour)
+	if sinceErr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": sinceErr.Error()})
+		return
+	}
+	events, total, err := h.batchAuditRepo.ListByKB(c.Request.Context(), kbID, actor, action, since, page, pageSize)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"events":    events,
+		"total":     total,
+		"page":      page,
+		"page_size": pageSize,
+	})
+}
+
+// ExportBatchJobAuditCsv godoc
+// @Summary      Export KB batch audit log as CSV
+// @Description  Streams the same events as ListBatchJobAudit but as RFC 4180 CSV. `since` lower bound capped at 90 days; no upper bound.
+// @Tags         Wiki
+// @Produce      text/csv
+// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        actor  query string false "Filter by actor id"
+// @Param        since  query string false "Lower bound (RFC3339). Capped at 90 days before now."
+// @Success      200  {file}  string
+// @Failure      400  {object}  errors.AppError
+// @Failure      503  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/batch-audit/export [get]
+//
+// Build #14.
+func (h *WikiPageHandler) ExportBatchJobAuditCsv(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if h.batchAuditRepo == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "batch audit log is not configured"})
+		return
+	}
+	actor := strings.TrimSpace(c.Query("actor"))
+	since, sinceErr := parseAuditSince(c, 90*24*time.Hour)
+	if sinceErr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": sinceErr.Error()})
+		return
+	}
+	events, _, err := h.batchAuditRepo.ListByKB(c.Request.Context(), kbID, actor, "", since, 1, 10000)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Header("Content-Disposition", `attachment; filename="wiki-batch-audit-`+kbID+`.csv"`)
+	w := csv.NewWriter(c.Writer)
+	defer w.Flush()
+	_ = w.Write([]string{"id", "occurred_at", "action", "actor_id", "batch_job_id", "metadata"})
+	for _, e := range events {
+		meta, _ := json.Marshal(e.Metadata)
+		_ = w.Write([]string{
+			strconv.FormatInt(e.ID, 10),
+			e.OccurredAt.UTC().Format(time.RFC3339Nano),
+			string(e.Action),
+			e.ActorID,
+			e.BatchJobID,
+			string(meta),
+		})
+	}
+}
+
+// parseAuditSince parses the `since` query string and rejects values
+// older than `maxAge`. Zero time → no lower bound. Returns the parsed
+// time or an error suitable for a 400 response.
+//
+// Build #14.
+func parseAuditSince(c *gin.Context, maxAge time.Duration) (time.Time, error) {
+	raw := strings.TrimSpace(c.Query("since"))
+	if raw == "" {
+		return time.Time{}, nil
+	}
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("invalid since: must be RFC3339")
+	}
+	if maxAge > 0 {
+		cutoff := time.Now().Add(-maxAge)
+		if t.Before(cutoff) {
+			return time.Time{}, fmt.Errorf("since exceeds the %s retention window", maxAge)
+		}
+	}
+	return t, nil
+}
+
+// parsePagination extracts page / page_size from the request, applying
+// sensible defaults and clamping page_size to the supplied cap.
+//
+// Build #14.
+func parsePagination(c *gin.Context, defaultSize, maxSize int) (page, pageSize int) {
+	page = 1
+	pageSize = defaultSize
+	if v, err := strconv.Atoi(strings.TrimSpace(c.Query("page"))); err == nil && v > 0 {
+		page = v
+	}
+	if v, err := strconv.Atoi(strings.TrimSpace(c.Query("page_size"))); err == nil && v > 0 {
+		pageSize = v
+	}
+	if pageSize > maxSize {
+		pageSize = maxSize
+	}
+	return page, pageSize
+}
+
+// respondBatchJobError maps WikiBatchJob sentinel errors to HTTP statuses.
+// Cross-KB access is folded into 404 (not 403) so existence doesn't
+// leak across knowledge bases.
+//
+// Build #13. Build #14 adds ErrWikiBatchJobNotCancellable → 409.
+func (h *WikiPageHandler) respondBatchJobError(c *gin.Context, kbID string, err error) {
+	switch {
+	case stderrors.Is(err, types.ErrWikiBatchJobNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": "batch job not found"})
+	case stderrors.Is(err, types.ErrWikiBatchJobNotUndoable):
+		c.JSON(http.StatusUnprocessableEntity, gin.H{
+			"error": "batch job type is not undoable",
+			"code":  "not_undoable",
+		})
+	case stderrors.Is(err, types.ErrWikiBatchJobExpired):
+		c.JSON(http.StatusGone, gin.H{"error": "batch job undo window expired"})
+	case stderrors.Is(err, types.ErrWikiBatchJobNotCancellable):
+		c.JSON(http.StatusConflict, gin.H{
+			"error": "batch job is no longer cancellable",
+			"code":  "not_cancellable",
+		})
+	default:
+		writeWikiFolderError(c, err)
+	}
 }
 
 // respondBatchServiceError maps request-level batch errors (currently only

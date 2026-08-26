@@ -27,6 +27,15 @@ func TenantIDFromContext(ctx context.Context) (uint64, bool) {
 	return v, ok
 }
 
+// TenantIDFromContextOrZero returns TenantIDFromContext or 0 when absent.
+// Build #13 — async batch job rows need a tenant id, but the row is
+// still useful for KB-scoped queries when the caller couldn't supply
+// one (admin / system paths).
+func TenantIDFromContextOrZero(ctx context.Context) uint64 {
+	v, _ := TenantIDFromContext(ctx)
+	return v
+}
+
 // MustTenantIDFromContext extracts the tenant ID from ctx, panicking if missing.
 func MustTenantIDFromContext(ctx context.Context) uint64 {
 	v, ok := TenantIDFromContext(ctx)

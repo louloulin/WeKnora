@@ -243,6 +243,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewCustomAgentService))
 	must(container.Provide(service.NewUserResourceFavoriteService))
 	must(container.Provide(service.NewWikiPageService))
+	must(container.Provide(repository.NewWikiBatchJobRepository))
+	must(container.Provide(repository.NewWikiBatchAuditRepository))
+	must(container.Provide(service.NewWikiBatchJobService))
+	must(container.Invoke(wireWikiBatchJobService))
 	must(container.Provide(repository.NewWikiAclRepository))
 	must(container.Provide(service.NewWikiAclService))
 	must(container.Provide(service.NewWikiIngestService, dig.Name("wikiIngest")))
@@ -426,6 +430,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	logger.Debugf(ctx, "[Container] Registering IM integration...")
 	must(container.Provide(imPkg.NewService))
 	must(container.Invoke(registerIMService))
+	must(container.Invoke(registerWikiBatchJobService))
 	must(container.Provide(handler.NewIMHandler))
 	must(container.Provide(handler.NewEmbedChannelHandler))
 	must(container.Provide(handler.NewWeKnoraCloudHandler))
@@ -519,6 +524,24 @@ func registerChatLocalImageResolver(
 func must(err error) {
 	if err != nil {
 		panic(err)
+	}
+}
+
+// wireWikiBatchJobService connects the WikiBatchJobService to the
+// WikiPageService post-construction. The page service exposes a
+// SetBatchJobService setter so we don't have to break the
+// constructor's dependency tree — the alternative (passing both at
+// New time) creates a chicken-and-egg between the two.
+//
+// Build #13.
+func wireWikiBatchJobService(
+	pageSvc interfaces.WikiPageService,
+	batchSvc interfaces.WikiBatchJobService,
+) {
+	if setter, ok := pageSvc.(interface {
+		SetBatchJobService(interfaces.WikiBatchJobService)
+	}); ok {
+		setter.SetBatchJobService(batchSvc)
 	}
 }
 
@@ -1638,6 +1661,23 @@ func registerIMService(imService *imPkg.Service, cleaner interfaces.ResourceClea
 	cleaner.RegisterWithName("IMService", func() error {
 		imService.Stop()
 		return nil
+	})
+}
+
+// registerWikiBatchJobService registers graceful-shutdown for the wiki
+// batch job worker pool. The shutdown wait has a tight deadline so a
+// hung worker doesn't block the whole server exit — anything still
+// running past the deadline is dropped, and its job row is left in
+// state=running so the next process's claim query picks it up.
+//
+// Build #13.
+func registerWikiBatchJobService(
+	batchSvc interfaces.WikiBatchJobService, cleaner interfaces.ResourceCleaner,
+) {
+	cleaner.RegisterWithName("WikiBatchJobService", func() error {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		return batchSvc.Shutdown(ctx)
 	})
 }
 

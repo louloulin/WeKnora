@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS wiki_batch_jobs;

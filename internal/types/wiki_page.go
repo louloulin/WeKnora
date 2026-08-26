@@ -521,6 +521,151 @@ type WikiBatchResult struct {
 	Failed    []WikiPageBatchFailure `json:"failed"`
 }
 
+// WikiBatchAsyncThreshold is the slug count above which the batch endpoints
+// enqueue an async job instead of executing synchronously. Below this the
+// whole request runs in-process and returns the WikiBatchResult directly;
+// above it the request returns a job ID and a worker pool drains it.
+//
+// Threshold 20 keeps the synchronous path's worst-case latency under ~1s
+// on a typical 4-core KB while still letting the UI fire-and-forget large
+// archival/cleanup operations.
+//
+// Build #13.
+const WikiBatchAsyncThreshold = 20
+
+// WikiBatchJobType enumerates the four supported batch job categories.
+// `tag` is reserved for Build #15 — listed here so the type is stable now
+// rather than renamed later (changing the column constraint is a migration).
+//
+// Build #13.
+type WikiBatchJobType string
+
+const (
+	WikiBatchJobTypeMove   WikiBatchJobType = "move"
+	WikiBatchJobTypeDelete WikiBatchJobType = "delete"
+	WikiBatchJobTypeStatus WikiBatchJobType = "status"
+	WikiBatchJobTypeTag    WikiBatchJobType = "tag"
+)
+
+// WikiBatchJobState is the lifecycle of one queued batch operation.
+// queued → running → (succeeded | failed | partial). Workers advance the
+// state in this exact order; the frontend polls GET /batch-jobs/:id and
+// shows progress + the final result.
+//
+// Build #13.
+type WikiBatchJobState string
+
+const (
+	WikiBatchJobStateQueued    WikiBatchJobState = "queued"
+	WikiBatchJobStateRunning   WikiBatchJobState = "running"
+	WikiBatchJobStateSucceeded WikiBatchJobState = "succeeded"
+	WikiBatchJobStateFailed    WikiBatchJobState = "failed"
+	WikiBatchJobStatePartial   WikiBatchJobState = "partial"
+)
+
+// WikiBatchJob is the persisted shape of one async batch operation.
+// Params carries type-specific input (slugs + folder_id / target status);
+// UndoState captures per-page original values captured before mutation
+// so UndoJob can roll back deterministically without re-fetching.
+//
+// Build #13.
+type WikiBatchJob struct {
+	ID               string                 `json:"id" gorm:"type:varchar(36);primaryKey"`
+	TenantID         uint64                 `json:"tenant_id" gorm:"index"`
+	KnowledgeBaseID  string                 `json:"knowledge_base_id" gorm:"type:varchar(36);index"`
+	Type             WikiBatchJobType       `json:"type" gorm:"type:varchar(16)"`
+	Params           JSON                   `json:"params" gorm:"type:jsonb"`
+	UndoState        JSON                   `json:"undo_state,omitempty" gorm:"type:jsonb"`
+	State            WikiBatchJobState      `json:"state" gorm:"type:varchar(16);default:'queued'"`
+	Result           JSON                   `json:"result,omitempty" gorm:"type:jsonb"`
+	CreatedBy        string                 `json:"created_by" gorm:"type:varchar(64)"`
+	CreatedAt        time.Time              `json:"created_at"`
+	StartedAt        *time.Time             `json:"started_at,omitempty"`
+	FinishedAt       *time.Time             `json:"finished_at,omitempty"`
+	ExpiresAt        *time.Time             `json:"expires_at,omitempty"`
+}
+
+// TableName points at the migration-managed table.
+func (WikiBatchJob) TableName() string {
+	return "wiki_batch_jobs"
+}
+
+// Undoable reports whether UndoJob can roll this job back. Only `move` and
+// `delete` are reversible; `status` would require re-applying the prior
+// status which is semantically confusing and not worth the complexity.
+// `tag` is reserved for Build #15.
+//
+// Build #13.
+func (j *WikiBatchJob) Undoable() bool {
+	switch j.Type {
+	case WikiBatchJobTypeMove, WikiBatchJobTypeDelete:
+		return true
+	}
+	return false
+}
+
+// Expired reports whether the persistent undo window (7 days after finish)
+// has passed. After Expired() UndoJob returns 410 Gone.
+//
+// Build #13.
+func (j *WikiBatchJob) Expired(now time.Time) bool {
+	return j.ExpiresAt != nil && now.After(*j.ExpiresAt)
+}
+
+// WikiBatchJobParams is the type-discriminated payload carried in
+// WikiBatchJob.Params. Only the fields relevant to the job's Type are
+// populated; the rest are zero values.
+//
+// Build #13.
+type WikiBatchJobParams struct {
+	Slugs    []string `json:"slugs"`
+	FolderID string   `json:"folder_id,omitempty"`
+	Status   string   `json:"status,omitempty"`
+}
+
+// WikiBatchJobUndoState captures the per-page state required to roll a
+// job back. For `move` jobs we keep the previous folder_id; for `delete`
+// jobs we keep the slug + original folder_id + status (so undo can also
+// decide whether to keep the page archived / unpublished after restore).
+//
+// Build #13.
+type WikiBatchJobUndoState struct {
+	// PageStates maps slug -> pre-mutation state. Undo iterates this map
+	// and applies each entry via the inverse service call.
+	PageStates map[string]WikiBatchJobUndoPageState `json:"page_states"`
+}
+
+// WikiBatchJobUndoPageState is one row of WikiBatchJobUndoState.PageStates.
+// Build #13.
+type WikiBatchJobUndoPageState struct {
+	FolderID string `json:"folder_id"`
+	Status   string `json:"status"`
+}
+
+// WikiBatchJobResult is what workers write back to WikiBatchJob.Result.
+// Mirrors WikiBatchResult but typed as a JSON column (no GORM struct
+// scanning needed). The frontend polls this directly.
+//
+// Build #13.
+type WikiBatchJobResult struct {
+	Succeeded []string               `json:"succeeded"`
+	Failed    []WikiPageBatchFailure `json:"failed"`
+}
+
+// WikiBatchRouteResult is the discriminated response for the three
+// /batch-* endpoints under the auto-router. Kind = "sync" means the
+// whole batch ran in-process and Result holds the per-row outcome;
+// Kind = "job" means the request was queued for the worker pool and
+// Job carries the job id for polling / undo. The handler decides the
+// HTTP status (sync → 200 with the result; job → 202 with the job).
+//
+// Build #13.
+type WikiBatchRouteResult struct {
+	Kind   string           `json:"kind"`              // "sync" | "job"
+	Result *WikiBatchResult `json:"result,omitempty"`
+	Job    *WikiBatchJob    `json:"job,omitempty"`
+}
+
 // ErrWikiBatchKBMismatch is returned by every batch service method when
 // the request contains at least one slug that exists in a different
 // knowledge base. Per the brief's D2, this is a request-level rejection
@@ -549,6 +694,127 @@ func (e *WikiBatchKBMismatchError) Unwrap() error { return ErrWikiBatchKBMismatc
 // guard in any of the batch endpoints.
 func IsWikiBatchKBMismatch(err error) bool {
 	return errors.Is(err, ErrWikiBatchKBMismatch)
+}
+
+// WikiBatchJob sentinel errors. The HTTP handler maps each to a stable
+// status code (see internal/handler/wiki_page.go). Wrapped where extra
+// context is needed; callers should errors.Is on these.
+//
+// Build #13.
+var (
+	// ErrWikiBatchJobNotFound — job id does not exist (or belongs to a
+	// different KB; the handler returns 404 for both to avoid leaking
+	// existence across KBs).
+	ErrWikiBatchJobNotFound = errors.New("wiki batch job not found")
+	// ErrWikiBatchJobNotUndoable — the job's Type is not reversible
+	// (currently only `status` and `tag`). Handler returns 422.
+	ErrWikiBatchJobNotUndoable = errors.New("wiki batch job is not undoable")
+	// ErrWikiBatchJobExpired — the 7-day undo window has passed.
+	// Handler returns 410 Gone.
+	ErrWikiBatchJobExpired = errors.New("wiki batch job undo window expired")
+	// ErrWikiBatchJobAlreadyDone — terminal state — the job is in
+	// succeeded/failed/partial AND a previous undo already ran
+	// (we leave a sentinel marker). Handler returns 409.
+	ErrWikiBatchJobAlreadyDone = errors.New("wiki batch job already finalized")
+	// ErrWikiBatchJobNone — repository returned no queued jobs
+	// (ClaimNextQueued internal signal). Internal only; not exposed to
+	// the handler.
+	ErrWikiBatchJobNone = errors.New("no wiki batch jobs queued")
+	// ErrWikiBatchJobNotCancellable — the job has already left the
+	// queued state and cannot be aborted. Surfaced as 409 by the
+	// handler. Build #14.
+	ErrWikiBatchJobNotCancellable = errors.New("wiki batch job is not cancellable")
+)
+
+// WikiBatchAuditAction enumerates the event kinds we record in
+// wiki_batch_job_audit. The constant set is closed at write-time —
+// repository/service code uses these as keys, the SQL CHECK is left
+// open (Build #14 D2) so we can add new events without ALTER TABLE.
+//
+// Build #14.
+type WikiBatchAuditAction string
+
+const (
+	// WikiBatchAuditActionEnqueue — user submitted a batch request that
+	// was queued (async path).
+	WikiBatchAuditActionEnqueue WikiBatchAuditAction = "enqueue"
+	// WikiBatchAuditActionStart — worker claimed the job and advanced
+	// state to running.
+	WikiBatchAuditActionStart WikiBatchAuditAction = "start"
+	// WikiBatchAuditActionFinish — worker wrote the terminal result
+	// (succeeded/failed/partial). Metadata carries the per-action
+	// counts and error codes.
+	WikiBatchAuditActionFinish WikiBatchAuditAction = "finish"
+	// WikiBatchAuditActionUndoRequest — user invoked the undo endpoint.
+	// Recorded before undo runs so a half-failed undo is still
+	// traceable.
+	WikiBatchAuditActionUndoRequest WikiBatchAuditAction = "undo_request"
+	// WikiBatchAuditActionUndoDone — undo completed (success or
+	// partial). Metadata carries restored_count + skipped_count.
+	WikiBatchAuditActionUndoDone WikiBatchAuditAction = "undo_done"
+	// WikiBatchAuditActionCancel — EnqueueJob hit a full channel and
+	// degraded to synchronous execution. Metadata carries
+	// `{reason: "queue_full"}`.
+	WikiBatchAuditActionCancel WikiBatchAuditAction = "cancel"
+	// WikiBatchAuditActionExpire — periodic cleanup observed an
+	// expired job (passed expires_at). Actor is always "system".
+	WikiBatchAuditActionExpire WikiBatchAuditAction = "expire"
+)
+
+// WikiBatchJobAuditEvent is one immutable audit row. The repository
+// inserts and never updates; consumers (handlers, audits page) only
+// read.
+//
+// Build #14.
+type WikiBatchJobAuditEvent struct {
+	ID              int64                  `json:"id"`
+	TenantID        uint64                 `json:"tenant_id"`
+	KnowledgeBaseID string                 `json:"knowledge_base_id"`
+	BatchJobID      string                 `json:"batch_job_id"`
+	Action          WikiBatchAuditAction   `json:"action"`
+	ActorID         string                 `json:"actor_id"`
+	OccurredAt      time.Time              `json:"occurred_at"`
+	Metadata        map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// WikiBatchAuditActorSystem is the actor reserved for events not
+// driven by an HTTP request (worker start / finish / undo_done via
+// async worker, periodic expire cleanup, queue-full cancel). Always
+// lower-case so the audit filter dropdown can match exactly.
+//
+// Build #14.
+const WikiBatchAuditActorSystem = "system"
+
+// IsWikiBatchAuditTerminalAction returns true for events that mark
+// the end of a sub-flow and are typically the last row the audit
+// drawer shows when expanded.
+//
+// Build #14.
+func IsWikiBatchAuditTerminalAction(a WikiBatchAuditAction) bool {
+	return a == WikiBatchAuditActionFinish ||
+		a == WikiBatchAuditActionUndoDone ||
+		a == WikiBatchAuditActionExpire ||
+		a == WikiBatchAuditActionCancel
+}
+
+// IsValidWikiBatchAuditAction is the closed-set membership check used
+// by the list-by-KB handler to reject unknown action filters early.
+// Returned as `bool` (not error) so handlers can collapse the check
+// into a 400 response without extra wrapping.
+//
+// Build #14.
+func IsValidWikiBatchAuditAction(a WikiBatchAuditAction) bool {
+	switch a {
+	case WikiBatchAuditActionEnqueue,
+		WikiBatchAuditActionStart,
+		WikiBatchAuditActionFinish,
+		WikiBatchAuditActionUndoRequest,
+		WikiBatchAuditActionUndoDone,
+		WikiBatchAuditActionCancel,
+		WikiBatchAuditActionExpire:
+		return true
+	}
+	return false
 }
 
 // WikiExtractionGranularity controls how aggressive Pass 0 (candidate slug

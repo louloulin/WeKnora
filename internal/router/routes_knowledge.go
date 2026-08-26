@@ -311,6 +311,17 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		wiki.POST("/pages/batch-move", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.BatchMovePages)
 		wiki.POST("/pages/batch-delete", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.BatchDeletePages)
 		wiki.POST("/pages/batch-status", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.BatchUpdatePageStatus)
+		// Async batch job status + undo (Build #13). The status read uses
+		// KBAccessRead so a KB member watching the toast can poll; the
+		// undo write uses KBAccessWrite because it actually mutates the
+		// underlying wiki_pages. Both are gated by OwnedWikiKBOrAdmin.
+		wikiRead.GET("/batch-jobs/:job_id", g.OwnedWikiKBOrAdmin(), g.KBAccessRead("kb_id"), wikiHandler.GetBatchJob)
+		wiki.POST("/batch-jobs/:job_id/undo", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.UndoBatchJob)
+		// Build #14: cancel a queued job + audit log reads.
+		wiki.POST("/batch-jobs/:job_id/cancel", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.CancelBatchJob)
+		wikiRead.GET("/batch-jobs/:job_id/audit", g.OwnedWikiKBOrAdmin(), g.KBAccessRead("kb_id"), wikiHandler.GetBatchJobAudit)
+		wikiRead.GET("/batch-audit", g.OwnedWikiKBOrAdmin(), g.KBAccessRead("kb_id"), wikiHandler.ListBatchJobAudit)
+		wikiRead.GET("/batch-audit/export", g.OwnedWikiKBOrAdmin(), g.KBAccessRead("kb_id"), wikiHandler.ExportBatchJobAuditCsv)
 		wikiRead.GET("/pages/*slug", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetPage)
 		// Page-level backlinks (Build #11) — sibling of GetPage, same
 		// KBAccessRead guard so a KB member can list inbound links to

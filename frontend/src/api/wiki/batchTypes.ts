@@ -48,3 +48,131 @@ export const WikiBatchErrorCodeToI18nKey: Record<string, string> = {
   kb_mismatch: 'knowledgeEditor.wikiBrowser.batch.error.kbMismatch',
   internal: 'knowledgeEditor.wikiBrowser.batch.error.internal',
 };
+
+// WikiBatchJobState — possible lifecycle values returned by the
+// polling endpoint. The frontend uses these to drive the toast copy
+// and to decide whether to surface the undo button.
+//
+// Build #13.
+export type WikiBatchJobState =
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'partial';
+
+// WikiBatchJobType — `move` and `delete` are undoable; `status` and
+// the (reserved) `tag` are not.
+//
+// Build #13.
+export type WikiBatchJobType = 'move' | 'delete' | 'status' | 'tag';
+
+// WikiBatchJob — row returned by GET /batch-jobs/:id. Result carries
+// the per-slug outcome once the worker finishes.
+//
+// Build #13.
+export interface WikiBatchJob {
+  id: string;
+  tenant_id: number;
+  knowledge_base_id: string;
+  type: WikiBatchJobType;
+  params: unknown;
+  undo_state?: unknown;
+  state: WikiBatchJobState;
+  result?: WikiBatchResult | { error: string };
+  created_by: string;
+  created_at: string;
+  started_at?: string;
+  finished_at?: string;
+  expires_at?: string;
+}
+
+// WikiBatchRouteResult is the discriminated response for the three
+// /batch-* endpoints under auto-routing. Kind=job means the request
+// was queued; Kind=sync means the whole batch ran in-process.
+//
+// Build #13.
+export interface WikiBatchRouteResult {
+  kind: 'sync' | 'job';
+  result?: WikiBatchResult;
+  job?: WikiBatchJob;
+}
+
+// WikiBatchJobTerminalStates — once a job reaches one of these the
+// polling loop stops. Anything else means "still running".
+//
+// Build #13.
+export const WikiBatchJobTerminalStates: ReadonlyArray<WikiBatchJobState> = [
+  'succeeded',
+  'failed',
+  'partial',
+];
+
+// isWikiBatchJobUndoable is a typed predicate the component uses to
+// decide whether to surface the Undo button. We mirror the server
+// rule (status jobs are not undoable).
+//
+// Build #13.
+export function isWikiBatchJobUndoable(type: WikiBatchJobType): boolean {
+  return type === 'move' || type === 'delete';
+}
+
+// WikiBatchAuditAction — the seven event kinds the server records in
+// `wiki_batch_job_audit`. Mirrors the Go enum; the closed set is the
+// union so unknown values become compile errors on the consumer side.
+//
+// Build #14.
+export type WikiBatchAuditAction =
+  | 'enqueue'
+  | 'start'
+  | 'finish'
+  | 'undo_request'
+  | 'undo_done'
+  | 'cancel'
+  | 'expire';
+
+// WikiBatchAuditActorSystem is the actor id used when the worker pool
+// (or a future cleanup cron) writes a row without a human user.
+//
+// Build #14.
+export const WikiBatchAuditActorSystem = 'system';
+
+// WikiBatchJobAuditEvent — one row in the audit log. Per-job
+// cardinality is bounded (<= 7 events), so the drawer can render the
+// full chain without pagination.
+//
+// Build #14.
+export interface WikiBatchJobAuditEvent {
+  id: number;
+  tenant_id: number;
+  knowledge_base_id: string;
+  batch_job_id: string;
+  action: WikiBatchAuditAction;
+  actor_id: string;
+  occurred_at: string;
+  metadata?: Record<string, unknown>;
+}
+
+// WikiBatchAuditListResponse — paginated wrapper returned by
+// GET /batch-audit. Events are newest-first.
+//
+// Build #14.
+export interface WikiBatchAuditListResponse {
+  events: WikiBatchJobAuditEvent[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+// WikiBatchAuditFilter — query parameters accepted by the list /
+// export endpoints. `since` is an RFC3339 string; the server clamps
+// it to the last 90 days (D4).
+//
+// Build #14.
+export interface WikiBatchAuditFilter {
+  actor?: string;
+  action?: WikiBatchAuditAction;
+  since?: string;
+  page?: number;
+  page_size?: number;
+}

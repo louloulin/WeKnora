@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -48,6 +49,22 @@ type wikiPageService struct {
 	taskPendingRepo interfaces.TaskPendingOpsRepository
 	redisClient     *redis.Client
 	aclService      WikiAclService
+	// batchSvc is set post-construction via SetBatchJobService to break
+	// the chicken-and-egg between WikiPageService (which builds job
+	// params) and WikiBatchJobService (which executes them). nil means
+	// the three Batch* methods always run synchronously — older callers
+	// (tests) keep working unchanged.
+	batchSvc interfaces.WikiBatchJobService
+}
+
+// SetBatchJobService wires the async batch service post-construction.
+// Avoids a circular initialiser between wikiPageService.New (which
+// needs to enqueue jobs) and WikiBatchJobService.New (which needs the
+// page service to execute sync methods).
+//
+// Build #13.
+func (s *wikiPageService) SetBatchJobService(svc interfaces.WikiBatchJobService) {
+	s.batchSvc = svc
 }
 
 // NewWikiPageService creates a new wiki page service.
@@ -434,6 +451,31 @@ func (s *wikiPageService) DeletePage(ctx context.Context, kbID string, slug stri
 	s.deleteChunkForPage(ctx, page)
 
 	return nil
+}
+
+// RestoreDeletedPage undoes a soft-delete by clearing deleted_at and
+// rewriting the slug. Used exclusively by the Build #13 undo-of-batch-
+// delete path: the caller (WikiBatchJobService.undoDelete) computes the
+// suffix-augmented slug so we never have to invent one ourselves.
+//
+// We deliberately do not touch the linked chunks here — the chunk was
+// deleted alongside the page in DeletePage, and re-syncing 100 pages
+// inside one undo is out of scope. Subsequent re-ingest of the source
+// document will repopulate search. The page remains visible in the
+// wiki-browser list immediately because the soft-delete filter is
+// dropped.
+//
+// Build #13.
+func (s *wikiPageService) RestoreDeletedPage(
+	ctx context.Context, kbID string, originalSlug string, newSlug string,
+) (*types.WikiPage, error) {
+	if newSlug == "" || newSlug == originalSlug {
+		return nil, fmt.Errorf("restore slug must differ from original (%q)", originalSlug)
+	}
+	if err := s.repo.RestoreDeleted(ctx, kbID, originalSlug, newSlug); err != nil {
+		return nil, err
+	}
+	return s.repo.GetBySlug(ctx, kbID, newSlug)
 }
 
 // GetIndex returns the index page for a knowledge base
@@ -1875,6 +1917,152 @@ func (s *wikiPageService) BatchUpdatePageStatus(
 		result.Succeeded = append(result.Succeeded, slug)
 	}
 	return result, nil
+}
+
+// BatchMovePagesRoute is the auto-routing entry point used by the
+// Build #13 handler. It chooses between the synchronous BatchMovePages
+// path and the WikiBatchJobService queue based on the slug count.
+//
+// Build #13.
+func (s *wikiPageService) BatchMovePagesRoute(
+	ctx context.Context, kbID string, slugs []string, folderID string, createdBy string,
+) (*types.WikiBatchRouteResult, error) {
+	clean := normalizeBatchSlugs(slugs)
+	if err := s.assertBatchKBOwnership(ctx, kbID, clean); err != nil {
+		return nil, err
+	}
+	if s.batchSvc == nil || len(clean) < types.WikiBatchAsyncThreshold {
+		result, err := s.BatchMovePages(ctx, kbID, clean, folderID)
+		if err != nil {
+			return nil, err
+		}
+		return &types.WikiBatchRouteResult{Kind: "sync", Result: result}, nil
+	}
+	undo, err := CaptureUndoState(ctx, s, kbID, clean)
+	if err != nil {
+		return nil, err
+	}
+	params, err := json.Marshal(types.WikiBatchJobParams{Slugs: clean, FolderID: folderID})
+	if err != nil {
+		return nil, err
+	}
+	job := &types.WikiBatchJob{
+		TenantID:        types.TenantIDFromContextOrZero(ctx),
+		KnowledgeBaseID: kbID,
+		Type:            types.WikiBatchJobTypeMove,
+		Params:          params,
+		UndoState:       undo,
+		CreatedBy:       createdBy,
+		CreatedAt:       time.Now(),
+	}
+	jobID, err := s.batchSvc.EnqueueJob(ctx, job)
+	if err != nil {
+		// Queue overflow — degrade to sync so the user request still
+		// succeeds. Surface the original error in the log so the
+		// operator sees the backpressure.
+		logger.Warnf(ctx, "wiki batch move queue overflow, falling back to sync: %v", err)
+		result, sErr := s.BatchMovePages(ctx, kbID, clean, folderID)
+		if sErr != nil {
+			return nil, sErr
+		}
+		return &types.WikiBatchRouteResult{Kind: "sync", Result: result}, nil
+	}
+	job.ID = jobID
+	return &types.WikiBatchRouteResult{Kind: "job", Job: job}, nil
+}
+
+// BatchDeletePagesRoute — auto-routing counterpart of BatchDeletePages.
+//
+// Build #13.
+func (s *wikiPageService) BatchDeletePagesRoute(
+	ctx context.Context, kbID string, slugs []string, createdBy string,
+) (*types.WikiBatchRouteResult, error) {
+	clean := normalizeBatchSlugs(slugs)
+	if err := s.assertBatchKBOwnership(ctx, kbID, clean); err != nil {
+		return nil, err
+	}
+	if s.batchSvc == nil || len(clean) < types.WikiBatchAsyncThreshold {
+		result, err := s.BatchDeletePages(ctx, kbID, clean)
+		if err != nil {
+			return nil, err
+		}
+		return &types.WikiBatchRouteResult{Kind: "sync", Result: result}, nil
+	}
+	undo, err := CaptureUndoState(ctx, s, kbID, clean)
+	if err != nil {
+		return nil, err
+	}
+	params, err := json.Marshal(types.WikiBatchJobParams{Slugs: clean})
+	if err != nil {
+		return nil, err
+	}
+	job := &types.WikiBatchJob{
+		TenantID:        types.TenantIDFromContextOrZero(ctx),
+		KnowledgeBaseID: kbID,
+		Type:            types.WikiBatchJobTypeDelete,
+		Params:          params,
+		UndoState:       undo,
+		CreatedBy:       createdBy,
+		CreatedAt:       time.Now(),
+	}
+	jobID, err := s.batchSvc.EnqueueJob(ctx, job)
+	if err != nil {
+		logger.Warnf(ctx, "wiki batch delete queue overflow, falling back to sync: %v", err)
+		result, sErr := s.BatchDeletePages(ctx, kbID, clean)
+		if sErr != nil {
+			return nil, sErr
+		}
+		return &types.WikiBatchRouteResult{Kind: "sync", Result: result}, nil
+	}
+	job.ID = jobID
+	return &types.WikiBatchRouteResult{Kind: "job", Job: job}, nil
+}
+
+// BatchUpdatePageStatusRoute — auto-routing counterpart of
+// BatchUpdatePageStatus. Status is not undoable so we don't capture
+// undo_state (per spec A6 / D4).
+//
+// Build #13.
+func (s *wikiPageService) BatchUpdatePageStatusRoute(
+	ctx context.Context, kbID string, slugs []string, status string, createdBy string,
+) (*types.WikiBatchRouteResult, error) {
+	if !types.IsValidWikiPageStatus(status) {
+		return nil, fmt.Errorf("invalid status %q: must be draft, published or archived", status)
+	}
+	clean := normalizeBatchSlugs(slugs)
+	if err := s.assertBatchKBOwnership(ctx, kbID, clean); err != nil {
+		return nil, err
+	}
+	if s.batchSvc == nil || len(clean) < types.WikiBatchAsyncThreshold {
+		result, err := s.BatchUpdatePageStatus(ctx, kbID, clean, status)
+		if err != nil {
+			return nil, err
+		}
+		return &types.WikiBatchRouteResult{Kind: "sync", Result: result}, nil
+	}
+	params, err := json.Marshal(types.WikiBatchJobParams{Slugs: clean, Status: status})
+	if err != nil {
+		return nil, err
+	}
+	job := &types.WikiBatchJob{
+		TenantID:        types.TenantIDFromContextOrZero(ctx),
+		KnowledgeBaseID: kbID,
+		Type:            types.WikiBatchJobTypeStatus,
+		Params:          params,
+		CreatedBy:       createdBy,
+		CreatedAt:       time.Now(),
+	}
+	jobID, err := s.batchSvc.EnqueueJob(ctx, job)
+	if err != nil {
+		logger.Warnf(ctx, "wiki batch status queue overflow, falling back to sync: %v", err)
+		result, sErr := s.BatchUpdatePageStatus(ctx, kbID, clean, status)
+		if sErr != nil {
+			return nil, sErr
+		}
+		return &types.WikiBatchRouteResult{Kind: "sync", Result: result}, nil
+	}
+	job.ID = jobID
+	return &types.WikiBatchRouteResult{Kind: "job", Job: job}, nil
 }
 
 // assertBatchKBOwnership pre-validates that every slug in `slugs` either

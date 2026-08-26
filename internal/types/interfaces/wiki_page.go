@@ -2,6 +2,7 @@ package interfaces
 
 import (
 	"context"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
 )
@@ -54,6 +55,15 @@ type WikiPageService interface {
 
 	// DeletePage soft-deletes a wiki page and removes its chunk sync.
 	DeletePage(ctx context.Context, kbID string, slug string) error
+
+	// RestoreDeletedPage clears deleted_at on a previously soft-deleted
+	// page and rewrites its slug to `newSlug` (the caller supplies the
+	// suffix-resolved value — the service does not invent it). Used by
+	// Build #13's undo-of-batch-delete to dodge unique-slug conflicts
+	// when a live page took over the original slug during the window.
+	RestoreDeletedPage(
+		ctx context.Context, kbID string, originalSlug string, newSlug string,
+	) (*types.WikiPage, error)
 
 	// GetIndex returns the index page for a knowledge base.
 	// Creates a default one if it doesn't exist.
@@ -218,6 +228,15 @@ type WikiPageService interface {
 	// Build #12.
 	BatchUpdatePageStatus(ctx context.Context, kbID string, slugs []string, status string) (*types.WikiBatchResult, error)
 
+	// Batch*Route variants auto-route between the synchronous
+	// implementations above and the WikiBatchJobService queue based
+	// on WikiBatchAsyncThreshold (D1). The handler picks these; the
+	// existing Batch* methods stay for callers that always want sync
+	// (e.g. internal cleanup paths). Build #13.
+	BatchMovePagesRoute(ctx context.Context, kbID string, slugs []string, folderID string, createdBy string) (*types.WikiBatchRouteResult, error)
+	BatchDeletePagesRoute(ctx context.Context, kbID string, slugs []string, createdBy string) (*types.WikiBatchRouteResult, error)
+	BatchUpdatePageStatusRoute(ctx context.Context, kbID string, slugs []string, status string, createdBy string) (*types.WikiBatchRouteResult, error)
+
 	// CountByType returns page counts grouped by type for a knowledge
 	// base. Re-exposed at the service layer so the index intro
 	// generation path can frame the LLM prompt with "showing N of M"
@@ -251,6 +270,96 @@ type WikiPageService interface {
 
 	// UpdateIssueStatus updates the status of an issue (e.g. pending -> resolved/ignored).
 	UpdateIssueStatus(ctx context.Context, issueID string, status string) error
+}
+
+// WikiBatchJobService is the async batch job runner. The three Batch*
+// service methods on WikiPageService auto-route into here when the
+// request exceeds WikiBatchAsyncThreshold; UndoJob is exposed via the
+// /wiki/batch-jobs/:id/undo endpoint and is only valid for `move` and
+// `delete` jobs.
+//
+// Build #13.
+type WikiBatchJobService interface {
+	// EnqueueJob persists a job row in state=queued and submits the ID
+	// to the worker pool channel. Returns the job ID. The worker will
+	// read the row, advance it to running, execute the corresponding
+	// sync Batch* method on WikiPageService, and write the result.
+	EnqueueJob(ctx context.Context, job *types.WikiBatchJob) (string, error)
+
+	// GetJob returns the current row by ID. The KB scoped check is the
+	// caller's responsibility — this method does not enforce it.
+	GetJob(ctx context.Context, jobID string) (*types.WikiBatchJob, error)
+
+	// UndoJob rolls a finished `move` or `delete` job back. Status jobs
+	// return ErrWikiBatchJobNotUndoable. Jobs past their expiry return
+	// ErrWikiBatchJobExpired.
+	UndoJob(ctx context.Context, kbID, jobID, actor string) (*types.WikiBatchJob, error)
+
+	// CancelJob aborts a queued job before workers pick it up. Returns
+	// ErrWikiBatchJobNotCancellable if the job is already running,
+	// succeeded, failed, or partial. KB scoping: cross-KB access is
+	// surfaced as ErrWikiBatchJobNotFound (same 404 mapping as Undo).
+	//
+	// Build #14.
+	CancelJob(ctx context.Context, kbID, jobID, actor string) (*types.WikiBatchJob, error)
+
+	// Shutdown closes the worker channel and waits for in-flight jobs to
+	// drain. Called by main on SIGTERM so pending undo_state is not lost.
+	Shutdown(ctx context.Context) error
+}
+
+// WikiBatchJobRepository persists wiki_batch_jobs rows. Plain GORM CRUD,
+// separate from WikiPageRepository because the lifecycle / locking
+// semantics are different (workers grab via FOR UPDATE SKIP LOCKED).
+//
+// Build #13.
+type WikiBatchJobRepository interface {
+	Create(ctx context.Context, job *types.WikiBatchJob) error
+	GetByID(ctx context.Context, id string) (*types.WikiBatchJob, error)
+	Update(ctx context.Context, job *types.WikiBatchJob) error
+	// ClaimNextQueued marks one queued job as running in a single
+	// transaction and returns it. Returns ErrWikiBatchJobNone if no
+	// queued jobs are available (workers use this to idle).
+	ClaimNextQueued(ctx context.Context) (*types.WikiBatchJob, error)
+	// ListExpired returns finished jobs whose expires_at < now. Used by
+	// a cleanup cron (Build #13.x). Cap with limit; pass 0 for no cap.
+	ListExpired(ctx context.Context, now time.Time, limit int) ([]*types.WikiBatchJob, error)
+	// DeleteByID hard-removes a job row. Cleanup cron only — never call
+	// from request paths.
+	DeleteByID(ctx context.Context, id string) error
+}
+
+// WikiBatchAuditRepository persists wiki_batch_job_audit rows. Append-only —
+// the repository exposes only Insert + read paths. There is no Update or
+// Delete exposed because audit rows are immutable (compliance + Build #14 D2).
+//
+// Build #14.
+type WikiBatchAuditRepository interface {
+	// Insert appends one audit event. The caller fills BatchJobID, Action,
+	// ActorID, KnowledgeBaseID, TenantID; the repo stamps OccurredAt
+	// (server time) and returns the row including the assigned ID.
+	Insert(ctx context.Context, event *types.WikiBatchJobAuditEvent) error
+
+	// ListByJobID returns every event for one batch job, oldest-first so
+	// the audit drawer can render the chain top-down. No pagination —
+	// per-job cardinality is bounded (<= 7 events).
+	ListByJobID(ctx context.Context, kbID, jobID string) ([]*types.WikiBatchJobAuditEvent, error)
+
+	// ListByKB returns events scoped to one knowledge base, newest-first,
+	// filtered by the optional actor / action / since arguments. Pass
+	// empty strings to skip a filter. Since upper-bounded at 90 days at
+	// the handler layer (Build #14 D4).
+	//
+	// Pagination: page is 1-based; pageSize is enforced server-side
+	// (max 200). Returns the events + a total count for the UI's
+	// paginator.
+	ListByKB(ctx context.Context, kbID, actorID string, action types.WikiBatchAuditAction, since time.Time, page, pageSize int) (events []*types.WikiBatchJobAuditEvent, total int64, err error)
+
+	// ListExpiredEvents returns audit events whose occurred_at is older
+	// than `before` and that should be archived by the cleanup cron.
+	// Used only by Build #14.x cleanup (left for a follow-up). For now
+	// the repo exposes the read path so cleanup is testable.
+	ListExpiredEvents(ctx context.Context, before time.Time, limit int) ([]*types.WikiBatchJobAuditEvent, error)
 }
 
 // WikiPageRepository defines the wiki page data persistence interface.
@@ -399,6 +508,14 @@ type WikiPageRepository interface {
 
 	// DeleteByID soft-deletes a wiki page by ID.
 	DeleteByID(ctx context.Context, id string) error
+
+	// RestoreDeleted rewrites deleted_at = NULL on a previously soft-
+	// deleted row and updates the slug in the same statement. The
+	// implementation must run Unscoped so the GORM soft-delete filter
+	// doesn't hide the row, and must combine the slug + deleted_at
+	// updates in one UPDATE so a partial failure can't leave the row
+	// visible under its original slug.
+	RestoreDeleted(ctx context.Context, kbID string, originalSlug string, newSlug string) error
 
 	// Search performs full-text search on wiki pages within a knowledge base.
 	Search(ctx context.Context, kbID string, query string, limit int) ([]*types.WikiPage, error)

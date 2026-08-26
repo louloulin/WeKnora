@@ -194,13 +194,46 @@ import type { WikiPageBacklink } from './backlinksTypes';
 export type { WikiPageBacklink };
 
 // Build #12 — wiki 页面批量操作公共类型
+// Build #13 — 加 WikiBatchRouteResult + WikiBatchJob 用于异步路径
+// Build #14 — 加审计事件类型
+import {
+  WikiBatchJobTerminalStates,
+  isWikiBatchJobUndoable,
+  WikiBatchAuditActorSystem,
+} from './batchTypes';
 import type {
   WikiBatchResult,
+  WikiBatchRouteResult,
+  WikiBatchJob,
+  WikiBatchJobState,
+  WikiBatchJobType,
   WikiBatchMoveBody,
   WikiBatchDeleteBody,
   WikiBatchStatusBody,
+  WikiBatchJobAuditEvent,
+  WikiBatchAuditAction,
+  WikiBatchAuditListResponse,
+  WikiBatchAuditFilter,
 } from './batchTypes';
-export type { WikiBatchResult, WikiBatchMoveBody, WikiBatchDeleteBody, WikiBatchStatusBody };
+export type {
+  WikiBatchResult,
+  WikiBatchRouteResult,
+  WikiBatchJob,
+  WikiBatchJobState,
+  WikiBatchJobType,
+  WikiBatchMoveBody,
+  WikiBatchDeleteBody,
+  WikiBatchStatusBody,
+  WikiBatchJobAuditEvent,
+  WikiBatchAuditAction,
+  WikiBatchAuditListResponse,
+  WikiBatchAuditFilter,
+};
+export {
+  WikiBatchJobTerminalStates,
+  isWikiBatchJobUndoable,
+  WikiBatchAuditActorSystem,
+};
 
 // getWikiPageBacklinks returns the set of pages that link to
 // `slug` within `kbId`, ordered by updatedAt desc with the
@@ -216,6 +249,9 @@ export function getWikiPageBacklinks(kbId: string, slug: string) {
 // Build #12 — wiki 页面批量操作端点。三个 POST 端点共用
 // `WikiBatchResult` 响应形状;slugs 在服务端去重 + 空字符串剔除。
 // `folder_id` 空字符串表示移至 root。
+//
+// Build #13 — 三个端点改为返回 `WikiBatchRouteResult`;客户端根据
+// `kind` 字段决定是直接展示同步结果,还是改走异步 toast + 轮询。
 
 export function batchMoveWikiPages(
   kbId: string,
@@ -223,7 +259,7 @@ export function batchMoveWikiPages(
   folderId: string,
 ) {
   const body: WikiBatchMoveBody = { slugs, folder_id: folderId };
-  return post<WikiBatchResult>(
+  return post<WikiBatchRouteResult>(
     `/api/v1/knowledgebase/${kbId}/wiki/pages/batch-move`,
     body,
   );
@@ -231,7 +267,7 @@ export function batchMoveWikiPages(
 
 export function batchDeleteWikiPages(kbId: string, slugs: string[]) {
   const body: WikiBatchDeleteBody = { slugs };
-  return post<WikiBatchResult>(
+  return post<WikiBatchRouteResult>(
     `/api/v1/knowledgebase/${kbId}/wiki/pages/batch-delete`,
     body,
   );
@@ -243,9 +279,87 @@ export function batchUpdateWikiPagesStatus(
   status: string,
 ) {
   const body: WikiBatchStatusBody = { slugs, status };
-  return post<WikiBatchResult>(
+  return post<WikiBatchRouteResult>(
     `/api/v1/knowledgebase/${kbId}/wiki/pages/batch-status`,
     body,
+  );
+}
+
+// Build #13 — async job status + undo.
+
+// getWikiBatchJob polls a job's progress. Default 2s cadence is the
+// component's responsibility; this function does not schedule its own
+// retries.
+export function getWikiBatchJob(kbId: string, jobId: string) {
+  return get<WikiBatchJob>(
+    `/api/v1/knowledgebase/${kbId}/wiki/batch-jobs/${jobId}`,
+  );
+}
+
+// undoWikiBatchJob triggers the server-side undo path. The returned
+// WikiBatchJob has `expires_at` cleared; status jobs return 422 (caller
+// should never invoke this for status jobs).
+export function undoWikiBatchJob(kbId: string, jobId: string) {
+  return post<WikiBatchJob>(
+    `/api/v1/knowledgebase/${kbId}/wiki/batch-jobs/${jobId}/undo`,
+    {},
+  );
+}
+
+// cancelWikiBatchJob aborts a queued batch before any worker picks it
+// up. The server returns 409 once the job has moved past queued.
+//
+// Build #14.
+export function cancelWikiBatchJob(kbId: string, jobId: string) {
+  return post<WikiBatchJob>(
+    `/api/v1/knowledgebase/${kbId}/wiki/batch-jobs/${jobId}/cancel`,
+    {},
+  );
+}
+
+// getWikiBatchJobAudit returns every audit event for one batch job,
+// oldest-first. Per-job cardinality is bounded (<= 7 events), so the
+// drawer renders the full chain without pagination.
+//
+// Build #14.
+export function getWikiBatchJobAudit(kbId: string, jobId: string) {
+  return get<WikiBatchJobAuditEvent[]>(
+    `/api/v1/knowledgebase/${kbId}/wiki/batch-jobs/${jobId}/audit`,
+  );
+}
+
+// listWikiBatchAudit lists KB-wide audit events, newest-first. Filters
+// are optional; the server clamps `since` to the last 90 days.
+//
+// Build #14.
+export function listWikiBatchAudit(
+  kbId: string,
+  filter: WikiBatchAuditFilter = {},
+) {
+  return get<WikiBatchAuditListResponse>(
+    `/api/v1/knowledgebase/${kbId}/wiki/batch-audit`,
+    filter as Record<string, unknown>,
+  );
+}
+
+// exportWikiBatchAuditCsv streams the filtered events as
+// text/csv. Returns the raw Axios response so the caller can grab the
+// blob via `response.data`. The server caps the export at 10000
+// rows to keep response times sane.
+//
+// Build #14.
+export function exportWikiBatchAuditCsv(
+  kbId: string,
+  filter: Pick<WikiBatchAuditFilter, 'actor' | 'since'> = {},
+) {
+  const query = new URLSearchParams();
+  if (filter.actor) query.set('actor', filter.actor);
+  if (filter.since) query.set('since', filter.since);
+  const qs = query.toString();
+  const suffix = qs ? `?${qs}` : '';
+  return get<Blob>(
+    `/api/v1/knowledgebase/${kbId}/wiki/batch-audit/export${suffix}`,
+    { responseType: 'blob' },
   );
 }
 

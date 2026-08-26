@@ -166,6 +166,12 @@
       <!-- Left Panel: Page List -->
       <aside class="wiki-sidebar">
         <WikiSearchBar :kb-id="props.knowledgeBaseId" />
+        <div class="wiki-sidebar-audit-entry">
+          <t-button variant="text" theme="default" size="small" block @click="showAuditPanel = true">
+            <t-icon name="view-list" />
+            <span>{{ $t('wiki.batchAudit.toolbarBtn') }}</span>
+          </t-button>
+        </div>
 
         <div class="wiki-sidebar-header">
           <div v-if="stats && (stats.pending_tasks > 0 || stats.is_active)" class="wiki-queue-status">
@@ -851,6 +857,13 @@
       :page-title="selectedPage.title"
     />
 
+    <!-- Batch audit panel (Build #14). KB-wide audit log + per-job drawer. -->
+    <WikiBatchAuditPanel
+      v-if="showAuditPanel"
+      v-model:visible="showAuditPanel"
+      :kb-id="props.knowledgeBaseId"
+    />
+
     <!-- Create page dialog -->
     <t-dialog v-model:visible="showCreatePageDialog" :header="$t('knowledgeEditor.wikiBrowser.newPageTitle')"
       :confirm-btn="{ content: $t('common.confirm'), loading: creatingPage }" :cancel-btn="$t('common.cancel')"
@@ -945,6 +958,7 @@ import { useWikiCommentsStore } from '@/stores/wikiComments'
 import WikiShareDialog from '@/components/wiki/WikiShareDialog.vue'
 import { useWikiShareLinksStore } from '@/stores/wikiShareLinks'
 import WikiAclDialog from '@/components/wiki/WikiAclDialog.vue'
+import WikiBatchAuditPanel from '@/components/wiki/WikiBatchAuditPanel.vue'
 import { useWikiPageAclStore } from '@/stores/wikiPageAcl'
 import { aclToolbarVisibility } from './wikiBrowserAclVisibility'
 import WikiBacklinksPanel from '@/components/wiki/WikiBacklinksPanel.vue'
@@ -956,6 +970,10 @@ import {
   batchMoveWikiPages,
   batchDeleteWikiPages,
   batchUpdateWikiPagesStatus,
+  getWikiBatchJob,
+  undoWikiBatchJob,
+  isWikiBatchJobUndoable,
+  WikiBatchJobTerminalStates,
 } from '@/api/wiki'
 import WikiSearchBar from '@/components/wiki/WikiSearchBar.vue'
 import { useWikiSearchStore } from '@/stores/wikiSearch'
@@ -1009,6 +1027,8 @@ import {
   type WikiIndexGroup,
   type WikiIndexEntryDTO,
   type WikiBatchResult,
+  type WikiBatchRouteResult,
+  type WikiBatchJob,
 } from '@/api/wiki'
 
 const router = useRouter()
@@ -3125,6 +3145,7 @@ function openShareDialog(): void {
 }
 // Build #7 — page-level ACL dialog state + viewer banner.
 const showAclDialog = ref(false)
+const showAuditPanel = ref(false)
 const wikiAclStore = useWikiPageAclStore()
 const wikiSearchStore = useWikiSearchStore()
 const aclRestricted = computed(() => {
@@ -3952,8 +3973,8 @@ async function onBulkMove(folderId: string): Promise<void> {
       props.knowledgeBaseId,
       [...selectedSlugs.value],
       folderId,
-    )) as WikiBatchResult
-    handleBatchResult(result, 'knowledgeEditor.wikiBrowser.bulkMoveSuccess', 'bulkMovePartial')
+    )) as WikiBatchRouteResult
+    await handleBatchRouteResult(result, 'knowledgeEditor.wikiBrowser.bulkMoveSuccess', 'bulkMovePartial', {})
     await refreshActiveTree()
   } catch (err) {
     MessagePlugin.error(t('knowledgeEditor.wikiBrowser.bulkMoveFailed', { error: String(err) }))
@@ -3970,8 +3991,13 @@ async function onBulkStatus(status: 'draft' | 'published' | 'archived'): Promise
       props.knowledgeBaseId,
       [...selectedSlugs.value],
       status,
-    )) as WikiBatchResult
-    handleBatchResult(result, 'knowledgeEditor.wikiBrowser.bulkStatusSuccess', 'bulkStatusPartial', { status })
+    )) as WikiBatchRouteResult
+    await handleBatchRouteResult(
+      result,
+      'knowledgeEditor.wikiBrowser.bulkStatusSuccess',
+      'bulkStatusPartial',
+      { status },
+    )
     await refreshActiveTree()
   } catch (err) {
     MessagePlugin.error(t('knowledgeEditor.wikiBrowser.bulkStatusFailed', { error: String(err) }))
@@ -3987,14 +4013,203 @@ async function onBulkDelete(): Promise<void> {
     const result = (await batchDeleteWikiPages(
       props.knowledgeBaseId,
       [...selectedSlugs.value],
-    )) as WikiBatchResult
-    handleBatchResult(result, 'knowledgeEditor.wikiBrowser.bulkDeleteSuccess', 'bulkDeletePartial')
+    )) as WikiBatchRouteResult
+    await handleBatchRouteResult(result, 'knowledgeEditor.wikiBrowser.bulkDeleteSuccess', 'bulkDeletePartial', {})
     clearSelection()
     await refreshActiveTree()
   } catch (err) {
     MessagePlugin.error(t('knowledgeEditor.wikiBrowser.bulkDeleteFailed', { error: String(err) }))
   } finally {
     bulkBusy.value = false
+  }
+}
+
+// handleBatchRouteResult is the Build #13 update of handleBatchResult:
+// accepts the new discriminated response, branching on `kind`. Sync
+// path keeps the original toast semantics; async path opens a
+// persistent toast that polls the job until it terminates.
+async function handleBatchRouteResult(
+  result: WikiBatchRouteResult,
+  fullKey: string,
+  partialKey: string,
+  params: Record<string, unknown>,
+): Promise<void> {
+  if (result.kind === 'sync' && result.result) {
+    handleBatchResult(result.result, fullKey, partialKey, params)
+    return
+  }
+  if (result.kind === 'job' && result.job) {
+    await watchBatchJob(result.job.id, fullKey, partialKey, params)
+    return
+  }
+  // Defensive: malformed response — fall back to a generic warning so
+  // the user isn't left with a silent failure.
+  MessagePlugin.warning(t('knowledgeEditor.wikiBrowser.bulkJobPollError'))
+}
+
+// watchBatchJob opens a persistent loading toast, polls
+// getWikiBatchJob every 2s, then closes the loading toast and emits
+// a fresh success / warning / error toast with the final outcome.
+// Undoable jobs keep the result toast alive 60s so the user can
+// close it manually to invoke Undo. tdesign-vue-next's MessagePlugin
+// does not expose a `replace` method, so we close-then-emit instead
+// of trying to mutate the existing toast in place.
+async function watchBatchJob(
+  jobID: string,
+  fullKey: string,
+  partialKey: string,
+  params: Record<string, unknown>,
+): Promise<void> {
+  const shortID = jobID.length > 8 ? jobID.slice(0, 8) : jobID
+  const toastKey = MessagePlugin.loading({
+    content: t('knowledgeEditor.wikiBrowser.bulkJobQueued', { id: shortID }),
+    duration: 0,
+    closeBtn: false,
+  })
+
+  const stopped = { value: false }
+  let undoDeadline: ReturnType<typeof setTimeout> | null = null
+
+  const stop = () => {
+    stopped.value = true
+    if (undoDeadline) clearTimeout(undoDeadline)
+  }
+
+  // Poll on a 2-second cadence until the job terminates. The first
+  // hop happens immediately (no sleep) so a sub-second job still
+  // surfaces its result toast without a 2-second gap; subsequent
+  // hops wait POLL_INTERVAL_MS.
+  let firstPoll = true
+  while (!stopped.value) {
+    if (!firstPoll) {
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+      if (stopped.value) break
+    }
+    firstPoll = false
+    try {
+      const job = (await getWikiBatchJob(props.knowledgeBaseId, jobID)) as WikiBatchJob
+      const isTerminal = (WikiBatchJobTerminalStates as readonly string[]).includes(job.state)
+      if (isTerminal) {
+        // Close the persistent loading toast before showing the
+        // final copy. tdesign will ignore the close if the user has
+        // already dismissed it.
+        try {
+          MessagePlugin.close(toastKey as any)
+        } catch {
+          /* toast already gone */
+        }
+        finalizeToast(job, fullKey, partialKey, params)
+        // If undoable, hold the success toast for 60s so the user
+        // can close it manually to invoke Undo (the `onClose` hook
+        // on the toast is what fires triggerUndo). Status / tag
+        // jobs use the default 4.5s auto-dismiss.
+        if (isWikiBatchJobUndoable(job.type)) {
+          undoDeadline = setTimeout(() => {
+            try {
+              MessagePlugin.close(toastKey as any)
+            } catch {
+              /* toast already gone */
+            }
+          }, 60_000)
+        }
+        return
+      }
+    } catch (err) {
+      // Poll error — close the loading toast and surface a one-shot
+      // error. We bail out instead of retrying so a transient
+      // network blip doesn't pin a permanent loading spinner.
+      try {
+        MessagePlugin.close(toastKey as any)
+      } catch {
+        /* toast already gone */
+      }
+      MessagePlugin.error(t('knowledgeEditor.wikiBrowser.bulkJobPollError'))
+      stop()
+      return
+    }
+  }
+}
+
+// finalizeToast emits the success / warning / error toast once the
+// job reaches a terminal state. For undoable job types the toast
+// carries an onClose hook that triggers the undo endpoint — the
+// user closes the toast (clicks the X, or waits 60s) and the
+// rollback runs. This avoids needing tdesign's message plugin to
+// expose action buttons.
+function finalizeToast(
+  job: WikiBatchJob,
+  fullKey: string,
+  partialKey: string,
+  params: Record<string, unknown>,
+): void {
+  const succeeded = job.result && 'succeeded' in job.result ? job.result.succeeded?.length ?? 0 : 0
+  const failed = job.result && 'failed' in job.result ? job.result.failed?.length ?? 0 : 0
+  if (job.state === 'failed') {
+    MessagePlugin.error({
+      content: t('knowledgeEditor.wikiBrowser.bulkJobFailed', {
+        error: (job.result as { error?: string })?.error ?? '',
+      }),
+      duration: 6000,
+    })
+    return
+  }
+  if (failed === 0 && succeeded > 0) {
+    if (isWikiBatchJobUndoable(job.type)) {
+      // Undoable: success toast lives 60s; clicking the close button
+      // (or letting it auto-dismiss) invokes the undo endpoint.
+      MessagePlugin.success({
+        content: t(fullKey, { count: succeeded, ...params }),
+        duration: 60_000,
+        onClose: () => triggerUndo(job.id),
+      })
+    } else {
+      // Status / tag jobs are informational only — short toast.
+      MessagePlugin.success({
+        content: t(fullKey, { count: succeeded, ...params }),
+        duration: 4500,
+      })
+    }
+    return
+  }
+  // Partial — warning toast, no undo (we don't model partial undo
+  // for Build #13; the spec leaves it as a follow-up).
+  MessagePlugin.warning({
+    content: t(partialKey, { succeeded, failed, ...params }),
+    duration: 6000,
+  })
+}
+
+// triggerUndo invokes the undo endpoint and toasts the outcome.
+// Called from the success toast's onClose hook (60s timeout or
+// manual dismiss) and from any other entry point that wants to
+// roll the job back.
+async function triggerUndo(jobID: string): Promise<void> {
+  const undoKey = MessagePlugin.loading({
+    content: t('knowledgeEditor.wikiBrowser.bulkJobUndoing'),
+    duration: 0,
+  })
+  try {
+    await undoWikiBatchJob(props.knowledgeBaseId, jobID)
+    try {
+      MessagePlugin.close(undoKey as any)
+    } catch {
+      /* toast already gone */
+    }
+    MessagePlugin.success({
+      content: t('knowledgeEditor.wikiBrowser.bulkJobUndoSucceeded'),
+      duration: 4000,
+    })
+    await refreshActiveTree()
+  } catch (err) {
+    try {
+      MessagePlugin.close(undoKey as any)
+    } catch {
+      /* toast already gone */
+    }
+    MessagePlugin.error({
+      content: t('knowledgeEditor.wikiBrowser.bulkJobUndoFailed', { error: String(err) }),
+      duration: 6000,
+    })
   }
 }
 
