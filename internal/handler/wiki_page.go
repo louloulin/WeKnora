@@ -342,6 +342,9 @@ func (h *WikiPageHandler) BatchMovePages(c *gin.Context) {
 	}
 	result, err := h.wikiService.BatchMovePages(c.Request.Context(), kbID, req.Slugs, strings.TrimSpace(req.FolderID))
 	if err != nil {
+		if respondBatchServiceError(c, err) {
+			return
+		}
 		writeWikiFolderError(c, err)
 		return
 	}
@@ -377,6 +380,9 @@ func (h *WikiPageHandler) BatchDeletePages(c *gin.Context) {
 	}
 	result, err := h.wikiService.BatchDeletePages(c.Request.Context(), kbID, req.Slugs)
 	if err != nil {
+		if respondBatchServiceError(c, err) {
+			return
+		}
 		writeWikiFolderError(c, err)
 		return
 	}
@@ -412,10 +418,41 @@ func (h *WikiPageHandler) BatchUpdatePageStatus(c *gin.Context) {
 	}
 	result, err := h.wikiService.BatchUpdatePageStatus(c.Request.Context(), kbID, req.Slugs, req.Status)
 	if err != nil {
+		if respondBatchServiceError(c, err) {
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+// respondBatchServiceError maps request-level batch errors (currently only
+// cross-KB collisions) to the 400 contract. Returns true when the error
+// was recognised and a response written, so callers can short-circuit.
+// Any unrecognised error falls through to the existing per-handler
+// fallback (writeWikiFolderError / generic 500 / etc.).
+//
+// Build #12.
+func respondBatchServiceError(c *gin.Context, err error) bool {
+	if !types.IsWikiBatchKBMismatch(err) {
+		return false
+	}
+	var mismatch *types.WikiBatchKBMismatchError
+	if stderrors.As(err, &mismatch) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"code":      "kb_mismatch",
+			"slug":      mismatch.Slug,
+			"actual_kb": mismatch.ActualKB,
+			"error":     err.Error(),
+		})
+		return true
+	}
+	c.JSON(http.StatusBadRequest, gin.H{
+		"code":  "kb_mismatch",
+		"error": err.Error(),
+	})
+	return true
 }
 
 // validateBatchSlugs enforces MaxWikiBatchSize and rejects empty payloads

@@ -3,6 +3,8 @@ package types
 import (
 	"database/sql/driver"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -517,6 +519,36 @@ type WikiPageBatchFailure struct {
 type WikiBatchResult struct {
 	Succeeded []string               `json:"succeeded"`
 	Failed    []WikiPageBatchFailure `json:"failed"`
+}
+
+// ErrWikiBatchKBMismatch is returned by every batch service method when
+// the request contains at least one slug that exists in a different
+// knowledge base. Per the brief's D2, this is a request-level rejection
+// (HTTP 400 + code `kb_mismatch`), not a per-row partial failure — a
+// caller asking to mutate KB-A's bulk endpoint with KB-B's slug is
+// almost certainly a stale-client bug, and silently dropping the slug
+// would mask the root cause.
+//
+// Build #12.
+var ErrWikiBatchKBMismatch = errors.New("wiki batch: slug belongs to a different knowledge base")
+
+// WikiBatchKBMismatchError wraps ErrWikiBatchKBMismatch with the offending
+// slug so the handler can echo it in the 400 body.
+type WikiBatchKBMismatchError struct {
+	Slug     string
+	ActualKB string
+}
+
+func (e *WikiBatchKBMismatchError) Error() string {
+	return fmt.Sprintf("wiki batch: slug %q belongs to knowledge base %q, not the requested one", e.Slug, e.ActualKB)
+}
+
+func (e *WikiBatchKBMismatchError) Unwrap() error { return ErrWikiBatchKBMismatch }
+
+// IsWikiBatchKBMismatch reports whether err originated from the cross-KB
+// guard in any of the batch endpoints.
+func IsWikiBatchKBMismatch(err error) bool {
+	return errors.Is(err, ErrWikiBatchKBMismatch)
 }
 
 // WikiExtractionGranularity controls how aggressive Pass 0 (candidate slug

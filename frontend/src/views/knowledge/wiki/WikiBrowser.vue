@@ -3929,6 +3929,14 @@ function onPageRowClick(page: WikiPage): void {
 // Watcher: 切 sidebar tab 或打开页面正文时自动清空选中,避免"我在 A tab
 // 选了 3 页跳到 B tab 才发现是 A 的"或"已选中的页在我去查看正文时
 // 行列已变"这种惊吓(D8)。
+//
+// D8 also raised clearing on folder change, but the directory tree here
+// is purely expansion-state (paths a user has drilled into), not
+// navigation — there is no "currently viewing folder X" tracker to
+// watch. Selecting pages from across collapsed/expanded branches is the
+// intended UX (Build #12 brief: "select across rows of any view"), so
+// expansion changes do NOT clear the selection. If a future Build adds
+// drilled-into-folder navigation, hook a watcher on that ref here.
 watch(
   () => [activeTab.value, selectedPage.value?.id ?? ''],
   () => {

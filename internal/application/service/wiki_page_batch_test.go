@@ -33,9 +33,15 @@ func newStubBatchRepo() *stubBatchRepo {
 }
 
 func (s *stubBatchRepo) addPage(slug string, status string, outLinks []string, folderID string) *types.WikiPage {
+	return s.addPageInKB("kb1", slug, status, outLinks, folderID)
+}
+
+func (s *stubBatchRepo) addPageInKB(
+	kbID string, slug string, status string, outLinks []string, folderID string,
+) *types.WikiPage {
 	p := &types.WikiPage{
-		ID:              "id-" + slug,
-		KnowledgeBaseID: "kb1",
+		ID:              "id-" + kbID + "-" + slug,
+		KnowledgeBaseID: kbID,
 		Slug:            slug,
 		Title:           slug,
 		PageType:        types.WikiPageTypeConcept,
@@ -49,6 +55,23 @@ func (s *stubBatchRepo) addPage(slug string, status string, outLinks []string, f
 }
 
 func (s *stubBatchRepo) GetBySlug(ctx context.Context, kbID string, slug string) (*types.WikiPage, error) {
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
+	p, ok := s.pages[slug]
+	if !ok {
+		return nil, repository.ErrWikiPageNotFound
+	}
+	if p.KnowledgeBaseID != kbID {
+		// Matches real repo semantics: a KB-scoped query filters out
+		// cross-KB rows so callers see `not_found`.
+		return nil, repository.ErrWikiPageNotFound
+	}
+	cp := *p
+	return &cp, nil
+}
+
+func (s *stubBatchRepo) GetBySlugAcrossKB(ctx context.Context, slug string) (*types.WikiPage, error) {
 	if s.getErr != nil {
 		return nil, s.getErr
 	}
@@ -258,5 +281,89 @@ func TestBatchUpdatePageStatus_NoOpSkipsUpdate(t *testing.T) {
 	// anything, so the bookkeeping row stays put.
 	if !repo.pages["a"].UpdatedAt.Equal(originalUpdated) {
 		t.Errorf("no-op should not bump UpdatedAt: was %v now %v", originalUpdated, repo.pages["a"].UpdatedAt)
+	}
+}
+
+// Cross-KB detection (A6, D2). A slug that exists in a different KB must
+// abort the whole batch with kb_mismatch — never surface as a per-row
+// `not_found` (which would mask a stale-client bug).
+
+func TestBatchMovePages_CrossKBRejects(t *testing.T) {
+	repo := newStubBatchRepo()
+	repo.addPageInKB("kb-other", "shared-slug", types.WikiPageStatusPublished, nil, "")
+	svc := &wikiPageService{repo: repo}
+	_, err := svc.BatchMovePages(context.Background(), "kb1", []string{"shared-slug"}, "root")
+	if err == nil {
+		t.Fatalf("expected kb_mismatch error, got nil")
+	}
+	var mismatch *types.WikiBatchKBMismatchError
+	if !errors.As(err, &mismatch) {
+		t.Fatalf("expected *types.WikiBatchKBMismatchError, got %T: %v", err, err)
+	}
+	if mismatch.Slug != "shared-slug" || mismatch.ActualKB != "kb-other" {
+		t.Errorf("mismatch detail wrong: %+", mismatch)
+	}
+	if !types.IsWikiBatchKBMismatch(err) {
+		t.Errorf("IsWikiBatchKBMismatch returned false")
+	}
+}
+
+func TestBatchDeletePages_CrossKBRejects(t *testing.T) {
+	repo := newStubBatchRepo()
+	repo.addPageInKB("kb-other", "shared-slug", types.WikiPageStatusPublished, nil, "")
+	svc := &wikiPageService{repo: repo}
+	_, err := svc.BatchDeletePages(context.Background(), "kb1", []string{"shared-slug"})
+	if !types.IsWikiBatchKBMismatch(err) {
+		t.Fatalf("expected kb_mismatch, got %v", err)
+	}
+}
+
+func TestBatchUpdatePageStatus_CrossKBRejects(t *testing.T) {
+	repo := newStubBatchRepo()
+	repo.addPageInKB("kb-other", "shared-slug", types.WikiPageStatusPublished, nil, "")
+	svc := &wikiPageService{repo: repo}
+	_, err := svc.BatchUpdatePageStatus(context.Background(), "kb1", []string{"shared-slug"}, types.WikiPageStatusArchived)
+	if !types.IsWikiBatchKBMismatch(err) {
+		t.Fatalf("expected kb_mismatch, got %v", err)
+	}
+}
+
+// assertBatchKBOwnership helper
+
+func TestAssertBatchKBOwnership_PassesForSameKB(t *testing.T) {
+	repo := newStubBatchRepo()
+	repo.addPage("a", types.WikiPageStatusPublished, nil, "")
+	repo.addPage("b", types.WikiPageStatusPublished, nil, "")
+	svc := &wikiPageService{repo: repo}
+	if err := svc.assertBatchKBOwnership(context.Background(), "kb1", []string{"a", "b"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestAssertBatchKBOwnership_AllowsMissingSlugs(t *testing.T) {
+	// Missing slugs are NOT a kb_mismatch — they fall through to per-row
+	// not_found in the partial-success result.
+	repo := newStubBatchRepo()
+	svc := &wikiPageService{repo: repo}
+	if err := svc.assertBatchKBOwnership(context.Background(), "kb1", []string{"missing"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestAssertBatchKBOwnership_FlagsFirstCrossKB(t *testing.T) {
+	repo := newStubBatchRepo()
+	repo.addPage("a", types.WikiPageStatusPublished, nil, "") // kb1
+	repo.addPageInKB("kb-other", "shared", types.WikiPageStatusPublished, nil, "")
+	svc := &wikiPageService{repo: repo}
+	err := svc.assertBatchKBOwnership(context.Background(), "kb1", []string{"a", "shared"})
+	if err == nil {
+		t.Fatalf("expected kb_mismatch")
+	}
+	var mismatch *types.WikiBatchKBMismatchError
+	if !errors.As(err, &mismatch) {
+		t.Fatalf("expected *WikiBatchKBMismatchError, got %T", err)
+	}
+	if mismatch.Slug != "shared" || mismatch.ActualKB != "kb-other" {
+		t.Errorf("mismatch detail wrong: %+", mismatch)
 	}
 }

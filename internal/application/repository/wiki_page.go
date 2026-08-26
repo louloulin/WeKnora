@@ -305,6 +305,25 @@ func (r *wikiPageRepository) GetBySlug(ctx context.Context, kbID string, slug st
 	return &page, nil
 }
 
+// GetBySlugAcrossKB retrieves a wiki page by slug without scoping to a
+// knowledge base. Returns ErrWikiPageNotFound when the slug is truly
+// absent in any KB; otherwise returns the page (with its
+// KnowledgeBaseID populated) so the caller can detect a cross-KB
+// collision. Build #12 batch endpoints rely on this to map cross-KB
+// slugs to `kb_mismatch` instead of misreporting them as `not_found`.
+func (r *wikiPageRepository) GetBySlugAcrossKB(ctx context.Context, slug string) (*types.WikiPage, error) {
+	var page types.WikiPage
+	if err := r.db.WithContext(ctx).
+		Where("slug = ?", slug).
+		First(&page).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrWikiPageNotFound
+		}
+		return nil, err
+	}
+	return &page, nil
+}
+
 // List retrieves wiki pages with filtering and pagination
 func (r *wikiPageRepository) List(ctx context.Context, req *types.WikiPageListRequest) ([]*types.WikiPage, int64, error) {
 	query := r.db.WithContext(ctx).Model(&types.WikiPage{}).

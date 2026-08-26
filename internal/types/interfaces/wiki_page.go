@@ -283,6 +283,13 @@ type WikiPageRepository interface {
 	// GetBySlug retrieves a wiki page by slug within a knowledge base.
 	GetBySlug(ctx context.Context, kbID string, slug string) (*types.WikiPage, error)
 
+	// GetBySlugAcrossKB retrieves a wiki page by slug without filtering by
+	// knowledge_base_id, so callers can detect "this slug exists, but in a
+	// different KB" — a case the KB-scoped GetBySlug silently turns into
+	// ErrWikiPageNotFound. Used by the Build #12 batch endpoints to surface
+	// `kb_mismatch` per the brief's D2 (cross-KB → 400).
+	GetBySlugAcrossKB(ctx context.Context, slug string) (*types.WikiPage, error)
+
 	// List retrieves wiki pages with filtering and pagination.
 	List(ctx context.Context, req *types.WikiPageListRequest) ([]*types.WikiPage, int64, error)
 

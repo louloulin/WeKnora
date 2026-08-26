@@ -1768,14 +1768,27 @@ func normalizeBatchSlugs(slugs []string) []string {
 // BatchMovePages relocates up to MaxWikiBatchSize pages into folderID in
 // one bookkeeping-only pass. Per-row failures are recorded in the result
 // instead of aborting the batch (D1 partial-success). Cross-KB slugs fail
-// with `kb_mismatch`; not-found slugs fail with `not_found`; everything
-// else surfaces the wrapped service error verbatim.
+// the whole request with `kb_mismatch` (D2 — request-level 400), not
+// surfaced as `not_found`. Any other error surfaces the wrapped service
+// error verbatim.
+//
+// Transactional scope note (D5): each per-row MovePage call is already
+// atomic on its own (GORM wraps single-row Update in an implicit tx),
+// so an individual row is never half-applied. Wrapping the whole loop
+// in a single `s.db.WithContext(ctx).Transaction(...)` would convert
+// the batch from partial-success into all-or-nothing, which contradicts
+// D1 above. For very large batches that need cross-row atomicity (e.g.
+// "move 1000 pages or none"), the right primitive is an async batch
+// job with idempotent retries — Build #13+ territory.
 //
 // Build #12.
 func (s *wikiPageService) BatchMovePages(
 	ctx context.Context, kbID string, slugs []string, folderID string,
 ) (*types.WikiBatchResult, error) {
 	clean := normalizeBatchSlugs(slugs)
+	if err := s.assertBatchKBOwnership(ctx, kbID, clean); err != nil {
+		return nil, err
+	}
 	result := &types.WikiBatchResult{Succeeded: []string{}, Failed: []types.WikiPageBatchFailure{}}
 	for _, slug := range clean {
 		page, err := s.MovePage(ctx, kbID, slug, folderID)
@@ -1785,10 +1798,6 @@ func (s *wikiPageService) BatchMovePages(
 			})
 			continue
 		}
-		// Belt-and-suspenders cross-KB check: MovePage only used the
-		// kbID/slug path, so a slug from a different KB would simply
-		// 404. That's already "not_found", which classifyBatchError
-		// handles. We still log the success at debug.
 		_ = page
 		result.Succeeded = append(result.Succeeded, slug)
 	}
@@ -1799,12 +1808,16 @@ func (s *wikiPageService) BatchMovePages(
 // transactional pass. Each row reuses the same removeInLinks cascade and
 // chunk deletion that DeletePage uses — a successful delete on row N does
 // not depend on row N-1, so partial success is the natural shape (D1).
+// Cross-KB slugs fail the whole request with `kb_mismatch` (D2).
 //
 // Build #12.
 func (s *wikiPageService) BatchDeletePages(
 	ctx context.Context, kbID string, slugs []string,
 ) (*types.WikiBatchResult, error) {
 	clean := normalizeBatchSlugs(slugs)
+	if err := s.assertBatchKBOwnership(ctx, kbID, clean); err != nil {
+		return nil, err
+	}
 	result := &types.WikiBatchResult{Succeeded: []string{}, Failed: []types.WikiPageBatchFailure{}}
 	for _, slug := range clean {
 		if err := s.DeletePage(ctx, kbID, slug); err != nil {
@@ -1821,7 +1834,8 @@ func (s *wikiPageService) BatchDeletePages(
 // BatchUpdatePageStatus rewrites `status` for up to MaxWikiBatchSize pages
 // via the bookkeeping-only UpdateMeta path (D5 — no version bump). Status
 // is validated once at the top of the call so a single typo fails the
-// whole batch at the input boundary rather than per-row.
+// whole batch at the input boundary rather than per-row. Cross-KB slugs
+// fail the whole request with `kb_mismatch` (D2).
 //
 // Build #12.
 func (s *wikiPageService) BatchUpdatePageStatus(
@@ -1831,6 +1845,9 @@ func (s *wikiPageService) BatchUpdatePageStatus(
 		return nil, fmt.Errorf("invalid status %q: must be draft, published or archived", status)
 	}
 	clean := normalizeBatchSlugs(slugs)
+	if err := s.assertBatchKBOwnership(ctx, kbID, clean); err != nil {
+		return nil, err
+	}
 	result := &types.WikiBatchResult{Succeeded: []string{}, Failed: []types.WikiPageBatchFailure{}}
 	for _, slug := range clean {
 		page, err := s.repo.GetBySlug(ctx, kbID, slug)
@@ -1860,6 +1877,35 @@ func (s *wikiPageService) BatchUpdatePageStatus(
 	return result, nil
 }
 
+// assertBatchKBOwnership pre-validates that every slug in `slugs` either
+// is missing entirely or lives inside `kbID`. The first slug found in
+// any other KB aborts the whole batch with a WikiBatchKBMismatchError
+// (D2 — request-level 400). Missing slugs are deliberately allowed
+// through: those surface as per-row `not_found` in the partial-success
+// result, not as a request-level rejection.
+//
+// Build #12.
+func (s *wikiPageService) assertBatchKBOwnership(
+	ctx context.Context, kbID string, slugs []string,
+) error {
+	for _, slug := range slugs {
+		page, err := s.repo.GetBySlugAcrossKB(ctx, slug)
+		if err != nil {
+			if errors.Is(err, repository.ErrWikiPageNotFound) {
+				continue
+			}
+			return err
+		}
+		if page.KnowledgeBaseID != kbID {
+			return &types.WikiBatchKBMismatchError{
+				Slug:     slug,
+				ActualKB: page.KnowledgeBaseID,
+			}
+		}
+	}
+	return nil
+}
+
 // classifyBatchError maps a per-row service error to a stable, machine-
 // readable token so the frontend can render i18n strings per category
 // without re-parsing the human-readable message. Anything not on the map
@@ -1879,6 +1925,8 @@ func classifyBatchError(err error) string {
 		return "folder_conflict"
 	case errors.Is(err, repository.ErrWikiFolderNotEmpty):
 		return "folder_not_empty"
+	case errors.Is(err, types.ErrWikiBatchKBMismatch):
+		return "kb_mismatch"
 	}
 	return "internal"
 }
