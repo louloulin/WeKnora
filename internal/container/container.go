@@ -253,6 +253,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// Wiki tag system (Build #17).
 	must(container.Provide(repository.NewWikiTagRepository))
 	must(container.Provide(service.NewWikiTagService))
+	// Wiki page template skeleton engine (Build #18). Service is
+	// constructed un-wired; wireWikiTemplateService injects the page
+	// and tag services so the apply-template path can create child
+	// pages, rewrite the parent body, and resolve tagged-pages tokens.
+	must(container.Provide(service.NewWikiTemplateService))
+	must(container.Invoke(wireWikiTemplateService))
 	must(container.Provide(service.NewWikiIngestService, dig.Name("wikiIngest")))
 	must(container.Provide(service.NewWikiLintService))
 	must(container.Provide(service.NewEmbedChannelService))
@@ -432,6 +438,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewWikiAclHandler))
 	// Wiki tag handler (Build #17 backend).
 	must(container.Provide(handler.NewWikiTagHandler))
+	must(container.Provide(handler.NewWikiTemplateHandler))
 	// IM integration
 	logger.Debugf(ctx, "[Container] Registering IM integration...")
 	must(container.Provide(imPkg.NewService))
@@ -555,6 +562,31 @@ func wireWikiBatchJobService(
 		SetBatchJobService(interfaces.WikiBatchJobService)
 	}); ok {
 		setter.SetBatchJobService(batchSvc)
+	}
+}
+
+// wireWikiTemplateService breaks the WikiTemplateService ↔
+// WikiPageService ↔ WikiTagService cycle by injecting the
+// post-construction setters. Same pattern as wireWikiBatchJobService.
+//
+// Build #18.
+func wireWikiTemplateService(
+	pageSvc interfaces.WikiPageService,
+	tagSvc interfaces.WikiTagService,
+	tplSvc interfaces.WikiTemplateService,
+) {
+	if tplSvc == nil {
+		return
+	}
+	if setter, ok := tplSvc.(interface {
+		SetPageService(interfaces.WikiPageService)
+	}); ok {
+		setter.SetPageService(pageSvc)
+	}
+	if setter, ok := tplSvc.(interface {
+		SetTagService(interfaces.WikiTagService)
+	}); ok {
+		setter.SetTagService(tagSvc)
 	}
 }
 

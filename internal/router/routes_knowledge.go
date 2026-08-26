@@ -294,7 +294,7 @@ func RegisterKnowledgeTagRoutes(r *gin.RouterGroup, tagHandler *handler.TagHandl
 //
 // wikiAclHandler is the Build #7 surface — it is independent of the page
 // CRUD so a future split of the handler package can pass either alone.
-func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHandler, wikiAclHandler *handler.WikiAclHandler, wikiTagHandler *handler.WikiTagHandler, g *rbacGuards) {
+func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHandler, wikiAclHandler *handler.WikiAclHandler, wikiTagHandler *handler.WikiTagHandler, wikiTemplateHandler *handler.WikiTemplateHandler, g *rbacGuards) {
 	wiki := g.apiKeyGroup(r.Group("/knowledgebase/:kb_id/wiki"), apiKeyIngest(apiKeyFullAccess()))
 	wikiRead := wiki.With(apiKeyRetrieve(apiKeyFullAccess()))
 	{
@@ -362,6 +362,16 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		wikiRead.GET("/pages/*slug/tags", g.Viewer(), g.KBAccessRead("kb_id"), wikiTagHandler.GetPageTags)
 		wiki.PUT("/pages/*slug/tags", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiTagHandler.SetPageTags)
 		wiki.POST("/pages/batch-tag", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiTagHandler.BatchTagPages)
+
+		// Page template skeleton engine (Build #18). Both endpoints run
+		// under the same OwnedWikiKBOrAdmin + KBAccessWrite guard as the
+		// page-write endpoints — preview never mutates state but
+		// mirroring the write guard (Build #16 pattern) avoids a
+		// "preview but not execute" privilege gap. The `*slug` catch-all
+		// from the page CRUD already occupies /pages/*slug; the apply /
+		// preview paths live one segment deeper so they don't collide.
+		wiki.POST("/pages/*slug/apply-template", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiTemplateHandler.ApplyTemplate)
+		wiki.POST("/pages/*slug/preview-template", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiTemplateHandler.PreviewTemplate)
 
 		// Revision history (slug is a catch-all like /pages; revert carries
 		// the slug in the body for the same reason move-page does)

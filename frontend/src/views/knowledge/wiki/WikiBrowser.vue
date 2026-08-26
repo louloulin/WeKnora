@@ -626,6 +626,12 @@
                             <span class="wiki-action-btn-acl-dot" />
                           </span>
                         </t-tooltip>
+                        <t-tooltip :content="$t('wiki.template.toolbarBtn')" placement="top">
+                          <button type="button" class="wiki-action-btn wiki-action-btn--template"
+                            :aria-label="$t('wiki.template.toolbarBtn')" @click="openTemplateApplyDialog">
+                            <t-icon name="file-add" />
+                          </button>
+                        </t-tooltip>
                         <t-tooltip :content="$t('knowledgeEditor.wikiBrowser.viewInGraph')" placement="top">
                           <button type="button" class="wiki-action-btn"
                             :aria-label="$t('knowledgeEditor.wikiBrowser.viewInGraph')"
@@ -932,6 +938,19 @@
     <!-- Manage user-defined templates (Build #4). Controlled via showUserTemplateDialog. -->
     <WikiUserTemplateDialog v-model="showUserTemplateDialog" />
 
+    <!-- Apply auto-template skeleton (Build #18 / P1.2). The dialog takes
+         the parent's saved template body and lets the user fill in
+         {{child_pages}} / {{child_section}} / {{tagged_pages:foo}}
+         placeholders. Successful apply invalidates the page list. -->
+    <TemplateApplyDialog
+      v-model:visible="showTemplateApplyDialog"
+      :kb-id="props.knowledgeBaseId"
+      :parent-slug="selectedPage?.slug || ''"
+      :parent-title="selectedPage?.title || ''"
+      :template-body="selectedPage?.content || ''"
+      @applied="onTemplateApplied"
+    />
+
     <!-- In-place move confirmation, anchored at the drop point. Confirming runs
          the actual move API; cancelling discards the staged move. -->
     <teleport to="body">
@@ -1013,6 +1032,9 @@ const WikiTiptapEditor = defineAsyncComponent(
   () => import('@/components/wiki/WikiTiptapEditor.vue'),
 )
 import WikiUserTemplateDialog from '@/components/wiki/UserTemplateDialog.vue'
+import TemplateApplyDialog from '@/components/wiki/TemplateApplyDialog.vue'
+import { useWikiTemplatesStore } from '@/stores/wikiTemplates'
+import type { WikiApplyTemplateResult } from '@/api/wiki/templates'
 import {
   WIKI_PAGE_TEMPLATES,
   DEFAULT_TEMPLATE_ID,
@@ -3250,6 +3272,28 @@ function resolveTemplateLabel(tmpl: WikiPageTemplate): string {
 
 function openUserTemplateDialog() {
   showUserTemplateDialog.value = true
+}
+
+// --- Auto-template skeleton apply (Build #18 / P1.2) -------------------
+// The toolbar button opens TemplateApplyDialog with the saved template
+// body of the currently selected page. The dialog parses the body for
+// {{child_pages}} / {{child_section}} / {{tagged_pages:foo}} and lets
+// the user fill in a concrete skeleton; applying it materialises child
+// pages + rewrites the parent body atomically server-side.
+const showTemplateApplyDialog = ref(false)
+const wikiTemplatesStore = useWikiTemplatesStore()
+
+function openTemplateApplyDialog() {
+  if (!selectedPage.value?.slug) return
+  showTemplateApplyDialog.value = true
+}
+
+function onTemplateApplied(result: WikiApplyTemplateResult) {
+  // Refresh the page list so newly created child pages show up in the
+  // sidebar; the next page-list fetch pulls the rewritten parent body
+  // and the new child slugs from the server.
+  void result
+  void loadPages()
 }
 
 // Navigating to another page (or view) silently drops an in-progress edit;
