@@ -193,6 +193,15 @@ export function getWikiPage(kbId: string, slug: string) {
 import type { WikiPageBacklink } from './backlinksTypes';
 export type { WikiPageBacklink };
 
+// Build #12 — wiki 页面批量操作公共类型
+import type {
+  WikiBatchResult,
+  WikiBatchMoveBody,
+  WikiBatchDeleteBody,
+  WikiBatchStatusBody,
+} from './batchTypes';
+export type { WikiBatchResult, WikiBatchMoveBody, WikiBatchDeleteBody, WikiBatchStatusBody };
+
 // getWikiPageBacklinks returns the set of pages that link to
 // `slug` within `kbId`, ordered by updatedAt desc with the
 // backend handling orphan filtering. The server contract is
@@ -201,6 +210,42 @@ export type { WikiPageBacklink };
 export function getWikiPageBacklinks(kbId: string, slug: string) {
   return get<WikiPageBacklink[]>(
     `/api/v1/knowledgebase/${kbId}/wiki/pages/${encodeSlugPath(slug)}/backlinks`,
+  );
+}
+
+// Build #12 — wiki 页面批量操作端点。三个 POST 端点共用
+// `WikiBatchResult` 响应形状;slugs 在服务端去重 + 空字符串剔除。
+// `folder_id` 空字符串表示移至 root。
+
+export function batchMoveWikiPages(
+  kbId: string,
+  slugs: string[],
+  folderId: string,
+) {
+  const body: WikiBatchMoveBody = { slugs, folder_id: folderId };
+  return post<WikiBatchResult>(
+    `/api/v1/knowledgebase/${kbId}/wiki/pages/batch-move`,
+    body,
+  );
+}
+
+export function batchDeleteWikiPages(kbId: string, slugs: string[]) {
+  const body: WikiBatchDeleteBody = { slugs };
+  return post<WikiBatchResult>(
+    `/api/v1/knowledgebase/${kbId}/wiki/pages/batch-delete`,
+    body,
+  );
+}
+
+export function batchUpdateWikiPagesStatus(
+  kbId: string,
+  slugs: string[],
+  status: string,
+) {
+  const body: WikiBatchStatusBody = { slugs, status };
+  return post<WikiBatchResult>(
+    `/api/v1/knowledgebase/${kbId}/wiki/pages/batch-status`,
+    body,
   );
 }
 

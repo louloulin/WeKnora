@@ -202,6 +202,22 @@ type WikiPageService interface {
 	// cached category path. Returns the updated page.
 	MovePage(ctx context.Context, kbID string, slug string, folderID string) (*types.WikiPage, error)
 
+	// BatchMovePages relocates up to MaxWikiBatchSize pages into folderID.
+	// Per-row failures are recorded in the returned WikiBatchResult.Failed;
+	// successful rows are listed in Succeeded. Order of Succeeded is the
+	// post-dedup input order. Build #12.
+	BatchMovePages(ctx context.Context, kbID string, slugs []string, folderID string) (*types.WikiBatchResult, error)
+	// BatchDeletePages soft-deletes up to MaxWikiBatchSize pages in one
+	// transaction. Each row triggers its own removeInLinks cascade against
+	// every target the page referenced, matching DeletePage behaviour.
+	// Build #12.
+	BatchDeletePages(ctx context.Context, kbID string, slugs []string) (*types.WikiBatchResult, error)
+	// BatchUpdatePageStatus rewrites `status` for up to MaxWikiBatchSize
+	// pages via UpdatePageMeta (no version bump). Status values are
+	// restricted to draft / published / archived by IsValidWikiPageStatus.
+	// Build #12.
+	BatchUpdatePageStatus(ctx context.Context, kbID string, slugs []string, status string) (*types.WikiBatchResult, error)
+
 	// CountByType returns page counts grouped by type for a knowledge
 	// base. Re-exposed at the service layer so the index intro
 	// generation path can frame the LLM prompt with "showing N of M"

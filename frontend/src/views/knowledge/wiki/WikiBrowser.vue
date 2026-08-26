@@ -187,14 +187,43 @@
             @enter="doSearch" @clear="searchResults = null">
             <template #prefixIcon><t-icon name="search" /></template>
           </t-input>
+          <!-- Build #12: 进入/退出多选模式。select-mode 开启时,行点击切换
+               选中而不是打开页面;toolbar 行内出现 BulkActionBar 提供
+               移动 / 状态 / 删除三个批量动作。 -->
+          <div v-if="props.canEdit" class="wiki-select-mode-row">
+            <button type="button" class="wiki-select-mode-btn"
+              :class="{ active: selectMode }" :aria-pressed="selectMode"
+              :aria-label="$t('knowledgeEditor.wikiBrowser.bulkSelect')"
+              :disabled="(searchResults === null) && (!activeGroup || !activeGroup.type)"
+              @click="toggleSelectMode">
+              <t-icon :name="selectMode ? 'check-circle-filled' : 'check-circle'" />
+              <span>{{ $t('knowledgeEditor.wikiBrowser.bulkSelect') }}</span>
+            </button>
+          </div>
         </div>
 
         <div class="wiki-page-list" ref="pageListRef">
+          <!-- Build #12: 顶部批量操作栏。仅在 selectedSlugs 非空时渲染
+               (WikiBulkActionBar 内部已经 v-if count>0),清空会随
+               clearSelection 同步消失。 -->
+          <WikiBulkActionBar
+            :kb-id="props.knowledgeBaseId"
+            :selected-slugs="selectedSlugs"
+            :busy="bulkBusy"
+            @clear="clearSelection"
+            @move="onBulkMove"
+            @status="onBulkStatus"
+            @delete="onBulkDelete"
+          />
           <!-- Search mode: flat list of hits, no group chrome. Clearing
                the search snaps back to the bucketed view below. -->
           <template v-if="searchResults !== null">
             <div v-for="page in searchResults" :key="page.id"
-              :class="['wiki-page-item', { active: selectedPage?.id === page.id }]" @click="selectPage(page)">
+              :class="['wiki-page-item', { active: selectedPage?.id === page.id, selected: isSelected(page.slug) }]"
+              @click="onPageRowClick(page)">
+              <t-checkbox v-if="selectMode" class="wiki-page-item-checkbox"
+                :model-value="isSelected(page.slug)"
+                @click.stop="toggleSelected(page.slug)" />
               <div class="wiki-page-item-title">{{ page.title }}</div>
               <div class="wiki-page-item-summary">{{ page.summary }}</div>
               <div class="wiki-page-item-meta">
@@ -330,10 +359,13 @@
                       </template>
                     </div>
                     <div v-else
-                      :class="['wiki-page-item', 'wiki-page-item--tree', { active: selectedPage?.id === item.page.id }]"
+                      :class="['wiki-page-item', 'wiki-page-item--tree', { active: selectedPage?.id === item.page.id, selected: isSelected(item.page.slug) }]"
                       :style="{ '--wiki-tree-depth': item.depth }" :title="item.page.title" draggable="true"
-                      @click="selectPage(item.page)" @dragstart="onPageDragStart($event, item.page)"
+                      @click="onPageRowClick(item.page)" @dragstart="onPageDragStart($event, item.page)"
                       @dragend="onPageDragEnd">
+                      <t-checkbox v-if="selectMode" class="wiki-page-item-checkbox"
+                        :model-value="isSelected(item.page.slug)"
+                        @click.stop="toggleSelected(item.page.slug)" />
                       <t-icon :name="getPageIcon(item.page)"
                         :class="['wiki-page-file-icon', `wiki-page-file-icon--${item.page.page_type}`]" />
                       <span class="wiki-page-item-title">{{ item.page.title }}</span>
@@ -357,8 +389,11 @@
                 <RecycleScroller class="wiki-group-scroller" :items="activeFlatPages"
                   :item-size="WIKI_PAGE_ITEM_HEIGHT" key-field="id" :buffer="400" page-mode
                   v-slot="{ item }">
-                  <div :class="['wiki-page-item', 'wiki-page-item--list', { active: selectedPage?.id === item.id }]"
-                    @click="selectPage(item)">
+                  <div :class="['wiki-page-item', 'wiki-page-item--list', { active: selectedPage?.id === item.id, selected: isSelected(item.slug) }]"
+                    @click="onPageRowClick(item)">
+                    <t-checkbox v-if="selectMode" class="wiki-page-item-checkbox"
+                      :model-value="isSelected(item.slug)"
+                      @click.stop="toggleSelected(item.slug)" />
                     <div class="wiki-page-item-title">{{ item.title }}</div>
                     <div class="wiki-page-item-summary">{{ item.summary }}</div>
                     <div class="wiki-page-item-meta">
@@ -914,6 +949,14 @@ import { useWikiPageAclStore } from '@/stores/wikiPageAcl'
 import { aclToolbarVisibility } from './wikiBrowserAclVisibility'
 import WikiBacklinksPanel from '@/components/wiki/WikiBacklinksPanel.vue'
 import { useWikiBacklinksStore } from '@/stores/wikiBacklinks'
+
+// Build #12 — wiki 页面批量操作(批量 move / delete / status)
+import WikiBulkActionBar from '@/components/wiki/WikiBulkActionBar.vue'
+import {
+  batchMoveWikiPages,
+  batchDeleteWikiPages,
+  batchUpdateWikiPagesStatus,
+} from '@/api/wiki'
 import WikiSearchBar from '@/components/wiki/WikiSearchBar.vue'
 import { useWikiSearchStore } from '@/stores/wikiSearch'
 import { useFeatureFlagsStore } from '@/stores/featureFlags'
@@ -965,6 +1008,7 @@ import {
   type WikiPageUpdatePayload,
   type WikiIndexGroup,
   type WikiIndexEntryDTO,
+  type WikiBatchResult,
 } from '@/api/wiki'
 
 const router = useRouter()
@@ -3847,6 +3891,132 @@ async function onBacklinkNavigate(slug: string): Promise<void> {
   await navigateToSlug(slug)
 }
 
+// Build #12 — select-mode toggle + 选中的 slug 列表 + 三个批量动作的处理。
+// 选择状态用组件内 ref 持有、不进 Pinia,切页 / 切 folder / 退出 toggle 时
+// 自动清空(D8 — 防止"跳页就被后台操作")。
+const selectMode = ref(false)
+const selectedSlugs = ref<string[]>([])
+const bulkBusy = ref(false)
+
+function isSelected(slug: string): boolean {
+  return selectedSlugs.value.includes(slug)
+}
+
+function toggleSelected(slug: string): void {
+  const idx = selectedSlugs.value.indexOf(slug)
+  if (idx >= 0) selectedSlugs.value.splice(idx, 1)
+  else selectedSlugs.value.push(slug)
+}
+
+function clearSelection(): void {
+  selectedSlugs.value = []
+  selectMode.value = false
+}
+
+function toggleSelectMode(): void {
+  selectMode.value = !selectMode.value
+  if (!selectMode.value) selectedSlugs.value = []
+}
+
+function onPageRowClick(page: WikiPage): void {
+  if (selectMode.value) {
+    toggleSelected(page.slug)
+    return
+  }
+  selectPage(page)
+}
+
+// Watcher: 切 sidebar tab 或打开页面正文时自动清空选中,避免"我在 A tab
+// 选了 3 页跳到 B tab 才发现是 A 的"或"已选中的页在我去查看正文时
+// 行列已变"这种惊吓(D8)。
+watch(
+  () => [activeTab.value, selectedPage.value?.id ?? ''],
+  () => {
+    if (selectedSlugs.value.length > 0) selectedSlugs.value = []
+  },
+)
+
+async function onBulkMove(folderId: string): Promise<void> {
+  if (bulkBusy.value || selectedSlugs.value.length === 0) return
+  bulkBusy.value = true
+  try {
+    const result = (await batchMoveWikiPages(
+      props.knowledgeBaseId,
+      [...selectedSlugs.value],
+      folderId,
+    )) as WikiBatchResult
+    handleBatchResult(result, 'knowledgeEditor.wikiBrowser.bulkMoveSuccess', 'bulkMovePartial')
+    await refreshActiveTree()
+  } catch (err) {
+    MessagePlugin.error(t('knowledgeEditor.wikiBrowser.bulkMoveFailed', { error: String(err) }))
+  } finally {
+    bulkBusy.value = false
+  }
+}
+
+async function onBulkStatus(status: 'draft' | 'published' | 'archived'): Promise<void> {
+  if (bulkBusy.value || selectedSlugs.value.length === 0) return
+  bulkBusy.value = true
+  try {
+    const result = (await batchUpdateWikiPagesStatus(
+      props.knowledgeBaseId,
+      [...selectedSlugs.value],
+      status,
+    )) as WikiBatchResult
+    handleBatchResult(result, 'knowledgeEditor.wikiBrowser.bulkStatusSuccess', 'bulkStatusPartial', { status })
+    await refreshActiveTree()
+  } catch (err) {
+    MessagePlugin.error(t('knowledgeEditor.wikiBrowser.bulkStatusFailed', { error: String(err) }))
+  } finally {
+    bulkBusy.value = false
+  }
+}
+
+async function onBulkDelete(): Promise<void> {
+  if (bulkBusy.value || selectedSlugs.value.length === 0) return
+  bulkBusy.value = true
+  try {
+    const result = (await batchDeleteWikiPages(
+      props.knowledgeBaseId,
+      [...selectedSlugs.value],
+    )) as WikiBatchResult
+    handleBatchResult(result, 'knowledgeEditor.wikiBrowser.bulkDeleteSuccess', 'bulkDeletePartial')
+    clearSelection()
+    await refreshActiveTree()
+  } catch (err) {
+    MessagePlugin.error(t('knowledgeEditor.wikiBrowser.bulkDeleteFailed', { error: String(err) }))
+  } finally {
+    bulkBusy.value = false
+  }
+}
+
+function handleBatchResult(
+  result: WikiBatchResult,
+  fullKey: string,
+  partialKey: string,
+  params: Record<string, unknown> = {},
+): void {
+  const succeeded = result.succeeded?.length ?? 0
+  const failed = result.failed?.length ?? 0
+  if (failed === 0 && succeeded > 0) {
+    MessagePlugin.success(t(fullKey, { count: succeeded, ...params }))
+  } else if (succeeded === 0 && failed > 0) {
+    MessagePlugin.error(t(partialKey, { count: failed, ...params }))
+  } else if (succeeded > 0 && failed > 0) {
+    MessagePlugin.warning(t(partialKey, { succeeded, failed, ...params }))
+  }
+}
+
+async function refreshActiveTree(): Promise<void> {
+  // Re-fetch whichever active group / search the user is on, so the
+  // updated folder_id / status / deleted state shows up immediately.
+  if (searchResults.value !== null) {
+    await doSearch()
+  } else if (activeGroup.value && activeGroup.value.type) {
+    await loadPagesForType(activeGroup.value.type)
+  }
+}
+
 async function navigateToSlug(slug: string) {
   try {
     if (selectedPage.value && selectedPage.value.slug !== slug) {
@@ -5200,6 +5370,44 @@ onUnmounted(() => {
   gap: 8px;
 }
 
+// Build #12: 多选模式 toggle 按钮,放在 sidebar header 底部,
+// 视觉上是"右上角一个小开关",不影响搜索输入。active 态用
+// brand-color-light 背景 + brand-color 文字,与下面的选中行
+// 状态保持一致。
+.wiki-select-mode-row {
+  display: flex;
+  align-items: center;
+}
+
+.wiki-select-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid var(--td-component-stroke, transparent);
+  background: transparent;
+  color: var(--td-text-color-secondary);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+
+  &:hover:not(:disabled) {
+    background: var(--td-bg-color-container-hover);
+  }
+
+  &.active {
+    background: var(--td-brand-color-light, var(--td-component-color-light));
+    color: var(--td-brand-color, var(--td-primary-color));
+    border-color: var(--td-brand-color, var(--td-primary-color));
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
 .wiki-queue-status {
   display: flex;
   align-items: center;
@@ -5495,6 +5703,17 @@ onUnmounted(() => {
       color: var(--td-brand-color);
     }
   }
+
+  // Build #12: select-mode 选中态用浅品牌色描边,与"当前打开页"区分。
+  &.selected {
+    background: var(--td-brand-color-light, var(--td-component-color-light));
+    box-shadow: inset 0 0 0 1px var(--td-brand-color, var(--td-primary-color));
+  }
+}
+
+.wiki-page-item-checkbox {
+  margin-right: 6px;
+  flex-shrink: 0;
 }
 
 .wiki-group-scroller {

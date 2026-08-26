@@ -302,6 +302,15 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		wikiRead.GET("/pages", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.ListPages)
 		wiki.POST("/pages", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.CreatePage)
 		wiki.PUT("/move-page", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.MovePage)
+		// Page batch endpoints (Build #12) — sibling of MovePage, same
+		// KB-owner / KB-write guard so a Contributor who owns the KB can
+		// bulk-move / delete / status-change its wiki while a non-owner
+		// Contributor gets 403. Slug-agnostic routes (the slug lives in
+		// the body), so they don't collide with the catch-all
+		// `pages/*slug` below.
+		wiki.POST("/pages/batch-move", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.BatchMovePages)
+		wiki.POST("/pages/batch-delete", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.BatchDeletePages)
+		wiki.POST("/pages/batch-status", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.BatchUpdatePageStatus)
 		wikiRead.GET("/pages/*slug", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetPage)
 		// Page-level backlinks (Build #11) — sibling of GetPage, same
 		// KBAccessRead guard so a KB member can list inbound links to

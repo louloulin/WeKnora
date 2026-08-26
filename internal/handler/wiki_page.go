@@ -313,9 +313,122 @@ func (h *WikiPageHandler) MovePage(c *gin.Context) {
 	c.JSON(http.StatusOK, page)
 }
 
-// writeWikiFolderError maps folder/page service errors to HTTP status codes.
-func writeWikiFolderError(c *gin.Context, err error) {
-	switch {
+// BatchMovePages godoc
+// @Summary      Batch-move wiki pages into a folder
+// @Description  Relocate up to MaxWikiBatchSize pages into the same folder. Per-page failures are returned in `failed`; HTTP 200 covers partial success. Slugs are deduped server-side.
+// @Tags         Wiki
+// @Accept       json
+// @Produce      json
+// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        body   body  types.WikiPageBatchMoveRequest true "Batch move payload"
+// @Success      200  {object}  types.WikiBatchResult
+// @Failure      400  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/pages/batch-move [post]
+func (h *WikiPageHandler) BatchMovePages(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	var req types.WikiPageBatchMoveRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+	if err := validateBatchSlugs(req.Slugs); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	result, err := h.wikiService.BatchMovePages(c.Request.Context(), kbID, req.Slugs, strings.TrimSpace(req.FolderID))
+	if err != nil {
+		writeWikiFolderError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+// BatchDeletePages godoc
+// @Summary      Batch soft-delete wiki pages
+// @Description  Soft-delete up to MaxWikiBatchSize pages. Each successful row cascades removeInLinks + chunk deletion exactly like DeletePage. Per-page failures appear in `failed`.
+// @Tags         Wiki
+// @Accept       json
+// @Produce      json
+// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        body   body  types.WikiPageBatchDeleteRequest true "Batch delete payload"
+// @Success      200  {object}  types.WikiBatchResult
+// @Failure      400  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/pages/batch-delete [post]
+func (h *WikiPageHandler) BatchDeletePages(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	var req types.WikiPageBatchDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+	if err := validateBatchSlugs(req.Slugs); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	result, err := h.wikiService.BatchDeletePages(c.Request.Context(), kbID, req.Slugs)
+	if err != nil {
+		writeWikiFolderError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+// BatchUpdatePageStatus godoc
+// @Summary      Batch update wiki page status
+// @Description  Rewrite `status` (draft / published / archived) for up to MaxWikiBatchSize pages. Bookkeeping-only — does not bump `version`. Per-page failures appear in `failed`.
+// @Tags         Wiki
+// @Accept       json
+// @Produce      json
+// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        body   body  types.WikiPageBatchStatusRequest true "Batch status payload"
+// @Success      200  {object}  types.WikiBatchResult
+// @Failure      400  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/pages/batch-status [post]
+func (h *WikiPageHandler) BatchUpdatePageStatus(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	var req types.WikiPageBatchStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+	if err := validateBatchSlugs(req.Slugs); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	result, err := h.wikiService.BatchUpdatePageStatus(c.Request.Context(), kbID, req.Slugs, req.Status)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+// validateBatchSlugs enforces MaxWikiBatchSize and rejects empty payloads
+// with the same 400 contract across all three batch endpoints (D4, A5, A9).
+func validateBatchSlugs(slugs []string) error {
+	if len(slugs) == 0 {
+		return errors.New("slugs must not be empty")
+	}
+	if len(slugs) > types.MaxWikiBatchSize {
+		return fmt.Errorf("too many slugs: %d (max %d)", len(slugs), types.MaxWikiBatchSize)
+	}
+	return nil
+}
 	case stderrors.Is(err, repository.ErrWikiFolderNotFound), stderrors.Is(err, repository.ErrWikiPageNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case stderrors.Is(err, repository.ErrWikiFolderConflict), stderrors.Is(err, repository.ErrWikiFolderNotEmpty):

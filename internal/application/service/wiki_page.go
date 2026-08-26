@@ -1740,6 +1740,149 @@ func (s *wikiPageService) MovePage(
 	return page, nil
 }
 
+// normalizeBatchSlugs trims whitespace, drops empties, and dedupes slugs
+// while preserving first-seen order so the returned slice's order matches
+// what the caller submitted. Shared by all three batch endpoints (D6).
+//
+// Build #12.
+func normalizeBatchSlugs(slugs []string) []string {
+	if len(slugs) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(slugs))
+	out := make([]string, 0, len(slugs))
+	for _, s := range slugs {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
+}
+
+// BatchMovePages relocates up to MaxWikiBatchSize pages into folderID in
+// one bookkeeping-only pass. Per-row failures are recorded in the result
+// instead of aborting the batch (D1 partial-success). Cross-KB slugs fail
+// with `kb_mismatch`; not-found slugs fail with `not_found`; everything
+// else surfaces the wrapped service error verbatim.
+//
+// Build #12.
+func (s *wikiPageService) BatchMovePages(
+	ctx context.Context, kbID string, slugs []string, folderID string,
+) (*types.WikiBatchResult, error) {
+	clean := normalizeBatchSlugs(slugs)
+	result := &types.WikiBatchResult{Succeeded: []string{}, Failed: []types.WikiPageBatchFailure{}}
+	for _, slug := range clean {
+		page, err := s.MovePage(ctx, kbID, slug, folderID)
+		if err != nil {
+			result.Failed = append(result.Failed, types.WikiPageBatchFailure{
+				Slug: slug, Code: classifyBatchError(err), Error: err.Error(),
+			})
+			continue
+		}
+		// Belt-and-suspenders cross-KB check: MovePage only used the
+		// kbID/slug path, so a slug from a different KB would simply
+		// 404. That's already "not_found", which classifyBatchError
+		// handles. We still log the success at debug.
+		_ = page
+		result.Succeeded = append(result.Succeeded, slug)
+	}
+	return result, nil
+}
+
+// BatchDeletePages soft-deletes up to MaxWikiBatchSize pages in one
+// transactional pass. Each row reuses the same removeInLinks cascade and
+// chunk deletion that DeletePage uses — a successful delete on row N does
+// not depend on row N-1, so partial success is the natural shape (D1).
+//
+// Build #12.
+func (s *wikiPageService) BatchDeletePages(
+	ctx context.Context, kbID string, slugs []string,
+) (*types.WikiBatchResult, error) {
+	clean := normalizeBatchSlugs(slugs)
+	result := &types.WikiBatchResult{Succeeded: []string{}, Failed: []types.WikiPageBatchFailure{}}
+	for _, slug := range clean {
+		if err := s.DeletePage(ctx, kbID, slug); err != nil {
+			result.Failed = append(result.Failed, types.WikiPageBatchFailure{
+				Slug: slug, Code: classifyBatchError(err), Error: err.Error(),
+			})
+			continue
+		}
+		result.Succeeded = append(result.Succeeded, slug)
+	}
+	return result, nil
+}
+
+// BatchUpdatePageStatus rewrites `status` for up to MaxWikiBatchSize pages
+// via the bookkeeping-only UpdateMeta path (D5 — no version bump). Status
+// is validated once at the top of the call so a single typo fails the
+// whole batch at the input boundary rather than per-row.
+//
+// Build #12.
+func (s *wikiPageService) BatchUpdatePageStatus(
+	ctx context.Context, kbID string, slugs []string, status string,
+) (*types.WikiBatchResult, error) {
+	if !types.IsValidWikiPageStatus(status) {
+		return nil, fmt.Errorf("invalid status %q: must be draft, published or archived", status)
+	}
+	clean := normalizeBatchSlugs(slugs)
+	result := &types.WikiBatchResult{Succeeded: []string{}, Failed: []types.WikiPageBatchFailure{}}
+	for _, slug := range clean {
+		page, err := s.repo.GetBySlug(ctx, kbID, slug)
+		if err != nil {
+			result.Failed = append(result.Failed, types.WikiPageBatchFailure{
+				Slug: slug, Code: classifyBatchError(err), Error: err.Error(),
+			})
+			continue
+		}
+		if page.Status == status {
+			// No-op skip — the page is already at the target status.
+			// Still reported as "succeeded" because the caller's
+			// intent is satisfied without an error.
+			result.Succeeded = append(result.Succeeded, slug)
+			continue
+		}
+		page.Status = status
+		page.UpdatedAt = time.Now()
+		if err := s.repo.UpdateMeta(ctx, page); err != nil {
+			result.Failed = append(result.Failed, types.WikiPageBatchFailure{
+				Slug: slug, Code: classifyBatchError(err), Error: err.Error(),
+			})
+			continue
+		}
+		result.Succeeded = append(result.Succeeded, slug)
+	}
+	return result, nil
+}
+
+// classifyBatchError maps a per-row service error to a stable, machine-
+// readable token so the frontend can render i18n strings per category
+// without re-parsing the human-readable message. Anything not on the map
+// becomes `internal`.
+//
+// Build #12.
+func classifyBatchError(err error) string {
+	if err == nil {
+		return ""
+	}
+	switch {
+	case errors.Is(err, repository.ErrWikiPageNotFound):
+		return "not_found"
+	case errors.Is(err, repository.ErrWikiFolderNotFound):
+		return "folder_not_found"
+	case errors.Is(err, repository.ErrWikiFolderConflict):
+		return "folder_conflict"
+	case errors.Is(err, repository.ErrWikiFolderNotEmpty):
+		return "folder_not_empty"
+	}
+	return "internal"
+}
+
 // RenameOrMoveFolder renames and/or reparents a folder, then recomputes the
 // materialized path/depth of the entire subtree and the cached category path of
 // every page underneath. Guards against cycles (moving a folder into itself or

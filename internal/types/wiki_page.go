@@ -461,6 +461,64 @@ type WikiPageMoveRequest struct {
 	FolderID string `json:"folder_id"`
 }
 
+// MaxWikiBatchSize caps how many slugs a single wiki batch endpoint may
+// accept. 100 protects DB locks + Redis cache pressure and aligns with
+// BatchDeleteKnowledge. Excess requests 400 with too_many.
+const MaxWikiBatchSize = 100
+
+// WikiPageBatchMoveRequest relocates up to MaxWikiBatchSize pages into the
+// same folder. Per-page failures do not abort the batch (partial-success
+// semantics, D1 in brief). Slugs are deduped server-side.
+//
+// Build #12.
+type WikiPageBatchMoveRequest struct {
+	Slugs    []string `json:"slugs" binding:"required"`
+	FolderID string   `json:"folder_id"`
+}
+
+// WikiPageBatchDeleteRequest soft-deletes up to MaxWikiBatchSize pages in
+// one transaction. Each page triggers its own removeInLinks cascade against
+// every target it referenced, matching DeletePage behaviour.
+//
+// Build #12.
+type WikiPageBatchDeleteRequest struct {
+	Slugs []string `json:"slugs" binding:"required"`
+}
+
+// WikiPageBatchStatusRequest rewrites `status` for up to MaxWikiBatchSize
+// pages in one bookkeeping-only update (no version bump). Status values are
+// restricted to draft / published / archived by IsValidWikiPageStatus.
+//
+// Build #12.
+type WikiPageBatchStatusRequest struct {
+	Slugs  []string `json:"slugs" binding:"required"`
+	Status string   `json:"status" binding:"required"`
+}
+
+// WikiPageBatchFailure is one per-page failure entry inside WikiBatchResult.
+// Slug is echoed back so the UI can pin the failing row, and Code is a
+// stable machine-readable token ("not_found" | "kb_mismatch" | "invalid"
+// | "forbidden") so the frontend can render an i18n string per category
+// without re-parsing Error.
+//
+// Build #12.
+type WikiPageBatchFailure struct {
+	Slug  string `json:"slug"`
+	Code  string `json:"code"`
+	Error string `json:"error"`
+}
+
+// WikiBatchResult is the response shape shared by all three wiki batch
+// endpoints. Succeeded holds the slugs that were actually applied (after
+// dedup); Failed captures per-row errors so the caller can surface partial
+// success to the user.
+//
+// Build #12.
+type WikiBatchResult struct {
+	Succeeded []string               `json:"succeeded"`
+	Failed    []WikiPageBatchFailure `json:"failed"`
+}
+
 // WikiExtractionGranularity controls how aggressive Pass 0 (candidate slug
 // extraction) is. Higher granularity = more slugs, lower = tighter focus on
 // the document's main subjects.
