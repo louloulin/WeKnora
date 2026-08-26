@@ -1168,6 +1168,128 @@ func (h *WikiPageHandler) GetPageBacklinks(c *gin.Context) {
 	c.JSON(http.StatusOK, backlinks)
 }
 
+// GetPageBacklinksGraph godoc
+// @Summary      List the four-section backlink graph for a wiki page
+// @Description  Bundles four views of the backlink picture around a page
+// @Description  into one payload so the panel renders the full graph in a
+// @Description  single round-trip:
+// @Description    - direct   (1-hop pages whose `in_links` includes this page)
+// @Description    - indirect (2-hop pages; each row carries `via`)
+// @Description    - related  (Jaccard on `out_links` against the configured threshold)
+// @Description    - broken   (slugs in the page's `out_links` that no longer resolve)
+// @Description  Each numeric query parameter is clamped server-side; out-of-range
+// @Description  values return 400 only when unparseable. The endpoint mirrors
+// @Description  the Build #11 `/backlinks` endpoint's 404 semantics for unknown
+// @Description  pages, but an empty KB returns 200 with all four sections `[]`.
+// @Description  Build #20.
+// @Tags         Wiki
+// @Produce      json
+// @Param        kb_id          path   string  true   "Knowledge base ID"
+// @Param        slug           path   string  true   "Page slug"
+// @Param        max_indirect   query  int     false  "Max indirect rows (default 50, clamp 0..200)"
+// @Param        max_related    query  int     false  "Max related rows  (default 10, clamp 0..50)"
+// @Param        jaccard        query  number  false  "Jaccard threshold  (default 0.3, clamp 0..1)"
+// @Success      200  {object}  types.WikiBacklinkGraph
+// @Failure      400  {object}  errors.AppError
+// @Failure      404  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/pages/{slug}/backlinks/graph [get]
+func (h *WikiPageHandler) GetPageBacklinksGraph(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	slug := getSlugParam(c)
+	if slug == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Page slug is required"})
+		return
+	}
+	maxIndirect := 50
+	if raw := c.Query("max_indirect"); raw != "" {
+		v, perr := strconv.Atoi(raw)
+		if perr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "max_indirect must be an integer"})
+			return
+		}
+		maxIndirect = v
+	}
+	if maxIndirect < 0 {
+		maxIndirect = 0
+	}
+	if maxIndirect > 200 {
+		maxIndirect = 200
+	}
+	maxRelated := 10
+	if raw := c.Query("max_related"); raw != "" {
+		v, perr := strconv.Atoi(raw)
+		if perr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "max_related must be an integer"})
+			return
+		}
+		maxRelated = v
+	}
+	if maxRelated < 0 {
+		maxRelated = 0
+	}
+	if maxRelated > 50 {
+		maxRelated = 50
+	}
+	threshold := 0.3
+	if raw := c.Query("jaccard"); raw != "" {
+		v, perr := strconv.ParseFloat(raw, 64)
+		if perr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "jaccard must be a number"})
+			return
+		}
+		threshold = v
+	}
+	if threshold < 0 {
+		threshold = 0
+	}
+	if threshold > 1 {
+		threshold = 1
+	}
+
+	graph, err := h.wikiService.ListBacklinkGraph(c.Request.Context(), types.WikiBacklinkGraphRequest{
+		KbID:             kbID,
+		Slug:             slug,
+		MaxIndirect:      maxIndirect,
+		MaxRelated:       maxRelated,
+		JaccardThreshold: threshold,
+	})
+	if err != nil {
+		if stderrors.Is(err, repository.ErrWikiPageNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Wiki page not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if graph == nil {
+		graph = &types.WikiBacklinkGraph{
+			Direct:   []*types.WikiPageBacklink{},
+			Indirect: []*types.WikiBacklinkIndirect{},
+			Related:  []*types.WikiPageBacklinkRelated{},
+			Broken:   []*types.WikiBacklinkBroken{},
+			Stats:    types.WikiBacklinkGraphStats{},
+		}
+	}
+	if graph.Direct == nil {
+		graph.Direct = []*types.WikiPageBacklink{}
+	}
+	if graph.Indirect == nil {
+		graph.Indirect = []*types.WikiBacklinkIndirect{}
+	}
+	if graph.Related == nil {
+		graph.Related = []*types.WikiPageBacklinkRelated{}
+	}
+	if graph.Broken == nil {
+		graph.Broken = []*types.WikiBacklinkBroken{}
+	}
+	c.JSON(http.StatusOK, graph)
+}
+
 // UpdatePage godoc
 // @Summary      Update a wiki page
 // @Description  Partially update a wiki page by slug. Absent fields keep

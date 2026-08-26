@@ -118,6 +118,11 @@ func (s *wikiPageService) CreatePage(ctx context.Context, page *types.WikiPage) 
 	}
 	normalizeWikiHierarchy(page)
 
+	// Build #19.x — write-time jieba tokenization backs `content_ts_zh`
+	// (migration 000096) so the v2 search repo's `@@ plainto_tsquery('simple',
+	// $jieba)` arm can hit Chinese queries.
+	page.ContentTSZh = JiebaSegmentForSearch(page.Title, page.Content)
+
 	now := time.Now()
 	page.CreatedAt = now
 	page.UpdatedAt = now
@@ -190,6 +195,12 @@ func (s *wikiPageService) UpdatePage(ctx context.Context, page *types.WikiPage) 
 	existing.OutLinks = s.parseOutLinks(existing.Content)
 	normalizeWikiHierarchy(existing)
 
+	// Build #19.x — re-tokenize jieba whenever the user-visible content or
+	// title changes so `content_ts_zh` stays in sync with the body. The
+	// helper is a no-op when content/title are identical to `existing` so
+	// the bookkeeping-only branch below remains cheap.
+	existing.ContentTSZh = JiebaSegmentForSearch(existing.Title, existing.Content)
+
 	if contentChanged {
 		// The new version is authored by whoever is driving this write.
 		existing.LastEditSource = types.WikiEditSourceFromContext(ctx)
@@ -242,6 +253,7 @@ func (s *wikiPageService) UpdateAutoLinkedContent(ctx context.Context, page *typ
 
 	existing.Content = stripWikiInlineChunkCitations(page.Content)
 	existing.OutLinks = s.parseOutLinks(existing.Content)
+	existing.ContentTSZh = JiebaSegmentForSearch(existing.Title, existing.Content)
 	existing.UpdatedAt = time.Now()
 
 	if err := s.repo.UpdateAutoLinkedContent(ctx, existing); err != nil {
@@ -1133,6 +1145,316 @@ func (s *wikiPageService) ListPageBacklinks(
 		return out[i].UpdatedAt.After(out[j].UpdatedAt)
 	})
 	return out, nil
+}
+
+// ListBacklinkGraph bundles four views of the backlink picture around
+// a single page into one payload so the panel renders the full graph
+// in a single round-trip. The four sections are:
+//
+//   - Direct   (1-hop):  pages whose `in_links` contains `slug`
+//   - Indirect (2-hop):  pages that link to one of the direct set,
+//                        minus self and the direct set itself; each
+//                        row carries `via` = the direct slug it came from
+//   - Related  (Jaccard): pages whose `out_links` set overlaps the
+//                        current page's `out_links` above the configured
+//                        threshold; rows carry `jaccard` ∈ [0, 1]
+//   - Broken:           slugs in the current page's `out_links` that
+//                        do not resolve to any live page in the KB
+//
+// Parameters (clamp semantics; see handler):
+//   - MaxIndirect       default 50, clamp [0, 200]
+//   - MaxRelated        default 10, clamp [0, 50]
+//   - JaccardThreshold  default 0.3, clamp [0, 1]
+//
+// All four sections are computed from already-loaded `*WikiPageLite`
+// rows fetched through `ListBySlugs` — at most 3 IN queries (direct
+// sources, indirect sources, broken-target candidates). No schema
+// change, no new index, no full-KB lint traversal.
+//
+// Build #20.
+func (s *wikiPageService) ListBacklinkGraph(
+	ctx context.Context, req types.WikiBacklinkGraphRequest,
+) (*types.WikiBacklinkGraph, error) {
+	kbID := req.KbID
+	slug := req.Slug
+
+	// Normalise request defaults / clamps (defensive — the handler
+	// already clamps, but tests can call this directly).
+	maxIndirect := req.MaxIndirect
+	if maxIndirect <= 0 {
+		maxIndirect = 50
+	}
+	if maxIndirect > 200 {
+		maxIndirect = 200
+	}
+	maxRelated := req.MaxRelated
+	if maxRelated <= 0 {
+		maxRelated = 10
+	}
+	if maxRelated > 50 {
+		maxRelated = 50
+	}
+	threshold := req.JaccardThreshold
+	if threshold <= 0 {
+		threshold = 0.3
+	}
+	if threshold > 1 {
+		threshold = 1
+	}
+
+	// Resolve the target page itself — single source of truth for
+	// its in_links / out_links.
+	target, err := s.repo.GetBySlug(ctx, kbID, slug)
+	if err != nil {
+		return nil, err
+	}
+	if target == nil {
+		return &types.WikiBacklinkGraph{
+			Direct:   []*types.WikiPageBacklink{},
+			Indirect: []*types.WikiBacklinkIndirect{},
+			Related:  []*types.WikiPageBacklinkRelated{},
+			Broken:   []*types.WikiBacklinkBroken{},
+			Stats:    types.WikiBacklinkGraphStats{},
+		}, nil
+	}
+
+	// --- Direct (1-hop) ---
+	directSlugs := make([]string, 0, len(target.InLinks))
+	for _, s := range target.InLinks {
+		if s == "" || s == slug {
+			continue
+		}
+		directSlugs = append(directSlugs, s)
+	}
+	var directLites map[string]*types.WikiPageLite
+	if len(directSlugs) > 0 {
+		directLites, err = s.repo.ListBySlugs(ctx, kbID, directSlugs)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		directLites = map[string]*types.WikiPageLite{}
+	}
+	direct := make([]*types.WikiPageBacklink, 0, len(directLites))
+	for _, srcSlug := range directSlugs {
+		lite, ok := directLites[srcSlug]
+		if !ok || lite == nil {
+			continue
+		}
+		direct = append(direct, &types.WikiPageBacklink{
+			Slug:      lite.Slug,
+			Title:     lite.Title,
+			PageType:  lite.PageType,
+			Status:    lite.Status,
+			UpdatedAt: lite.UpdatedAt,
+		})
+	}
+	sort.SliceStable(direct, func(i, j int) bool {
+		if direct[i].UpdatedAt.Equal(direct[j].UpdatedAt) {
+			return direct[i].Slug < direct[j].Slug
+		}
+		return direct[i].UpdatedAt.After(direct[j].UpdatedAt)
+	})
+
+	// --- Indirect (2-hop) ---
+	// Walk each direct page's in_links, dedupe against self + direct,
+	// resolve via a single batched ListBySlugs call, sort by updated_at
+	// desc and truncate.
+	indirectBySlug := make(map[string]*types.WikiBacklinkIndirect)
+	indirectCandidates := make([]string, 0)
+	for _, srcSlug := range directSlugs {
+		srcLite, ok := directLites[srcSlug]
+		if !ok || srcLite == nil {
+			continue
+		}
+		for _, in := range srcLite.InLinks {
+			if in == "" || in == slug {
+				continue
+			}
+			// Exclude slugs already in direct (1-hop should not
+			// also appear as 2-hop).
+			if _, isDirect := directLites[in]; isDirect {
+				continue
+			}
+			// Dedup: keep first `via` (most recent direct).
+			if _, seen := indirectBySlug[in]; seen {
+				continue
+			}
+			indirectBySlug[in] = &types.WikiBacklinkIndirect{
+				WikiPageBacklink: nil, // populated after ListBySlugs
+				Via:              srcSlug,
+			}
+			indirectCandidates = append(indirectCandidates, in)
+		}
+	}
+	var indirectLites map[string]*types.WikiPageLite
+	if len(indirectCandidates) > 0 {
+		indirectLites, err = s.repo.ListBySlugs(ctx, kbID, indirectCandidates)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		indirectLites = map[string]*types.WikiPageLite{}
+	}
+	indirect := make([]*types.WikiBacklinkIndirect, 0, len(indirectCandidates))
+	for _, cand := range indirectCandidates {
+		lite, ok := indirectLites[cand]
+		if !ok || lite == nil {
+			// Orphan 2-hop — drop.
+			continue
+		}
+		row, ok := indirectBySlug[cand]
+		if !ok {
+			continue
+		}
+		row.WikiPageBacklink = &types.WikiPageBacklink{
+			Slug:      lite.Slug,
+			Title:     lite.Title,
+			PageType:  lite.PageType,
+			Status:    lite.Status,
+			UpdatedAt: lite.UpdatedAt,
+		}
+		indirect = append(indirect, row)
+	}
+	sort.SliceStable(indirect, func(i, j int) bool {
+		li, lj := indirect[i].UpdatedAt, indirect[j].UpdatedAt
+		if li.Equal(lj) {
+			return indirect[i].Slug < indirect[j].Slug
+		}
+		return li.After(lj)
+	})
+	if len(indirect) > maxIndirect {
+		indirect = indirect[:maxIndirect]
+	}
+
+	// --- Related (Jaccard on out_links) ---
+	outLinks := make([]string, 0, len(target.OutLinks))
+	for _, o := range target.OutLinks {
+		if o == "" || o == slug {
+			continue
+		}
+		outLinks = append(outLinks, o)
+	}
+	currentSet := make(map[string]struct{}, len(outLinks))
+	for _, o := range outLinks {
+		currentSet[o] = struct{}{}
+	}
+	var outLites map[string]*types.WikiPageLite
+	if len(outLinks) > 0 {
+		outLites, err = s.repo.ListBySlugs(ctx, kbID, outLinks)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		outLites = map[string]*types.WikiPageLite{}
+	}
+
+	// Existing target slugs (for the broken set + for excluding
+	// the candidate's own out_links that point back at the current
+	// page — that's overlap, not separate relevance).
+	existingSlugs := make(map[string]struct{}, len(outLites))
+	for _, lite := range outLites {
+		if lite == nil {
+			continue
+		}
+		existingSlugs[lite.Slug] = struct{}{}
+	}
+
+	// For related, we need each candidate's out_links set. Fetch
+	// the candidates' full pages via the lite projection — they
+	// already carry out_links (WikiPageLite.OutLinks). For Jaccard
+	// we only need the out_links slice; the lite projection
+	// includes it (see internal/types/wiki_page.go:WikiPageLite).
+	type scored struct {
+		row *types.WikiPageBacklinkRelated
+		ts  time.Time
+	}
+	scoredRows := make([]scored, 0, len(outLinks))
+	for _, cand := range outLinks {
+		lite, ok := outLites[cand]
+		if !ok || lite == nil {
+			continue
+		}
+		candSet := make(map[string]struct{}, len(lite.OutLinks))
+		for _, o := range lite.OutLinks {
+			if o == "" || o == slug {
+				continue
+			}
+			candSet[o] = struct{}{}
+		}
+		// Jaccard = |A ∩ B| / |A ∪ B|. Skip if either side empty.
+		if len(currentSet) == 0 || len(candSet) == 0 {
+			continue
+		}
+		inter := 0
+		for k := range currentSet {
+			if _, ok := candSet[k]; ok {
+				inter++
+			}
+		}
+		union := len(currentSet) + len(candSet) - inter
+		if union == 0 {
+			continue
+		}
+		score := float64(inter) / float64(union)
+		if score < threshold {
+			continue
+		}
+		scoredRows = append(scoredRows, scored{
+			row: &types.WikiPageBacklinkRelated{
+				WikiPageBacklink: &types.WikiPageBacklink{
+					Slug:      lite.Slug,
+					Title:     lite.Title,
+					PageType:  lite.PageType,
+					Status:    lite.Status,
+					UpdatedAt: lite.UpdatedAt,
+				},
+				Jaccard: score,
+			},
+			ts: lite.UpdatedAt,
+		})
+	}
+	sort.SliceStable(scoredRows, func(i, j int) bool {
+		if scoredRows[i].row.Jaccard != scoredRows[j].row.Jaccard {
+			return scoredRows[i].row.Jaccard > scoredRows[j].row.Jaccard
+		}
+		if scoredRows[i].ts.Equal(scoredRows[j].ts) {
+			return scoredRows[i].row.Slug < scoredRows[j].row.Slug
+		}
+		return scoredRows[i].ts.After(scoredRows[j].ts)
+	})
+	related := make([]*types.WikiPageBacklinkRelated, 0, len(scoredRows))
+	for _, r := range scoredRows {
+		related = append(related, r.row)
+	}
+	if len(related) > maxRelated {
+		related = related[:maxRelated]
+	}
+
+	// --- Broken (orphan slugs in current page's out_links) ---
+	broken := make([]*types.WikiBacklinkBroken, 0)
+	for _, o := range outLinks {
+		if _, ok := existingSlugs[o]; !ok {
+			broken = append(broken, &types.WikiBacklinkBroken{TargetSlug: o})
+		}
+	}
+	sort.SliceStable(broken, func(i, j int) bool {
+		return broken[i].TargetSlug < broken[j].TargetSlug
+	})
+
+	return &types.WikiBacklinkGraph{
+		Direct:   direct,
+		Indirect: indirect,
+		Related:  related,
+		Broken:   broken,
+		Stats: types.WikiBacklinkGraphStats{
+			DirectCount:   len(direct),
+			IndirectCount: len(indirect),
+			RelatedCount:  len(related),
+			BrokenCount:   len(broken),
+			OutLinkCount:  len(outLinks),
+		},
+	}, nil
 }
 
 // ListSummariesByKnowledgeIDs is the lazy fetcher for the retract /

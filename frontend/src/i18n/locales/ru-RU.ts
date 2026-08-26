@@ -3798,6 +3798,20 @@ export default {
         emptyHint: 'Добавьте [[{slug}]] в другой странице, чтобы создать обратную ссылку.',
         loadFailed: 'Не удалось загрузить обратные ссылки',
       },
+      // Build #20 — backlinks graph v2 (4-section panel)
+      backlinksGraph: {
+        sections: {
+          direct: 'Прямые',
+          indirect: 'Косвенные',
+          related: 'Похожие',
+          broken: 'Битые',
+        },
+        via: '(через {slug})',
+        jaccard: 'совпадение {n}',
+        viewFullGraph: 'Показать весь граф →',
+        loadFailedToast: 'Расширенные разделы недоступны, только прямые ссылки',
+        brokenHint: 'Цель удалена или переименована',
+      },
       acl: {
         header: 'Права страницы',
         headerFor: 'Права «{title}»',
@@ -6669,6 +6683,18 @@ export default {
       fallback: 'Поиск v2 недоступен; используется базовый поиск',
       totalCount: 'Найдено {total} · {tookMs} мс',
       kbChip: 'Выбрано баз знаний: {count}',
+      // Build #19.x — fuzzy / partialMatch toggles.
+      fuzzy: 'Нечёткий поиск',
+      fuzzyHint: 'Использовать trigram-сопоставление для английских опечаток (на китайский не влияет)',
+      partialMatch: 'Частичное совпадение',
+      noVisibleKB: 'В текущем арендаторе нет доступных баз знаний для поиска',
+      // KB chip row label / collapse / more buttons (i18n for WikiKBChipRow).
+      kbChips: {
+        label: 'Область поиска (базы знаний)',
+        more: 'Показать ещё {count}',
+        collapse: 'Свернуть'
+      },
+      kbChipScopedToVisible: 'Результаты поиска ограничены базами знаний, доступными вашему арендатору',
       pageType: {
         concept: 'Концепция',
         entity: 'Сущность',

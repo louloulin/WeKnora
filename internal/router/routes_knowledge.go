@@ -339,6 +339,11 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		// KBAccessRead guard so a KB member can list inbound links to
 		// a page they're allowed to read.
 		wikiRead.GET("/pages/*slug/backlinks", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetPageBacklinks)
+		// Backlink graph v2 (Build #20) — same KBAccessRead guard; returns
+		// four sections (direct / indirect / related / broken) + stats in
+		// one round-trip so the panel can render the full graph without
+		// additional calls.
+		wikiRead.GET("/pages/*slug/backlinks/graph", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetPageBacklinksGraph)
 		wiki.PUT("/pages/*slug", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.UpdatePage)
 		wiki.DELETE("/pages/*slug", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.DeletePage)
 

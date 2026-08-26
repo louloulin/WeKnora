@@ -3798,6 +3798,20 @@ export default {
         emptyHint: '다른 페이지 본문에서 [[{slug}]]를 추가하면 역링크가 생성됩니다.',
         loadFailed: '역링크를 불러오지 못했습니다',
       },
+      // Build #20 — backlinks graph v2 (4-section panel)
+      backlinksGraph: {
+        sections: {
+          direct: '직접',
+          indirect: '간접',
+          related: '관련',
+          broken: '끊김',
+        },
+        via: '({slug} 경유)',
+        jaccard: '일치도 {n}',
+        viewFullGraph: '전체 그래프 보기 →',
+        loadFailedToast: '고급 정보를 불러오지 못해 직접 참조만 표시합니다',
+        brokenHint: '대상이 삭제되었거나 이름이 변경되었습니다',
+      },
       acl: {
         header: '페이지 권한',
         headerFor: '"{title}" 권한',
@@ -6669,6 +6683,18 @@ export default {
       fallback: 'v2 검색을 사용할 수 없어 기본 검색으로 전환했습니다',
       totalCount: '{total}건 찾음 · {tookMs}ms 소요',
       kbChip: '{count}개 지식베이스 선택됨',
+      // Build #19.x — fuzzy / partialMatch toggles.
+      fuzzy: '유사 일치',
+      fuzzyHint: '영어 오타를 보정하기 위해 trigram 매칭 사용 (중국어에는 영향 없음)',
+      partialMatch: '부분 일치',
+      noVisibleKB: '현재 테넌트에 검색 가능한 지식베이스가 없습니다',
+      // KB chip row label / collapse / more buttons (i18n for WikiKBChipRow).
+      kbChips: {
+        label: '검색 범위 (지식베이스)',
+        more: '{count}개 더 보기',
+        collapse: '접기'
+      },
+      kbChipScopedToVisible: '검색 결과는 현재 테넌트에서 접근 가능한 지식베이스로 제한됩니다',
       pageType: {
         concept: '개념',
         entity: '개체',

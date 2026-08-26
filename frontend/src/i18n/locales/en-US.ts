@@ -2711,6 +2711,20 @@ export default {
         emptyHint: 'Add [[{slug}]] from another page to link here.',
         loadFailed: 'Failed to load backlinks',
       },
+      // Build #20 — backlinks graph v2 (4-section panel)
+      backlinksGraph: {
+        sections: {
+          direct: 'Direct',
+          indirect: 'Indirect',
+          related: 'Related',
+          broken: 'Broken',
+        },
+        via: '(via {slug})',
+        jaccard: 'overlap {n}',
+        viewFullGraph: 'View full graph →',
+        loadFailedToast: 'Advanced sections unavailable, showing direct only',
+        brokenHint: 'Target deleted or renamed',
+      },
       acl: {
         header: 'Page permissions',
         headerFor: 'Permissions for "{title}"',
@@ -6669,6 +6683,18 @@ export default {
       fallback: 'v2 search is unavailable; switched to basic search',
       totalCount: 'Found {total} results in {tookMs}ms',
       kbChip: '{count} knowledge bases selected',
+      // Build #19.x — fuzzy / partialMatch toggles.
+      fuzzy: 'Fuzzy match',
+      fuzzyHint: 'Use trigram matching for English typos (no effect on Chinese)',
+      partialMatch: 'Substring match',
+      noVisibleKB: 'No searchable knowledge bases are visible to you',
+      // KB chip row label / collapse / more buttons (i18n for WikiKBChipRow).
+      kbChips: {
+        label: 'Search scope (knowledge bases)',
+        more: 'Show {count} more',
+        collapse: 'Collapse'
+      },
+      kbChipScopedToVisible: 'Search results are scoped to knowledge bases visible to your tenant',
       pageType: {
         concept: 'Concept',
         entity: 'Entity',

@@ -3800,6 +3800,20 @@ export default {
         emptyHint: '在其它页面正文使用 [[{slug}]] 即可创建。',
         loadFailed: '反向链接加载失败',
       },
+      // Build #20 — backlinks graph v2 (4-section panel)
+      backlinksGraph: {
+        sections: {
+          direct: '直接',
+          indirect: '间接',
+          related: '相关',
+          broken: '失效',
+        },
+        via: '（经 {slug}）',
+        jaccard: '重合度 {n}',
+        viewFullGraph: '查看完整图谱 →',
+        loadFailedToast: '高级信息加载失败，仅显示直接引用',
+        brokenHint: '目标已删除或重命名',
+      },
       acl: {
         header: '页面权限',
         headerFor: '「{title}」的访问权限',
@@ -6649,6 +6663,18 @@ export default {
       fallback: 'v2 搜索不可用，已切换到基础搜索',
       totalCount: '找到 {total} 条 · 用时 {tookMs}ms',
       kbChip: '已选 {count} 个知识库',
+      // Build #19.x — fuzzy / partialMatch toggles.
+      fuzzy: '模糊匹配',
+      fuzzyHint: '使用 trigram 匹配英文拼写错误（中文不影响）',
+      partialMatch: '子串匹配',
+      noVisibleKB: '当前租户没有可搜索的知识库',
+      // KB chip row label / collapse / more buttons (i18n for WikiKBChipRow).
+      kbChips: {
+        label: '搜索范围（知识库）',
+        more: '展开 {count} 个',
+        collapse: '收起'
+      },
+      kbChipScopedToVisible: '搜索结果已限定到当前租户下有访问权的知识库',
       pageType: {
         concept: '概念',
         entity: '实体',

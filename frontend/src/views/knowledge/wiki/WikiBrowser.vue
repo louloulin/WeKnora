@@ -663,6 +663,7 @@
                       :slug="selectedPage.slug"
                       class="wiki-reader-aside-backlinks"
                       @navigate="onBacklinkNavigate"
+                      @view-full-graph="onViewBacklinksFullGraph"
                     />
                   </div>
                 </div>
@@ -1001,6 +1002,7 @@ import { useWikiPageAclStore } from '@/stores/wikiPageAcl'
 import { aclToolbarVisibility } from './wikiBrowserAclVisibility'
 import WikiBacklinksPanel from '@/components/wiki/WikiBacklinksPanel.vue'
 import { useWikiBacklinksStore } from '@/stores/wikiBacklinks'
+import { listKnowledgeBases } from '@/api/knowledge-base'
 
 // Build #17 — wiki 标签系统(侧边栏管理 + 单页 chip picker)
 import WikiTagPanel from '@/components/wiki/WikiTagPanel.vue'
@@ -3205,8 +3207,44 @@ const wikiTagsStore = useWikiTagsStore()
 // `[]` (chip row hidden) until Build #19.x wires the KB-ACL visible-
 // KB listing. The current KB scope is still applied server-side via
 // the path :kb_id; the chip row only adds additional KB ids on top.
+//
+// Build #19.x — fetches the tenant KB list via `listKnowledgeBases` so
+// the chip row shows the real KB scope (not "everything"). Per-KB ACL
+// filtering within the tenant is intentionally NOT done here — see the
+// handler-level comment in `internal/handler/wiki_search_v2.go` for the
+// reasoning (deferred to Build #19.x+1). A KB whose `wiki_enabled=false`
+// is excluded since search v2 only applies to wiki-enabled KBs.
 interface KBOption { id: string; name: string }
 const kbOptions = ref<KBOption[]>([])
+
+async function loadKBOptions() {
+  try {
+    const res = (await listKnowledgeBases()) as unknown
+    const list: KBOption[] = []
+    const raw = (res ?? {}) as { data?: unknown; items?: unknown[]; knowledge_bases?: unknown[] }
+    const candidates = Array.isArray(raw.items) ? raw.items
+      : Array.isArray(raw.knowledge_bases) ? raw.knowledge_bases
+      : Array.isArray((raw as { data?: unknown[] }).data) ? (raw as { data: unknown[] }).data
+      : []
+    for (const item of candidates) {
+      const kb = item as { id?: string; name?: string; wiki_enabled?: boolean }
+      if (!kb || !kb.id || !kb.name) continue
+      if (kb.wiki_enabled === false) continue
+      list.push({ id: kb.id, name: kb.name })
+    }
+    kbOptions.value = list
+  } catch (err) {
+    // Soft-fail: leave the chip row empty (current-KB-only default). The
+    // search bar still works because the path :kb_id is applied server-
+    // side; the chip row is purely additive.
+    console.warn('[WikiBrowser] failed to load KB list for search chip row', err)
+    kbOptions.value = []
+  }
+}
+
+onMounted(() => {
+  void loadKBOptions()
+})
 const aclRestricted = computed(() => {
   const slug = selectedPage.value?.slug
   if (!slug) return false
@@ -3991,6 +4029,18 @@ async function onBacklinkNavigate(slug: string): Promise<void> {
   // `navigateToSlug` so the click is indistinguishable from a
   // body `[[slug]]` click (D6 — same code path, same back-stack).
   await navigateToSlug(slug)
+}
+
+// Build #20 — WikiBacklinksPanel "View full graph →" link. Reuses
+// the existing ego-mode loader: sets `graphData` to the subgraph
+// around `slug` (default depth) and the existing graph search bar
+// / overview stays in sync because the panel reads `graphData`.
+async function onViewBacklinksFullGraph(slug: string): Promise<void> {
+  try {
+    await loadEgoGraph(slug)
+  } catch (e) {
+    console.error('Failed to load full graph for', slug, e)
+  }
 }
 
 // Build #12 — select-mode toggle + 选中的 slug 列表 + 三个批量动作的处理。

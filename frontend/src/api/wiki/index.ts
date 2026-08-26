@@ -191,7 +191,17 @@ export function getWikiPage(kbId: string, slug: string) {
 // importing from the canonical `api/wiki` entry point while
 // the helpers module + Node tests pull the same shape.
 import type { WikiPageBacklink } from './backlinksTypes';
-export type { WikiPageBacklink };
+import type {
+  WikiBacklinkGraph,
+  WikiBacklinkGraphRequest,
+} from './backlinksGraphTypes';
+export type { WikiBacklinkGraph, WikiBacklinkGraphRequest };
+export type {
+  WikiBacklinkIndirect,
+  WikiPageBacklinkRelated,
+  WikiBacklinkBroken,
+  WikiBacklinkGraphStats,
+} from './backlinksGraphTypes';
 
 // Build #12 — wiki 页面批量操作公共类型
 // Build #13 — 加 WikiBatchRouteResult + WikiBatchJob 用于异步路径
@@ -263,6 +273,34 @@ export {
 export function getWikiPageBacklinks(kbId: string, slug: string) {
   return get<WikiPageBacklink[]>(
     `/api/v1/knowledgebase/${kbId}/wiki/pages/${encodeSlugPath(slug)}/backlinks`,
+  );
+}
+
+// getWikiBacklinkGraph returns the four-section backlink graph
+// (direct / indirect / related / broken) plus per-section stats in a
+// single round-trip. Numeric query parameters are clamped server-side;
+// the client only forwards them when explicitly set so the server's
+// defaults remain the source of truth for the panel's default state.
+//
+// Build #20.
+export function getWikiBacklinkGraph(
+  kbId: string,
+  slug: string,
+  params?: WikiBacklinkGraphRequest,
+) {
+  const search = new URLSearchParams();
+  if (params?.max_indirect !== undefined) {
+    search.set('max_indirect', String(params.max_indirect));
+  }
+  if (params?.max_related !== undefined) {
+    search.set('max_related', String(params.max_related));
+  }
+  if (params?.jaccard !== undefined) {
+    search.set('jaccard', String(params.jaccard));
+  }
+  const qs = search.toString();
+  return get<WikiBacklinkGraph>(
+    `/api/v1/knowledgebase/${kbId}/wiki/pages/${encodeSlugPath(slug)}/backlinks/graph${qs ? `?${qs}` : ''}`,
   );
 }
 

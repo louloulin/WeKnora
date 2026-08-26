@@ -191,6 +191,13 @@ type WikiPage struct {
 	// snapshots; the markdown column remains the authoritative source for
 	// versioning and rollback.
 	ContentHTML string `json:"content_html,omitempty" gorm:"column:content_html;type:text"`
+	// ContentTSZh is the jieba-tokenized projection of (Title + Content),
+	// stored as space-joined tokens and indexed via a GIN expression
+	// `to_tsvector('simple', content_ts_zh)` (see migration 000096). It backs
+	// Build #19.x's `@@ plainto_tsquery('simple', $jieba)` arm of the
+	// three-layer OR. NULL is acceptable on rows that pre-date 000096;
+	// the server backfill loop fills them in on startup.
+	ContentTSZh string `json:"-" gorm:"column:content_ts_zh;type:text"`
 	// One-line summary for index listing
 	Summary string `json:"summary" gorm:"type:text"`
 	// Alternate names, abbreviations, acronyms or translated names
@@ -1271,6 +1278,85 @@ type WikiPageBacklink struct {
 	PageType  string    `json:"page_type"`
 	Status    string    `json:"status"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// WikiBacklinkIndirect is a 2-hop backlink: a page that links to one of
+// the pages that link to the current page. `Via` records the immediate
+// (1-hop) slug that introduced the indirection, so the panel can show
+// "(via page-a)" and the click handler can navigate to `Via` (D5) rather
+// than jumping to a page two hops away from the reader's focus.
+//
+// Build #20.
+type WikiBacklinkIndirect struct {
+	*WikiPageBacklink
+	Via string `json:"via"`
+}
+
+// WikiPageBacklinkRelated is a "related page" computed by Jaccard
+// similarity over the current page's `out_links` set vs the candidate's
+// `out_links`. The score is in [0, 1] — pages below the configured
+// threshold are filtered out at the service layer; the panel uses the
+// value verbatim in its chip prefix (e.g. "+0.78").
+//
+// Build #20.
+type WikiPageBacklinkRelated struct {
+	*WikiPageBacklink
+	Jaccard float64 `json:"jaccard"`
+}
+
+// WikiBacklinkBroken represents a target slug in the current page's
+// `out_links` that does not resolve to any existing page in the KB.
+// The panel surfaces these as a read-only list with a "target was
+// deleted or renamed" hint; there is no click handler (D3: per-page
+// only, no full-KB lint traversal).
+//
+// Build #20.
+type WikiBacklinkBroken struct {
+	TargetSlug string `json:"target_slug"`
+}
+
+// WikiBacklinkGraphStats summarises the four sections in a single
+// payload field so the panel header can render a one-line summary
+// (e.g. "12 direct · 38 indirect · 5 related · 2 broken") without
+// re-deriving counts client-side. OutLinkCount is the total number
+// of slugs the current page points to, including broken ones.
+//
+// Build #20.
+type WikiBacklinkGraphStats struct {
+	DirectCount   int `json:"direct_count"`
+	IndirectCount int `json:"indirect_count"`
+	RelatedCount  int `json:"related_count"`
+	BrokenCount   int `json:"broken_count"`
+	OutLinkCount  int `json:"out_link_count"`
+}
+
+// WikiBacklinkGraph is the payload returned by
+// `GET /wiki/pages/:slug/backlinks/graph`. It bundles four sections
+// (direct / indirect / related / broken) and a stats summary so the
+// panel can render the full backlinks picture in a single round-trip.
+//
+// Build #20.
+type WikiBacklinkGraph struct {
+	Direct   []*WikiPageBacklink        `json:"direct"`
+	Indirect []*WikiBacklinkIndirect    `json:"indirect"`
+	Related  []*WikiPageBacklinkRelated `json:"related"`
+	Broken   []*WikiBacklinkBroken      `json:"broken"`
+	Stats    WikiBacklinkGraphStats     `json:"stats"`
+}
+
+// WikiBacklinkGraphRequest is the service-layer input for
+// `ListBacklinkGraph`. The handler clamps each numeric field to a
+// safe range before invoking the service, but the service applies
+// the same defaults defensively so harness tests can call it
+// directly.
+//
+// Build #20.
+type WikiBacklinkGraphRequest struct {
+	KbID             string
+	Slug             string
+	MaxIndirect      int
+	MaxRelated       int
+	JaccardThreshold float64
 }
 
 // WikiSourceKnowledgeID extracts the knowledge id from a source_refs entry,

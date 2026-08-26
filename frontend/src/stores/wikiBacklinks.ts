@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
-import { getWikiPageBacklinks } from '../api/wiki'
+import { getWikiBacklinkGraph, getWikiPageBacklinks } from '../api/wiki'
+import type { WikiBacklinkGraph } from '../api/wiki/backlinksGraphTypes'
 import {
   type Backlink,
   backlinkCacheKey,
@@ -83,6 +84,60 @@ export const useWikiBacklinksStore = defineStore('wikiBacklinks', () => {
     delete errorByKey.value[k]
   }
 
+  // Build #20 — four-section graph (direct / indirect / related /
+  // broken) plus per-section stats. The cache is keyed the same way
+  // as the flat list (`backlinkCacheKey`) so `invalidate` covers both
+  // layers. The store exposes a separate `graphByKey` cache and a
+  // per-key `loadFailedByKey` so the panel can fall back to the
+  // Build #11 flat list when the graph endpoint fails, instead of
+  // blanking out the sidebar entirely.
+  const graphByKey = ref<Record<string, WikiBacklinkGraph | null>>({})
+  const graphLoadingByKey = ref<Record<string, boolean>>({})
+  const graphErrorByKey = ref<Record<string, string | null>>({})
+
+  function graphFor(kbId: string, slug: string): WikiBacklinkGraph | null {
+    return graphByKey.value[key(kbId, slug)] ?? null
+  }
+
+  function isGraphLoading(kbId: string, slug: string): boolean {
+    return Boolean(graphLoadingByKey.value[key(kbId, slug)])
+  }
+
+  function graphErrorFor(kbId: string, slug: string): string | null {
+    return graphErrorByKey.value[key(kbId, slug)] ?? null
+  }
+
+  async function loadBacklinkGraph(
+    kbId: string,
+    slug: string,
+  ): Promise<WikiBacklinkGraph | null> {
+    const k = key(kbId, slug)
+    graphLoadingByKey.value[k] = true
+    graphErrorByKey.value[k] = null
+    try {
+      const res = (await getWikiBacklinkGraph(kbId, slug)) as { data?: unknown }
+      const payload = res?.data as WikiBacklinkGraph | undefined
+      graphByKey.value[k] = payload ?? null
+      return graphByKey.value[k]
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : 'wiki.backlinksGraph.loadFailed'
+      graphErrorByKey.value[k] = msg
+      // Preserve any previously cached payload so the panel can show
+      // a muted "stale" indicator instead of a blank section.
+      return graphByKey.value[k] ?? null
+    } finally {
+      graphLoadingByKey.value[k] = false
+    }
+  }
+
+  function invalidateGraph(kbId: string, slug: string): void {
+    const k = key(kbId, slug)
+    delete graphByKey.value[k]
+    delete graphLoadingByKey.value[k]
+    delete graphErrorByKey.value[k]
+  }
+
   return {
     byKey,
     loadingByKey,
@@ -93,5 +148,14 @@ export const useWikiBacklinksStore = defineStore('wikiBacklinks', () => {
     clearError,
     loadBacklinks,
     invalidate,
+    // Build #20 — graph view
+    graphByKey,
+    graphLoadingByKey,
+    graphErrorByKey,
+    graphFor,
+    isGraphLoading,
+    graphErrorFor,
+    loadBacklinkGraph,
+    invalidateGraph,
   }
 })
