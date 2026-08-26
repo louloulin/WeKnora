@@ -45,6 +45,7 @@ type wikiBatchJobService struct {
 	auditRepo   interfaces.WikiBatchAuditRepository
 	failureRepo interfaces.WikiBatchFailureRepository
 	pageSvc     interfaces.WikiPageService
+	tagSvc      interfaces.WikiTagService
 	queue       chan string
 	wg          sync.WaitGroup
 	shutdownCh  chan struct{}
@@ -65,12 +66,14 @@ func NewWikiBatchJobService(
 	auditRepo interfaces.WikiBatchAuditRepository,
 	failureRepo interfaces.WikiBatchFailureRepository,
 	pageSvc interfaces.WikiPageService,
+	tagSvc interfaces.WikiTagService,
 ) interfaces.WikiBatchJobService {
 	s := &wikiBatchJobService{
 		repo:        repo,
 		auditRepo:   auditRepo,
 		failureRepo: failureRepo,
 		pageSvc:     pageSvc,
+		tagSvc:      tagSvc,
 		queue:       make(chan string, WikiBatchJobQueueSize),
 		shutdownCh:  make(chan struct{}),
 	}
@@ -558,9 +561,27 @@ func (s *wikiBatchJobService) executeOneSlug(
 		return s.pageSvc.DeletePage(ctx, job.KnowledgeBaseID, slug)
 	case types.WikiBatchJobTypeStatus:
 		return s.applyStatusOne(ctx, job.KnowledgeBaseID, slug, params.Status)
+	case types.WikiBatchJobTypeTag:
+		tagID, op := splitTagOp(params.Status)
+		return s.tagSvc.ApplyBatchTagOneSlug(ctx, job.KnowledgeBaseID, slug, tagID, op)
 	default:
 		return fmt.Errorf("unsupported batch job type %q", job.Type)
 	}
+}
+
+// splitTagOp parses the tag-op pair encoded in WikiBatchJobParams.Status
+// by the WikiTagService.BatchTag enqueue path. Format is
+// "<tagID>|<add|remove>". Splitting here keeps the encoding local to
+// the tag service and the worker.
+//
+// Build #17.
+func splitTagOp(encoded string) (tagID string, op string) {
+	for i := 0; i < len(encoded); i++ {
+		if encoded[i] == '|' {
+			return encoded[:i], encoded[i+1:]
+		}
+	}
+	return "", ""
 }
 
 // applyStatusOne rewrites one slug's status via GetPageBySlug +

@@ -612,3 +612,6 @@ export function updateWikiIssueStatus(kbId: string, issueId: string, status: str
 export function rebuildWikiLinks(kbId: string) {
   return post(`/api/v1/knowledgebase/${kbId}/wiki/rebuild-links`, {});
 }
+
+// Wiki tags (Build #17 / P1.1).
+export * from './tags'
