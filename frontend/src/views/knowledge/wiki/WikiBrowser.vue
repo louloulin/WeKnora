@@ -864,6 +864,16 @@
       :kb-id="props.knowledgeBaseId"
     />
 
+    <!-- Batch failure drawer (Build #15). Per-slug failure ledger for
+         one batch job. Opened from the partial-finalize toast on the
+         polling watcher. -->
+    <WikiBatchFailureDrawer
+      v-if="failureDrawerJobId"
+      v-model:visible="showFailureDrawer"
+      :kb-id="props.knowledgeBaseId"
+      :job-id="failureDrawerJobId"
+    />
+
     <!-- Create page dialog -->
     <t-dialog v-model:visible="showCreatePageDialog" :header="$t('knowledgeEditor.wikiBrowser.newPageTitle')"
       :confirm-btn="{ content: $t('common.confirm'), loading: creatingPage }" :cancel-btn="$t('common.cancel')"
@@ -975,6 +985,8 @@ import {
   isWikiBatchJobUndoable,
   WikiBatchJobTerminalStates,
 } from '@/api/wiki'
+// Build #15 — per-slug failure ledger.
+import WikiBatchFailureDrawer from '@/components/wiki/WikiBatchFailureDrawer.vue'
 import WikiSearchBar from '@/components/wiki/WikiSearchBar.vue'
 import { useWikiSearchStore } from '@/stores/wikiSearch'
 import { useFeatureFlagsStore } from '@/stores/featureFlags'
@@ -3146,6 +3158,10 @@ function openShareDialog(): void {
 // Build #7 — page-level ACL dialog state + viewer banner.
 const showAclDialog = ref(false)
 const showAuditPanel = ref(false)
+// Build #15 — per-slug failure drawer (opened from the partial-finalize
+// toast or from the audit panel's job drawer).
+const showFailureDrawer = ref(false)
+const failureDrawerJobId = ref<string | null>(null)
 const wikiAclStore = useWikiPageAclStore()
 const wikiSearchStore = useWikiSearchStore()
 const aclRestricted = computed(() => {
@@ -4061,7 +4077,7 @@ async function watchBatchJob(
   params: Record<string, unknown>,
 ): Promise<void> {
   const shortID = jobID.length > 8 ? jobID.slice(0, 8) : jobID
-  const toastKey = MessagePlugin.loading({
+  let toastKey = MessagePlugin.loading({
     content: t('knowledgeEditor.wikiBrowser.bulkJobQueued', { id: shortID }),
     duration: 0,
     closeBtn: false,
@@ -4073,6 +4089,31 @@ async function watchBatchJob(
   const stop = () => {
     stopped.value = true
     if (undoDeadline) clearTimeout(undoDeadline)
+  }
+
+  // Build #15 — refresh the loading toast with the worker's progress
+  // counters between polls so the user sees e.g. "23/100 已处理"
+  // rather than the static "queued" copy. tdesign's MessagePlugin
+  // does not expose an `update`, so we close-then-reopen with the new
+  // content. Cheap because no DOM is rebuilt across renders.
+  const refreshProgressToast = (job: WikiBatchJob) => {
+    if (!job.progress) return
+    const total = job.progress.total || 0
+    const processed = job.progress.processed || 0
+    if (total <= 0) return
+    try {
+      MessagePlugin.close(toastKey as any)
+    } catch {
+      /* toast already gone */
+    }
+    toastKey = MessagePlugin.loading({
+      content: t('knowledgeEditor.wikiBrowser.bulkJobProgress', {
+        processed,
+        total,
+      }),
+      duration: 0,
+      closeBtn: false,
+    })
   }
 
   // Poll on a 2-second cadence until the job terminates. The first
@@ -4114,6 +4155,9 @@ async function watchBatchJob(
         }
         return
       }
+      // Still running — refresh the loading toast with the latest
+      // progress numbers (Build #15).
+      refreshProgressToast(job)
     } catch (err) {
       // Poll error — close the loading toast and surface a one-shot
       // error. We bail out instead of retrying so a transient
@@ -4172,11 +4216,34 @@ function finalizeToast(
     return
   }
   // Partial — warning toast, no undo (we don't model partial undo
-  // for Build #13; the spec leaves it as a follow-up).
+  // for Build #13; the spec leaves it as a follow-up). Build #15
+  // appends a "查看错误" link that opens the per-slug failure drawer
+  // so the operator can see which slugs failed and why without
+  // digging through the audit log.
   MessagePlugin.warning({
-    content: t(partialKey, { succeeded, failed, ...params }),
-    duration: 6000,
+    content: (h: typeof import('vue').h) =>
+      h('span', null, [
+        t(partialKey, { succeeded, failed, ...params }),
+        ' ',
+        h(
+          'a',
+          {
+            href: 'javascript:void(0)',
+            onClick: () => openFailureDrawer(job.id),
+            style: 'margin-left: 8px; text-decoration: underline;',
+          },
+          t('knowledgeEditor.wikiBrowser.bulkJobViewFailures'),
+        ),
+      ]),
+    duration: 8000,
   })
+}
+
+// openFailureDrawer opens the per-slug failure drawer for one job
+// id. Used by the partial-finalize toast's "查看错误" link (Build #15).
+function openFailureDrawer(jobID: string): void {
+  failureDrawerJobId.value = jobID
+  showFailureDrawer.value = true
 }
 
 // triggerUndo invokes the undo endpoint and toasts the outcome.

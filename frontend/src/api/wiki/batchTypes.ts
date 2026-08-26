@@ -71,6 +71,11 @@ export type WikiBatchJobType = 'move' | 'delete' | 'status' | 'tag';
 // the per-slug outcome once the worker finishes.
 //
 // Build #13.
+//
+// Build #15 — `progress` carries running counters the worker
+// publishes on a throttled cadence. Absent on freshly-enqueued jobs
+// until the first flush; populated with the terminal snapshot once
+// the worker finishes.
 export interface WikiBatchJob {
   id: string;
   tenant_id: number;
@@ -85,6 +90,71 @@ export interface WikiBatchJob {
   started_at?: string;
   finished_at?: string;
   expires_at?: string;
+  progress?: WikiBatchJobProgress;
+}
+
+// WikiBatchJobProgress — running counters published by the worker on
+// a throttled cadence (every 5 slugs, or on terminal). `total` is
+// captured at enqueue time so the polling toast can render a stable
+// "{processed}/{total}" fraction across the lifetime of the job.
+//
+// Build #15.
+export interface WikiBatchJobProgress {
+  total: number;
+  processed: number;
+  succeeded: number;
+  failed: number;
+  updated_at: string;
+}
+
+// WikiBatchJobFailureRecord — one row in the per-slug failure ledger
+// (wiki_batch_job_failures). Distinct from the audit event stream
+// (Build #14) which records "what happened when" — this record tells
+// you which slug failed because of what.
+//
+// Build #15.
+export interface WikiBatchJobFailureRecord {
+  id: number;
+  tenant_id: number;
+  knowledge_base_id: string;
+  batch_job_id: string;
+  slug: string;
+  code: string;
+  error: string;
+  occurred_at: string;
+}
+
+// WikiBatchFailureGroupCount — aggregated count for one error code in
+// the failure drawer. Used by the code-tab badges.
+//
+// Build #15.
+export interface WikiBatchFailureGroupCount {
+  code: string;
+  count: number;
+}
+
+// WikiBatchFailureListResponse — paginated wrapper for the failure
+// drawer. Groups are computed over the full filtered set so the code
+// tabs stay accurate on every page.
+//
+// Build #15.
+export interface WikiBatchFailureListResponse {
+  failures: WikiBatchJobFailureRecord[];
+  groups: WikiBatchFailureGroupCount[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+// WikiBatchFailureFilter — query parameters for the failure list
+// endpoint. `code` empty = no filter; `page_size` is server-clamped
+// to 1..200.
+//
+// Build #15.
+export interface WikiBatchFailureFilter {
+  code?: string;
+  page?: number;
+  page_size?: number;
 }
 
 // WikiBatchRouteResult is the discriminated response for the three

@@ -4034,6 +4034,7 @@ export default {
       // the async-specific keys here.
       bulkJobQueued: '批量任务已入队 (#{id})，处理中…',
       bulkJobProgress: '{processed}/{total} 已处理',
+      bulkJobViewFailures: '查看错误',
       bulkJobFailed: '批量失败：{error}',
       bulkJobUndoButton: '撤销',
       bulkJobUndoHint: '60 秒内可点撤销',
@@ -6631,6 +6632,11 @@ export default {
       loading: '正在搜索…',
       error: '搜索出错，请重试',
       empty: '没有匹配的页面'
+    },
+    batchFailures: {
+      drawerTitle: '失败明细 · #{jobId}',
+      empty: '当前筛选下没有失败记录',
+      tabAll: '全部'
     }
   },
   menu: {

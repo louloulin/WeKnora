@@ -36,36 +36,43 @@ const (
 // auto-route here once the slug count crosses WikiBatchAsyncThreshold.
 //
 // Build #13 (core). Build #14 adds WikiBatchAuditRepository so each
-// state transition lands an immutable audit row.
+// state transition lands an immutable audit row. Build #15 adds
+// WikiBatchFailureRepository (per-slug failure ledger) and reworks
+// the worker to iterate slugs directly so progress is observable
+// (D7 = A: worker drives per-slug, reuses single-slug methods).
 type wikiBatchJobService struct {
-	repo       interfaces.WikiBatchJobRepository
-	auditRepo  interfaces.WikiBatchAuditRepository
-	pageSvc    interfaces.WikiPageService
-	queue      chan string
-	wg         sync.WaitGroup
-	shutdownCh chan struct{}
-	once       sync.Once
+	repo        interfaces.WikiBatchJobRepository
+	auditRepo   interfaces.WikiBatchAuditRepository
+	failureRepo interfaces.WikiBatchFailureRepository
+	pageSvc     interfaces.WikiPageService
+	queue       chan string
+	wg          sync.WaitGroup
+	shutdownCh  chan struct{}
+	once        sync.Once
 }
 
 // NewWikiBatchJobService constructs the service and starts the worker
 // pool. The workers consume job IDs from `queue`, claim the row from
-// the DB, and run the corresponding Batch* method on pageSvc. Call
-// Shutdown on graceful exit.
+// the DB, and iterate the per-slug operations. Call Shutdown on
+// graceful exit.
 //
-// auditRepo may be nil for legacy callers (older harness tests that
-// pre-date Build #14); in that case audit recording is silently
-// skipped — the service still executes jobs normally.
+// auditRepo / failureRepo may be nil for legacy callers (older harness
+// tests that pre-date Build #14 / #15); in that case the matching
+// recording is silently skipped — the service still executes jobs
+// normally.
 func NewWikiBatchJobService(
 	repo interfaces.WikiBatchJobRepository,
 	auditRepo interfaces.WikiBatchAuditRepository,
+	failureRepo interfaces.WikiBatchFailureRepository,
 	pageSvc interfaces.WikiPageService,
 ) interfaces.WikiBatchJobService {
 	s := &wikiBatchJobService{
-		repo:       repo,
-		auditRepo:  auditRepo,
-		pageSvc:    pageSvc,
-		queue:      make(chan string, WikiBatchJobQueueSize),
-		shutdownCh: make(chan struct{}),
+		repo:        repo,
+		auditRepo:   auditRepo,
+		failureRepo: failureRepo,
+		pageSvc:     pageSvc,
+		queue:       make(chan string, WikiBatchJobQueueSize),
+		shutdownCh:  make(chan struct{}),
 	}
 	for i := 0; i < WikiBatchJobWorkerCount; i++ {
 		s.wg.Add(1)
@@ -328,13 +335,20 @@ func (s *wikiBatchJobService) runWorker(id int) {
 }
 
 // executeJob is invoked by runWorker. Failures here only mark the row
-// — the synchronous Batch* methods have already absorbed per-row errors
-// into the WikiBatchResult, so the only way executeJob itself fails is
-// on infrastructure (DB / panic / missing pageSvc).
+// — per-slug errors have already been absorbed into the
+// WikiBatchResult + the failures table, so the only way executeJob
+// itself fails is on infrastructure (DB / panic / missing pageSvc).
 //
 // Build #14: emits `start` after the queued → running transition and
 // `finish` after the final repo.Update inside `finalize`. The audit
 // actor is the system constant — workers are anonymous.
+//
+// Build #15 (D7=A): the worker iterates slugs directly using the
+// single-slug page service methods (MovePage / DeletePage / status
+// via UpdatePageMeta), so progress is observable per slug. Progress
+// is persisted into job.Progress on a throttled cadence
+// (WikiBatchProgressThrottle slugs), and every per-slug failure
+// lands a row in wiki_batch_job_failures.
 func (s *wikiBatchJobService) executeJob(jobID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
@@ -359,7 +373,7 @@ func (s *wikiBatchJobService) executeJob(jobID string) {
 		s.recordAudit(ctx, job, types.WikiBatchAuditActionStart, "", nil)
 	}
 
-	result, execErr := s.dispatchBatch(ctx, job)
+	result, execErr := s.runSlugs(ctx, job)
 	finalize := func(state types.WikiBatchJobState, blob []byte) {
 		now := time.Now()
 		job.State = state
@@ -390,11 +404,11 @@ func (s *wikiBatchJobService) executeJob(jobID string) {
 
 	switch {
 	case execErr != nil:
-		// Hard error from the Batch* call itself — keep succeeded []
-		// empty if nothing ran, otherwise surface the partial result
-		// in `result` with an `error` field.
+		// Hard error from the per-slug loop itself (param decode or
+		// unsupported type) — keep succeeded [] empty, surface the
+		// partial result with an `error` field.
 		blob, _ := json.Marshal(map[string]any{
-			"succeeded": nil,
+			"succeeded": []string{},
 			"failed":    []map[string]string{},
 			"error":     execErr.Error(),
 		})
@@ -417,26 +431,163 @@ func (s *wikiBatchJobService) executeJob(jobID string) {
 	}
 }
 
-// dispatchBatch routes the captured params to the matching sync method
-// on WikiPageService. Slugs + folder_id / status come from job.Params
-// (re-marshalled as WikiBatchJobParams).
-func (s *wikiBatchJobService) dispatchBatch(
+// WikiBatchProgressThrottle controls how often the worker flushes a
+// running WikiBatchJob.Progress snapshot back to the DB. 5 slugs
+// balances "responsive enough for the polling toast" against "not
+// hammering the wiki_batch_jobs row during a 10k-page batch".
+//
+// Build #15 D6.
+const WikiBatchProgressThrottle = 5
+
+// runSlugs iterates the job's slugs one at a time, calling the matching
+// single-slug page service method. Each iteration:
+//
+//   - appends to result.Succeeded on success, or result.Failed on error
+//     (with classifyBatchError applied);
+//   - inserts a row in wiki_batch_job_failures (best-effort) for every
+//     failure, so the operator can grep by slug without parsing the
+//     result JSONB;
+//   - updates WikiBatchJob.Progress on a throttled cadence
+//     (WikiBatchProgressThrottle slugs, or terminal) so the polling
+//     toast can render "{processed}/{total}".
+//
+// The result's Succeeded / Failed slices are returned in input order
+// (matches the existing sync Batch* methods' convention from Build #12).
+func (s *wikiBatchJobService) runSlugs(
 	ctx context.Context, job *types.WikiBatchJob,
 ) (*types.WikiBatchResult, error) {
 	var params types.WikiBatchJobParams
 	if err := json.Unmarshal(job.Params, &params); err != nil {
 		return nil, fmt.Errorf("decode params: %w", err)
 	}
+	result := &types.WikiBatchResult{
+		Succeeded: []string{},
+		Failed:    []types.WikiPageBatchFailure{},
+	}
+	if len(params.Slugs) == 0 {
+		return result, nil
+	}
+
+	progress := types.WikiBatchJobProgress{
+		Total:     len(params.Slugs),
+		UpdatedAt: time.Now(),
+	}
+	// Persist the initial "0/N" snapshot so the toast has something
+	// to render before the first throttle bucket closes.
+	s.publishProgress(ctx, job, &progress)
+
+	for i, slug := range params.Slugs {
+		err := s.executeOneSlug(ctx, job, &params, slug)
+		progress.Processed = i + 1
+		if err == nil {
+			progress.Succeeded++
+			result.Succeeded = append(result.Succeeded, slug)
+		} else {
+			progress.Failed++
+			code := classifyBatchError(err)
+			result.Failed = append(result.Failed, types.WikiPageBatchFailure{
+				Slug:  slug,
+				Code:  code,
+				Error: err.Error(),
+			})
+			s.recordFailure(ctx, job, slug, code, err.Error())
+		}
+		// Flush on every Nth slug and on terminal. The terminal flush
+		// guarantees the toast always sees the final count, even when
+		// total < throttle (e.g. a 3-slug batch).
+		if progress.Processed%WikiBatchProgressThrottle == 0 ||
+			progress.Processed == progress.Total {
+			s.publishProgress(ctx, job, &progress)
+		}
+	}
+	return result, nil
+}
+
+// publishProgress marshals the running counter snapshot into
+// WikiBatchJob.Progress and writes the row back. Failure here is logged
+// but never fatal — the job itself still completes; the operator just
+// sees a stale progress number until the next flush.
+func (s *wikiBatchJobService) publishProgress(
+	ctx context.Context, job *types.WikiBatchJob, progress *types.WikiBatchJobProgress,
+) {
+	progress.UpdatedAt = time.Now()
+	job.Progress = types.JSON(mustMarshal(progress))
+	if err := s.repo.Update(ctx, job); err != nil {
+		logger.Warnf(ctx, "wiki batch worker: progress flush failed job=%s: %v", job.ID, err)
+	}
+}
+
+// recordFailure inserts one row in wiki_batch_job_failures. Best-effort
+// — failure to write the failure row is logged but never propagates,
+// because the per-slug WikiBatchResult already carries the same
+// {slug, code, error} tuple, and the failure table is observability,
+// not correctness.
+func (s *wikiBatchJobService) recordFailure(
+	ctx context.Context, job *types.WikiBatchJob, slug, code, errMsg string,
+) {
+	if s.failureRepo == nil {
+		return
+	}
+	rec := &types.WikiBatchJobFailureRecord{
+		TenantID:        job.TenantID,
+		KnowledgeBaseID: job.KnowledgeBaseID,
+		BatchJobID:      job.ID,
+		Slug:            slug,
+		Code:            code,
+		Error:           errMsg,
+	}
+	if err := s.failureRepo.Insert(ctx, rec); err != nil {
+		logger.Warnf(ctx, "wiki batch worker: failure insert failed job=%s slug=%s: %v",
+			job.ID, slug, err)
+	}
+}
+
+// executeOneSlug runs one slug through the matching single-slug
+// service method. Status jobs go through GetBySlug + UpdatePageMeta
+// (matches BatchUpdatePageStatus's per-row path, minus the
+// already-at-target no-op skip — see WikiBatchJobProgress for the
+// reasoning on why we still count those as success in the result).
+func (s *wikiBatchJobService) executeOneSlug(
+	ctx context.Context, job *types.WikiBatchJob, params *types.WikiBatchJobParams, slug string,
+) error {
 	switch job.Type {
 	case types.WikiBatchJobTypeMove:
-		return s.pageSvc.BatchMovePages(ctx, job.KnowledgeBaseID, params.Slugs, params.FolderID)
+		_, err := s.pageSvc.MovePage(ctx, job.KnowledgeBaseID, slug, params.FolderID)
+		return err
 	case types.WikiBatchJobTypeDelete:
-		return s.pageSvc.BatchDeletePages(ctx, job.KnowledgeBaseID, params.Slugs)
+		return s.pageSvc.DeletePage(ctx, job.KnowledgeBaseID, slug)
 	case types.WikiBatchJobTypeStatus:
-		return s.pageSvc.BatchUpdatePageStatus(ctx, job.KnowledgeBaseID, params.Slugs, params.Status)
+		return s.applyStatusOne(ctx, job.KnowledgeBaseID, slug, params.Status)
 	default:
-		return nil, fmt.Errorf("unsupported batch job type %q", job.Type)
+		return fmt.Errorf("unsupported batch job type %q", job.Type)
 	}
+}
+
+// applyStatusOne rewrites one slug's status via GetPageBySlug +
+// UpdateMeta. Already-at-target pages count as success without an
+// extra write — same as BatchUpdatePageStatus's behaviour (Build #12).
+func (s *wikiBatchJobService) applyStatusOne(
+	ctx context.Context, kbID, slug, status string,
+) error {
+	if !types.IsValidWikiPageStatus(status) {
+		return fmt.Errorf("invalid status %q: must be draft, published or archived", status)
+	}
+	page, err := s.pageSvc.GetPageBySlug(ctx, kbID, slug)
+	if err != nil {
+		return err
+	}
+	if page.Status == status {
+		return nil
+	}
+	page.Status = status
+	return s.pageSvc.UpdatePageMeta(ctx, page)
+}
+
+// mustMarshal is json.Marshal without (n, err) — used for the small
+// progress snapshot that is always known to be marshallable.
+func mustMarshal(v interface{}) []byte {
+	b, _ := json.Marshal(v)
+	return b
 }
 
 // CaptureUndoState is a helper called by the auto-routing shim in the

@@ -320,6 +320,10 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		// Build #14: cancel a queued job + audit log reads.
 		wiki.POST("/batch-jobs/:job_id/cancel", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.CancelBatchJob)
 		wikiRead.GET("/batch-jobs/:job_id/audit", g.OwnedWikiKBOrAdmin(), g.KBAccessRead("kb_id"), wikiHandler.GetBatchJobAudit)
+		// Build #15: per-slug failure ledger. Same KB read guard as
+		// the audit endpoint — failures are user-visible diagnostics,
+		// not privileged state.
+		wikiRead.GET("/batch-jobs/:job_id/failures", g.OwnedWikiKBOrAdmin(), g.KBAccessRead("kb_id"), wikiHandler.GetBatchJobFailures)
 		wikiRead.GET("/batch-audit", g.OwnedWikiKBOrAdmin(), g.KBAccessRead("kb_id"), wikiHandler.ListBatchJobAudit)
 		wikiRead.GET("/batch-audit/export", g.OwnedWikiKBOrAdmin(), g.KBAccessRead("kb_id"), wikiHandler.ExportBatchJobAuditCsv)
 		wikiRead.GET("/pages/*slug", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetPage)

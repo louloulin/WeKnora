@@ -362,6 +362,32 @@ type WikiBatchAuditRepository interface {
 	ListExpiredEvents(ctx context.Context, before time.Time, limit int) ([]*types.WikiBatchJobAuditEvent, error)
 }
 
+// WikiBatchFailureRepository persists wiki_batch_job_failures rows.
+// Distinct from WikiBatchAuditRepository (Build #14) which records
+// "what happened when" — this table records "which slug failed
+// because of what", so the UI can group errors by code and the
+// operator can grep by slug without parsing the result JSONB blob.
+//
+// Build #15.
+type WikiBatchFailureRepository interface {
+	// Insert appends one failure row. Caller fills BatchJobID, Slug,
+	// Code, Error, KnowledgeBaseID, TenantID; repo stamps OccurredAt.
+	Insert(ctx context.Context, rec *types.WikiBatchJobFailureRecord) error
+
+	// ListByJobID returns failure rows for one batch job, oldest-first,
+	// with optional code filter (empty string = no filter). Pagination
+	// is 1-based; pageSize is capped server-side (max 200). Returns
+	// the rows + total count for the UI paginator + a parallel slice
+	// of per-code counts so the drawer can render its code tabs in a
+	// single round-trip.
+	ListByJobID(ctx context.Context, kbID, jobID, code string, page, pageSize int) (
+		failures []*types.WikiBatchJobFailureRecord,
+		groups []types.WikiBatchFailureGroupCount,
+		total int64,
+		err error,
+	)
+}
+
 // WikiPageRepository defines the wiki page data persistence interface.
 type WikiPageRepository interface {
 	// Create inserts a new wiki page record.

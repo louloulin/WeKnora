@@ -200,6 +200,7 @@ import {
   WikiBatchJobTerminalStates,
   isWikiBatchJobUndoable,
   WikiBatchAuditActorSystem,
+  WikiBatchErrorCodeToI18nKey,
 } from './batchTypes';
 import type {
   WikiBatchResult,
@@ -214,6 +215,11 @@ import type {
   WikiBatchAuditAction,
   WikiBatchAuditListResponse,
   WikiBatchAuditFilter,
+  WikiBatchJobProgress,
+  WikiBatchJobFailureRecord,
+  WikiBatchFailureGroupCount,
+  WikiBatchFailureListResponse,
+  WikiBatchFailureFilter,
 } from './batchTypes';
 export type {
   WikiBatchResult,
@@ -228,11 +234,17 @@ export type {
   WikiBatchAuditAction,
   WikiBatchAuditListResponse,
   WikiBatchAuditFilter,
+  WikiBatchJobProgress,
+  WikiBatchJobFailureRecord,
+  WikiBatchFailureGroupCount,
+  WikiBatchFailureListResponse,
+  WikiBatchFailureFilter,
 };
 export {
   WikiBatchJobTerminalStates,
   isWikiBatchJobUndoable,
   WikiBatchAuditActorSystem,
+  WikiBatchErrorCodeToI18nKey,
 };
 
 // getWikiPageBacklinks returns the set of pages that link to
@@ -325,6 +337,24 @@ export function cancelWikiBatchJob(kbId: string, jobId: string) {
 export function getWikiBatchJobAudit(kbId: string, jobId: string) {
   return get<WikiBatchJobAuditEvent[]>(
     `/api/v1/knowledgebase/${kbId}/wiki/batch-jobs/${jobId}/audit`,
+  );
+}
+
+// getWikiBatchJobFailures returns the per-slug failure ledger for one
+// batch job, oldest-first, paginated. Optional `code` filter narrows
+// to one error bucket; the `groups` slice is always computed over the
+// full filtered set so the drawer's code tabs stay accurate on every
+// page.
+//
+// Build #15.
+export function getWikiBatchJobFailures(
+  kbId: string,
+  jobId: string,
+  filter: WikiBatchFailureFilter = {},
+) {
+  return get<WikiBatchFailureListResponse>(
+    `/api/v1/knowledgebase/${kbId}/wiki/batch-jobs/${jobId}/failures`,
+    filter as Record<string, unknown>,
   );
 }
 

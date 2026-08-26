@@ -4027,6 +4027,7 @@ export default {
       bulkClear: '선택 해제',
       bulkJobQueued: '일괄 작업이 큐에 등록되었습니다 (#{id}), 처리 중…',
       bulkJobProgress: '{processed}/{total} 처리됨',
+      bulkJobViewFailures: '오류 보기',
       bulkJobFailed: '일괄 작업 실패: {error}',
       bulkJobUndoButton: '실행 취소',
       bulkJobUndoHint: '60초 이내에 실행 취소 가능',
@@ -6651,6 +6652,11 @@ export default {
       loading: '검색 중…',
       error: '검색 실패, 다시 시도해 주세요',
       empty: '일치하는 페이지가 없습니다'
+    },
+    batchFailures: {
+      drawerTitle: '실패 상세 · #{jobId}',
+      empty: '현재 필터에 실패 기록이 없습니다',
+      tabAll: '전체'
     }
   }
 }

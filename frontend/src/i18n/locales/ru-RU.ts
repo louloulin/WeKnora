@@ -4027,6 +4027,7 @@ export default {
       bulkClear: 'Очистить',
       bulkJobQueued: 'Пакетное задание в очереди (#{id}), выполняется…',
       bulkJobProgress: 'Обработано {processed}/{total}',
+      bulkJobViewFailures: 'Посмотреть ошибки',
       bulkJobFailed: 'Сбой пакетного задания: {error}',
       bulkJobUndoButton: 'Отменить',
       bulkJobUndoHint: 'Отмена доступна в течение 60 секунд',
@@ -6651,6 +6652,11 @@ export default {
       loading: 'Поиск…',
       error: 'Не удалось выполнить поиск, попробуйте ещё раз',
       empty: 'Совпадений не найдено'
+    },
+    batchFailures: {
+      drawerTitle: 'Сведения об ошибках · #{jobId}',
+      empty: 'Нет ошибок для текущего фильтра',
+      tabAll: 'Все'
     }
   }
 }

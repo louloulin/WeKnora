@@ -2940,6 +2940,7 @@ export default {
       bulkClear: 'Clear',
       bulkJobQueued: 'Batch job queued (#{id}), processing…',
       bulkJobProgress: '{processed}/{total} processed',
+      bulkJobViewFailures: 'View errors',
       bulkJobFailed: 'Bulk job failed: {error}',
       bulkJobUndoButton: 'Undo',
       bulkJobUndoHint: 'Undo available for 60 seconds',
@@ -6651,6 +6652,11 @@ export default {
       loading: 'Searching…',
       error: 'Search failed, please retry',
       empty: 'No matching pages'
+    },
+    batchFailures: {
+      drawerTitle: 'Failure details · #{jobId}',
+      empty: 'No failures under the current filter',
+      tabAll: 'All'
     }
   }
 }
