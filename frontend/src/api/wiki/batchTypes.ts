@@ -71,6 +71,11 @@ export type WikiBatchJobType = 'move' | 'delete' | 'status' | 'tag';
 // the per-slug outcome once the worker finishes.
 //
 // Build #13.
+//
+// Build #15 — `progress` carries running counters the worker
+// publishes on a throttled cadence. Absent on freshly-enqueued jobs
+// until the first flush; populated with the terminal snapshot once
+// the worker finishes.
 export interface WikiBatchJob {
   id: string;
   tenant_id: number;
@@ -85,6 +90,71 @@ export interface WikiBatchJob {
   started_at?: string;
   finished_at?: string;
   expires_at?: string;
+  progress?: WikiBatchJobProgress;
+}
+
+// WikiBatchJobProgress — running counters published by the worker on
+// a throttled cadence (every 5 slugs, or on terminal). `total` is
+// captured at enqueue time so the polling toast can render a stable
+// "{processed}/{total}" fraction across the lifetime of the job.
+//
+// Build #15.
+export interface WikiBatchJobProgress {
+  total: number;
+  processed: number;
+  succeeded: number;
+  failed: number;
+  updated_at: string;
+}
+
+// WikiBatchJobFailureRecord — one row in the per-slug failure ledger
+// (wiki_batch_job_failures). Distinct from the audit event stream
+// (Build #14) which records "what happened when" — this record tells
+// you which slug failed because of what.
+//
+// Build #15.
+export interface WikiBatchJobFailureRecord {
+  id: number;
+  tenant_id: number;
+  knowledge_base_id: string;
+  batch_job_id: string;
+  slug: string;
+  code: string;
+  error: string;
+  occurred_at: string;
+}
+
+// WikiBatchFailureGroupCount — aggregated count for one error code in
+// the failure drawer. Used by the code-tab badges.
+//
+// Build #15.
+export interface WikiBatchFailureGroupCount {
+  code: string;
+  count: number;
+}
+
+// WikiBatchFailureListResponse — paginated wrapper for the failure
+// drawer. Groups are computed over the full filtered set so the code
+// tabs stay accurate on every page.
+//
+// Build #15.
+export interface WikiBatchFailureListResponse {
+  failures: WikiBatchJobFailureRecord[];
+  groups: WikiBatchFailureGroupCount[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+// WikiBatchFailureFilter — query parameters for the failure list
+// endpoint. `code` empty = no filter; `page_size` is server-clamped
+// to 1..200.
+//
+// Build #15.
+export interface WikiBatchFailureFilter {
+  code?: string;
+  page?: number;
+  page_size?: number;
 }
 
 // WikiBatchRouteResult is the discriminated response for the three
@@ -176,3 +246,48 @@ export interface WikiBatchAuditFilter {
   page?: number;
   page_size?: number;
 }
+
+// WikiBatchPreviewSummary — head-count triple on the dry-run response.
+// Pure metadata; the per-slug truth lives in WikiBatchPreviewResponse.
+//
+// Build #16.
+export interface WikiBatchPreviewSummary {
+  total: number;
+  will_succeed: number;
+  will_fail: number;
+}
+
+// WikiBatchPreviewResponse — dry-run analogue of WikiBatchResult. Returned
+// by the three POST /batch-preview-* endpoints. `success` holds slugs
+// that would apply; `failed` reuses WikiBatchFailure so the UI can share
+// the i18n key map (WikiBatchErrorCodeToI18nKey) with the real batch
+// error UI.
+//
+// Build #16.
+export interface WikiBatchPreviewResponse {
+  success: string[];
+  failed: WikiBatchFailure[];
+  summary: WikiBatchPreviewSummary;
+}
+
+// WikiBatchPreviewType — the three preview kinds. Matches the URL
+// suffix (`batch-preview-move` | `-delete` | `-status`) so the
+// WikiBulkActionBar can route to the right API without per-verb logic
+// in the preview dialog itself.
+//
+// Build #16.
+export type WikiBatchPreviewType = 'move' | 'delete' | 'status';
+
+// WikiBatchAsyncThreshold mirrors the Go-side constant in
+// `internal/types/wiki_page.go`. The WikiBulkActionBar uses it to decide
+// whether to surface the preview button (D7 = A: only when the slug
+// count reaches this threshold — small batches skip preview and go
+// straight to the synchronous batch-* call).
+//
+// Keep this value in sync with `internal/types/wiki_page.go`
+// (`WikiBatchAsyncThreshold`). If they drift, the preview UX will show
+// up too early (preview for small batches) or too late (no preview for
+// the async path).
+//
+// Build #16.
+export const WikiBatchAsyncThreshold = 20;

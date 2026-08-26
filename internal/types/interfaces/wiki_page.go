@@ -237,6 +237,19 @@ type WikiPageService interface {
 	BatchDeletePagesRoute(ctx context.Context, kbID string, slugs []string, createdBy string) (*types.WikiBatchRouteResult, error)
 	BatchUpdatePageStatusRoute(ctx context.Context, kbID string, slugs []string, status string, createdBy string) (*types.WikiBatchRouteResult, error)
 
+	// PreviewBatch* are the Build #16 dry-run siblings of the sync
+	// Batch* methods. They read the same rows + run the same validation
+	// rules but never write, never enqueue a job, and never record
+	// audit / failure rows. The returned WikiBatchPreviewResponse carries
+	// the per-slug will-succeed / will-fail classification with the same
+	// {Code, Error} vocabulary classifyBatchError uses so the UI can
+	// reuse WikiBatchErrorCodeToI18nKey. Cross-KB slugs surface as
+	// ErrWikiBatchKBMismatch (handler maps to 400) — same as the real
+	// Batch* path.
+	PreviewBatchMove(ctx context.Context, kbID string, slugs []string, folderID string) (*types.WikiBatchPreviewResponse, error)
+	PreviewBatchDelete(ctx context.Context, kbID string, slugs []string) (*types.WikiBatchPreviewResponse, error)
+	PreviewBatchStatus(ctx context.Context, kbID string, slugs []string, status string) (*types.WikiBatchPreviewResponse, error)
+
 	// CountByType returns page counts grouped by type for a knowledge
 	// base. Re-exposed at the service layer so the index intro
 	// generation path can frame the LLM prompt with "showing N of M"
@@ -360,6 +373,32 @@ type WikiBatchAuditRepository interface {
 	// Used only by Build #14.x cleanup (left for a follow-up). For now
 	// the repo exposes the read path so cleanup is testable.
 	ListExpiredEvents(ctx context.Context, before time.Time, limit int) ([]*types.WikiBatchJobAuditEvent, error)
+}
+
+// WikiBatchFailureRepository persists wiki_batch_job_failures rows.
+// Distinct from WikiBatchAuditRepository (Build #14) which records
+// "what happened when" — this table records "which slug failed
+// because of what", so the UI can group errors by code and the
+// operator can grep by slug without parsing the result JSONB blob.
+//
+// Build #15.
+type WikiBatchFailureRepository interface {
+	// Insert appends one failure row. Caller fills BatchJobID, Slug,
+	// Code, Error, KnowledgeBaseID, TenantID; repo stamps OccurredAt.
+	Insert(ctx context.Context, rec *types.WikiBatchJobFailureRecord) error
+
+	// ListByJobID returns failure rows for one batch job, oldest-first,
+	// with optional code filter (empty string = no filter). Pagination
+	// is 1-based; pageSize is capped server-side (max 200). Returns
+	// the rows + total count for the UI paginator + a parallel slice
+	// of per-code counts so the drawer can render its code tabs in a
+	// single round-trip.
+	ListByJobID(ctx context.Context, kbID, jobID, code string, page, pageSize int) (
+		failures []*types.WikiBatchJobFailureRecord,
+		groups []types.WikiBatchFailureGroupCount,
+		total int64,
+		err error,
+	)
 }
 
 // WikiPageRepository defines the wiki page data persistence interface.

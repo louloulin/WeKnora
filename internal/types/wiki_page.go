@@ -521,6 +521,32 @@ type WikiBatchResult struct {
 	Failed    []WikiPageBatchFailure `json:"failed"`
 }
 
+// WikiBatchPreviewSummary is the head-count triple the Build #16 preview
+// dialog renders next to the per-slug table. It is purely informational —
+// the authoritative per-slug outcome lives in WikiBatchPreviewResponse.
+type WikiBatchPreviewSummary struct {
+	Total       int `json:"total"`
+	WillSucceed int `json:"will_succeed"`
+	WillFail    int `json:"will_fail"`
+}
+
+// WikiBatchPreviewResponse is the dry-run analogue of WikiBatchResult.
+// Success holds slugs that would apply without error; Failed mirrors the
+// same {Slug, Code, Error} triple WikiBatchResult uses so the frontend can
+// reuse the i18n key map (WikiBatchErrorCodeToI18nKey) without a second
+// translation namespace.
+//
+// The preview is computed by reading the row + running only the
+// validation rules the matching real call would (folder_id resolve,
+// status validity, slug existence) — no writes, no cascades.
+//
+// Build #16.
+type WikiBatchPreviewResponse struct {
+	Success []string               `json:"success"`
+	Failed  []WikiPageBatchFailure `json:"failed"`
+	Summary WikiBatchPreviewSummary `json:"summary"`
+}
+
 // WikiBatchAsyncThreshold is the slug count above which the batch endpoints
 // enqueue an async job instead of executing synchronously. Below this the
 // whole request runs in-process and returns the WikiBatchResult directly;
@@ -578,6 +604,11 @@ type WikiBatchJob struct {
 	UndoState        JSON                   `json:"undo_state,omitempty" gorm:"type:jsonb"`
 	State            WikiBatchJobState      `json:"state" gorm:"type:varchar(16);default:'queued'"`
 	Result           JSON                   `json:"result,omitempty" gorm:"type:jsonb"`
+	// Progress carries running counters published by the worker on a
+	// throttled cadence (every 5 slugs, or on terminal). Shape:
+	//   { total, processed, succeeded, failed, updated_at }.
+	// Build #15.
+	Progress         JSON                   `json:"progress,omitempty" gorm:"type:jsonb"`
 	CreatedBy        string                 `json:"created_by" gorm:"type:varchar(64)"`
 	CreatedAt        time.Time              `json:"created_at"`
 	StartedAt        *time.Time             `json:"started_at,omitempty"`
@@ -650,6 +681,67 @@ type WikiBatchJobUndoPageState struct {
 type WikiBatchJobResult struct {
 	Succeeded []string               `json:"succeeded"`
 	Failed    []WikiPageBatchFailure `json:"failed"`
+}
+
+// WikiBatchJobProgress is the running-counter snapshot the worker
+// publishes into WikiBatchJob.Progress on a throttled cadence (every
+// 5 slugs, or on terminal). Total is captured at enqueue time so the
+// UI can render a "{processed}/{total}" fraction even after the batch
+// has finished. Processed >= Succeeded + Failed at every snapshot.
+//
+// Build #15.
+type WikiBatchJobProgress struct {
+	Total     int       `json:"total"`
+	Processed int       `json:"processed"`
+	Succeeded int       `json:"succeeded"`
+	Failed    int       `json:"failed"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// WikiBatchJobFailureRecord is one row of wiki_batch_job_failures — the
+// per-slug failure ledger. Distinct from WikiBatchJobAuditEvent
+// (Build #14) which records "what happened when" — this table records
+// "which slug failed because of what", so the UI can group errors by
+// code without parsing the result JSONB blob.
+//
+// Build #15.
+type WikiBatchJobFailureRecord struct {
+	ID              int64     `json:"id"            gorm:"primaryKey"`
+	TenantID        uint64    `json:"tenant_id"     gorm:"index"`
+	KnowledgeBaseID string    `json:"knowledge_base_id" gorm:"type:varchar(36);index"`
+	BatchJobID      string    `json:"batch_job_id"  gorm:"type:varchar(36);index"`
+	Slug            string    `json:"slug"`
+	Code            string    `json:"code"`
+	Error           string    `json:"error"`
+	OccurredAt      time.Time `json:"occurred_at"`
+}
+
+// TableName points at the migration-managed table.
+func (WikiBatchJobFailureRecord) TableName() string {
+	return "wiki_batch_job_failures"
+}
+
+// WikiBatchFailureGroupCount is the aggregated count for one error
+// code returned by the failure drawer's "group by code" view.
+//
+// Build #15.
+type WikiBatchFailureGroupCount struct {
+	Code  string `json:"code"`
+	Count int    `json:"count"`
+}
+
+// WikiBatchFailureListResponse is the wire shape of
+// GET /batch-jobs/:id/failures. Events + total + a parallel slice of
+// per-code group counts so the drawer can render its code tabs in a
+// single round-trip.
+//
+// Build #15.
+type WikiBatchFailureListResponse struct {
+	Failures  []WikiBatchJobFailureRecord   `json:"failures"`
+	Groups    []WikiBatchFailureGroupCount   `json:"groups"`
+	Total     int                           `json:"total"`
+	Page      int                           `json:"page"`
+	PageSize  int                           `json:"page_size"`
 }
 
 // WikiBatchRouteResult is the discriminated response for the three

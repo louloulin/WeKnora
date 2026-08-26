@@ -245,6 +245,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewWikiPageService))
 	must(container.Provide(repository.NewWikiBatchJobRepository))
 	must(container.Provide(repository.NewWikiBatchAuditRepository))
+	must(container.Provide(repository.NewWikiBatchFailureRepository))
 	must(container.Provide(service.NewWikiBatchJobService))
 	must(container.Invoke(wireWikiBatchJobService))
 	must(container.Provide(repository.NewWikiAclRepository))

@@ -35,6 +35,9 @@ type WikiPageHandler struct {
 	// 503 in that case so callers see a clear "not configured" error
 	// rather than a misleading 500.
 	batchAuditRepo interfaces.WikiBatchAuditRepository
+	// batchFailureRepo exposes the per-slug failure ledger (Build #15).
+	// Same nil-safe semantics as batchAuditRepo above.
+	batchFailureRepo interfaces.WikiBatchFailureRepository
 }
 
 // NewWikiPageHandler creates a new wiki page handler.
@@ -47,7 +50,10 @@ type WikiPageHandler struct {
 // batchAuditRepo is Build #14 — pass nil for builds without the
 // wiki_batch_job_audit table.
 //
-// Build #14.
+// batchFailureRepo is Build #15 — pass nil for builds without the
+// wiki_batch_job_failures table; same 503 semantics as batchAuditRepo.
+//
+// Build #14 + Build #15.
 func NewWikiPageHandler(
 	wikiService interfaces.WikiPageService,
 	kbService interfaces.KnowledgeBaseService,
@@ -56,15 +62,17 @@ func NewWikiPageHandler(
 	memoryService interfaces.MemoryService,
 	batchJobService interfaces.WikiBatchJobService,
 	batchAuditRepo interfaces.WikiBatchAuditRepository,
+	batchFailureRepo interfaces.WikiBatchFailureRepository,
 ) *WikiPageHandler {
 	return &WikiPageHandler{
-		wikiService:     wikiService,
-		kbService:       kbService,
-		lintService:     lintService,
-		auditService:    auditService,
-		memoryService:   memoryService,
-		batchJobService: batchJobService,
-		batchAuditRepo:  batchAuditRepo,
+		wikiService:      wikiService,
+		kbService:        kbService,
+		lintService:      lintService,
+		auditService:     auditService,
+		memoryService:    memoryService,
+		batchJobService:  batchJobService,
+		batchAuditRepo:   batchAuditRepo,
+		batchFailureRepo: batchFailureRepo,
 	}
 }
 
@@ -457,6 +465,120 @@ func (h *WikiPageHandler) BatchUpdatePageStatus(c *gin.Context) {
 	h.writeBatchRouteResult(c, result)
 }
 
+// BatchPreviewMove godoc
+// @Summary      Dry-run preview for a batch move
+// @Description  Read-only preview of POST /pages/batch-move. Returns the per-slug will-succeed / will-fail classification the real batch-move would produce, without writing anything. Use to confirm before committing a large move.
+// @Tags         Wiki
+// @Accept       json
+// @Produce      json
+// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        body   body  types.WikiPageBatchMoveRequest true "Batch move payload"
+// @Success      200  {object}  types.WikiBatchPreviewResponse
+// @Failure      400  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/pages/batch-preview-move [post]
+func (h *WikiPageHandler) BatchPreviewMove(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	var req types.WikiPageBatchMoveRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+	if err := validateBatchSlugs(req.Slugs); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	resp, err := h.wikiService.PreviewBatchMove(c.Request.Context(), kbID, req.Slugs, strings.TrimSpace(req.FolderID))
+	if err != nil {
+		if respondBatchServiceError(c, err) {
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// BatchPreviewDelete godoc
+// @Summary      Dry-run preview for a batch delete
+// @Description  Read-only preview of POST /pages/batch-delete. Returns per-slug existence check + would-have-failed classification, without writing anything.
+// @Tags         Wiki
+// @Accept       json
+// @Produce      json
+// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        body   body  types.WikiPageBatchDeleteRequest true "Batch delete payload"
+// @Success      200  {object}  types.WikiBatchPreviewResponse
+// @Failure      400  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/pages/batch-preview-delete [post]
+func (h *WikiPageHandler) BatchPreviewDelete(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	var req types.WikiPageBatchDeleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+	if err := validateBatchSlugs(req.Slugs); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	resp, err := h.wikiService.PreviewBatchDelete(c.Request.Context(), kbID, req.Slugs)
+	if err != nil {
+		if respondBatchServiceError(c, err) {
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+// BatchPreviewStatus godoc
+// @Summary      Dry-run preview for a batch status update
+// @Description  Read-only preview of POST /pages/batch-status. Validates the status token + checks slug existence; returns per-slug will-succeed / will-fail classification without writing anything.
+// @Tags         Wiki
+// @Accept       json
+// @Produce      json
+// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        body   body  types.WikiPageBatchStatusRequest true "Batch status payload"
+// @Success      200  {object}  types.WikiBatchPreviewResponse
+// @Failure      400  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/pages/batch-preview-status [post]
+func (h *WikiPageHandler) BatchPreviewStatus(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	var req types.WikiPageBatchStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+		return
+	}
+	if err := validateBatchSlugs(req.Slugs); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	resp, err := h.wikiService.PreviewBatchStatus(c.Request.Context(), kbID, req.Slugs, req.Status)
+	if err != nil {
+		if respondBatchServiceError(c, err) {
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
 // writeBatchRouteResult centralises the HTTP-status decision for the
 // three Batch*Route responses: 200 for sync, 202 for queued async. The
 // response body shape is the same (WikiBatchRouteResult) — only the
@@ -612,6 +734,56 @@ func (h *WikiPageHandler) GetBatchJobAudit(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, events)
+}
+
+// GetBatchJobFailures godoc
+// @Summary      Per-slug failures for one batch job
+// @Description  Returns the failures table rows for a single batch job (Build #15), oldest-first, paginated. Each row identifies one slug whose per-slug execution failed and the classifier-friendly error code. Optional `code` filter narrows to one bucket; the `groups` slice is always computed over the full filtered set so the drawer's code tabs stay accurate even when the user is deep in pagination.
+// @Tags         Wiki
+// @Produce      json
+// @Param        kb_id     path  string  true  "Knowledge base ID"
+// @Param        job_id    path  string  true  "Batch job id"
+// @Param        code      query string  false  "Filter by error code (not_found, folder_not_found, folder_conflict, folder_not_empty, kb_mismatch, internal)"
+// @Param        page      query int     false  "1-based page number (default 1)"
+// @Param        page_size query int     false  "Page size, 1-200 (default 50)"
+// @Success      200  {object}  types.WikiBatchFailureListResponse
+// @Failure      400  {object}  errors.AppError
+// @Failure      503  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/batch-jobs/{job_id}/failures [get]
+//
+// Build #15.
+func (h *WikiPageHandler) GetBatchJobFailures(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if h.batchFailureRepo == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "batch failure log is not configured"})
+		return
+	}
+	jobID := strings.TrimSpace(c.Param("job_id"))
+	if jobID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "job_id is required"})
+		return
+	}
+	page, pageSize := parsePagination(c, 50, 200)
+	code := strings.TrimSpace(c.Query("code"))
+	failures, groups, total, err := h.batchFailureRepo.ListByJobID(
+		c.Request.Context(), kbID, jobID, code, page, pageSize,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, types.WikiBatchFailureListResponse{
+		Failures:  failures,
+		Groups:    groups,
+		Total:     int(total),
+		Page:      page,
+		PageSize:  pageSize,
+	})
 }
 
 // ListBatchJobAudit godoc

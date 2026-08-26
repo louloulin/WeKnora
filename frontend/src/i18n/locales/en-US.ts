@@ -2938,8 +2938,11 @@ export default {
       bulkDeletePartial: 'Deleted {succeeded}, failed {failed}',
       bulkDeleteFailed: 'Bulk delete failed: {error}',
       bulkClear: 'Clear',
+      // Build #16 — dry-run preview button (replaces "Confirm" copy for >= 20 slugs)
+      bulkPreview: 'Preview',
       bulkJobQueued: 'Batch job queued (#{id}), processing…',
       bulkJobProgress: '{processed}/{total} processed',
+      bulkJobViewFailures: 'View errors',
       bulkJobFailed: 'Bulk job failed: {error}',
       bulkJobUndoButton: 'Undo',
       bulkJobUndoHint: 'Undo available for 60 seconds',
@@ -2948,6 +2951,7 @@ export default {
       bulkJobUndoFailed: 'Undo failed: {error}',
       bulkJobUndoExpired: 'Undo window has expired',
       bulkJobPollError: 'Failed to fetch progress',
+      batchPreviewLoadFailed: 'Preview failed: {detail}',
       bulkConfirmAsyncTitle: 'Confirm bulk action (runs in background)?',
       bulkConfirmAsyncHint: 'Selection exceeds 20 pages, the operation will run in the background. A toast will show progress; you have 60 seconds to click Undo.',
       bulkConfirmAsyncConfirm: 'Start',
@@ -6651,6 +6655,28 @@ export default {
       loading: 'Searching…',
       error: 'Search failed, please retry',
       empty: 'No matching pages'
+    },
+    batchFailures: {
+      drawerTitle: 'Failure details · #{jobId}',
+      empty: 'No failures under the current filter',
+      tabAll: 'All'
+    },
+    batchPreview: {
+      title: 'Preview · {type}',
+      summary: '{total} item(s) total',
+      willSucceed: '{count} item(s) will succeed',
+      willFail: '{count} item(s) will fail',
+      willSucceedTag: 'Will succeed',
+      unknownCode: 'Unknown error code {code}',
+      confirm: 'Confirm execute',
+      cancel: 'Cancel',
+      empty: 'No items to preview',
+      codeHeader: 'Status',
+      typeLabel: {
+        move: 'Move',
+        delete: 'Delete',
+        status: 'Status update',
+      }
     }
   }
 }

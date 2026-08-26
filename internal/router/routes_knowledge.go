@@ -311,6 +311,14 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		wiki.POST("/pages/batch-move", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.BatchMovePages)
 		wiki.POST("/pages/batch-delete", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.BatchDeletePages)
 		wiki.POST("/pages/batch-status", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.BatchUpdatePageStatus)
+		// Build #16 dry-run siblings of the three batch endpoints above.
+		// Same RBAC chain so a KB member allowed to write the KB can also
+		// "try" the write. The preview never mutates state, but mirroring
+		// the write guard keeps the surface uniform and avoids a "preview
+		// but not execute" privilege gap.
+		wiki.POST("/pages/batch-preview-move", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.BatchPreviewMove)
+		wiki.POST("/pages/batch-preview-delete", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.BatchPreviewDelete)
+		wiki.POST("/pages/batch-preview-status", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.BatchPreviewStatus)
 		// Async batch job status + undo (Build #13). The status read uses
 		// KBAccessRead so a KB member watching the toast can poll; the
 		// undo write uses KBAccessWrite because it actually mutates the
@@ -320,6 +328,10 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		// Build #14: cancel a queued job + audit log reads.
 		wiki.POST("/batch-jobs/:job_id/cancel", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.CancelBatchJob)
 		wikiRead.GET("/batch-jobs/:job_id/audit", g.OwnedWikiKBOrAdmin(), g.KBAccessRead("kb_id"), wikiHandler.GetBatchJobAudit)
+		// Build #15: per-slug failure ledger. Same KB read guard as
+		// the audit endpoint — failures are user-visible diagnostics,
+		// not privileged state.
+		wikiRead.GET("/batch-jobs/:job_id/failures", g.OwnedWikiKBOrAdmin(), g.KBAccessRead("kb_id"), wikiHandler.GetBatchJobFailures)
 		wikiRead.GET("/batch-audit", g.OwnedWikiKBOrAdmin(), g.KBAccessRead("kb_id"), wikiHandler.ListBatchJobAudit)
 		wikiRead.GET("/batch-audit/export", g.OwnedWikiKBOrAdmin(), g.KBAccessRead("kb_id"), wikiHandler.ExportBatchJobAuditCsv)
 		wikiRead.GET("/pages/*slug", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetPage)

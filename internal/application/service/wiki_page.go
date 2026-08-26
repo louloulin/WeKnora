@@ -2094,6 +2094,106 @@ func (s *wikiPageService) assertBatchKBOwnership(
 	return nil
 }
 
+// previewBatchResponse runs perSlug for each clean slug and assembles a
+// WikiBatchPreviewResponse. Returns kb_mismatch if any slug is owned by
+// a different KB (matching the real Batch* path's D2 contract). All
+// per-slug work is read-only — by construction no DB writes happen.
+//
+// Build #16.
+func (s *wikiPageService) previewBatchResponse(
+	ctx context.Context, kbID string, slugs []string,
+	perSlug func(ctx context.Context, slug string) error,
+) (*types.WikiBatchPreviewResponse, error) {
+	clean := normalizeBatchSlugs(slugs)
+	if err := s.assertBatchKBOwnership(ctx, kbID, clean); err != nil {
+		return nil, err
+	}
+	resp := &types.WikiBatchPreviewResponse{
+		Success: []string{},
+		Failed:  []types.WikiPageBatchFailure{},
+		Summary: types.WikiBatchPreviewSummary{Total: len(clean)},
+	}
+	for _, slug := range clean {
+		if err := perSlug(ctx, slug); err != nil {
+			resp.Failed = append(resp.Failed, types.WikiPageBatchFailure{
+				Slug:  slug,
+				Code:  classifyBatchError(err),
+				Error: err.Error(),
+			})
+			resp.Summary.WillFail++
+			continue
+		}
+		resp.Success = append(resp.Success, slug)
+		resp.Summary.WillSucceed++
+	}
+	return resp, nil
+}
+
+// PreviewBatchMove dry-runs BatchMovePages: for each slug it loads the
+// page (returns not_found if missing) and resolves the target folder
+// via applyFolderToPage (returns folder_not_found on a bad folder_id).
+//
+// We deliberately do NOT call MovePage here because:
+//   - MovePage writes (UpdateMeta + category_path), and a Tx-rollback
+//     wrapper would still leave the chunk-sync side effects outside
+//     the Tx (the service has no GORM handle to thread one through);
+//   - We want a strictly read-only preview, not "execute and undo".
+//
+// Build #16.
+func (s *wikiPageService) PreviewBatchMove(
+	ctx context.Context, kbID string, slugs []string, folderID string,
+) (*types.WikiBatchPreviewResponse, error) {
+	trimmedFolderID := strings.TrimSpace(folderID)
+	return s.previewBatchResponse(ctx, kbID, slugs, func(ctx context.Context, slug string) error {
+		page, err := s.repo.GetBySlug(ctx, kbID, slug)
+		if err != nil {
+			return err
+		}
+		// applyFolderToPage mutates the probe in-place (sets CategoryPath
+		// or clears it for an empty folder id) but is otherwise a pure
+		// read against s.repo.GetFolderByID. We pass a copy so the
+		// original page state is never touched.
+		probe := *page
+		probe.FolderID = trimmedFolderID
+		return s.applyFolderToPage(ctx, &probe)
+	})
+}
+
+// PreviewBatchDelete dry-runs BatchDeletePages: each slug is checked for
+// existence via GetBySlug. That's the only validation the real
+// DeletePage performs before the soft-delete write — out-link cascades
+// + revision cleanup run after the row vanishes and have no previewable
+// analogue (they only matter once the row is gone).
+//
+// Build #16.
+func (s *wikiPageService) PreviewBatchDelete(
+	ctx context.Context, kbID string, slugs []string,
+) (*types.WikiBatchPreviewResponse, error) {
+	return s.previewBatchResponse(ctx, kbID, slugs, func(ctx context.Context, slug string) error {
+		_, err := s.repo.GetBySlug(ctx, kbID, slug)
+		return err
+	})
+}
+
+// PreviewBatchStatus dry-runs BatchUpdatePageStatus: validates the
+// status token (returns "invalid" for anything outside the closed set)
+// and confirms each slug exists. Already-at-target pages count as
+// success without an extra validation step — same as the real
+// BatchUpdatePageStatus.
+//
+// Build #16.
+func (s *wikiPageService) PreviewBatchStatus(
+	ctx context.Context, kbID string, slugs []string, status string,
+) (*types.WikiBatchPreviewResponse, error) {
+	if !types.IsValidWikiPageStatus(status) {
+		return nil, fmt.Errorf("invalid status %q: must be draft, published or archived", status)
+	}
+	return s.previewBatchResponse(ctx, kbID, slugs, func(ctx context.Context, slug string) error {
+		_, err := s.repo.GetBySlug(ctx, kbID, slug)
+		return err
+	})
+}
+
 // classifyBatchError maps a per-row service error to a stable, machine-
 // readable token so the frontend can render i18n strings per category
 // without re-parsing the human-readable message. Anything not on the map

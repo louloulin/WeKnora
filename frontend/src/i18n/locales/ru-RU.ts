@@ -4025,8 +4025,11 @@ export default {
       bulkDeletePartial: 'Успешно: {succeeded}, ошибок: {failed}',
       bulkDeleteFailed: 'Сбой массового удаления: {error}',
       bulkClear: 'Очистить',
+      // Build #16 — dry-run preview button (replaces "Confirm" copy for >= 20 slugs)
+      bulkPreview: 'Предпросмотр',
       bulkJobQueued: 'Пакетное задание в очереди (#{id}), выполняется…',
       bulkJobProgress: 'Обработано {processed}/{total}',
+      bulkJobViewFailures: 'Посмотреть ошибки',
       bulkJobFailed: 'Сбой пакетного задания: {error}',
       bulkJobUndoButton: 'Отменить',
       bulkJobUndoHint: 'Отмена доступна в течение 60 секунд',
@@ -4035,6 +4038,7 @@ export default {
       bulkJobUndoFailed: 'Сбой отмены: {error}',
       bulkJobUndoExpired: 'Время отмены истекло',
       bulkJobPollError: 'Не удалось получить прогресс',
+      batchPreviewLoadFailed: 'Ошибка предпросмотра: {detail}',
       bulkConfirmAsyncTitle: 'Подтвердите пакетное действие (фоновое выполнение)?',
       bulkConfirmAsyncHint: 'Выбрано более 20 страниц, операция будет выполнена в фоне. Прогресс отобразится во всплывающем уведомлении; у вас есть 60 секунд, чтобы нажать «Отменить».',
       bulkConfirmAsyncConfirm: 'Начать',
@@ -6651,6 +6655,28 @@ export default {
       loading: 'Поиск…',
       error: 'Не удалось выполнить поиск, попробуйте ещё раз',
       empty: 'Совпадений не найдено'
+    },
+    batchFailures: {
+      drawerTitle: 'Сведения об ошибках · #{jobId}',
+      empty: 'Нет ошибок для текущего фильтра',
+      tabAll: 'Все'
+    },
+    batchPreview: {
+      title: 'Предпросмотр · {type}',
+      summary: 'Всего {total} элементов',
+      willSucceed: '{count} элементов будут успешны',
+      willFail: '{count} элементов завершатся ошибкой',
+      willSucceedTag: 'Будет успешно',
+      unknownCode: 'Неизвестный код ошибки {code}',
+      confirm: 'Подтвердить выполнение',
+      cancel: 'Отмена',
+      empty: 'Нет элементов для предпросмотра',
+      codeHeader: 'Статус',
+      typeLabel: {
+        move: 'Перемещение',
+        delete: 'Удаление',
+        status: 'Изменение статуса',
+      }
     }
   }
 }
