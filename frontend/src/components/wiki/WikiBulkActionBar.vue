@@ -14,6 +14,7 @@ import type {
 } from '@/api/wiki';
 import { MessagePlugin } from 'tdesign-vue-next';
 import WikiBatchPreviewDialog from './WikiBatchPreviewDialog.vue';
+import WikiBulkTagBar from './WikiBulkTagBar.vue';
 
 // Build #12 — 顶部批量操作工具栏。父组件持有 select-mode 状态 +
 // 已选 slug 列表,通过 props 传入。本组件只负责渲染和发出意图,
@@ -46,6 +47,7 @@ const emit = defineEmits<{
   (e: 'move', folderId: string): void;
   (e: 'status', status: 'draft' | 'published' | 'archived'): void;
   (e: 'delete'): void;
+  (e: 'tag', payload: { tagId: string; op: 'add' | 'remove'; slugs: string[] }): void;
 }>();
 
 const count = computed(() => props.selectedSlugs.length);
@@ -296,6 +298,14 @@ function onPreviewConfirm() {
       :preview-type="previewType"
       :preview="previewData"
       @confirm="onPreviewConfirm"
+    />
+
+    <!-- Build #17 bulk tag bar -->
+    <WikiBulkTagBar
+      :kb-id="kbId"
+      :selected-slugs="selectedSlugs"
+      :busy="busy"
+      @apply="(p) => emit('tag', p)"
     />
   </div>
 </template>

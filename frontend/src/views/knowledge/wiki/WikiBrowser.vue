@@ -220,6 +220,7 @@
             @move="onBulkMove"
             @status="onBulkStatus"
             @delete="onBulkDelete"
+            @tag="onBulkTag"
           />
           <!-- Search mode: flat list of hits, no group chrome. Clearing
                the search snaps back to the bucketed view below. -->
@@ -425,6 +426,7 @@
             </div>
           </template>
         </div>
+        <WikiTagPanel :kb-id="props.knowledgeBaseId" />
       </aside>
 
       <!-- Right Panel: Reader -->
@@ -550,6 +552,13 @@
                       <t-icon name="lock-on" size="14px" />
                       <span class="wiki-acl-banner__text">{{ aclBannerText }}</span>
                     </div>
+                    <WikiPageTagPicker
+                      v-if="!editingPage && selectedPage"
+                      :kb-id="props.knowledgeBaseId"
+                      :slug="selectedPage.slug"
+                      :readonly="!props.canEdit"
+                      class="wiki-page-tag-picker-mount"
+                    />
                     <t-textarea v-if="editingPage" v-model="editForm.summary"
                       class="wiki-edit-field wiki-edit-field--summary" :autosize="{ minRows: 2, maxRows: 4 }"
                       :placeholder="$t('knowledgeEditor.wikiBrowser.editSummaryPlaceholder')" />
@@ -973,6 +982,11 @@ import { useWikiPageAclStore } from '@/stores/wikiPageAcl'
 import { aclToolbarVisibility } from './wikiBrowserAclVisibility'
 import WikiBacklinksPanel from '@/components/wiki/WikiBacklinksPanel.vue'
 import { useWikiBacklinksStore } from '@/stores/wikiBacklinks'
+
+// Build #17 — wiki 标签系统(侧边栏管理 + 单页 chip picker)
+import WikiTagPanel from '@/components/wiki/WikiTagPanel.vue'
+import WikiPageTagPicker from '@/components/wiki/WikiPageTagPicker.vue'
+import { useWikiTagsStore } from '@/stores/wikiTags'
 
 // Build #12 — wiki 页面批量操作(批量 move / delete / status)
 import WikiBulkActionBar from '@/components/wiki/WikiBulkActionBar.vue'
@@ -3164,6 +3178,7 @@ const showFailureDrawer = ref(false)
 const failureDrawerJobId = ref<string | null>(null)
 const wikiAclStore = useWikiPageAclStore()
 const wikiSearchStore = useWikiSearchStore()
+const wikiTagsStore = useWikiTagsStore()
 const aclRestricted = computed(() => {
   const slug = selectedPage.value?.slug
   if (!slug) return false
@@ -4035,6 +4050,46 @@ async function onBulkDelete(): Promise<void> {
     await refreshActiveTree()
   } catch (err) {
     MessagePlugin.error(t('knowledgeEditor.wikiBrowser.bulkDeleteFailed', { error: String(err) }))
+  } finally {
+    bulkBusy.value = false
+  }
+}
+
+// Build #17 — bulk tag handler. Wired from WikiBulkActionBar's @tag
+// emit. The bar emits { tagId, op, slugs }; we route to the store
+// and surface success / failure via the same handleBatchRouteResult
+// helper so sync vs async paths share the same toast UX.
+async function onBulkTag(payload: {
+    tagId: string
+    op: 'add' | 'remove'
+    slugs: string[]
+  }): Promise<void> {
+  if (bulkBusy.value || payload.slugs.length === 0) return
+  bulkBusy.value = true
+  try {
+    const route = await wikiTagsStore.batchTagPages(
+      props.knowledgeBaseId,
+      payload.slugs,
+      payload.tagId,
+      payload.op,
+    )
+    if (!route) {
+      MessagePlugin.error(t('wiki.tags.error.batchFailed'))
+      return
+    }
+    await handleBatchRouteResult(
+      route,
+      payload.op === 'add' ? 'wiki.tags.bulkAddSuccess' : 'wiki.tags.bulkRemoveSuccess',
+      'wiki.tags.bulkPartial',
+      { count: payload.slugs.length },
+    )
+    // Refresh tag dictionary so page_count updates in the panel.
+    await wikiTagsStore.fetchTags(props.knowledgeBaseId)
+    clearSelection()
+  } catch (err) {
+    MessagePlugin.error(
+      t('wiki.tags.error.batchFailed', { detail: String(err) }),
+    )
   } finally {
     bulkBusy.value = false
   }
