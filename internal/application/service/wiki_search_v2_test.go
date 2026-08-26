@@ -14,6 +14,7 @@ type fakeSearchV2Repo struct {
 	calls      int
 	gotReq     types.WikiSearchV2Request
 	gotVisible []string
+	gotZh      string
 	resp       types.WikiSearchV2Result
 	err        error
 }
@@ -24,10 +25,12 @@ func (f *fakeSearchV2Repo) Search(
 	_ []string,
 	req types.WikiSearchV2Request,
 	visibleKBIDs []string,
+	zhQuery string,
 ) (types.WikiSearchV2Result, error) {
 	f.calls++
 	f.gotReq = req
 	f.gotVisible = append([]string(nil), visibleKBIDs...)
+	f.gotZh = zhQuery
 	return f.resp, f.err
 }
 
@@ -47,6 +50,22 @@ func (a *fakeAclService) Resolve(_ context.Context, kbID, slug, userID string) (
 		return v, nil
 	}
 	return types.WikiPageAclAllow, nil
+}
+
+// ResolveBulk mirrors Resolve for the bulk path; tests with the existing
+// resolutions map get identical results whether the service calls one-at-
+// a-time or in bulk.
+func (a *fakeAclService) ResolveBulk(_ context.Context, items []AclResolveItem, userID string) (map[string]string, error) {
+	out := make(map[string]string, len(items))
+	for _, it := range items {
+		key := it.KBID + ":" + it.Slug
+		if v, ok := a.resolutions[it.KBID+"|"+it.Slug+"|"+userID]; ok {
+			out[key] = v
+			continue
+		}
+		out[key] = types.WikiPageAclAllow
+	}
+	return out, nil
 }
 
 func (a *fakeAclService) GetAcl(_ context.Context, _, _ string) (*types.WikiPageAcl, error) {

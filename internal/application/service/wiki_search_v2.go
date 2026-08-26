@@ -5,6 +5,12 @@
 // caller cannot read never reach the client. The repo intentionally
 // stays ACL-unaware — its single concern is tsvector + tenant scoping —
 // and the service carries the visibility responsibility end-to-end.
+//
+// Build #19.x adds jieba tokenization before the repo call so the SQL
+// can hit the new `content_ts_zh` GIN index (migration 000096) when the
+// query contains Chinese. The repo stays jieba-free; the service is the
+// single point where Go-level decisions (tokenization, fuzzy toggle)
+// meet SQL-level decisions (tsvector, ts_rank).
 package service
 
 import (
@@ -12,9 +18,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/louloulin/WeKnora/internal/logger"
-	"github.com/louloulin/WeKnora/internal/types"
-	"github.com/louloulin/WeKnora/internal/types/interfaces"
+	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
 
 // WikiSearchV2Repo is the minimal repo surface the service needs.
@@ -25,14 +31,15 @@ type WikiSearchV2Repo interface {
 		denyUserIDs []string,
 		req types.WikiSearchV2Request,
 		visibleKBIDs []string,
+		zhQuery string,
 	) (types.WikiSearchV2Result, error)
 }
 
 // WikiSearchV2ServiceParams bundles deps for NewWikiSearchV2Service.
 type WikiSearchV2ServiceParams struct {
-	Repo  WikiSearchV2Repo
-	KB    interfaces.KnowledgeBaseService
-	ACL   WikiAclService
+	Repo WikiSearchV2Repo
+	KB   interfaces.KnowledgeBaseService
+	ACL  WikiAclService
 }
 
 // wikiSearchV2Service is the production implementation.
@@ -111,29 +118,45 @@ func (s *wikiSearchV2Service) Search(
 		}, nil
 	}
 
-	raw, err := s.repo.Search(ctx, tenantID, nil, req, effectiveVisible)
+	// Build #19.x — jieba-tokenize the query once for the ts_zh arm.
+	// The repo treats an empty string as "skip the zh arm" so a pure
+	// English query falls straight through to ts_simple / trgm.
+	zhQuery := JiebaSegmentForSearch("", req.Query)
+
+	raw, err := s.repo.Search(ctx, tenantID, nil, req, effectiveVisible, zhQuery)
 	if err != nil {
 		return types.WikiSearchV2Result{}, err
 	}
 
-	// ACL post-filter. WikiAclService.Resolve has its own TTL cache so
-	// repeated hits inside one window don't re-query the ACL column.
+	// ACL post-filter. WikiAclService.ResolveBulk fans out across the
+	// hits with a small worker pool; the underlying Resolve still uses
+	// its per-(kb,slug,user) cache, so the post-filter stays cheap even
+	// when the result set is large. Per-hit errors are mapped to the
+	// conservative deny inside ResolveBulk, so a transient ACL lookup
+	// failure never leaks a hit to the caller.
 	filtered := make([]types.WikiSearchV2Hit, 0, len(raw.Hits))
-	for _, hit := range raw.Hits {
-		if hit.Slug == "" || hit.KBID == "" {
-			continue
+	if len(raw.Hits) > 0 {
+		items := make([]AclResolveItem, 0, len(raw.Hits))
+		for _, hit := range raw.Hits {
+			if hit.Slug == "" || hit.KBID == "" {
+				continue
+			}
+			items = append(items, AclResolveItem{KBID: hit.KBID, Slug: hit.Slug})
 		}
-		decision, err := s.acl.Resolve(ctx, hit.KBID, hit.Slug, userID)
+		decisions, err := s.acl.ResolveBulk(ctx, items, userID)
 		if err != nil {
-			// Treat ACL lookup errors as a hidden page — never expose
-			// the hit, but also don't fail the whole result set.
-			logger.Warnf(ctx, "wiki search v2: acl resolve failed kb=%s slug=%s: %v", hit.KBID, hit.Slug, err)
-			continue
+			logger.Warnf(ctx, "wiki search v2: acl resolve bulk failed: %v", err)
 		}
-		if decision != types.WikiPageAclAllow {
-			continue
+		for _, hit := range raw.Hits {
+			if hit.Slug == "" || hit.KBID == "" {
+				continue
+			}
+			key := hit.KBID + ":" + hit.Slug
+			if decisions[key] != types.WikiPageAclAllow {
+				continue
+			}
+			filtered = append(filtered, hit)
 		}
-		filtered = append(filtered, hit)
 	}
 
 	raw.Hits = filtered

@@ -32,6 +32,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/container"
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -67,6 +68,7 @@ func main() {
 		router *gin.Engine,
 		resourceCleaner interfaces.ResourceCleaner,
 		systemSettingSvc interfaces.SystemSettingService,
+		wikiPageRepo interfaces.WikiPageRepository,
 	) error {
 		// Create HTTP server
 		server := &http.Server{
@@ -89,6 +91,14 @@ func main() {
 		if err := systemSettingSvc.SubscribeRedis(ctx); err != nil {
 			logger.Warnf(ctx, "[system_settings] subscribe failed: %v", err)
 		}
+
+		// Build #19.x — fill in `content_ts_zh` for any wiki_pages that
+		// pre-date migration 000096 or whose jieba tokens were never
+		// written. Runs in the background so server startup is not
+		// blocked; the search repo tolerates NULL columns (the ts_zh arm
+		// of the three-layer OR simply produces no hits until backfill
+		// completes).
+		service.BackfillContentTSZh(ctx, wikiPageRepo, true)
 
 		signals := make(chan os.Signal, 1)
 		signal.Notify(signals, shutdownSignals...)

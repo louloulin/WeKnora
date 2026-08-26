@@ -16,12 +16,8 @@ import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
 import { useWikiSearchV2Store } from '../../stores/wikiSearchV2'
 import WikiSearchResultsV2 from './WikiSearchResultsV2.vue'
+import WikiKBChipRow, { type KBOption } from './WikiKBChipRow.vue'
 import type { WikiSearchV2Hit } from '../../api/wiki/searchV2Types'
-
-interface KBOption {
-  id: string
-  name: string
-}
 
 const props = defineProps<{
   kbId: string
@@ -30,7 +26,7 @@ const props = defineProps<{
 }>()
 
 const store = useWikiSearchV2Store()
-const { query, hits, loading, error, showResults, usedLegacy } = storeToRefs(store)
+const { query, hits, loading, error, showResults, usedLegacy, fuzzy, partialMatch } = storeToRefs(store)
 
 const { t } = useI18n()
 
@@ -73,6 +69,20 @@ function onInput(value: string) {
   store.scheduleSearch(props.kbId, selectedKBIds.value, [])
 }
 
+function onFuzzyChange(value: boolean) {
+  store.setFuzzy(value)
+  if (query.value.trim().length > 0) {
+    store.scheduleSearch(props.kbId, selectedKBIds.value, [])
+  }
+}
+
+function onPartialChange(value: boolean) {
+  store.setPartialMatch(value)
+  if (query.value.trim().length > 0) {
+    store.scheduleSearch(props.kbId, selectedKBIds.value, [])
+  }
+}
+
 function onClear() {
   store.reset()
 }
@@ -109,25 +119,37 @@ onBeforeUnmount(() => {
 const placeholder = computed(() => t('wiki.searchV2.placeholder'))
 const ariaLabel = computed(() => t('wiki.searchV2.ariaLabel'))
 const chipLabel = computed(() => t('wiki.searchV2.kbChip', { count: selectedKBIds.value.length }))
+const fuzzyLabel = computed(() => t('wiki.searchV2.fuzzy'))
+const fuzzyHint = computed(() => t('wiki.searchV2.fuzzyHint'))
+const partialLabel = computed(() => t('wiki.searchV2.partialMatch'))
 </script>
 
 <template>
   <div ref="wrapperRef" class="wiki-search-bar-v2">
     <div v-if="showChips" class="wiki-search-bar-kbs">
       <span class="wiki-search-bar-kbs-label">{{ chipLabel }}</span>
-      <div class="wiki-search-bar-kb-chips">
-        <button
-          v-for="kb in kbOptions"
-          :key="kb.id"
-          type="button"
-          class="wiki-search-bar-kb-chip"
-          :class="{ 'is-selected': selectedKBIds.includes(kb.id) }"
-          :aria-pressed="selectedKBIds.includes(kb.id)"
-          @click="toggleKB(kb.id)"
-        >
-          {{ kb.name }}
-        </button>
-      </div>
+      <WikiKBChipRow
+        v-if="kbOptions"
+        :options="kbOptions"
+        :selected-ids="selectedKBIds"
+        @toggle="toggleKB"
+      />
+    </div>
+
+    <div class="wiki-search-bar-toggles" :aria-label="fuzzyLabel">
+      <t-checkbox
+        :model-value="fuzzy"
+        :title="fuzzyHint"
+        @change="(v: boolean) => onFuzzyChange(v)"
+      >
+        {{ fuzzyLabel }}
+      </t-checkbox>
+      <t-checkbox
+        :model-value="partialMatch"
+        @change="(v: boolean) => onPartialChange(v)"
+      >
+        {{ partialLabel }}
+      </t-checkbox>
     </div>
 
     <t-input
@@ -183,6 +205,15 @@ const chipLabel = computed(() => t('wiki.searchV2.kbChip', { count: selectedKBId
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+}
+
+.wiki-search-bar-toggles {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 8px 0;
+  font-size: 11px;
+  color: var(--td-text-color-secondary, #666);
 }
 
 .wiki-search-bar-kb-chip {

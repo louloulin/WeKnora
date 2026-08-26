@@ -19,6 +19,8 @@ export interface WikiSearchV2Hit {
   kb_id: string
   kb_name?: string
   page_type: string
+  /** Build #19.x — which arm matched (`ts_zh` / `ts_simple` / `trgm` / `partial` / `none`). */
+  matched_by?: string
   updated_at?: string
 }
 
@@ -37,4 +39,16 @@ export interface WikiSearchV2Request {
   page_types?: string[]
   limit?: number
   offset?: number
+  /**
+   * Build #19.x — include pg_trgm fuzzy match (English typos).
+   * Defaults to `true` server-side; the frontend sends `true` only when
+   * the user explicitly keeps the toggle on (so `false` is a real off).
+   */
+  fuzzy?: boolean
+  /**
+   * Build #19.x — include `LIKE '%q%'` substring fallback on title.
+   * Defaults to `false` server-side; the frontend sends `true` only when
+   * the user explicitly enables the "partial match" toggle.
+   */
+  partial_match?: boolean
 }

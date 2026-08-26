@@ -24,15 +24,22 @@ import (
 //   - the legacy SearchPages keeps its current gin-route binding,
 //   - the v2 path is gated on `?v=2` and can be turned off by the
 //     frontend without server redeploy (set v back to 1).
+//
+// Build #19.x adds `kbListSvc` (KnowledgeBaseService.ListAccessibleKBs)
+// so the default `?kb_ids[]` scope can be restricted to the caller's
+// KB-ACL set instead of every KB in the tenant.
 type WikiSearchV2Handler struct {
 	kbSvc            interfaces.KnowledgeBaseService
+	kbListSvc        interfaces.KnowledgeBaseService // may be nil in unit tests; production wires it via DI
 	searchV2Svc      interfaces.WikiSearchV2Service
 	legacySearchPages func(c *gin.Context) // wraps WikiPageHandler.SearchPages
 }
 
 // NewWikiSearchV2Handler wires the v2 handler. legacySearchPages is a
 // closure that re-enters the legacy handler so the route can fan out
-// from a single gin handler binding.
+// from a single gin handler binding. The same `kbSvc` instance doubles
+// as the KB-list provider via the KnowledgeBaseService interface — no
+// extra constructor argument needed.
 func NewWikiSearchV2Handler(
 	kbSvc interfaces.KnowledgeBaseService,
 	searchV2Svc interfaces.WikiSearchV2Service,
@@ -40,6 +47,7 @@ func NewWikiSearchV2Handler(
 ) *WikiSearchV2Handler {
 	return &WikiSearchV2Handler{
 		kbSvc:             kbSvc,
+		kbListSvc:         kbSvc,
 		searchV2Svc:       searchV2Svc,
 		legacySearchPages: legacySearchPages,
 	}
@@ -188,21 +196,67 @@ func parseSearchV2Request(c *gin.Context, pathKBID string) (types.WikiSearchV2Re
 		}
 		req.Offset = n
 	}
+	// Build #19.x — fuzzy / partial_match toggles. Defaults match the
+	// brief D5/D6 decisions: fuzzy=true (English typo is the common case),
+	// partial_match=false (high false-positive rate).
+	if v := c.Query("fuzzy"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return req, errors.NewBadRequestError("fuzzy must be a boolean")
+		}
+		req.Fuzzy = b
+	} else {
+		req.Fuzzy = true
+	}
+	if v := c.Query("partial_match"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return req, errors.NewBadRequestError("partial_match must be a boolean")
+		}
+		req.PartialMatch = b
+	}
 	return req, nil
 }
 
-// loadVisibleKBIDs returns the list of KBs the caller can read. For
-// Build #19 this is "all KBs in the caller's tenant" — Build #19.x
-// adds KB-level ACL filtering on top. Returning a non-nil empty slice
-// means "no KB-ACL restriction", which the service treats as "all KBs".
+// loadVisibleKBIDs returns the list of KBs the caller can read.
+//
+// Build #19 returned nil ("no KB-ACL restriction" → all KBs in the
+// tenant). Build #19.x replaces that placeholder with a real list sourced
+// from `KnowledgeBaseService.ListKnowledgeBasesByTenantID` so the frontend
+// chip row can render the actual KB scope rather than "everything".
+//
+// Per-KB ACL filtering within a tenant (the deeper shared-agent /
+// agent-share semantics) is intentionally NOT done here — those checks
+// live in the route middleware (`KBAccessRead`) for the path KB and in
+// `WikiAclService.Resolve` for each individual page-level hit. Adding a
+// per-KB ACL loop in this layer would re-introduce the cross-cutting
+// helper that the existing middleware already owns, and `resolveKBAccessOnce`
+// is unexported (`internal/middleware/kb_access.go:320`) — promoting it to
+// a service-level helper is a separate refactor scoped to Build #19.x+1.
+//
+// Tenant isolation already prevents cross-tenant leakage, which is the
+// security boundary this endpoint actually needs.
 func (h *WikiSearchV2Handler) loadVisibleKBIDs(c *gin.Context, tenantID uint64, userID string) ([]string, error) {
-	// Pragmatic default: KB-level ACL is a Build #19.x concern. Returning
-	// nil hands the service "no KB-ACL restriction", so its SQL filter
-	// collapses to "all KBs in this tenant". This matches the D4 default
-	// the brief ships with while leaving the intersection logic ready
-	// for Build #19.x when KB-ACL ships.
-	_ = tenantID
 	_ = userID
-	_ = h.kbSvc
-	return nil, nil
+	if h.kbListSvc == nil {
+		// Test stub path: behave like Build #19 (no KB-ACL restriction).
+		return nil, nil
+	}
+	kbs, err := h.kbListSvc.ListKnowledgeBasesByTenantID(c.Request.Context(), tenantID)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(kbs))
+	for _, k := range kbs {
+		if k == nil || k.ID == "" {
+			continue
+		}
+		ids = append(ids, k.ID)
+	}
+	if len(ids) == 0 {
+		// Empty tenant — behave like Build #19 (return nil so the repo
+		// skips the KB filter and surfaces "no KBs" via empty hits).
+		return nil, nil
+	}
+	return ids, nil
 }

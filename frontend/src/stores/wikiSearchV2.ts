@@ -36,6 +36,12 @@ export const useWikiSearchV2Store = defineStore('wikiSearchV2', () => {
   const lastKBIDs = ref<string[]>([])
   /** True once a fallback to legacy has run; UI can show a soft hint. */
   const usedLegacy = ref(false)
+  // Build #19.x — fuzzy + partialMatch toggles. Defaults match the brief:
+  // fuzzy=true (English typo is the common case), partialMatch=false
+  // (high false-positive rate). The store passes both to the v2 request;
+  // they survive across calls until the user toggles them off.
+  const fuzzy = ref(true)
+  const partialMatch = ref(false)
 
   const trimmedQuery = computed(() => query.value.trim())
   const hasResults = computed(() => hits.value.length > 0)
@@ -56,6 +62,10 @@ export const useWikiSearchV2Store = defineStore('wikiSearchV2', () => {
     showResults.value = false
     lastQuery.value = ''
     usedLegacy.value = false
+    // Reset toggles to brief defaults so a fresh search starts from the
+    // user-expected baseline, not whatever was left from a previous run.
+    fuzzy.value = true
+    partialMatch.value = false
   }
 
   function clearResults() {
@@ -76,6 +86,17 @@ export const useWikiSearchV2Store = defineStore('wikiSearchV2', () => {
 
   function setQuery(next: string) {
     query.value = next
+  }
+
+  // Build #19.x — fuzzy / partialMatch toggles. Setting a toggle does
+  // NOT auto-rerun the search; the caller (WikiSearchBarV2) follows up
+  // with `scheduleSearch` so the same debounce + token-guard pipeline
+  // applies. setQuery is the same — neither auto-reruns.
+  function setFuzzy(next: boolean) {
+    fuzzy.value = next
+  }
+  function setPartialMatch(next: boolean) {
+    partialMatch.value = next
   }
 
   /**
@@ -109,6 +130,8 @@ export const useWikiSearchV2Store = defineStore('wikiSearchV2', () => {
         kb_ids: kbIds,
         page_types: pageTypes,
         limit,
+        fuzzy: fuzzy.value,
+        partial_match: partialMatch.value,
       })
       if (token !== latestToken) return
       hits.value = res.hits
@@ -160,12 +183,16 @@ export const useWikiSearchV2Store = defineStore('wikiSearchV2', () => {
     lastQuery,
     lastKBIDs,
     usedLegacy,
+    fuzzy,
+    partialMatch,
     // getters
     trimmedQuery,
     hasResults,
     isEmpty,
     // actions
     setQuery,
+    setFuzzy,
+    setPartialMatch,
     scheduleSearch,
     reset,
     clearResults,

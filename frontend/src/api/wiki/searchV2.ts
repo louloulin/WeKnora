@@ -46,6 +46,15 @@ export function buildParams(kbId: string, opts: WikiSearchV2Request): string {
   if (opts.offset && opts.offset > 0) {
     params.set('offset', String(opts.offset))
   }
+  // Build #19.x — fuzzy / partial_match toggles. We only emit the params
+  // when the caller flipped them; the server's defaults already match
+  // (fuzzy=true, partial_match=false), so absent = use server default.
+  if (opts.fuzzy === false) {
+    params.set('fuzzy', 'false')
+  }
+  if (opts.partial_match === true) {
+    params.set('partial_match', 'true')
+  }
   return `/api/v1/knowledgebase/${kbId}/wiki/search?${params.toString()}`
 }
 
