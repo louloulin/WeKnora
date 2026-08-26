@@ -20,13 +20,17 @@ import (
 type WikiAclRepo interface {
 	// GetAclBySlug fetches just the acl column for a page. Returns
 	// (nil, nil) when the row exists but acl is NULL (legacy inherit).
+	// Build #27 — the returned WikiPageAcl.SnapshotHash carries the
+	// sibling acl_snapshot_hash value so PutAcl can compare-and-skip.
 	GetAclBySlug(ctx context.Context, kbID string, slug string) (*types.WikiPageAcl, error)
 	// UpdateAclWithRevision writes a new ACL value after checking the
 	// stored revision still matches expectedRevision. Returns
 	// types.ErrWikiPageAclRevisionConflict on mismatch. Audit row is
-	// written in the same transaction.
+	// written in the same transaction. Build #27 — snapshotHash is the
+	// fingerprint of the new ACL payload; pass "" to clear the column
+	// (safe default: the next PutAcl will then run the cache wipe).
 	UpdateAclWithRevision(ctx context.Context, kbID string, slug string,
-		newAcl types.WikiPageAcl, expectedRevision int64,
+		newAcl types.WikiPageAcl, expectedRevision int64, snapshotHash string,
 		actorUserID string, actorRole string, action string) (*types.WikiPageAcl, error)
 	// PageOwnerAndAdmin returns the page's owner user id and whether the
 	// caller is a KB admin. Used by Resolve to short-circuit owner/admin
@@ -250,6 +254,12 @@ func (s *wikiAclService) GetAcl(ctx context.Context, kbID string, slug string) (
 // this page across all users, then fires the Build #24 ACL→cache wipe
 // hook so the backlinks cache row for this page — and every row that
 // references it — is dropped before the next ListBacklinkGraph call.
+//
+// Build #27 — when the new ACL payload's hash matches the stored
+// `acl_snapshot_hash` value, the cache wipe + invalidation-log row are
+// skipped (the revision still bumps and the audit row is written with
+// action="noop_match" so the audit-trail invariant holds). A legacy row
+// with an empty stored hash always runs the wipe — see spec D4.
 func (s *wikiAclService) PutAcl(ctx context.Context, kbID string, slug string,
 	req types.WikiPageAclSaveRequest, callerUserID string, callerRole string) (*types.WikiPageAcl, error) {
 	// Empty mode is treated as inherit on read, but a PUT must specify
@@ -262,22 +272,41 @@ func (s *wikiAclService) PutAcl(ctx context.Context, kbID string, slug string,
 	if !types.IsValidWikiPageAclMode(mode) {
 		return nil, fmt.Errorf("invalid acl mode %q", req.Mode)
 	}
-	// Capture the before-mode for the audit Details payload before the
-	// write commits. Read best-effort: a read failure here is logged
-	// but does not block the write — the audit row already records the
-	// new mode via the existing before_acl/after_acl columns, so this
-	// field is only for the cache-invalidation log's pretty-print.
-	beforeMode := ""
+	// Build #27 — compute the new payload's hash up-front so we can
+	// compare against the stored value before the write commits.
+	newHash := HashAcl(mode, req.AllowUserIDs, req.AllowGroupIDs, req.DenyInherited)
+	// Capture the before-state + current revision + stored hash in one
+	// read. The before-mode is consumed by the audit Details payload;
+	// the beforeHash drives the noop decision. Read best-effort: a read
+	// failure here is treated as "no prior state" → noop=false → wipe
+	// runs (the safe default — never skip a wipe we couldn't verify).
+	var (
+		beforeMode  = ""
+		beforeHash  = ""
+		noop        = false
+	)
 	if before, getErr := s.repo.GetAclBySlug(ctx, kbID, slug); getErr == nil && before != nil {
 		beforeMode = before.Mode
+		beforeHash = before.SnapshotHash
+	}
+	// D4 — a stored hash of "" never matches a real hash, so legacy rows
+	// always run the wipe on their first PutAcl post-migration.
+	if beforeHash != "" && beforeHash == newHash {
+		noop = true
 	}
 	action := actionForMode(mode)
+	if noop {
+		// Spec D5 — the audit row still gets written so the timeline
+		// has no gaps, but the action label is overridden to make the
+		// "no semantic change" signal explicit.
+		action = "noop_match"
+	}
 	updated, err := s.repo.UpdateAclWithRevision(ctx, kbID, slug, types.WikiPageAcl{
 		Mode:          mode,
 		AllowUserIDs:  req.AllowUserIDs,
 		AllowGroupIDs: req.AllowGroupIDs,
 		DenyInherited: req.DenyInherited,
-	}, req.BaseRevision, callerUserID, callerRole, action)
+	}, req.BaseRevision, newHash, callerUserID, callerRole, action)
 	if err != nil {
 		if errors.Is(err, types.ErrWikiPageAclRevisionConflict) {
 			return nil, err
@@ -285,7 +314,10 @@ func (s *wikiAclService) PutAcl(ctx context.Context, kbID string, slug string,
 		return nil, err
 	}
 	s.cache.invalidatePrefix(kbID + "|" + slug + "|")
-	s.invalidateBacklinksCacheOnAclChange(ctx, kbID, slug, beforeMode, mode, req.BaseRevision, updated.Revision)
+	s.invalidateBacklinksCacheOnAclChange(ctx, kbID, slug, beforeMode, mode, req.BaseRevision, updated.Revision, noop)
+	if noop {
+		metricAclChangeSkippedTotal.WithLabelValues("hash_match").Inc()
+	}
 	return updated, nil
 }
 
@@ -305,6 +337,13 @@ func (s *wikiAclService) PutAcl(ctx context.Context, kbID string, slug string,
 // Failure mode is consistent with the rest of the cache layer: every
 // step warn-logs and continues. Losing one wipe means the next read
 // recomputes on miss — the system self-heals.
+//
+// Build #27 — when noop is true the hook short-circuits before any
+// cache work. This is the optimization the snapshot-hash column buys:
+// an identical PutAcl (re-submit, idempotent retry, double-click) no
+// longer triggers CountByKB + Delete. The caller is responsible for
+// incrementing metricAclChangeSkippedTotal so the dashboards still
+// observe the skip.
 // invalidateBacklinksCacheOnAclChange is wired off PutAcl and never
 // called directly.
 func (s *wikiAclService) invalidateBacklinksCacheOnAclChange(
@@ -312,8 +351,17 @@ func (s *wikiAclService) invalidateBacklinksCacheOnAclChange(
 	kbID, slug string,
 	beforeMode, afterMode string,
 	beforeRev int64, afterRev int64,
+	noop bool,
 ) {
 	if s.cacheRepo == nil {
+		return
+	}
+	if noop {
+		// Spec D6 — invalidation-log row is intentionally not written
+		// when the wipe is skipped; the log is the "did we actually
+		// wipe" trail, and nothing was wiped. The audit row in
+		// wiki_page_acl_audit carries the action="noop_match" signal
+		// for forensics, so no information is lost.
 		return
 	}
 

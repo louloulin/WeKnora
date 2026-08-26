@@ -1,0 +1,31 @@
+-- Build #27 — wiki_pages.acl_snapshot_hash
+--
+-- Background: Build #24 added the ACL→cache invalidation hook. Every
+-- successful PutAcl triggers a cache wipe, even when the new ACL payload
+-- is byte-identical to the previous one (re-submitted forms, idempotent
+-- retries, double-clicks that hit the optimistic lock path). On a large
+-- KB the wipe cost dominates — even with Build #26's indexed
+-- reverse-lookup, a CountByKB + DeleteByKB (or FindReferencingSlugs +
+-- Delete) for a 100k-row KB still costs ~50ms of cache work plus a
+-- LogInvalidation audit row write.
+--
+-- This migration adds a small fingerprint of the ACL payload directly on
+-- the wiki_pages row so PutAcl can read+compare+decide whether the cache
+-- wipe is actually needed. The fingerprint is the first 16 hex characters
+-- (64 bits) of SHA-256 over the canonical ACL JSON — birthday-bound
+-- collision at 2^32 rows, comfortably above the largest KB expected.
+--
+-- Storage layout (VARCHAR(16)):
+--   * 16 chars is enough for SHA-256 first-half truncation
+--   * NOT NULL DEFAULT '': every legacy row gets empty hash, which
+--     never matches a real hash, so the first PutAcl on a legacy row
+--     always runs the wipe path. This is the safe default — see spec D4.
+--
+-- Backfill strategy (no SQL backfill needed):
+--   The first PutAcl on each legacy row computes the real hash and
+--   writes it via UpdateAclWithRevision (B27). Until then, the empty
+--   default guarantees every legacy row runs the wipe. No risk of a
+--   "silent skip" on a row whose content changed pre-migration.
+
+ALTER TABLE wiki_pages
+    ADD COLUMN acl_snapshot_hash VARCHAR(16) NOT NULL DEFAULT '';

@@ -1651,6 +1651,13 @@ func IsValidWikiPageAclMode(mode string) bool {
 // WikiPageAcl is the per-page access control record. Stored as JSON on
 // wiki_pages.acl. The struct is also what the GET/PUT /api/v1/.../acl REST
 // endpoints marshal to and from.
+//
+// SnapshotHash is server-side only (json:"-") and carries the SHA-256
+// fingerprint of the canonical ACL JSON that PutAcl writes via
+// wiki_pages.acl_snapshot_hash (Build #27). It is populated by
+// WikiAclRepository.GetAclBySlug on read so PutAcl can compare-and-skip
+// the cache wipe on identical payloads; it is never written through the
+// ACL column itself — the repo SETs the sibling column directly.
 type WikiPageAcl struct {
 	Mode          string   `json:"mode"`
 	AllowUserIDs  []string `json:"allow_user_ids"`
@@ -1658,6 +1665,7 @@ type WikiPageAcl struct {
 	DenyInherited bool     `json:"deny_inherited"`
 	Revision      int64    `json:"revision,omitempty"`
 	UpdatedAt     string   `json:"updated_at,omitempty"`
+	SnapshotHash  string   `json:"-"`
 }
 
 // Value implements driver.Valuer so GORM can write the column as JSON.

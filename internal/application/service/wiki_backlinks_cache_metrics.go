@@ -104,4 +104,16 @@ var (
 		Help:    "Wall-clock duration of the Build #24 ACL→cache reverse-lookup wipe (large-KB path only).",
 		Buckets: prometheus.ExponentialBuckets(0.005, 2, 14), // 5ms .. ~80s
 	})
+
+	// Build #27 — ACL-change skip counter. Increments when PutAcl
+	// detects the new ACL payload's hash matches the stored
+	// acl_snapshot_hash and short-circuits the cache wipe. The label
+	// is reserved for future reasons (e.g. force=false; today only
+	// "hash_match" is emitted). This counter and
+	// metricCacheInvalidationsTotal{op="acl_change"} are complements:
+	// every PutAcl lands on one or the other, never both.
+	metricAclChangeSkippedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "wiki_acl_change_skipped_total",
+		Help: "Total ACL PutAcl calls skipped by the Build #27 snapshot-hash check, by reason.",
+	}, []string{"reason"})
 )

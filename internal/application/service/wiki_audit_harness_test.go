@@ -736,7 +736,7 @@ type stubWikiAclRepo struct{}
 func (stubWikiAclRepo) GetAclBySlug(_ context.Context, _, _ string) (*types.WikiPageAcl, error) {
 	return nil, nil
 }
-func (stubWikiAclRepo) UpdateAclWithRevision(_ context.Context, _, _ string, _ types.WikiPageAcl, _ int64, _, _ string) (*types.WikiPageAcl, error) {
+func (stubWikiAclRepo) UpdateAclWithRevision(_ context.Context, _, _ string, _ types.WikiPageAcl, _ int64, _ string, _, _ string) (*types.WikiPageAcl, error) {
 	return nil, fmt.Errorf("not implemented in harness")
 }
 func (stubWikiAclRepo) PageOwnerAndAdmin(_ context.Context, _, _, _ string) (string, bool, error) {

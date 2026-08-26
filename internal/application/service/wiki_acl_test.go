@@ -33,7 +33,7 @@ func (s *stubWikiAclRepo) GetAclBySlug(ctx context.Context, kbID string, slug st
 }
 
 func (s *stubWikiAclRepo) UpdateAclWithRevision(ctx context.Context, kbID string, slug string,
-	newAcl types.WikiPageAcl, expectedRevision int64,
+	newAcl types.WikiPageAcl, expectedRevision int64, snapshotHash string,
 	actorUserID string, actorRole string, action string) (*types.WikiPageAcl, error) {
 	if s.updateErr != nil {
 		return nil, s.updateErr
@@ -44,6 +44,10 @@ func (s *stubWikiAclRepo) UpdateAclWithRevision(ctx context.Context, kbID string
 	s.storedRev = expectedRevision + 1
 	merged := newAcl
 	merged.Revision = s.storedRev
+	// Build #27 — propagate the snapshot hash onto the stored value so
+	// the next PutAcl can compare-and-skip via GetAclBySlug returning
+	// this value back.
+	merged.SnapshotHash = snapshotHash
 	s.acl = &merged
 	return &merged, nil
 }

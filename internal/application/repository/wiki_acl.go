@@ -28,15 +28,20 @@ func NewWikiAclRepository(db *gorm.DB) *wikiAclRepository {
 
 // aclColumnProjection returns the SELECT list used by both GetAclBySlug
 // and the revision-check inside UpdateAclWithRevision. Centralized so the
-// two queries stay structurally aligned.
-const aclColumnProjection = "acl, acl_revision"
+// two queries stay structurally aligned. Build #27 adds
+// acl_snapshot_hash so PutAcl can compare-and-skip the cache wipe on
+// identical payloads.
+const aclColumnProjection = "acl, acl_revision, acl_snapshot_hash"
 
 // aclRow mirrors the projected columns. Stays private: the repo never
 // returns this struct to callers — service-layer methods receive the
-// typed *types.WikiPageAcl directly.
+// typed *types.WikiPageAcl directly. SnapshotHash is copied onto the
+// returned ACL.SnapshotHash so callers see the fingerprint without
+// having to read the column separately.
 type aclRow struct {
-	ACL         types.WikiPageAcl `gorm:"column:acl;type:json"`
-	ACLRevision int64             `gorm:"column:acl_revision"`
+	ACL          types.WikiPageAcl `gorm:"column:acl;type:json"`
+	ACLRevision  int64             `gorm:"column:acl_revision"`
+	ACLHashValue string            `gorm:"column:acl_snapshot_hash"`
 }
 
 // GetAclBySlug returns the per-page ACL row for (kbID, slug). Returns
@@ -67,6 +72,9 @@ func (r *wikiAclRepository) GetAclBySlug(ctx context.Context, kbID string, slug 
 		return nil, nil
 	}
 	row.ACL.Revision = row.ACLRevision
+	// Build #27 — surface the snapshot hash so PutAcl can compare
+	// against the next computed hash and short-circuit identical writes.
+	row.ACL.SnapshotHash = row.ACLHashValue
 	return &row.ACL, nil
 }
 
@@ -77,11 +85,19 @@ func (r *wikiAclRepository) GetAclBySlug(ctx context.Context, kbID string, slug 
 // The audit row is written in the same transaction so forensics never drift
 // from the live ACL row even if the process crashes between the two
 // writes.
+//
+// snapshotHash (Build #27) is the SHA-256 fingerprint computed by
+// WikiAclService.PutAcl from the canonical ACL JSON. It is written to
+// the sibling `acl_snapshot_hash` column in the same UPDATE so the next
+// PutAcl can read+compare without recomputing. Pass "" if the caller
+// does not care about the skip optimization — the column will be
+// cleared and the next PutAcl will run the wipe (safe default).
 func (r *wikiAclRepository) UpdateAclWithRevision(
 	ctx context.Context,
 	kbID string, slug string,
 	newAcl types.WikiPageAcl,
 	expectedRevision int64,
+	snapshotHash string,
 	actorUserID string, actorRole string, action string,
 ) (*types.WikiPageAcl, error) {
 	var (
@@ -95,8 +111,12 @@ func (r *wikiAclRepository) UpdateAclWithRevision(
 		var before types.WikiPageAcl
 		var beforeHadValue bool
 		var beforeRevision int64
+		// Build #27 — also read the stored snapshot hash. Not strictly
+		// required for the write path (the new hash is passed in), but
+		// keeping the projection aligned with aclColumnProjection makes
+		// the SELECT shape obvious to reviewers.
 		row := tx.Table("wiki_pages").
-			Select("acl, acl_revision").
+			Select("acl, acl_revision, acl_snapshot_hash").
 			Where("knowledge_base_id = ? AND slug = ? AND deleted_at IS NULL", kbID, slug).
 			Row()
 		var beforeRaw []byte
@@ -135,13 +155,15 @@ func (r *wikiAclRepository) UpdateAclWithRevision(
 
 		// Cast to ::json on PG so the implicit text→json cast is explicit.
 		// SQLite ignores the cast and stores the raw bytes into the TEXT
-		// column underneath.
+		// column underneath. Build #27 — also SET acl_snapshot_hash so
+		// the next PutAcl can compare-and-skip.
 		updateRes := tx.Table("wiki_pages").
 			Where("knowledge_base_id = ? AND slug = ? AND acl_revision = ?", kbID, slug, beforeRevision).
 			Updates(map[string]any{
-				"acl":          gorm.Expr("?::json", string(aclBytes)),
-				"acl_revision": nextRevision,
-				"updated_at":   now,
+				"acl":               gorm.Expr("?::json", string(aclBytes)),
+				"acl_revision":      nextRevision,
+				"acl_snapshot_hash": snapshotHash,
+				"updated_at":        now,
 			})
 		if updateRes.Error != nil {
 			return fmt.Errorf("wiki_acl repo: write acl: %w", updateRes.Error)
@@ -189,6 +211,9 @@ func (r *wikiAclRepository) UpdateAclWithRevision(
 		}
 
 		updated = &newAcl
+		// Build #27 — surface the just-written hash so the caller does
+		// not have to re-read to see the new fingerprint.
+		updated.SnapshotHash = snapshotHash
 		return nil
 	})
 	if err != nil {
