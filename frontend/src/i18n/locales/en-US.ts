@@ -6656,6 +6656,28 @@ export default {
       error: 'Search failed, please retry',
       empty: 'No matching pages'
     },
+    // Build #19 / P2.x.a — wiki search v2 (tsvector + ACL + cross-KB).
+    // Server-rendered <mark> snippets + per-page ACL filter + optional
+    // cross-KB scope. Legacy ?legacy=1 fallback is silent.
+    searchV2: {
+      placeholder: 'Full-text search pages…',
+      ariaLabel: 'Search pages across visible knowledge bases',
+      resultsLabel: 'Search results',
+      loading: 'Searching…',
+      error: 'Search failed, please retry',
+      empty: 'No matching pages',
+      fallback: 'v2 search is unavailable; switched to basic search',
+      totalCount: 'Found {total} results in {tookMs}ms',
+      kbChip: '{count} knowledge bases selected',
+      pageType: {
+        concept: 'Concept',
+        entity: 'Entity',
+        summary: 'Summary',
+        synthesis: 'Synthesis',
+        comparison: 'Comparison',
+        index: 'Index'
+      }
+    },
     batchFailures: {
       drawerTitle: 'Failure details · #{jobId}',
       empty: 'No failures under the current filter',

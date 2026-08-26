@@ -6656,6 +6656,28 @@ export default {
       error: 'Не удалось выполнить поиск, попробуйте ещё раз',
       empty: 'Совпадений не найдено'
     },
+    // Build #19 / P2.x.a — wiki search v2 (tsvector + ACL + cross-KB).
+    // Server-rendered <mark> snippets + per-page ACL filter + optional
+    // cross-KB scope. Legacy ?legacy=1 fallback is silent.
+    searchV2: {
+      placeholder: 'Полнотекстовый поиск страниц…',
+      ariaLabel: 'Поиск страниц в доступных базах знаний',
+      resultsLabel: 'Результаты поиска',
+      loading: 'Поиск…',
+      error: 'Не удалось выполнить поиск, попробуйте ещё раз',
+      empty: 'Совпадений не найдено',
+      fallback: 'Поиск v2 недоступен; используется базовый поиск',
+      totalCount: 'Найдено {total} · {tookMs} мс',
+      kbChip: 'Выбрано баз знаний: {count}',
+      pageType: {
+        concept: 'Концепция',
+        entity: 'Сущность',
+        summary: 'Сводка',
+        synthesis: 'Синтез',
+        comparison: 'Сравнение',
+        index: 'Индекс'
+      }
+    },
     batchFailures: {
       drawerTitle: 'Сведения об ошибках · #{jobId}',
       empty: 'Нет ошибок для текущего фильтра',

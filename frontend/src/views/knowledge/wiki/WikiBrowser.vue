@@ -165,7 +165,7 @@
     <template v-else>
       <!-- Left Panel: Page List -->
       <aside class="wiki-sidebar">
-        <WikiSearchBar :kb-id="props.knowledgeBaseId" />
+        <WikiSearchBarV2 :kb-id="props.knowledgeBaseId" :kb-options="kbOptions" />
         <div class="wiki-sidebar-audit-entry">
           <t-button variant="text" theme="default" size="small" block @click="showAuditPanel = true">
             <t-icon name="view-list" />
@@ -1020,7 +1020,7 @@ import {
 } from '@/api/wiki'
 // Build #15 — per-slug failure ledger.
 import WikiBatchFailureDrawer from '@/components/wiki/WikiBatchFailureDrawer.vue'
-import WikiSearchBar from '@/components/wiki/WikiSearchBar.vue'
+import WikiSearchBarV2 from '@/components/wiki/WikiSearchBarV2.vue'
 import { useWikiSearchStore } from '@/stores/wikiSearch'
 import { useFeatureFlagsStore } from '@/stores/featureFlags'
 
@@ -3201,6 +3201,12 @@ const failureDrawerJobId = ref<string | null>(null)
 const wikiAclStore = useWikiPageAclStore()
 const wikiSearchStore = useWikiSearchStore()
 const wikiTagsStore = useWikiTagsStore()
+// Build #19 / P2.x.a — wiki search v2 cross-KB chip row. Defaults to
+// `[]` (chip row hidden) until Build #19.x wires the KB-ACL visible-
+// KB listing. The current KB scope is still applied server-side via
+// the path :kb_id; the chip row only adds additional KB ids on top.
+interface KBOption { id: string; name: string }
+const kbOptions = ref<KBOption[]>([])
 const aclRestricted = computed(() => {
   const slug = selectedPage.value?.slug
   if (!slug) return false

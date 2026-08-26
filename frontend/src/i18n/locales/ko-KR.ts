@@ -6656,6 +6656,28 @@ export default {
       error: '검색 실패, 다시 시도해 주세요',
       empty: '일치하는 페이지가 없습니다'
     },
+    // Build #19 / P2.x.a — wiki search v2 (tsvector + ACL + cross-KB).
+    // Server-rendered <mark> snippets + per-page ACL filter + optional
+    // cross-KB scope. Legacy ?legacy=1 fallback is silent.
+    searchV2: {
+      placeholder: '전문 검색…',
+      ariaLabel: '접근 가능한 지식베이스에서 페이지 검색',
+      resultsLabel: '검색 결과',
+      loading: '검색 중…',
+      error: '검색 실패, 다시 시도해 주세요',
+      empty: '일치하는 페이지가 없습니다',
+      fallback: 'v2 검색을 사용할 수 없어 기본 검색으로 전환했습니다',
+      totalCount: '{total}건 찾음 · {tookMs}ms 소요',
+      kbChip: '{count}개 지식베이스 선택됨',
+      pageType: {
+        concept: '개념',
+        entity: '개체',
+        summary: '요약',
+        synthesis: '종합',
+        comparison: '비교',
+        index: '인덱스'
+      }
+    },
     batchFailures: {
       drawerTitle: '실패 상세 · #{jobId}',
       empty: '현재 필터에 실패 기록이 없습니다',

@@ -294,7 +294,7 @@ func RegisterKnowledgeTagRoutes(r *gin.RouterGroup, tagHandler *handler.TagHandl
 //
 // wikiAclHandler is the Build #7 surface — it is independent of the page
 // CRUD so a future split of the handler package can pass either alone.
-func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHandler, wikiAclHandler *handler.WikiAclHandler, wikiTagHandler *handler.WikiTagHandler, wikiTemplateHandler *handler.WikiTemplateHandler, g *rbacGuards) {
+func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHandler, wikiAclHandler *handler.WikiAclHandler, wikiTagHandler *handler.WikiTagHandler, wikiTemplateHandler *handler.WikiTemplateHandler, wikiSearchV2Handler *handler.WikiSearchV2Handler, g *rbacGuards) {
 	wiki := g.apiKeyGroup(r.Group("/knowledgebase/:kb_id/wiki"), apiKeyIngest(apiKeyFullAccess()))
 	wikiRead := wiki.With(apiKeyRetrieve(apiKeyFullAccess()))
 	{
@@ -392,7 +392,13 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		wikiRead.GET("/stats", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetStats)
 
 		// Search and maintenance
-		wikiRead.GET("/search", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.SearchPages)
+		// Build #19 / P2.x.a: /search is served by WikiSearchV2Handler
+		// which itself fans out `?v=2` to the v2 service and falls back
+		// to legacy WikiPageHandler.SearchPages otherwise. The handler
+		// forwards to wikiHandler.SearchPages inside its closure when v
+		// is missing or `legacy=1` is set, so the gin route binding is
+		// single-source.
+		wikiRead.GET("/search", g.Viewer(), g.KBAccessRead("kb_id"), wikiSearchV2Handler.Search)
 		wiki.POST("/rebuild-links", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.RebuildLinks)
 		wikiRead.GET("/lint", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.Lint)
 		wiki.POST("/auto-fix", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.AutoFix)

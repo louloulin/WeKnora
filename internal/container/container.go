@@ -259,6 +259,13 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// pages, rewrite the parent body, and resolve tagged-pages tokens.
 	must(container.Provide(service.NewWikiTemplateService))
 	must(container.Invoke(wireWikiTemplateService))
+	// Wiki search v2 (Build #19). The repo is its own gorm-backed store;
+	// the service wraps ACL post-filtering on top of the repo. The
+	// handler fans out ?v=2 to v2 and ?legacy=1 / missing v to the
+	// legacy WikiPageHandler.SearchPages path.
+	must(container.Provide(repository.NewWikiSearchV2Repository))
+	must(container.Provide(service.NewWikiSearchV2Service))
+	must(container.Provide(handler.NewWikiSearchV2Handler))
 	must(container.Provide(service.NewWikiIngestService, dig.Name("wikiIngest")))
 	must(container.Provide(service.NewWikiLintService))
 	must(container.Provide(service.NewEmbedChannelService))

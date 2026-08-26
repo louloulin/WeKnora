@@ -1,0 +1,202 @@
+// Package service — Build #19 / P2.x.a wiki search v2 service.
+//
+// The service validates input and post-filters the repo's hits through
+// WikiAclService.Resolve so private pages / allow_list pages that the
+// caller cannot read never reach the client. The repo intentionally
+// stays ACL-unaware — its single concern is tsvector + tenant scoping —
+// and the service carries the visibility responsibility end-to-end.
+package service
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/louloulin/WeKnora/internal/logger"
+	"github.com/louloulin/WeKnora/internal/types"
+	"github.com/louloulin/WeKnora/internal/types/interfaces"
+)
+
+// WikiSearchV2Repo is the minimal repo surface the service needs.
+type WikiSearchV2Repo interface {
+	Search(
+		ctx context.Context,
+		tenantID uint64,
+		denyUserIDs []string,
+		req types.WikiSearchV2Request,
+		visibleKBIDs []string,
+	) (types.WikiSearchV2Result, error)
+}
+
+// WikiSearchV2ServiceParams bundles deps for NewWikiSearchV2Service.
+type WikiSearchV2ServiceParams struct {
+	Repo  WikiSearchV2Repo
+	KB    interfaces.KnowledgeBaseService
+	ACL   WikiAclService
+}
+
+// wikiSearchV2Service is the production implementation.
+type wikiSearchV2Service struct {
+	repo WikiSearchV2Repo
+	kb   interfaces.KnowledgeBaseService
+	acl  WikiAclService
+}
+
+// NewWikiSearchV2Service wires the service.
+func NewWikiSearchV2Service(p WikiSearchV2ServiceParams) WikiSearchV2Service {
+	return &wikiSearchV2Service{repo: p.Repo, kb: p.KB, acl: p.ACL}
+}
+
+// Search validates the request, calls the repo, and applies per-hit ACL
+// filtering. A hit whose ACL decision is not `allow` is dropped silently
+// (not even a `<mark>` stub) so the caller never learns the page exists.
+//
+// Pagination clamps: limit defaults to 20, max 100; offset defaults to
+// 0, never negative. PageTypes / KBIDs lists have duplicates removed and
+// are lowercased / trimmed to keep the SQL parameter set bounded.
+func (s *wikiSearchV2Service) Search(
+	ctx context.Context,
+	tenantID uint64,
+	userID string,
+	req types.WikiSearchV2Request,
+	visibleKBIDs []string,
+) (types.WikiSearchV2Result, error) {
+	if tenantID == 0 {
+		return types.WikiSearchV2Result{}, fmt.Errorf("wiki search v2: tenant id missing")
+	}
+
+	// Normalize request.
+	req.Query = strings.TrimSpace(req.Query)
+	req.KBIDs = normalizeKBIDs(req.KBIDs)
+	req.PageTypes = normalizeStrings(req.PageTypes)
+
+	if req.Limit <= 0 {
+		req.Limit = 20
+	}
+	if req.Limit > 100 {
+		req.Limit = 100
+	}
+	if req.Offset < 0 {
+		req.Offset = 0
+	}
+
+	// Empty query short-circuits to an empty result set. We still run a
+	// single 200 response so the client can render "type to search".
+	if req.Query == "" {
+		return types.WikiSearchV2Result{
+			Hits:   []types.WikiSearchV2Hit{},
+			Total:  0,
+			TookMS: 0,
+			KBIDs:  req.KBIDs,
+			Query:  "",
+		}, nil
+	}
+
+	// Resolve effective KB scope. If the caller asked for explicit
+	// kb_ids[], intersect with visibleKBIDs (the caller's KB-ACL list)
+	// so a user cannot probe KBs they don't have access to.
+	effectiveVisible := visibleKBIDs
+	if len(req.KBIDs) > 0 {
+		effectiveVisible = intersectKBIDs(visibleKBIDs, req.KBIDs)
+	}
+	if len(effectiveVisible) == 0 && len(visibleKBIDs) > 0 {
+		// Caller is restricted to a KB-ACL set and none of their
+		// requested kb_ids[] overlap — return empty hits.
+		return types.WikiSearchV2Result{
+			Hits:   []types.WikiSearchV2Hit{},
+			Total:  0,
+			TookMS: 0,
+			KBIDs:  req.KBIDs,
+			Query:  req.Query,
+		}, nil
+	}
+
+	raw, err := s.repo.Search(ctx, tenantID, nil, req, effectiveVisible)
+	if err != nil {
+		return types.WikiSearchV2Result{}, err
+	}
+
+	// ACL post-filter. WikiAclService.Resolve has its own TTL cache so
+	// repeated hits inside one window don't re-query the ACL column.
+	filtered := make([]types.WikiSearchV2Hit, 0, len(raw.Hits))
+	for _, hit := range raw.Hits {
+		if hit.Slug == "" || hit.KBID == "" {
+			continue
+		}
+		decision, err := s.acl.Resolve(ctx, hit.KBID, hit.Slug, userID)
+		if err != nil {
+			// Treat ACL lookup errors as a hidden page — never expose
+			// the hit, but also don't fail the whole result set.
+			logger.Warnf(ctx, "wiki search v2: acl resolve failed kb=%s slug=%s: %v", hit.KBID, hit.Slug, err)
+			continue
+		}
+		if decision != types.WikiPageAclAllow {
+			continue
+		}
+		filtered = append(filtered, hit)
+	}
+
+	raw.Hits = filtered
+	raw.Total = len(filtered)
+	return raw, nil
+}
+
+func normalizeKBIDs(ids []string) []string {
+	if len(ids) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
+}
+
+func normalizeStrings(in []string) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(in))
+	out := make([]string, 0, len(in))
+	for _, v := range in {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	return out
+}
+
+func intersectKBIDs(visible, requested []string) []string {
+	if len(visible) == 0 {
+		return requested
+	}
+	allowed := make(map[string]struct{}, len(visible))
+	for _, k := range visible {
+		allowed[k] = struct{}{}
+	}
+	out := make([]string, 0, len(requested))
+	for _, k := range requested {
+		if _, ok := allowed[k]; ok {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// Compile-time interface check.
+var _ interfaces.WikiSearchV2Service = (*wikiSearchV2Service)(nil)

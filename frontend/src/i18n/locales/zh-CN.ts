@@ -6636,6 +6636,28 @@ export default {
       error: '搜索出错，请重试',
       empty: '没有匹配的页面'
     },
+    // Build #19 / P2.x.a — wiki search v2 (tsvector + ACL + cross-KB).
+    // Server-rendered <mark> snippets + per-page ACL filter + optional
+    // cross-KB scope. Legacy ?legacy=1 fallback is silent.
+    searchV2: {
+      placeholder: '搜索页面（全文）…',
+      ariaLabel: '在可见知识库中搜索页面',
+      resultsLabel: '搜索结果',
+      loading: '正在搜索…',
+      error: '搜索出错，请重试',
+      empty: '没有匹配的页面',
+      fallback: 'v2 搜索不可用，已切换到基础搜索',
+      totalCount: '找到 {total} 条 · 用时 {tookMs}ms',
+      kbChip: '已选 {count} 个知识库',
+      pageType: {
+        concept: '概念',
+        entity: '实体',
+        summary: '摘要',
+        synthesis: '综合',
+        comparison: '对比',
+        index: '索引'
+      }
+    },
     batchFailures: {
       drawerTitle: '失败明细 · #{jobId}',
       empty: '当前筛选下没有失败记录',
