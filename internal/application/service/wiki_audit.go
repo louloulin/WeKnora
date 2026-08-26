@@ -71,7 +71,12 @@ type WikiAuditService interface {
 // the constructor signature.
 type WikiAuditServiceDeps struct {
 	AuditLogSvc        interfaces.AuditLogService
-	BatchJobRepo       interfaces.WikiBatchJobRepository
+	// BatchJobRepo is the wiki_batch_job_audit read surface (Build #14).
+	// Originally typed as WikiBatchJobRepository in Build #24 — that
+	// interface has no ListByKB method, so the fan-out never compiled.
+	// Build #25 — corrected to the audit-side repository whose read
+	// methods the service actually invokes.
+	BatchJobRepo       interfaces.WikiBatchAuditRepository
 	BacklinksCacheRepo interfaces.WikiBacklinksCacheRepository
 	AclRepo            interfaces.WikiAclRepository
 	// TenantResolver resolves a KB ID to its tenant ID, since the
@@ -278,6 +283,13 @@ func (s *wikiAuditService) fetchActivity(ctx context.Context, kbID string, filte
 		if r.CreatedAt.Before(filter.Since) {
 			continue
 		}
+		// Build #25 — CorrelationID is applied client-side because the
+		// AuditLogQuery struct doesn't expose it; the volume per KB is
+		// small (≤ a few hundred rows / 24h) so an in-memory filter is
+		// fine. If we ever raise the cap, push the filter into the SQL.
+		if filter.CorrelationID != "" && r.CorrelationID != filter.CorrelationID {
+			continue
+		}
 		ev := projectActivityEvent(r, kbID)
 		events = append(events, ev)
 	}
@@ -296,6 +308,11 @@ func (s *wikiAuditService) fetchBatchJobAudit(ctx context.Context, kbID string, 
 	}
 	events := make([]*types.WikiAuditEvent, 0, len(rows))
 	for _, r := range rows {
+		// Build #25 — same in-memory filter; ListByKB doesn't accept a
+		// correlation_id yet and the per-job row count is bounded.
+		if filter.CorrelationID != "" && r.CorrelationID != filter.CorrelationID {
+			continue
+		}
 		events = append(events, projectBatchJobAuditEvent(r, kbID))
 	}
 	return events, total, nil
@@ -317,6 +334,12 @@ func (s *wikiAuditService) fetchBacklinksInvalidation(ctx context.Context, kbID 
 		if filter.Op != "" && r.Op != filter.Op {
 			continue
 		}
+		// Build #25 — partial index on correlation_id makes this cheap;
+		// the in-memory filter is only here for safety in case the
+		// repo's ListInvalidationLog doesn't pass the filter through.
+		if filter.CorrelationID != "" && r.CorrelationID != filter.CorrelationID {
+			continue
+		}
 		events = append(events, projectInvalidationLogEvent(r, kbID))
 	}
 	return events, total, nil
@@ -332,6 +355,11 @@ func (s *wikiAuditService) fetchPageAclAudit(ctx context.Context, kbID string, f
 	}
 	events := make([]*types.WikiAuditEvent, 0, len(rows))
 	for _, r := range rows {
+		// Build #25 — correlation_id filter; same in-memory path as
+		// the other sources.
+		if filter.CorrelationID != "" && r.CorrelationID != filter.CorrelationID {
+			continue
+		}
 		events = append(events, projectPageAclAuditEvent(r, kbID))
 	}
 	return events, total, nil
@@ -373,13 +401,16 @@ func mergeAuditEvents(fanOuts []auditFanOut) []*types.WikiAuditEvent {
 // across all four sources.
 func projectActivityEvent(r *types.AuditLog, kbID string) *types.WikiAuditEvent {
 	ev := &types.WikiAuditEvent{
-		ID:        fmt.Sprintf("al:%d", r.ID),
-		Timestamp: r.CreatedAt,
-		KbID:      kbID,
-		Op:        string(r.Action),
-		Source:    types.WikiAuditSourceActivity,
-		Actor:     r.ActorUserID,
-		ActorKind: classifyActorKind(r.ActorUserID, string(r.Action)),
+		ID:            fmt.Sprintf("al:%d", r.ID),
+		Timestamp:     r.CreatedAt,
+		KbID:          kbID,
+		Op:            string(r.Action),
+		Source:        types.WikiAuditSourceActivity,
+		Actor:         r.ActorUserID,
+		ActorKind:     classifyActorKind(r.ActorUserID, string(r.Action)),
+		// Build #25 — project correlation_id so the unified envelope
+		// surfaces the X-Request-ID for activity-feed rows.
+		SourceEventID: r.CorrelationID,
 	}
 	if r.Details != "" {
 		var m map[string]any
@@ -401,6 +432,9 @@ func projectBatchJobAuditEvent(r *types.WikiBatchJobAuditEvent, kbID string) *ty
 		Source:    types.WikiAuditSourceBatchJobAudit,
 		Actor:     r.ActorID,
 		ActorKind: classifyActorKind(r.ActorID, r.Action),
+		// Build #25 — correlation_id joins the batch row with the
+		// matching activity/invalidation rows from the same request.
+		SourceEventID: r.CorrelationID,
 	}
 	if r.Metadata != "" {
 		var m map[string]any
@@ -423,7 +457,7 @@ func projectInvalidationLogEvent(r *types.WikiBacklinksCacheInvalidationLogEntry
 		Source:        types.WikiAuditSourceBacklinksInvalidation,
 		Actor:         stringifyActor(r.ActorUserID),
 		ActorKind:     classifyActorKindFromInvalidation(r.Op, stringifyActor(r.ActorUserID)),
-		SourceEventID: r.SourceEventID,
+		SourceEventID: r.CorrelationID,
 		AffectedCount: r.AffectedCount,
 	}
 	if r.Details != "" {
@@ -447,6 +481,10 @@ func projectPageAclAuditEvent(r *types.WikiAclAuditEntry, kbID string) *types.Wi
 		Source:    types.WikiAuditSourcePageAclAudit,
 		Actor:     r.Actor,
 		ActorKind: classifyActorKind(r.Actor, r.Action),
+		// Build #25 — project correlation_id so the ACL change row
+		// joins the same envelope as the invalidation row it spawned
+		// (the ACL PUT handler chains ACL write → cache invalidate).
+		SourceEventID: r.CorrelationID,
 		Details: map[string]any{
 			"actor_role": r.ActorRole,
 			"before_acl": json.RawMessage(r.Before),

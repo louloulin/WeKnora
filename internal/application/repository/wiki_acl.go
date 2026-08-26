@@ -165,6 +165,13 @@ func (r *wikiAclRepository) UpdateAclWithRevision(
 			"action":            action,
 			"created_at":        now,
 		}
+		// Build #25 — stamp correlation_id from middleware.RequestID()
+		// so the ACL change row joins the rest of the unified audit
+		// envelope by correlation_id. NULL when ctx has no X-Request-ID
+		// (e.g. admin tool path); historical rows are also NULL.
+		if corr := types.CorrelationIDFromContext(ctx); corr != "" {
+			auditFields["correlation_id"] = corr
+		}
 		if beforeHadValue {
 			beforeJSON, _ := before.Value()
 			if beforeBytes, ok := beforeJSON.([]byte); ok {

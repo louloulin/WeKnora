@@ -398,7 +398,11 @@ func (s *wikiAclService) logAclChange(
 		Slug:          slug,
 		Op:            string(types.BacklinkCacheInvalidateAclChange),
 		ActorUserID:   actorPtr,
-		SourceEventID: sourceEventID,
+		// Renamed from SourceEventID in Build #25 — column is now
+		// `correlation_id` to match the 4-source audit join key. The
+		// helper above still returns the X-Request-ID from middleware
+		// so the meaning is unchanged.
+		CorrelationID: sourceEventID,
 		AffectedCount: affected,
 		Details:       string(detailsJSON),
 	}

@@ -80,11 +80,19 @@ export interface WikiAuditEventListResponse {
 
 // WikiAuditFilter mirrors the server's filter struct. `since` is
 // RFC3339; the server defaults to now-24h and caps at 90 days.
+//
+// `correlation_id` — Build #25 — joins rows from all four sources that
+// share the same X-Request-ID (or background stamp). When set, the
+// server fan-out restricts every source query to rows whose
+// `correlation_id` column equals this value. Empty string skips the
+// filter. The audit drawer's correlation-id chip column surfaces the
+// same value so operators can copy it into the filter input.
 export interface WikiAuditFilter {
   source?: WikiAuditSource;
   op?: string;
   actor?: string;
   since?: string;
+  correlation_id?: string;
   page?: number;
   page_size?: number;
 }

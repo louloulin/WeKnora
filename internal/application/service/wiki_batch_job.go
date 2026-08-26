@@ -114,6 +114,12 @@ func (s *wikiBatchJobService) recordAudit(
 		Action:          action,
 		ActorID:         actorID,
 		Metadata:        metadata,
+		// Build #25 — correlation_id joins this row with the rest of the
+		// unified audit envelope. recordAudit is called from both the
+		// HTTP path (the original POST /batch-jobs request, where ctx
+		// carries the X-Request-ID) and from background workers (where
+		// the worker has stamped ctx with WithBackgroundCorrelationID).
+		CorrelationID: types.CorrelationIDFromContext(ctx),
 	}
 	if err := s.auditRepo.Insert(ctx, event); err != nil {
 		logger.Warnf(ctx, "wiki batch audit insert failed action=%s job=%s: %v", action, job.ID, err)

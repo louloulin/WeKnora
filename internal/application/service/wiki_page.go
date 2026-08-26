@@ -1519,7 +1519,10 @@ func (s *wikiPageService) InvalidateBacklinksCache(
 		Slug:          req.AffectedSlugs[0], // first slug as the canonical "primary" key
 		Op:            string(req.Op),
 		ActorUserID:   actorUserID,
-		SourceEventID: sourceEventID,
+		// Renamed from SourceEventID in Build #25 — column is now
+		// `correlation_id` to match the 4-source audit join key. The
+		// helper above still returns the X-Request-ID from middleware.
+		CorrelationID: sourceEventID,
 		AffectedCount: int(affected),
 		Details:       string(detailsJSON),
 	}); logErr != nil {

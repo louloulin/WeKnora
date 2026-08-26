@@ -4112,6 +4112,7 @@ export default {
         empty: 'Нет событий аудита',
         filterActor: 'Фильтр по исполнителю',
         filterOp: 'Фильтр по действию',
+        filterCorrelationId: 'Фильтр по correlation ID (X-Request-ID)',
         source: {
           activity: 'Активность',
           batch: 'Пакет',
@@ -4129,6 +4130,11 @@ export default {
           op: 'Действие',
           actor: 'Исполнитель',
           slug: 'Slug',
+          correlation: 'Correlation ID',
+        },
+        chip: {
+          copied: 'Correlation ID скопирован',
+          copyFailed: 'Не удалось скопировать — выделите вручную',
         },
       },
     },

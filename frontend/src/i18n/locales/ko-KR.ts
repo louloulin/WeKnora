@@ -4112,6 +4112,7 @@ export default {
         empty: '감사 이벤트가 없습니다',
         filterActor: '작업자 필터',
         filterOp: '액션 필터',
+        filterCorrelationId: '상관 ID 필터 (X-Request-ID)',
         source: {
           activity: '활동',
           batch: '일괄',
@@ -4129,6 +4130,11 @@ export default {
           op: '액션',
           actor: '작업자',
           slug: '슬러그',
+          correlation: '상관 ID',
+        },
+        chip: {
+          copied: '상관 ID 복사됨',
+          copyFailed: '복사 실패 — 직접 선택해 주세요',
         },
       },
     },

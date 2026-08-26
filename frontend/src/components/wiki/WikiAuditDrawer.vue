@@ -49,6 +49,14 @@
           style="width: 160px"
           @change="reload"
         />
+        <TInput
+          v-model="filter.correlation_id"
+          :placeholder="t('audit.filterCorrelationId')"
+          size="small"
+          clearable
+          style="width: 200px"
+          @change="reload"
+        />
         <TButton size="small" theme="default" @click="reload">
           {{ t('common.refresh') }}
         </TButton>
@@ -70,6 +78,7 @@
             <th>{{ t('wiki.audit.table.op') }}</th>
             <th>{{ t('wiki.audit.table.actor') }}</th>
             <th>{{ t('wiki.audit.table.slug') }}</th>
+            <th>{{ t('audit.table.correlation') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -87,6 +96,18 @@
               </span>
             </td>
             <td>{{ ev.slug ?? '—' }}</td>
+            <td>
+              <button
+                v-if="ev.source_event_id"
+                type="button"
+                :class="['wiki-audit-drawer__chip-btn', correlationKind(ev.source_event_id)]"
+                :title="ev.source_event_id"
+                @click="copyCorrelationId(ev.source_event_id)"
+              >
+                {{ shortCorrelationId(ev.source_event_id) }}
+              </button>
+              <span v-else class="wiki-audit-drawer__chip-empty">—</span>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -113,6 +134,7 @@ import {
   Checkbox as TCheckbox,
   Drawer as TDrawer,
   Input as TInput,
+  MessagePlugin,
   Pagination as TPagination,
   Skeleton as TSkeleton,
 } from 'tdesign-vue-next'
@@ -153,6 +175,7 @@ const selectedSources = ref<WikiAuditSource[]>([...AllAuditSources])
 const filter = reactive({
   actor: '',
   op: '',
+  correlation_id: '',
   page: 1,
   page_size: 50,
 })
@@ -171,6 +194,62 @@ function opLabel(op: string): string {
   return resolved === key ? op : resolved
 }
 
+// shortCorrelationId trims a long X-Request-ID down to 12 chars + an
+// ellipsis. The full id is the button title attribute and is what
+// gets copied to the clipboard, so the user sees the truncated form
+// in the table but the full value when they paste. 12 keeps the chip
+// narrow while staying readable.
+function shortCorrelationId(id: string): string {
+  if (!id) return ''
+  if (id.length <= 14) return id
+  return `${id.slice(0, 12)}…`
+}
+
+// correlationKind decides the chip colour based on the correlation
+// prefix. Build #25 stamps three background prefixes:
+//   - sweep:... — cleanup sweeper rows
+//   - batch:... — batch worker rows
+//   - admin:... — admin scripts / cron
+//   Anything else (X-Request-ID, middleware-generated UUID) renders
+//   as the default chip colour.
+function correlationKind(id: string): string {
+  if (id.startsWith('sweep:')) return 'is-sweep'
+  if (id.startsWith('batch:')) return 'is-batch'
+  if (id.startsWith('admin:')) return 'is-admin'
+  return 'is-http'
+}
+
+// copyCorrelationId writes the full id to the clipboard via the
+// modern Clipboard API and shows a localised success toast. Falls
+// back to a deprecated textarea path when the secure context is
+// missing (very old browsers, http://localhost in some sandboxes).
+async function copyCorrelationId(id: string): Promise<void> {
+  if (!id) return
+  let copied = false
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(id)
+      copied = true
+    } else {
+      const ta = document.createElement('textarea')
+      ta.value = id
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      copied = document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
+  } catch (err) {
+    copied = false
+  }
+  if (copied) {
+    MessagePlugin.success(t('audit.chip.copied'))
+  } else {
+    MessagePlugin.warning(t('audit.chip.copyFailed'))
+  }
+}
+
 async function reload(): Promise<void> {
   if (!props.kbId) return
   const singleSource =
@@ -178,6 +257,7 @@ async function reload(): Promise<void> {
   await store.loadAudit(props.kbId, {
     actor: filter.actor || undefined,
     op: filter.op || undefined,
+    correlation_id: filter.correlation_id.trim() || undefined,
     source: singleSource,
     page: filter.page,
     page_size: filter.page_size,
@@ -309,6 +389,68 @@ void sourceLabelSuffix
 
 .wiki-audit-drawer__actor.is-sweep {
   color: #198754;
+}
+
+/* Build #25 — correlation-id chip column. The button is a real
+   <button> so screen readers + keyboard nav get focus + enter
+   behaviour for free; the onClick handler copies the full id. */
+.wiki-audit-drawer__chip-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: rgba(28, 122, 255, 0.08);
+  color: #1c7aff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.wiki-audit-drawer__chip-btn:hover {
+  background: rgba(28, 122, 255, 0.16);
+  border-color: rgba(28, 122, 255, 0.4);
+}
+
+.wiki-audit-drawer__chip-btn:focus-visible {
+  outline: 2px solid #1c7aff;
+  outline-offset: 1px;
+}
+
+.wiki-audit-drawer__chip-btn.is-sweep {
+  background: rgba(25, 135, 84, 0.1);
+  color: #198754;
+}
+
+.wiki-audit-drawer__chip-btn.is-sweep:hover {
+  background: rgba(25, 135, 84, 0.18);
+  border-color: rgba(25, 135, 84, 0.4);
+}
+
+.wiki-audit-drawer__chip-btn.is-batch {
+  background: rgba(255, 152, 0, 0.14);
+  color: #c87300;
+}
+
+.wiki-audit-drawer__chip-btn.is-batch:hover {
+  background: rgba(255, 152, 0, 0.24);
+  border-color: rgba(255, 152, 0, 0.5);
+}
+
+.wiki-audit-drawer__chip-btn.is-admin {
+  background: rgba(102, 102, 102, 0.16);
+  color: #444;
+}
+
+.wiki-audit-drawer__chip-btn.is-admin:hover {
+  background: rgba(102, 102, 102, 0.24);
+  border-color: rgba(102, 102, 102, 0.4);
+}
+
+.wiki-audit-drawer__chip-empty {
+  color: var(--td-text-color-placeholder, #aaa);
 }
 
 .wiki-audit-drawer__pagination {

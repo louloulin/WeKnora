@@ -39,7 +39,10 @@ type auditRow struct {
 	Action          string          `gorm:"column:action"`
 	ActorID         string          `gorm:"column:actor_id"`
 	OccurredAt      time.Time       `gorm:"column:occurred_at"`
-	Metadata        types.JSON     `gorm:"column:metadata"`
+	Metadata        types.JSON      `gorm:"column:metadata"`
+	// CorrelationID — X-Request-ID or worker stamp from Build #25.
+	// Empty string → NULL column (the column is nullable).
+	CorrelationID string `gorm:"column:correlation_id;size:64"`
 }
 
 // TableName pins the GORM table name (avoids the pluralized default).
@@ -69,6 +72,7 @@ func (r *wikiBatchAuditRepository) Insert(ctx context.Context, event *types.Wiki
 		ActorID:         event.ActorID,
 		OccurredAt:      event.OccurredAt,
 		Metadata:        meta,
+		CorrelationID:   event.CorrelationID,
 	}
 	if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
 		return err
@@ -202,6 +206,7 @@ func rowsToEvents(rows []auditRow) []*types.WikiBatchJobAuditEvent {
 			ActorID:         row.ActorID,
 			OccurredAt:      row.OccurredAt,
 			Metadata:        unmarshalMetadata(row.Metadata),
+			CorrelationID:   row.CorrelationID,
 		})
 	}
 	return out

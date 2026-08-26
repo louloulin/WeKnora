@@ -4119,6 +4119,7 @@ export default {
         empty: '暂无审计事件',
         filterActor: '按操作者筛选',
         filterOp: '按动作筛选',
+        filterCorrelationId: '按关联 ID 筛选 (X-Request-ID)',
         source: {
           activity: '活动',
           batch: '批量',
@@ -4136,6 +4137,11 @@ export default {
           op: '动作',
           actor: '操作者',
           slug: 'Slug',
+          correlation: '关联 ID',
+        },
+        chip: {
+          copied: '已复制关联 ID',
+          copyFailed: '复制失败,请手动选取',
         },
       },
     },

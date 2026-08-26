@@ -874,6 +874,10 @@ type WikiBatchJobAuditEvent struct {
 	ActorID         string                 `json:"actor_id"`
 	OccurredAt      time.Time              `json:"occurred_at"`
 	Metadata        map[string]interface{} `json:"metadata,omitempty"`
+	// CorrelationID — X-Request-ID for batch rows written from an HTTP
+	// request that originated the job, or `batch:<job_id>` when the
+	// worker stamps its own. NULL for historical rows. Build #25.
+	CorrelationID string `json:"correlation_id,omitempty"`
 }
 
 // WikiBatchAuditActorSystem is the actor reserved for events not
@@ -1439,7 +1443,15 @@ type WikiBacklinksCacheInvalidationLogEntry struct {
 	Slug          string    `gorm:"column:slug;size:512;not null"`
 	Op            string    `gorm:"column:op;size:32;not null"`
 	ActorUserID   *uint64   `gorm:"column:actor_user_id"`
-	SourceEventID string    `gorm:"column:source_event_id;size:64"`
+	// CorrelationID — X-Request-ID from middleware.RequestID() at HTTP
+	// edge, or `sweep:<uuid>` / `batch:<job_id>` / `admin:<uuid>` from
+	// background workers. NULL for historical rows pre-migration 000100.
+	// The column was renamed from `source_event_id` (Build #23) to
+	// `correlation_id` so the 4-source audit join key is uniform. The
+	// field name on the Go struct also follows the rename — keep the
+	// `column:correlation_id` tag in sync with the SQL DDL.
+	// Build #25.
+	CorrelationID string    `gorm:"column:correlation_id;size:64"`
 	AffectedCount int       `gorm:"column:affected_count;not null;default:0"`
 	Details       string    `gorm:"column:details;type:text"` // JSON-encoded
 	CreatedAt     time.Time `gorm:"column:created_at;not null;default:CURRENT_TIMESTAMP"`
@@ -1483,7 +1495,11 @@ type WikiAclAuditEntry struct {
 	ActorRole  string    `gorm:"column:actor_role"`  // tenant role at write time; surfaces in Details
 	Before     string    `gorm:"column:before_acl;type:text"` // JSON-encoded WikiPageAcl
 	After      string    `gorm:"column:after_acl;type:text"`  // JSON-encoded WikiPageAcl
-	CreatedAt  time.Time `gorm:"column:created_at;not null;default:CURRENT_TIMESTAMP"`
+	// CorrelationID — X-Request-ID from middleware.RequestID() that
+	// authorised this ACL change. NULL for historical rows pre-000100.
+	// Build #25 — cross-source audit correlation_id.
+	CorrelationID string    `gorm:"column:correlation_id;size:64"`
+	CreatedAt     time.Time `gorm:"column:created_at;not null;default:CURRENT_TIMESTAMP"`
 }
 
 // TableName pins the GORM-pluralised default to the migration's

@@ -159,4 +159,8 @@ type WikiAuditFilter struct {
 	Until    time.Time
 	Page     int
 	PageSize int
+	// CorrelationID — when set, the fan-out query restricts to rows
+	// whose correlation_id equals this value. Empty means no filter
+	// (the operator's "give me everything" path). Build #25.
+	CorrelationID string
 }

@@ -3025,6 +3025,7 @@ export default {
         empty: 'No audit events yet',
         filterActor: 'Filter by actor',
         filterOp: 'Filter by action',
+        filterCorrelationId: 'Filter by correlation ID (X-Request-ID)',
         source: {
           activity: 'Activity',
           batch: 'Batch',
@@ -3042,6 +3043,11 @@ export default {
           op: 'Action',
           actor: 'Actor',
           slug: 'Slug',
+          correlation: 'Correlation ID',
+        },
+        chip: {
+          copied: 'Correlation ID copied',
+          copyFailed: 'Copy failed — please select manually',
         },
       },
     },

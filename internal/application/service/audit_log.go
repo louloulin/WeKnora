@@ -58,6 +58,14 @@ func (s *auditLogService) Log(ctx context.Context, entry *types.AuditLog) error 
 	if entry.CreatedAt.IsZero() {
 		entry.CreatedAt = s.now()
 	}
+	// Build #25 — stamp the X-Request-ID from middleware.RequestID() so
+	// the row joins the unified audit envelope by correlation_id. A
+	// caller that already supplied CorrelationID keeps its value (the
+	// helper returns "" when the key is absent, never overwriting a
+	// non-empty entry).
+	if entry.CorrelationID == "" {
+		entry.CorrelationID = types.CorrelationIDFromContext(ctx)
+	}
 	if err := s.repo.Create(ctx, entry); err != nil {
 		// Log loudly but do NOT propagate the error to the caller in
 		// the production wiring (see callers in tenant_member service

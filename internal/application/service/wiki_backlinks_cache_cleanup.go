@@ -218,10 +218,18 @@ func (s *defaultWikiBacklinksCacheCleanupService) RunOnce(ctx context.Context) (
 				"before":         before.Format(time.RFC3339),
 			})
 			entry := &types.WikiBacklinksCacheInvalidationLogEntry{
-				KbID:          "system",
-				Slug:          "*",
-				Op:            string(types.BacklinkCacheInvalidateSweep),
-				SourceEventID: wikiSourceEventIDFromContext(ctx),
+				KbID:        "system",
+				Slug:        "*",
+				Op:          string(types.BacklinkCacheInvalidateSweep),
+				// Build #25 — sweeper runs without an HTTP request, so
+				// ctx has no X-Request-ID. Stamping a stable
+				// `sweep:sweeper` keeps every row this loop writes
+				// joined under one correlation_id; the audit drawer
+				// surfaces them as one group instead of N unjoined
+				// rows. The jobID literal is the loop's identity —
+				// `WithBackgroundCorrelationID` will append a fresh
+				// UUID instead if we ever pass an empty string.
+				CorrelationID: types.WithBackgroundCorrelationID(ctx, types.BackgroundCorrelationSweep, "sweeper"),
 				ActorUserID:   wikiActorUserIDFromContext(ctx),
 				AffectedCount: int(deleted),
 				Details:       string(detailsJSON),

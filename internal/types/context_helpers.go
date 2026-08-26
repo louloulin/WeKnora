@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // EnvLanguage returns the WEKNORA_LANGUAGE environment variable value, or empty string if unset.
@@ -55,6 +57,59 @@ func TenantInfoFromContext(ctx context.Context) (*Tenant, bool) {
 func RequestIDFromContext(ctx context.Context) (string, bool) {
 	v, ok := ctx.Value(RequestIDContextKey).(string)
 	return v, ok && v != ""
+}
+
+// CorrelationIDFromContext returns the request ID string from ctx, or ""
+// when absent. This is the same value RequestIDFromContext exposes, but
+// without the boolean — audit write sites don't need to discriminate the
+// empty case: a missing correlation_id is a valid NULL in the audit row.
+func CorrelationIDFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(RequestIDContextKey).(string)
+	return v
+}
+
+// Background-job correlation_id prefixes. Audit rows stamped from a
+// background worker carry a `sweep:<uuid>` / `batch:<job_id>` /
+// `admin:<uuid>` prefix so the audit drawer can group them under one
+// correlation_id and the operator can trace back to the originating job.
+const (
+	BackgroundCorrelationSweep = "sweep:"
+	BackgroundCorrelationBatch = "batch:"
+	BackgroundCorrelationAdmin = "admin:"
+)
+
+// WithBackgroundCorrelationID stamps ctx with a correlation_id that
+// identifies the originating background job. When jobID is non-empty the
+// value is "<prefix><jobID>"; otherwise a fresh UUID is generated. The
+// value lands in RequestIDContextKey so CorrelationIDFromContext /
+// RequestIDFromContext return it identically.
+//
+// Background jobs do not pass through the gin middleware that stamps the
+// X-Request-ID, so each sweeper / batch worker / admin tool must stamp
+// its own correlation_id explicitly. Using the same context key keeps
+// audit-write sites uniform — they call CorrelationIDFromContext without
+// caring whether the value came from HTTP or a worker.
+func WithBackgroundCorrelationID(ctx context.Context, prefix, jobID string) context.Context {
+	var id string
+	if jobID = strings.TrimSpace(jobID); jobID != "" {
+		id = prefix + jobID
+	} else {
+		id = prefix + uuidNewString()
+	}
+	return context.WithValue(ctx, RequestIDContextKey, id)
+}
+
+// uuidNewString is a tiny indirection so the helper above does not pull
+// in google/uuid at the package init point. The real implementation lives
+// in uuidNewStringImpl below — we keep the indirection so tests can swap
+// the generator if needed.
+var uuidNewString = uuidNewStringImpl
+
+// uuidNewStringImpl returns a UUIDv4 string. Lives in its own function
+// so the test suite can replace uuidNewString with a deterministic seed
+// without touching the real call site.
+func uuidNewStringImpl() string {
+	return uuid.NewString()
 }
 
 // UserIDFromContext extracts the user ID string from ctx.

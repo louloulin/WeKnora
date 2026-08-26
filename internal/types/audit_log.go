@@ -229,7 +229,13 @@ type AuditLog struct {
 	RequestMethod string       `json:"request_method" gorm:"type:varchar(16);default:''"`
 	Outcome       AuditOutcome `json:"outcome"        gorm:"type:varchar(16);default:success"`
 	Details       JSON         `json:"details"        gorm:"type:jsonb;default:'{}'"`
-	CreatedAt     time.Time    `json:"created_at"     gorm:"index:idx_audit_logs_tenant_id_desc,priority:2,sort:desc"`
+	// CorrelationID is the X-Request-ID stamp that groups audit rows
+	// written from the same HTTP request, or a `sweep:<uuid>` /
+	// `batch:<job_id>` / `admin:<uuid>` prefix for rows stamped from
+	// background workers. NULL for historical rows (pre-migration).
+	// Build #25 — cross-source correlation_id.
+	CorrelationID string    `json:"correlation_id,omitempty" gorm:"type:varchar(64);default:'';index:idx_audit_logs_correlation"`
+	CreatedAt     time.Time `json:"created_at"     gorm:"index:idx_audit_logs_tenant_id_desc,priority:2,sort:desc"`
 }
 
 // TableName pins the table name even if a future GORM convention

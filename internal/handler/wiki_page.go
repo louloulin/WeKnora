@@ -2092,6 +2092,11 @@ func (h *WikiPageHandler) ListAuditEvents(c *gin.Context) {
 	}
 	filter.Op = strings.TrimSpace(c.Query("op"))
 	filter.Actor = strings.TrimSpace(c.Query("actor"))
+	// Build #25 — ?correlation_id=<id> pivots the unified envelope to a
+	// single request's full audit trail. The id matches the X-Request-ID
+	// header that middleware.RequestID stamped on the inbound request
+	// (or the worker's background stamp).
+	filter.CorrelationID = strings.TrimSpace(c.Query("correlation_id"))
 	if raw := strings.TrimSpace(c.Query("since")); raw != "" {
 		ts, perr := time.Parse(time.RFC3339, raw)
 		if perr != nil {
