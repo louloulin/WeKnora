@@ -294,7 +294,7 @@ func RegisterKnowledgeTagRoutes(r *gin.RouterGroup, tagHandler *handler.TagHandl
 //
 // wikiAclHandler is the Build #7 surface — it is independent of the page
 // CRUD so a future split of the handler package can pass either alone.
-func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHandler, wikiAclHandler *handler.WikiAclHandler, g *rbacGuards) {
+func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHandler, wikiAclHandler *handler.WikiAclHandler, wikiTagHandler *handler.WikiTagHandler, g *rbacGuards) {
 	wiki := g.apiKeyGroup(r.Group("/knowledgebase/:kb_id/wiki"), apiKeyIngest(apiKeyFullAccess()))
 	wikiRead := wiki.With(apiKeyRetrieve(apiKeyFullAccess()))
 	{
@@ -348,6 +348,20 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		// can mutate the policy.
 		wikiRead.GET("/pages/*slug/acl", g.Viewer(), g.KBAccessRead("kb_id"), wikiAclHandler.GetAcl)
 		wiki.PUT("/pages/*slug/acl", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiAclHandler.PutAcl)
+
+		// Wiki tags (Build #17). Same RBAC chain as the surrounding
+		// page/ACL handlers — every KB member can read tag lists + per-
+		// page associations, and KB-owner / KB-write can create, edit,
+		// delete, and re-assign. Batch-tag rides the same OwnedWikiKBOrAdmin
+		// gate as the existing batch-* endpoints.
+		wikiRead.GET("/tags", g.Viewer(), g.KBAccessRead("kb_id"), wikiTagHandler.ListTags)
+		wiki.POST("/tags", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiTagHandler.CreateTag)
+		wikiRead.GET("/tags/:tag_id", g.Viewer(), g.KBAccessRead("kb_id"), wikiTagHandler.GetTag)
+		wiki.PUT("/tags/:tag_id", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiTagHandler.UpdateTag)
+		wiki.DELETE("/tags/:tag_id", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiTagHandler.DeleteTag)
+		wikiRead.GET("/pages/*slug/tags", g.Viewer(), g.KBAccessRead("kb_id"), wikiTagHandler.GetPageTags)
+		wiki.PUT("/pages/*slug/tags", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiTagHandler.SetPageTags)
+		wiki.POST("/pages/batch-tag", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiTagHandler.BatchTagPages)
 
 		// Revision history (slug is a catch-all like /pages; revert carries
 		// the slug in the body for the same reason move-page does)

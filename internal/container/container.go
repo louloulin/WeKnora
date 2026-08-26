@@ -250,6 +250,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(wireWikiBatchJobService))
 	must(container.Provide(repository.NewWikiAclRepository))
 	must(container.Provide(service.NewWikiAclService))
+	// Wiki tag system (Build #17).
+	must(container.Provide(repository.NewWikiTagRepository))
+	must(container.Provide(service.NewWikiTagService))
 	must(container.Provide(service.NewWikiIngestService, dig.Name("wikiIngest")))
 	must(container.Provide(service.NewWikiLintService))
 	must(container.Provide(service.NewEmbedChannelService))
@@ -427,6 +430,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewWikiPageHandler))
 	// Wiki page ACL handler (Build #7 backend).
 	must(container.Provide(handler.NewWikiAclHandler))
+	// Wiki tag handler (Build #17 backend).
+	must(container.Provide(handler.NewWikiTagHandler))
 	// IM integration
 	logger.Debugf(ctx, "[Container] Registering IM integration...")
 	must(container.Provide(imPkg.NewService))
@@ -534,12 +539,19 @@ func must(err error) {
 // constructor's dependency tree — the alternative (passing both at
 // New time) creates a chicken-and-egg between the two.
 //
-// Build #13.
+// Build #13. Build #17 also wires the WikiTagService so its BatchTag
+// enqueue path has the queue available without forming a cycle.
 func wireWikiBatchJobService(
 	pageSvc interfaces.WikiPageService,
+	tagSvc interfaces.WikiTagService,
 	batchSvc interfaces.WikiBatchJobService,
 ) {
 	if setter, ok := pageSvc.(interface {
+		SetBatchJobService(interfaces.WikiBatchJobService)
+	}); ok {
+		setter.SetBatchJobService(batchSvc)
+	}
+	if setter, ok := tagSvc.(interface {
 		SetBatchJobService(interfaces.WikiBatchJobService)
 	}); ok {
 		setter.SetBatchJobService(batchSvc)

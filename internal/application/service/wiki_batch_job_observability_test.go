@@ -123,7 +123,7 @@ func TestObservability_HappyPath_PerSlugResult(t *testing.T) {
 	jobRepo := newStubWikiBatchJobRepo()
 	failRepo := newStubWikiBatchFailureRepo()
 	pageSvc := newBatchSvcForTest(pageRepo)
-	batchSvc := NewWikiBatchJobService(jobRepo, nil, failRepo, pageSvc)
+	batchSvc := NewWikiBatchJobService(jobRepo, nil, failRepo, pageSvc, nil)
 	t.Cleanup(func() { _ = batchSvc.Shutdown(context.Background()) })
 	pageSvc.SetBatchJobService(batchSvc)
 
@@ -190,7 +190,7 @@ func TestObservability_PartialFailure_PerSlugAndRepoRow(t *testing.T) {
 	jobRepo := newStubWikiBatchJobRepo()
 	failRepo := newStubWikiBatchFailureRepo()
 	pageSvc := newBatchSvcForTest(pageRepo)
-	batchSvc := NewWikiBatchJobService(jobRepo, nil, failRepo, pageSvc)
+	batchSvc := NewWikiBatchJobService(jobRepo, nil, failRepo, pageSvc, nil)
 	t.Cleanup(func() { _ = batchSvc.Shutdown(context.Background()) })
 	pageSvc.SetBatchJobService(batchSvc)
 
@@ -269,7 +269,7 @@ func TestObservability_DeleteJob_ProgressPerSlug(t *testing.T) {
 	jobRepo := newStubWikiBatchJobRepo()
 	failRepo := newStubWikiBatchFailureRepo()
 	pageSvc := newBatchSvcForTest(pageRepo)
-	batchSvc := NewWikiBatchJobService(jobRepo, nil, failRepo, pageSvc)
+	batchSvc := NewWikiBatchJobService(jobRepo, nil, failRepo, pageSvc, nil)
 	t.Cleanup(func() { _ = batchSvc.Shutdown(context.Background()) })
 	pageSvc.SetBatchJobService(batchSvc)
 
@@ -313,7 +313,7 @@ func TestObservability_ProgressThrottle_SmallBatchFlushesAtEnd(t *testing.T) {
 	jobRepo := newStubWikiBatchJobRepo()
 	failRepo := newStubWikiBatchFailureRepo()
 	pageSvc := newBatchSvcForTest(pageRepo)
-	batchSvc := NewWikiBatchJobService(jobRepo, nil, failRepo, pageSvc)
+	batchSvc := NewWikiBatchJobService(jobRepo, nil, failRepo, pageSvc, nil)
 	t.Cleanup(func() { _ = batchSvc.Shutdown(context.Background()) })
 	pageSvc.SetBatchJobService(batchSvc)
 
@@ -351,7 +351,7 @@ func TestObservability_StatusJob_PerSlug(t *testing.T) {
 	jobRepo := newStubWikiBatchJobRepo()
 	failRepo := newStubWikiBatchFailureRepo()
 	pageSvc := newBatchSvcForTest(pageRepo)
-	batchSvc := NewWikiBatchJobService(jobRepo, nil, failRepo, pageSvc)
+	batchSvc := NewWikiBatchJobService(jobRepo, nil, failRepo, pageSvc, nil)
 	t.Cleanup(func() { _ = batchSvc.Shutdown(context.Background()) })
 	pageSvc.SetBatchJobService(batchSvc)
 
@@ -395,7 +395,7 @@ func TestObservability_KBMismatch_FailureRowInserted(t *testing.T) {
 	jobRepo := newStubWikiBatchJobRepo()
 	failRepo := newStubWikiBatchFailureRepo()
 	pageSvc := newBatchSvcForTest(pageRepo)
-	batchSvc := NewWikiBatchJobService(jobRepo, nil, failRepo, pageSvc)
+	batchSvc := NewWikiBatchJobService(jobRepo, nil, failRepo, pageSvc, nil)
 	t.Cleanup(func() { _ = batchSvc.Shutdown(context.Background()) })
 	pageSvc.SetBatchJobService(batchSvc)
 
@@ -444,7 +444,7 @@ func TestObservability_RepoInsertError_DoesNotAbortJob(t *testing.T) {
 	jobRepo := newStubWikiBatchJobRepo()
 	pageSvc := newBatchSvcForTest(pageRepo)
 	failRepo := &flakyFailRepo{stub: newStubWikiBatchFailureRepo(), failNext: true}
-	batchSvc := NewWikiBatchJobService(jobRepo, nil, failRepo, pageSvc)
+	batchSvc := NewWikiBatchJobService(jobRepo, nil, failRepo, pageSvc, nil)
 	t.Cleanup(func() { _ = batchSvc.Shutdown(context.Background()) })
 	pageSvc.SetBatchJobService(batchSvc)
 

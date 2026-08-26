@@ -154,7 +154,7 @@ func TestBatchAudit_EnqueueFiresEvent(t *testing.T) {
 	jobRepo := newStubWikiBatchJobRepo()
 	auditRepo := newStubWikiBatchAuditRepo()
 	pageSvc := newBatchSvcForTest(pageRepo)
-	batchSvc := NewWikiBatchJobService(jobRepo, auditRepo, nil, pageSvc)
+	batchSvc := NewWikiBatchJobService(jobRepo, auditRepo, nil, pageSvc, nil)
 	t.Cleanup(func() { _ = batchSvc.Shutdown(context.Background()) })
 	pageSvc.SetBatchJobService(batchSvc)
 
@@ -186,7 +186,7 @@ func TestBatchAudit_WorkerFullLifecycle(t *testing.T) {
 	jobRepo := newStubWikiBatchJobRepo()
 	auditRepo := newStubWikiBatchAuditRepo()
 	pageSvc := newBatchSvcForTest(pageRepo)
-	batchSvc := NewWikiBatchJobService(jobRepo, auditRepo, nil, pageSvc)
+	batchSvc := NewWikiBatchJobService(jobRepo, auditRepo, nil, pageSvc, nil)
 	t.Cleanup(func() { _ = batchSvc.Shutdown(context.Background()) })
 	pageSvc.SetBatchJobService(batchSvc)
 
@@ -246,7 +246,7 @@ func TestBatchAudit_UndoFiresRequestAndDone(t *testing.T) {
 	jobRepo := newStubWikiBatchJobRepo()
 	auditRepo := newStubWikiBatchAuditRepo()
 	pageSvc := newBatchSvcForTest(pageRepo)
-	batchSvc := NewWikiBatchJobService(jobRepo, auditRepo, nil, pageSvc)
+	batchSvc := NewWikiBatchJobService(jobRepo, auditRepo, nil, pageSvc, nil)
 	t.Cleanup(func() { _ = batchSvc.Shutdown(context.Background()) })
 	pageSvc.SetBatchJobService(batchSvc)
 
@@ -309,7 +309,7 @@ func TestBatchAudit_CancelFiresEvent(t *testing.T) {
 	jobRepo := newStubWikiBatchJobRepo()
 	auditRepo := newStubWikiBatchAuditRepo()
 	pageSvc := newBatchSvcForTest(pageRepo)
-	batchSvc := NewWikiBatchJobService(jobRepo, auditRepo, nil, pageSvc)
+	batchSvc := NewWikiBatchJobService(jobRepo, auditRepo, nil, pageSvc, nil)
 	t.Cleanup(func() { _ = batchSvc.Shutdown(context.Background()) })
 	pageSvc.SetBatchJobService(batchSvc)
 
@@ -350,7 +350,7 @@ func TestBatchAudit_QueryFilters(t *testing.T) {
 	jobRepo := newStubWikiBatchJobRepo()
 	auditRepo := newStubWikiBatchAuditRepo()
 	pageSvc := newBatchSvcForTest(pageRepo)
-	batchSvc := NewWikiBatchJobService(jobRepo, auditRepo, nil, pageSvc)
+	batchSvc := NewWikiBatchJobService(jobRepo, auditRepo, nil, pageSvc, nil)
 	t.Cleanup(func() { _ = batchSvc.Shutdown(context.Background()) })
 	pageSvc.SetBatchJobService(batchSvc)
 

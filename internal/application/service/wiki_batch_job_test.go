@@ -148,7 +148,7 @@ func TestBatchMovePages_AsyncPath_Gte20(t *testing.T) {
 	}
 	jobRepo := newStubWikiBatchJobRepo()
 	pageSvc := newBatchSvcForTest(repo)
-	batchSvc := NewWikiBatchJobService(jobRepo, nil, nil, pageSvc)
+	batchSvc := NewWikiBatchJobService(jobRepo, nil, nil, pageSvc, nil)
 	t.Cleanup(func() { _ = batchSvc.Shutdown(context.Background()) })
 	pageSvc.SetBatchJobService(batchSvc)
 
@@ -175,7 +175,7 @@ func TestWorkerPool_PicksUpQueuedJob(t *testing.T) {
 	}
 	jobRepo := newStubWikiBatchJobRepo()
 	pageSvc := newBatchSvcForTest(repo)
-	batchSvc := NewWikiBatchJobService(jobRepo, nil, nil, pageSvc)
+	batchSvc := NewWikiBatchJobService(jobRepo, nil, nil, pageSvc, nil)
 	t.Cleanup(func() { _ = batchSvc.Shutdown(context.Background()) })
 	pageSvc.SetBatchJobService(batchSvc)
 
@@ -215,7 +215,7 @@ func TestUndoJob_MoveRestoresFolder(t *testing.T) {
 	}
 	jobRepo := newStubWikiBatchJobRepo()
 	pageSvc := newBatchSvcForTest(repo)
-	batchSvc := NewWikiBatchJobService(jobRepo, nil, nil, pageSvc)
+	batchSvc := NewWikiBatchJobService(jobRepo, nil, nil, pageSvc, nil)
 	t.Cleanup(func() { _ = batchSvc.Shutdown(context.Background()) })
 
 	// Snapshot pre-move state via CaptureUndoState.
@@ -260,7 +260,7 @@ func TestUndoJob_DeleteRestoresPages(t *testing.T) {
 	repo.addPage("p1", "published", nil, "alpha")
 	jobRepo := newStubWikiBatchJobRepo()
 	pageSvc := newBatchSvcForTest(repo)
-	batchSvc := NewWikiBatchJobService(jobRepo, nil, nil, pageSvc)
+	batchSvc := NewWikiBatchJobService(jobRepo, nil, nil, pageSvc, nil)
 	t.Cleanup(func() { _ = batchSvc.Shutdown(context.Background()) })
 
 	// Snapshot pre-delete state, then soft-delete.
@@ -305,7 +305,7 @@ func TestUndoJob_DeleteRestoresPages(t *testing.T) {
 func TestUndoJob_StatusReturnsNotUndoable(t *testing.T) {
 	jobRepo := newStubWikiBatchJobRepo()
 	pageSvc := newBatchSvcForTest(newStubBatchRepo())
-	batchSvc := NewWikiBatchJobService(jobRepo, nil, nil, pageSvc)
+	batchSvc := NewWikiBatchJobService(jobRepo, nil, nil, pageSvc, nil)
 	t.Cleanup(func() { _ = batchSvc.Shutdown(context.Background()) })
 
 	job := &types.WikiBatchJob{
@@ -330,7 +330,7 @@ func TestUndoJob_AfterExpiryReturns410(t *testing.T) {
 	repo.addPage("p0", "published", nil, "alpha")
 	jobRepo := newStubWikiBatchJobRepo()
 	pageSvc := newBatchSvcForTest(repo)
-	batchSvc := NewWikiBatchJobService(jobRepo, nil, nil, pageSvc)
+	batchSvc := NewWikiBatchJobService(jobRepo, nil, nil, pageSvc, nil)
 	t.Cleanup(func() { _ = batchSvc.Shutdown(context.Background()) })
 
 	undo, err := CaptureUndoState(context.Background(), pageSvc, "kb1", []string{"p0"})
@@ -361,7 +361,7 @@ func TestUndoJob_AfterExpiryReturns410(t *testing.T) {
 func TestCrossKBJobReturns404(t *testing.T) {
 	jobRepo := newStubWikiBatchJobRepo()
 	pageSvc := newBatchSvcForTest(newStubBatchRepo())
-	batchSvc := NewWikiBatchJobService(jobRepo, nil, nil, pageSvc)
+	batchSvc := NewWikiBatchJobService(jobRepo, nil, nil, pageSvc, nil)
 	t.Cleanup(func() { _ = batchSvc.Shutdown(context.Background()) })
 
 	job := &types.WikiBatchJob{
