@@ -1203,9 +1203,60 @@ func (h *WikiPageHandler) GetPageBacklinksCacheStatus(c *gin.Context) {
 		return
 	}
 	if status == nil {
-		status = &types.WikiBacklinksCacheStatus{Slug: slug}
+		// Cold cache: return a status object with just the slug +
+		// kb_id so the panel can render the cold state without 404.
+		// Build #23 — set KbID so the panel / external consumers
+		// don't have to know the kb_id from the URL alone.
+		status = &types.WikiBacklinksCacheStatus{Slug: slug, KbID: kbID}
 	}
 	c.JSON(http.StatusOK, status)
+}
+
+// ListBacklinksCacheStatuses godoc
+// @Summary      Admin: list all backlink-cache statuses for a KB
+// @Description  Returns a paginated list of every cached backlink
+// @Description  graph in a KB plus the four rollup fields:
+// @Description    - row_count         — total cache rows for the KB
+// @Description    - payload_size_bytes — SUM(LENGTH(*)) across all rows
+// @Description    - hit_ratio          — process-local hits / (hits+misses)
+// @Description    - kb_id              — echoed for client convenience
+// @Description  Items are sorted by `updated_at` DESC; limit/offset
+// @Description  default to 50/0 when absent or unparseable. Used by
+// @Description  operators to spot a runaway cache or to verify the
+// @Description  sweeper (Build #22) is doing its job.
+// @Description  Build #23.
+// @Tags         Wiki
+// @Produce      json
+// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        limit  query  int     false "Page size (default 50, max 200)"
+// @Param        offset query  int     false "Pagination offset (default 0)"
+// @Success      200  {object}  types.WikiBacklinksCacheStatusListResponse
+// @Failure      400  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/backlinks/cache-statuses [get]
+func (h *WikiPageHandler) ListBacklinksCacheStatuses(c *gin.Context) {
+	kbID, _, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	limit := 50
+	offset := 0
+	if v, perr := strconv.Atoi(c.Query("limit")); perr == nil && v > 0 {
+		limit = v
+		if limit > 200 {
+			limit = 200
+		}
+	}
+	if v, perr := strconv.Atoi(c.Query("offset")); perr == nil && v >= 0 {
+		offset = v
+	}
+	resp, err := h.wikiService.ListBacklinksCacheStatuses(c.Request.Context(), kbID, limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // GetPageBacklinksGraph godoc

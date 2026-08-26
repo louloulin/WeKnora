@@ -45,4 +45,46 @@ var (
 		Name: "wiki_cache_rows_remaining",
 		Help: "Current number of rows in the wiki_backlinks_cache table (refreshed after every sweep).",
 	})
+
+	// Build #23 — wiki backlinks cache observability (D1-D3).
+	//
+	// Five new counters + zero gauge additions:
+	//   - hits_total / misses_total / errors_total: outcome counter
+	//     for ListBacklinkGraph's cache Get. kb_id label is bounded
+	//     (typically <10k) so cardinality is acceptable; if it ever
+	//     spikes, operators can disable via Prom relabel rules (D1
+	//     escape hatch documented in spec).
+	//   - writes_total: every Upsert in the cache miss → recompute →
+	//     writeback path. No label (single global write rate).
+	//   - invalidations_total: every InvalidateBacklinksCache call,
+	//     labeled by the BacklinkCacheInvalidateOp value (8 labels
+	//     total: the 7 write ops + cleanup_sweep from Build #22).
+	//
+	// The cleanup_sweep label is the bridge to Build #22 — sweeper
+	// invocations also bump this counter, which keeps the Prom
+	// observability surface unified across the subsystem.
+	metricCacheHitsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "wiki_cache_hits_total",
+		Help: "Total cache hits in ListBacklinkGraph, by kb_id.",
+	}, []string{"kb_id"})
+
+	metricCacheMissesTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "wiki_cache_misses_total",
+		Help: "Total cache misses in ListBacklinkGraph, by kb_id.",
+	}, []string{"kb_id"})
+
+	metricCacheErrorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "wiki_cache_errors_total",
+		Help: "Total cache errors (Get failure or decode failure) in ListBacklinkGraph, by kb_id.",
+	}, []string{"kb_id"})
+
+	metricCacheWritesTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "wiki_cache_writes_total",
+		Help: "Total Upsert calls into wiki_backlinks_cache.",
+	})
+
+	metricCacheInvalidationsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "wiki_cache_invalidations_total",
+		Help: "Total InvalidateBacklinksCache invocations, by op.",
+	}, []string{"op"})
 )

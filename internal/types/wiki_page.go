@@ -1390,12 +1390,67 @@ func (WikiBacklinksCacheRow) TableName() string {
 // GET /pages/:slug/backlinks/cache-status. Only the timestamps +
 // source_event_id — never the full graph — so admin / debug callers
 // can confirm the cache is fresh without paying the column scan cost.
+//
+// Build #23 adds 4 aggregate fields (kb_id, row_count, hit_ratio,
+// payload_size_bytes). All new fields are populated by the handler —
+// the underlying cache row never grew them. Old fields keep their
+// JSON shape (omitempty on SourceEventID stays).
 type WikiBacklinksCacheStatus struct {
-	Slug          string    `json:"slug"`
-	ComputedAt    time.Time `json:"computed_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	SourceEventID string    `json:"source_event_id,omitempty"`
+	Slug             string    `json:"slug"`
+	KbID             string    `json:"kb_id"`
+	ComputedAt       time.Time `json:"computed_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+	SourceEventID    string    `json:"source_event_id,omitempty"`
+	RowCount         int64     `json:"row_count"`
+	HitRatio         float64   `json:"hit_ratio"`
+	PayloadSizeBytes int64     `json:"payload_size_bytes"`
 }
+
+// WikiBacklinksCacheStatusListResponse is the envelope returned by
+// GET /knowledgebase/:kb_id/wiki/backlinks/cache-statuses. The four
+// rollup fields (row_count, payload_size_bytes, hit_ratio, kb_id)
+// summarise the KB's cache state, and Items is the paginated list of
+// per-row statuses. Total is the unpaginated row count so the admin
+// UI can render a pager.
+//
+// Build #23 — pure additive shape; no existing fields move or rename.
+type WikiBacklinksCacheStatusListResponse struct {
+	KbID             string                      `json:"kb_id"`
+	RowCount         int64                       `json:"row_count"`
+	PayloadSizeBytes int64                       `json:"payload_size_bytes"`
+	HitRatio         float64                     `json:"hit_ratio"`
+	Items            []*WikiBacklinksCacheStatus `json:"items"`
+	Total            int64                       `json:"total"`
+}
+
+// WikiBacklinksCacheInvalidationLogEntry is one row in
+// wiki_backlinks_cache_invalidation_log (Build #23). Inserted by
+// every InvalidateBacklinksCache call (and by Build #22's sweeper
+// DeleteStale). The caller computes the slug set ahead of time and
+// supplies Details as a JSON-serialised map.
+type WikiBacklinksCacheInvalidationLogEntry struct {
+	ID            uint64    `gorm:"primaryKey;column:id;autoIncrement"`
+	KbID          string    `gorm:"column:kb_id;size:64;not null"`
+	Slug          string    `gorm:"column:slug;size:512;not null"`
+	Op            string    `gorm:"column:op;size:32;not null"`
+	ActorUserID   *uint64   `gorm:"column:actor_user_id"`
+	SourceEventID string    `gorm:"column:source_event_id;size:64"`
+	AffectedCount int       `gorm:"column:affected_count;not null;default:0"`
+	Details       string    `gorm:"column:details;type:text"` // JSON-encoded
+	CreatedAt     time.Time `gorm:"column:created_at;not null;default:CURRENT_TIMESTAMP"`
+}
+
+// TableName pins the GORM-pluralised default to the migration's
+// singular name.
+func (WikiBacklinksCacheInvalidationLogEntry) TableName() string {
+	return "wiki_backlinks_cache_invalidation_log"
+}
+
+// BacklinkCacheInvalidateSweep is the eighth op, used by Build #22's
+// stale-cleanup sweeper. We append rather than enumerate in the
+// existing 7-op const block to keep the public API surface stable —
+// service-layer code already switches on string equality.
+const BacklinkCacheInvalidateSweep BacklinkCacheInvalidateOp = "cleanup_sweep"
 
 // BacklinkCacheInvalidateOp enumerates the seven write paths that
 // invalidate one or more (kb_id, slug) cache rows. ResolveAffectedSlugs

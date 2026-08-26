@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"sync"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"
 )
@@ -182,6 +184,17 @@ func (s *defaultWikiBacklinksCacheCleanupService) RunOnce(ctx context.Context) (
 
 	// Real cleanup path: drain in batches until RowsAffected < batch
 	// size or ctx is cancelled.
+	//
+	// Build #23 — every batch that actually deletes rows bumps
+	// wiki_cache_invalidations_total{op=cleanup_sweep} (so Prom and
+	// the audit log stay aligned with the existing 7 write-path ops)
+	// and writes a best-effort row to wiki_backlinks_cache_invalidation_log.
+	// The KbID "system" + Slug "*" sentinels mark these rows as
+	// sweeper-originated; operators can grep for op=cleanup_sweep to
+	// separate them from page-write invalidations. Failures from
+	// LogInvalidation are logged but never abort the sweep — losing
+	// one audit row must not block row deletion.
+	var batchIndex int
 	var totalDeleted int64
 	for {
 		if err := ctx.Err(); err != nil {
@@ -194,6 +207,31 @@ func (s *defaultWikiBacklinksCacheCleanupService) RunOnce(ctx context.Context) (
 		}
 		totalDeleted += deleted
 		metricCleanupDeletedTotal.Add(float64(deleted))
+		if deleted > 0 {
+			metricCacheInvalidationsTotal.
+				WithLabelValues(string(types.BacklinkCacheInvalidateSweep)).Inc()
+			detailsJSON, _ := json.Marshal(map[string]any{
+				"ttl_seconds":    s.cfg.TTL.Seconds(),
+				"period_seconds": s.cfg.Period.Seconds(),
+				"batch_size":     s.cfg.BatchSize,
+				"batch_index":    batchIndex,
+				"before":         before.Format(time.RFC3339),
+			})
+			entry := &types.WikiBacklinksCacheInvalidationLogEntry{
+				KbID:          "system",
+				Slug:          "*",
+				Op:            string(types.BacklinkCacheInvalidateSweep),
+				SourceEventID: wikiSourceEventIDFromContext(ctx),
+				ActorUserID:   wikiActorUserIDFromContext(ctx),
+				AffectedCount: int(deleted),
+				Details:       string(detailsJSON),
+			}
+			if logErr := s.repo.LogInvalidation(ctx, entry); logErr != nil {
+				log.Printf("[wiki-cache-cleanup] audit log insert failed (batch=%d deleted=%d): %v",
+					batchIndex, deleted, logErr)
+			}
+			batchIndex++
+		}
 		if deleted < int64(s.cfg.BatchSize) {
 			break
 		}

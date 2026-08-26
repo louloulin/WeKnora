@@ -162,7 +162,20 @@ type WikiPageService interface {
 	// (nil, nil) if the row is cold. Lets the panel render a
 	// "last computed at" footer without paying the full graph cost.
 	// Build #21.
+	//
+	// Build #23 — populates KbID and HitRatio (process-local hit ratio
+	// from atomic counters) on the returned status. RowCount and
+	// PayloadSizeBytes are left at 0 on this path because they're
+	// expensive per-row aggregates; the new admin list endpoint
+	// returns those for a whole KB.
 	GetPageBacklinksCacheStatus(ctx context.Context, kbID string, slug string) (*types.WikiBacklinksCacheStatus, error)
+
+	// ListBacklinksCacheStatuses returns the KB-wide admin rollup of
+	// the backlinks cache: per-row statuses (paginated) plus the four
+	// rollup fields (row_count, payload_size_bytes, hit_ratio, kb_id).
+	// Build #23 — admin / debug endpoint. Limit/offset default to
+	// 50/0 when ≤0 (caller must clamp).
+	ListBacklinksCacheStatuses(ctx context.Context, kbID string, limit int, offset int) (*types.WikiBacklinksCacheStatusListResponse, error)
 
 	// ListSummariesByKnowledgeIDs returns summary-page content keyed by
 	// the knowledge id that authored it. Used by the retract / reparse
@@ -679,6 +692,37 @@ type WikiBacklinksCacheRepository interface {
 	// slice of the stale set under row-level locks so two sweeps
 	// running concurrently do not duplicate work.
 	ListStaleForUpdate(ctx context.Context, tx *gorm.DB, before time.Time, limit int) ([]string, error)
+
+	// LogInvalidation persists a row in wiki_backlinks_cache_invalidation_log.
+	// Build #23 — every call to InvalidateBacklinksCache (and the Build #22
+	// sweeper's DeleteStale) calls this. The entry's Details is a JSON string
+	// the caller has already marshalled; the repo just inserts it. Failures
+	// are warn-logged by the service layer but never bubble — losing one log
+	// row must not block a cache DELETE.
+	LogInvalidation(ctx context.Context, entry *types.WikiBacklinksCacheInvalidationLogEntry) error
+
+	// ListInvalidationLog returns invalidation log entries for one KB,
+	// newest first, paginated. Used by the admin / debug
+	// GET /backlinks/cache-statuses endpoint to surface "who/when/why"
+	// for each cache miss / eviction.
+	ListInvalidationLog(ctx context.Context, kbID string, limit int, offset int) ([]*types.WikiBacklinksCacheInvalidationLogEntry, int64, error)
+
+	// CountByKB returns the number of cache rows for a single KB. Used
+	// by the cache-status endpoint to populate RowCount without a
+	// full table scan.
+	CountByKB(ctx context.Context, kbID string) (int64, error)
+
+	// SumPayloadSizeByKB returns the total bytes of JSON payload
+	// stored across all cache rows for one KB — the sum of
+	// LENGTH(direct_json)+LENGTH(indirect_json)+LENGTH(related_json)+
+	// LENGTH(broken_json)+LENGTH(stats_json) WHERE kb_id = ?. Used
+	// by the admin /backlinks/cache-statuses endpoint to surface
+	// PayloadSizeBytes so operators can spot a runaway cache before
+	// the table alert fires.
+	//
+	// Build #23 — returns 0 (not error) when the KB has no rows, so
+	// the response can omit a separate "has data" check.
+	SumPayloadSizeByKB(ctx context.Context, kbID string) (int64, error)
 }
 
 // WikiBacklinksCacheInvalidator centralises the rule that maps a

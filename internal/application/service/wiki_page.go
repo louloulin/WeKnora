@@ -1489,6 +1489,12 @@ func (s *wikiPageService) InvalidateBacklinksCache(
 	if s.cacheRepo == nil || req.KbID == "" || len(req.AffectedSlugs) == 0 {
 		return
 	}
+	// Build #23 D3: increment invalidations counter with op label, then
+	// write the audit row. Both are best-effort — losing a counter tick
+	// or a log row must not block the cache DELETE.
+	metricCacheInvalidationsTotal.WithLabelValues(string(req.Op)).Inc()
+	sourceEventID := wikiSourceEventIDFromContext(ctx)
+	actorUserID := wikiActorUserIDFromContext(ctx)
 	affected, err := s.cacheRepo.Delete(ctx, req.KbID, req.AffectedSlugs)
 	if err != nil {
 		logger.Warnf(ctx,
@@ -1501,6 +1507,26 @@ func (s *wikiPageService) InvalidateBacklinksCache(
 			"wiki backlinks cache wiped %d rows (op=%s kb=%s slugs=%v)",
 			affected, req.Op, req.KbID, req.AffectedSlugs)
 	}
+	// Best-effort: persist the audit row. Details captures the full slug
+	// set so operators can grep the log for "what got wiped" without
+	// joining against audit_logs.
+	detailsJSON, _ := json.Marshal(map[string]any{
+		"slugs": req.AffectedSlugs,
+		"op":    string(req.Op),
+	})
+	if logErr := s.cacheRepo.LogInvalidation(ctx, &types.WikiBacklinksCacheInvalidationLogEntry{
+		KbID:          req.KbID,
+		Slug:          req.AffectedSlugs[0], // first slug as the canonical "primary" key
+		Op:            string(req.Op),
+		ActorUserID:   actorUserID,
+		SourceEventID: sourceEventID,
+		AffectedCount: int(affected),
+		Details:       string(detailsJSON),
+	}); logErr != nil {
+		logger.Warnf(ctx,
+			"wiki backlinks cache invalidation log insert failed (op=%s kb=%s): %v",
+			req.Op, req.KbID, logErr)
+	}
 }
 
 // GetPageBacklinksCacheStatus returns the slim metadata for one slug's
@@ -1509,6 +1535,11 @@ func (s *wikiPageService) InvalidateBacklinksCache(
 // render a "last computed at" line without paying the full graph cost.
 //
 // Build #21.
+// Build #23 — populates KbID (always equal to the input kbID) and
+// HitRatio (process-local atomic snapshot). RowCount and
+// PayloadSizeBytes stay zero on this path — they're KB-wide
+// aggregates and the per-page footer call shouldn't pay that cost.
+// The admin list endpoint returns those for a whole KB.
 func (s *wikiPageService) GetPageBacklinksCacheStatus(
 	ctx context.Context, kbID string, slug string,
 ) (*types.WikiBacklinksCacheStatus, error) {
@@ -1522,12 +1553,81 @@ func (s *wikiPageService) GetPageBacklinksCacheStatus(
 	if row == nil {
 		return nil, nil
 	}
+	snap := wikiCacheObsRead()
+	hitRatio := 0.0
+	if snap.Hits+snap.Misses > 0 {
+		hitRatio = float64(snap.Hits) / float64(snap.Hits+snap.Misses)
+	}
 	return &types.WikiBacklinksCacheStatus{
 		Slug:          row.Slug,
+		KbID:          kbID,
 		ComputedAt:    row.ComputedAt,
 		UpdatedAt:     row.UpdatedAt,
 		SourceEventID: row.SourceEventID,
+		HitRatio:      hitRatio,
 	}, nil
+}
+
+// ListBacklinksCacheStatuses returns the admin / debug KB-wide rollup:
+// per-row statuses (paginated) plus row_count, payload_size_bytes,
+// and a process-local hit_ratio. Used by the new
+// GET /backlinks/cache-statuses admin endpoint.
+//
+// Build #23. Count + payload queries are best-effort — a failure
+// logs a warning but does not fail the request, so an operator can
+// still see the row list when the aggregate queries time out on a
+// large KB.
+func (s *wikiPageService) ListBacklinksCacheStatuses(
+	ctx context.Context, kbID string, limit int, offset int,
+) (*types.WikiBacklinksCacheStatusListResponse, error) {
+	resp := &types.WikiBacklinksCacheStatusListResponse{
+		KbID:  kbID,
+		Items: []*types.WikiBacklinksCacheStatus{},
+	}
+	if s.cacheRepo == nil || kbID == "" {
+		return resp, nil
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	items, total, err := s.cacheRepo.ListByKB(ctx, kbID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	// Populate KbID on each row (the repo doesn't know which kb_id
+	// to stamp without a code review pass; we own that here).
+	for _, it := range items {
+		if it != nil {
+			it.KbID = kbID
+		}
+	}
+	resp.Items = items
+	resp.Total = total
+	resp.RowCount = total
+
+	// Best-effort aggregates.
+	if count, cerr := s.cacheRepo.CountByKB(ctx, kbID); cerr != nil {
+		logger.Warnf(ctx, "wiki backlinks cache CountByKB failed (kb=%s): %v", kbID, cerr)
+	} else {
+		// Override RowCount with the authoritative COUNT(*) so
+		// ListByKB's bounded total matches the unbounded count.
+		// For now they're the same query, but future pagination
+		// tweaks could diverge — keep both for back-compat.
+		resp.RowCount = count
+	}
+	if bytes, perr := s.cacheRepo.SumPayloadSizeByKB(ctx, kbID); perr != nil {
+		logger.Warnf(ctx, "wiki backlinks cache SumPayloadSizeByKB failed (kb=%s): %v", kbID, perr)
+	} else {
+		resp.PayloadSizeBytes = bytes
+	}
+	snap := wikiCacheObsRead()
+	if snap.Hits+snap.Misses > 0 {
+		resp.HitRatio = float64(snap.Hits) / float64(snap.Hits+snap.Misses)
+	}
+	return resp, nil
 }
 
 // ListBacklinkGraph wraps computeBacklinkGraph with a cache-first read and
@@ -1537,14 +1637,41 @@ func (s *wikiPageService) GetPageBacklinksCacheStatus(
 // an honest error.
 //
 // Build #21.
+// Build #23 — wraps the cache Get with hit/miss/error counters and the
+// writeback Upsert with a cache_writes counter. The counters live in
+// wiki_backlinks_cache_observability.go so this body stays focused on
+// the read/write logic; the three counter incs are deliberately cheap
+// (atomic.Add + a Prom Inc) and run on every cache path.
 func (s *wikiPageService) ListBacklinkGraph(
 	ctx context.Context, req types.WikiBacklinkGraphRequest,
 ) (*types.WikiBacklinkGraph, error) {
 	if s.cacheRepo != nil && req.KbID != "" && req.Slug != "" {
-		if row, err := s.cacheRepo.Get(ctx, req.KbID, req.Slug); err == nil && row != nil {
+		row, err := s.cacheRepo.Get(ctx, req.KbID, req.Slug)
+		switch {
+		case err != nil:
+			// Get failed — repo error, not a miss. Bump the error
+			// counter and fall through to recompute. We do NOT log
+			// here because the failure may be transient; Prom will
+			// surface the rate and operators decide.
+			wikiCacheObsIncError(req.KbID)
+		case row == nil:
+			// Honest cache miss — no row for (kb_id, slug). Bump the
+			// miss counter and fall through to recompute.
+			wikiCacheObsIncMiss(req.KbID)
+		default:
 			if graph, ok := decodeCacheRow(row); ok {
+				// Cache hit — bump the hit counter and return.
+				wikiCacheObsIncHit(req.KbID)
 				return graph, nil
 			}
+			// Row exists but payload decode failed — treat as a
+			// cache error: bump the error counter (not miss —
+			// misses are "no row", this is "row but unusable") and
+			// fall through to recompute. The bad row stays in the
+			// table until an invalidation replaces it; we don't
+			// delete it inline because that would race with the
+			// writeback below on a slow recompute.
+			wikiCacheObsIncError(req.KbID)
 		}
 	}
 	graph, err := s.computeBacklinkGraph(ctx, req)
@@ -1555,6 +1682,11 @@ func (s *wikiPageService) ListBacklinkGraph(
 		if row, ok := encodeCacheRow(req.KbID, req.Slug, graph); ok {
 			// Best-effort writeback — the read path never fails on a
 			// failed write because the next miss will simply recompute.
+			// Build #23: bump cache_writes on every successful encode,
+			// regardless of Upsert success — encode succeeded so the
+			// would-be-write happened, even if the write itself later
+			// failed (which the existing warn log already covers).
+			wikiCacheObsIncWrite()
 			if werr := s.cacheRepo.Upsert(ctx, row); werr != nil {
 				logger.Warnf(ctx,
 					"wiki backlinks cache writeback failed (kb=%s slug=%s): %v",

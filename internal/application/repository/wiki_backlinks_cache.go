@@ -273,3 +273,101 @@ func (r *wikiBacklinksCacheRepository) ListStaleForUpdate(
 	}
 	return out, nil
 }
+
+// LogInvalidation persists a row in wiki_backlinks_cache_invalidation_log.
+// Build #23 — every call to InvalidateBacklinksCache (and the Build #22
+// sweeper's DeleteStale) calls this. The entry's Details is a JSON string
+// the caller has already marshalled; the repo just inserts it. Failures
+// are warn-logged by the service layer but never bubble — losing one log
+// row must not block a cache DELETE.
+//
+// We stamp CreatedAt here if the caller left it zero, so the
+// service-layer caller doesn't have to know the column default. The
+// caller may pre-set it for tests.
+func (r *wikiBacklinksCacheRepository) LogInvalidation(
+	ctx context.Context, entry *types.WikiBacklinksCacheInvalidationLogEntry,
+) error {
+	if entry == nil {
+		return errors.New("wikiBacklinksCacheRepository.LogInvalidation: nil entry")
+	}
+	if entry.CreatedAt.IsZero() {
+		entry.CreatedAt = time.Now().UTC()
+	}
+	return r.db.WithContext(ctx).Create(entry).Error
+}
+
+// ListInvalidationLog returns invalidation log entries for one KB,
+// newest first, paginated. The (kb_id, created_at DESC) index in
+// migration 000099 keeps this cheap even when the table grows.
+func (r *wikiBacklinksCacheRepository) ListInvalidationLog(
+	ctx context.Context, kbID string, limit int, offset int,
+) ([]*types.WikiBacklinksCacheInvalidationLogEntry, int64, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	var total int64
+	if err := r.db.WithContext(ctx).
+		Model(&types.WikiBacklinksCacheInvalidationLogEntry{}).
+		Where("kb_id = ?", kbID).
+		Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var entries []*types.WikiBacklinksCacheInvalidationLogEntry
+	err := r.db.WithContext(ctx).
+		Where("kb_id = ?", kbID).
+		Order("created_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&entries).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	return entries, total, nil
+}
+
+// CountByKB returns the number of cache rows for one KB. Cheap because
+// the table's primary key is (kb_id, slug) — Postgres / MySQL / SQLite
+// can satisfy this from the index without scanning the JSON payload
+// columns.
+func (r *wikiBacklinksCacheRepository) CountByKB(ctx context.Context, kbID string) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&types.WikiBacklinksCacheRow{}).
+		Where("kb_id = ?", kbID).
+		Count(&count).Error
+	return count, err
+}
+
+// SumPayloadSizeByKB sums the byte length of the five payload JSON
+// columns across every row for one KB. Uses LENGTH() which works in
+// PG, MySQL, and SQLite identically for a TEXT column.
+//
+// Build #23 — this is a single full-table scan within the (kb_id)
+// subset. For a KB with 10k cached pages the scan reads five TEXT
+// columns × 10k rows = ~50k LENGTH() calls. At ~5µs each on a
+// vanilla PG that's ~250ms — too slow for the per-request admin
+// endpoint. The handler calls this only on the admin list endpoint
+// (not the per-page endpoint), and we expect admins to call it
+// infrequently. If a KB grows past ~50k cached pages we should add a
+// per-KB counter table populated at write time, but that's a future
+// Build — out of scope for Build #23.
+func (r *wikiBacklinksCacheRepository) SumPayloadSizeByKB(
+	ctx context.Context, kbID string,
+) (int64, error) {
+	if kbID == "" {
+		return 0, nil
+	}
+	var total int64
+	err := r.db.WithContext(ctx).
+		Model(&types.WikiBacklinksCacheRow{}).
+		Select("COALESCE(SUM(LENGTH(direct_json) + LENGTH(indirect_json) + LENGTH(related_json) + LENGTH(broken_json) + LENGTH(stats_json)), 0)").
+		Where("kb_id = ?", kbID).
+		Scan(&total).Error
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
+}

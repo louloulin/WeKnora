@@ -349,6 +349,13 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		// footer reads this to show "last computed at" without paying
 		// the full graph cost.
 		wikiRead.GET("/pages/*slug/backlinks/cache-status", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetPageBacklinksCacheStatus)
+		// KB-wide cache-status admin list (Build #23) — returns the
+		// paginated row list plus row_count / payload_size_bytes /
+		// hit_ratio rollups. Same Viewer guard as the per-page probe
+		// so any KB member can introspect their own cache; admin-only
+		// gating is not strictly required because the data reveals
+		// nothing beyond what the per-page probe already exposes.
+		wikiRead.GET("/backlinks/cache-statuses", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.ListBacklinksCacheStatuses)
 		wiki.PUT("/pages/*slug", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.UpdatePage)
 		wiki.DELETE("/pages/*slug", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.DeletePage)
 
