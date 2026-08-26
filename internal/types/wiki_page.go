@@ -1395,6 +1395,47 @@ func (WikiBacklinksCacheRow) TableName() string {
 	return "wiki_backlinks_cache"
 }
 
+// Build #26 — reverse-lookup inverted index for ACL→cache wipes.
+//
+// Every (cache row × referenced slug) pair becomes one backref row.
+// FindReferencingSlugs becomes a single indexed range scan on
+// (kb_id, referenced_slug) → owning_slug instead of three
+// JSON_CONTAINS / json_each scans over the entire cache table.
+//
+// The PK is (kb_id, referenced_slug, owning_slug) so two cache rows in
+// the same KB can legitimately share a referenced slug (A links to C
+// AND B links to C → two distinct backref rows for C). The repo
+// maintains this table transactionally on every Upsert / Delete /
+// DeleteByKB; see wiki_backlinks_cache.go. The migration
+// 000101_wiki_backlinks_cache_backref creates the table and backfills
+// from existing wiki_backlinks_cache rows.
+//
+// Direction (direct / indirect / related) is intentionally NOT stored —
+// the ACL→cache hook asks "who references this slug" regardless of how.
+// A future Build can add a direction column if per-direction wipe
+// analytics become a requirement.
+//
+// No FK to wiki_backlinks_cache: a cache row may be deleted before its
+// backrefs (e.g. Build #22 sweep) and we don't want a constraint to
+// keep the cache row alive past its eviction. The repo guarantees
+// consistency in normal operation; backrefs outliving their cache row
+// for a moment is harmless because FindReferencingSlugs results are
+// deduped against the actual cache state by the caller.
+type WikiBacklinksCacheBackrefRow struct {
+	KbID           string `gorm:"primaryKey;column:kb_id;size:64"`
+	ReferencedSlug string `gorm:"primaryKey;column:referenced_slug;size:512"`
+	OwningSlug     string `gorm:"primaryKey;column:owning_slug;size:512"`
+	UpdatedAt      time.Time `gorm:"column:updated_at;not null"`
+}
+
+// TableName pins the GORM-pluralised default to the migration's
+// singular name. The backref table lives next to wiki_backlinks_cache
+// (Build #21's table) but stays a separate relation so the index can
+// be dropped independently.
+func (WikiBacklinksCacheBackrefRow) TableName() string {
+	return "wiki_backlinks_cache_backref"
+}
+
 // WikiBacklinksCacheStatus is the slim payload returned by
 // GET /pages/:slug/backlinks/cache-status. Only the timestamps +
 // source_event_id — never the full graph — so admin / debug callers

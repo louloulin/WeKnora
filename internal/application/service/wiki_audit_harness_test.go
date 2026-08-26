@@ -300,6 +300,9 @@ func (r *stubBacklinksCacheRepo) DeleteStale(context.Context, time.Time, int) (i
 	return 0, nil
 }
 func (r *stubBacklinksCacheRepo) CountRows(context.Context) (int64, error) { return 0, nil }
+func (r *stubBacklinksCacheRepo) CountBackrefRows(context.Context) (int64, error) {
+	return 0, nil
+}
 func (r *stubBacklinksCacheRepo) ListStaleForUpdate(context.Context, interface{}, time.Time, int) ([]string, error) {
 	return nil, nil
 }

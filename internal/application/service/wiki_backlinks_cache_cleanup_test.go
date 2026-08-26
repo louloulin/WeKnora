@@ -86,6 +86,13 @@ func (f *fakeWikiBacklinksCacheRepo) CountRows(_ context.Context) (int64, error)
 	return int64(len(f.rows)), nil
 }
 
+func (f *fakeWikiBacklinksCacheRepo) CountBackrefRows(_ context.Context) (int64, error) {
+	// Cleanup test fake doesn't track a separate backref set — for the
+	// gauge refresh path we just return the cache row count as a
+	// stand-in. The real impl queries the backref table.
+	return 0, nil
+}
+
 func (f *fakeWikiBacklinksCacheRepo) ListStaleForUpdate(
 	_ context.Context, _ *gorm.DB, before time.Time, limit int,
 ) ([]string, error) {

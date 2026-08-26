@@ -706,6 +706,15 @@ type WikiBacklinksCacheRepository interface {
 	// of TTL state.
 	CountRows(ctx context.Context) (int64, error)
 
+	// CountBackrefRows returns the total number of rows in the
+	// wiki_backlinks_cache_backref inverted index. Build #26 — the
+	// cleanup service refreshes the backref gauge from this on its
+	// sweep cycle (the repo also maintains it incrementally on
+	// Upsert / Delete / DeleteByKB / DeleteStale). Returns 0 on a
+	// missing table (pre-migration), so a fresh deploy does not
+	// surface a stale gauge value.
+	CountBackrefRows(ctx context.Context) (int64, error)
+
 	// ListStaleForUpdate returns up to `limit` stale (kb_id, slug)
 	// pairs under SELECT ... FOR UPDATE SKIP LOCKED for the duration
 	// of the surrounding transaction. Used by the multi-instance

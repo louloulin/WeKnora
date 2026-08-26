@@ -91,6 +91,36 @@ func (s *stubBacklinksCacheRepo) Delete(ctx context.Context, kbID string, slugs 
 func (s *stubBacklinksCacheRepo) ListByKB(ctx context.Context, kbID string, limit, offset int) ([]*types.WikiBacklinksCacheStatus, int64, error) {
 	return []*types.WikiBacklinksCacheStatus{}, 0, nil
 }
+func (s *stubBacklinksCacheRepo) DeleteByKB(ctx context.Context, kbID string) (int64, error) {
+	return 0, nil
+}
+func (s *stubBacklinksCacheRepo) FindReferencingSlugs(ctx context.Context, kbID, slug string) ([]string, error) {
+	return []string{slug}, nil
+}
+func (s *stubBacklinksCacheRepo) CountByKB(ctx context.Context, kbID string) (int64, error) {
+	return int64(len(s.rows)), nil
+}
+func (s *stubBacklinksCacheRepo) LogInvalidation(ctx context.Context, e *types.WikiBacklinksCacheInvalidationLogEntry) error {
+	return nil
+}
+func (s *stubBacklinksCacheRepo) DeleteStale(ctx context.Context, before time.Time, limit int) (int64, error) {
+	return 0, nil
+}
+func (s *stubBacklinksCacheRepo) CountRows(ctx context.Context) (int64, error) {
+	return int64(len(s.rows)), nil
+}
+func (s *stubBacklinksCacheRepo) CountBackrefRows(ctx context.Context) (int64, error) {
+	return 0, nil
+}
+func (s *stubBacklinksCacheRepo) ListStaleForUpdate(ctx context.Context, _ interface{}, before time.Time, limit int) ([]string, error) {
+	return []string{}, nil
+}
+func (s *stubBacklinksCacheRepo) ListInvalidationLog(ctx context.Context, kbID string, limit, offset int) ([]*types.WikiBacklinksCacheInvalidationLogEntry, int64, error) {
+	return []*types.WikiBacklinksCacheInvalidationLogEntry{}, 0, nil
+}
+func (s *stubBacklinksCacheRepo) SumPayloadSizeByKB(ctx context.Context, kbID string) (int64, error) {
+	return 0, nil
+}
 
 // stubBacklinksInvalidator is the no-op WikiBacklinksCacheInvalidator
 // stub. It mirrors the policy from the production invalidator without

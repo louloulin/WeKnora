@@ -188,6 +188,10 @@ func (f *obsFakeRepo) CountRows(_ context.Context) (int64, error) {
 	return 0, errors.New("obsFakeRepo.CountRows: not used in obs test")
 }
 
+func (f *obsFakeRepo) CountBackrefRows(_ context.Context) (int64, error) {
+	return 0, errors.New("obsFakeRepo.CountBackrefRows: not used in obs test")
+}
+
 func (f *obsFakeRepo) ListStaleForUpdate(_ context.Context, _ *gorm.DB, _ time.Time, _ int) ([]string, error) {
 	return nil, errors.New("obsFakeRepo.ListStaleForUpdate: not used in obs test")
 }

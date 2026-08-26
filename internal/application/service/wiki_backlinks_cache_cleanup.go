@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/application/service/wikicachemetrics"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"
@@ -275,9 +276,9 @@ func (s *defaultWikiBacklinksCacheCleanupService) countStale(
 	return count, err
 }
 
-// refreshGauge updates the cache_rows_remaining gauge with the
-// current table size. Best-effort: a failure here is logged but does
-// not abort the cleanup pass.
+// refreshGauge updates the cache_rows_remaining + backref_rows_remaining
+// gauges with the current table sizes. Best-effort: a failure here is
+// logged but does not abort the cleanup pass.
 func (s *defaultWikiBacklinksCacheCleanupService) refreshGauge(ctx context.Context) {
 	if s.repo == nil {
 		return
@@ -288,4 +289,14 @@ func (s *defaultWikiBacklinksCacheCleanupService) refreshGauge(ctx context.Conte
 		return
 	}
 	metricCacheRowsRemaining.Set(float64(count))
+	// Build #26 — also refresh the backref gauge. The repo updates
+	// this incrementally on Upsert / Delete / DeleteByKB / DeleteStale,
+	// but a drift (e.g. rolled-back tx, manual SQL) gets corrected at
+	// the next sweep.
+	backrefCount, err := s.repo.CountBackrefRows(ctx)
+	if err != nil {
+		log.Printf("[wiki-cache-cleanup] backref gauge refresh failed: %v", err)
+		return
+	}
+	wikicachemetrics.BackrefRows.Set(float64(backrefCount))
 }

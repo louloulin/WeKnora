@@ -46,6 +46,12 @@ var (
 		Help: "Current number of rows in the wiki_backlinks_cache table (refreshed after every sweep).",
 	})
 
+	// Build #26 — wiki_cache_backref_rows_remaining moved to the
+	// wikicachemetrics sub-package so the repository can update it
+	// incrementally on Upsert / Delete / DeleteByKB / DeleteStale
+	// without importing the service package (which would create a
+	// dependency cycle: service → repository).
+
 	// Build #23 — wiki backlinks cache observability (D1-D3).
 	//
 	// Five new counters + zero gauge additions:

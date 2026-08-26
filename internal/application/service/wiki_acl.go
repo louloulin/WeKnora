@@ -334,7 +334,7 @@ func (s *wikiAclService) invalidateBacklinksCacheOnAclChange(
 		strategy = "full"
 		affected, err = s.cacheRepo.DeleteByKB(ctx, kbID)
 	} else {
-		strategy = "reverse-lookup"
+		strategy = "reverse-lookup-indexed"
 		refSlugs, lookupErr := s.cacheRepo.FindReferencingSlugs(ctx, kbID, slug)
 		if lookupErr != nil {
 			logger.Warnf(ctx, "wiki acl change hook: find referencing slugs failed (kb=%s slug=%s): %v", kbID, slug, lookupErr)
