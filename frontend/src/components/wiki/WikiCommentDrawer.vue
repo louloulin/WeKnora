@@ -2,7 +2,7 @@
   <TDrawer
     v-model:visible="visible"
     :header="headerTitle"
-    :size="480"
+    :size="'480px'"
     :close-on-esc-key="true"
     :footer="false"
     destroy-on-close

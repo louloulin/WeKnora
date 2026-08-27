@@ -146,7 +146,7 @@ async function load(): Promise<void> {
   needsPassword.value = false
   try {
     const res = await fetchPublicShare(props.token)
-    data.value = res.data ?? null
+    data.value = res ?? null
   } catch (err) {
     const status = extractStatus(err)
     if (status === 401) {
@@ -172,7 +172,7 @@ async function submitPassword(): Promise<void> {
   unlocking.value = true
   try {
     const res = await unlockPublicShare(props.token, passwordInput.value)
-    data.value = res.data ?? null
+    data.value = res ?? null
     needsPassword.value = false
     passwordInput.value = ''
   } catch (err) {

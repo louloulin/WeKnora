@@ -48,7 +48,7 @@ export const useWikiShareLinksStore = defineStore('wikiShareLinks', () => {
     error.value = null
     try {
       const res = await listWikiShareLinks(kbId, slug)
-      byPage.value[key] = res.data?.shares ?? []
+      byPage.value[key] = res?.shares ?? []
     } catch (err) {
       const msg = errMsg(err, 'share.loadFailed')
       // 404 → backend not deployed yet. Treat as empty list, no error toast.
@@ -69,7 +69,7 @@ export const useWikiShareLinksStore = defineStore('wikiShareLinks', () => {
   ): Promise<WikiShareLink | null> {
     try {
       const res = await createWikiShareLink(kbId, slug, payload)
-      const link = res.data
+      const link = res
       if (link) {
         const key = pageKey(kbId, slug)
         const list = byPage.value[key] ?? []

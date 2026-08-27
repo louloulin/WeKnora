@@ -63,7 +63,7 @@ export const useWikiCommentsStore = defineStore('wikiComments', () => {
     error.value = null
     try {
       const res = await listWikiComments(kbId, slug)
-      bySlug.value[slug] = res.data?.comments ?? []
+      bySlug.value[slug] = res?.comments ?? []
     } catch (err) {
       const msg = errMsg(err, 'comments.loadFailed')
       // 404 means the backend route isn't deployed yet — treat as empty.
@@ -97,7 +97,7 @@ export const useWikiCommentsStore = defineStore('wikiComments', () => {
         body,
         mentions: dedupeMentions(payload.mentions ?? []),
       })
-      const comment = res.data
+      const comment = res
       if (comment) {
         const list = bySlug.value[slug] ?? []
         bySlug.value[slug] = [...list, comment]
@@ -126,7 +126,7 @@ export const useWikiCommentsStore = defineStore('wikiComments', () => {
         body,
         mentions: dedupeMentions(payload.mentions ?? []),
       })
-      const updated = res.data
+      const updated = res
       if (updated) {
         const list = bySlug.value[slug] ?? []
         bySlug.value[slug] = list.map((c) => (c.id === commentId ? updated : c))
@@ -178,7 +178,7 @@ export const useWikiCommentsStore = defineStore('wikiComments', () => {
     mentionQuery.value = trimmed
     try {
       const res = await searchMentionCandidates(kbId, trimmed, 8)
-      const candidates = res.data?.candidates ?? []
+      const candidates = res?.candidates ?? []
       // 404 (backend not yet wired) → empty list, no error toast.
       mentionCandidates.value = candidates
       mentionOpen.value = candidates.length > 0

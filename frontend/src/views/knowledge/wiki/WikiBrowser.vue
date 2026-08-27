@@ -864,7 +864,7 @@
          the currently selected page; copying issues a fresh public URL. -->
     <WikiShareDialog
       v-if="selectedPage"
-      v-model="showShareDialog"
+      v-model:visible="showShareDialog"
       :kb-id="props.knowledgeBaseId"
       :slug="selectedPage.slug"
       :page-title="selectedPage.title"
@@ -873,7 +873,7 @@
     <!-- Page-level ACL dialog (Build #7). Mode picker + allow-list editor. -->
     <WikiAclDialog
       v-if="selectedPage && props.canEdit"
-      v-model="showAclDialog"
+      v-model:visible="showAclDialog"
       :kb-id="props.knowledgeBaseId"
       :slug="selectedPage.slug"
       :page-title="selectedPage.title"
