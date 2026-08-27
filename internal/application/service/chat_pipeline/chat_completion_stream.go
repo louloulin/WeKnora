@@ -113,6 +113,11 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 		answerID := fmt.Sprintf("%s-answer", uuid.New().String()[:8])
 		thinkingOpen := false
 		answerCompleted := false
+		// citationBuilder (Build #30 B3) holds the de-dup map across chunks so
+		// the same chunk_id cited in chunk 1 keeps position 1 when seen again
+		// later. Gated by CitationsEnabled(); when off, Rewrite is identity
+		// and CitationIndex stays nil on every emitted event.
+		citations := newCitationBuilder(chatManage)
 
 		closeThinking := func() {
 			if !thinkingOpen {
@@ -127,6 +132,31 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 				},
 			})
 			thinkingOpen = false
+		}
+
+		// emitFinalAnswer writes one terminal/delta AgentFinalAnswer event.
+		// On the Done=true emit, the running CitationIndex is attached so
+		// the IM layer can pair each [[cite:N]] token with the chunk the
+		// audit handler will later log against (Build #30 B4).
+		emitFinalAnswer := func(content string, done bool) {
+			data := event.AgentFinalAnswerData{
+				Content: content,
+				Done:    done,
+			}
+			if done {
+				if index := citations.Index(); index != nil {
+					data.CitationIndex = index
+				}
+				// Persist on PipelineState for downstream plugins (audit
+				// handler reads chatManage.CitationIndex).
+				chatManage.CitationIndex = citations.Index()
+			}
+			_ = eventBus.Emit(ctx, types.Event{
+				ID:        answerID,
+				Type:      types.EventType(event.EventAgentFinalAnswer),
+				SessionID: chatManage.SessionID,
+				Data:      data,
+			})
 		}
 
 		// flushDecoders drains any handle suffix the stream decoders held back to
@@ -146,12 +176,11 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 			}
 			answerTail := answerDecoder.Flush()
 			if answerTail != "" {
-				_ = eventBus.Emit(ctx, types.Event{
-					ID:        answerID,
-					Type:      types.EventType(event.EventAgentFinalAnswer),
-					SessionID: chatManage.SessionID,
-					Data:      event.AgentFinalAnswerData{Content: answerTail},
-				})
+				tail := citations.Rewrite(answerTail)
+				// flushDecoders is teardown, not the terminal Done event.
+				// Suppress the CitationIndex here so it only ships once, on
+				// the explicit Done=true emit below.
+				emitFinalAnswer(tail, false)
 			}
 		}
 
@@ -230,15 +259,7 @@ func (p *PluginChatCompletionStream) OnEvent(ctx context.Context,
 						answerCompleted = true
 					}
 					closeThinking()
-					eventBus.Emit(ctx, types.Event{
-						ID:        answerID,
-						Type:      types.EventType(event.EventAgentFinalAnswer),
-						SessionID: chatManage.SessionID,
-						Data: event.AgentFinalAnswerData{
-							Content: response.Content,
-							Done:    response.Done,
-						},
-					})
+					emitFinalAnswer(citations.Rewrite(response.Content), response.Done)
 				}
 			}
 		}

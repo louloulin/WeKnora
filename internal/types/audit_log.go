@@ -186,6 +186,15 @@ const (
 	AuditActionFAQImportStarted   AuditAction = "faq.import_started"
 	AuditActionFAQImportCompleted AuditAction = "faq.import_completed"
 	AuditActionFAQImportFailed    AuditAction = "faq.import_failed"
+
+	// Build #30 — chat pipeline citation access tracking. Fires once per
+	// `[[cite:N]]` token the user opens or every time a chat answer is
+	// committed that cites one or more chunks. The audit row is
+	// fire-and-forget (Build #30 D9) — a transient outage here must
+	// never block the chat response. Details JSON always carries the
+	// originating chat message_id (source_message_id) so the WikiAuditDrawer
+	// chip (Build #25) can pivot back to the originating turn.
+	AuditActionChatCitationAccessed AuditAction = "chat.citation_accessed"
 )
 
 // AuditOutcome separates asynchronous acceptance from terminal business

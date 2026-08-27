@@ -91,6 +91,9 @@ type RouterParams struct {
 	WikiTemplateHandler          *handler.WikiTemplateHandler
 	WikiSearchV2Handler          *handler.WikiSearchV2Handler
 	MemoryHandler                *handler.MemoryHandler
+	// CitationLogHandler — Build #30 B4. Wired optionally so the
+	// citation-log route is registered when the handler is present.
+	CitationLogHandler           *handler.CitationLogHandler
 }
 
 // NewRouter 创建新的路由
@@ -265,7 +268,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterKnowledgeRoutes(v1, params.KnowledgeHandler, rbacGuards)
 		RegisterFAQRoutes(v1, params.FAQHandler, rbacGuards)
 		RegisterChunkRoutes(v1, params.ChunkHandler, rbacGuards)
-		RegisterSessionRoutes(v1, params.SessionHandler, params.MessageSuggestionHandler, rbacGuards)
+		RegisterSessionRoutes(v1, params.SessionHandler, params.MessageSuggestionHandler, params.CitationLogHandler, rbacGuards)
 		RegisterChatRoutes(v1, params.SessionHandler, rbacGuards)
 		RegisterMessageRoutes(v1, params.MessageHandler, rbacGuards)
 		RegisterModelRoutes(v1, params.ModelHandler, params.ModelCredentialsHandler, rbacGuards)

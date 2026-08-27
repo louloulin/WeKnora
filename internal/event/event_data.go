@@ -195,6 +195,14 @@ type AgentFinalAnswerData struct {
 	Content    string `json:"content"`
 	Done       bool   `json:"done"`
 	IsFallback bool   `json:"is_fallback,omitempty"` // True when response is a fallback (no knowledge base match)
+
+	// CitationIndex (Build #30) is the user-visible citation index paired
+	// with this answer. Position N (1-indexed) maps to CitationIndex[N-1],
+	// and the rewritten Content carries the literal token [[cite:N]] in
+	// place of the original `<kb chunk_id="..." />` tag. Shipped only on
+	// the terminal event (Done=true) when citations are enabled and at
+	// least one chunk was cited; intermediate chunks omit the field.
+	CitationIndex interface{} `json:"citation_index,omitempty"`
 }
 
 // AgentReflectionData represents agent reflection data
@@ -203,6 +211,22 @@ type AgentReflectionData struct {
 	Content    string `json:"content"`
 	Iteration  int    `json:"iteration"`
 	Done       bool   `json:"done"` // Whether streaming is complete
+}
+
+// ReflectionData is the streaming notification emitted by the fast chat
+// pipeline's PluginReflection (Build #30). It tells the client that the
+// pipeline decided to re-retrieve and the answer is about to stream. Reason
+// comes from the heuristic: "low_top_score" (top-1 score below threshold),
+// "empty_results" (no chunks at all), or "model_explicit" (model emitted a
+// reflection tool call — reserved for B30.1). Done=true means reflection has
+// finished evaluating and the final answer is about to stream.
+type ReflectionData struct {
+	Reason         string                 `json:"reason"`
+	AdjustedParams map[string]interface{} `json:"adjusted_params,omitempty"`
+	OriginalTopK   int                    `json:"original_top_k"`
+	OriginalThresh float64                `json:"original_threshold"`
+	Iteration      int                    `json:"iteration"`
+	Done           bool                   `json:"done"`
 }
 
 // SessionTitleData represents session title update data

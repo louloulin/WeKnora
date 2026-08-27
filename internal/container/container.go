@@ -334,6 +334,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// Expose Gate as MCPApproval interface so AgentService and others can depend on the abstraction.
 	must(container.Provide(func(g *approval.Gate) approval.MCPApproval { return g }))
 	must(container.Provide(service.NewAgentService))
+	// Build #30 — chat tool cache. Per-tenant LRU + TTL keyed by
+	// tool_name + canonical_json(args) + tenant_id (D5). Tool
+	// executors depend on this interface so multi-turn chat pipelines
+	// can memoize repeat calls within the session lifetime.
+	must(container.Provide(service.NewToolCache))
 
 	// Session service (depends on agent service)
 	// SessionService is created after AgentService and passes itself to AgentService.CreateAgentEngine when needed
@@ -422,6 +427,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Invoke(chatpipeline.NewPluginSearchParallel))
 	must(container.Invoke(chatpipeline.NewPluginWikiBoost))
 	must(container.Invoke(chatpipeline.NewPluginMemoryAffinity))
+	must(container.Invoke(chatpipeline.NewPluginReflection))
 	logger.Debugf(ctx, "[Container] Chat pipeline plugins registered")
 
 	// HTTP handlers layer
@@ -438,6 +444,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(session.NewHandler))
 	must(container.Provide(handler.NewMessageHandler))
 	must(container.Provide(handler.NewMessageSuggestionHandler))
+	must(container.Provide(handler.NewCitationLogHandler))
 	must(container.Provide(handler.NewModelHandler))
 	must(container.Provide(handler.NewSandboxConfigHandler))
 	must(container.Provide(handler.NewEvaluationHandler))

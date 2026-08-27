@@ -134,6 +134,53 @@ type PipelineState struct {
 	// UsedMemories mirrors MemoryPrompt in structured form so the answer can
 	// tell the user which memories it saw.
 	UsedMemories UsedMemories `json:"-"`
+
+	// ReflectionAttempted counts how many reflection re-retrievals have fired
+	// during this turn. 0 = no reflection triggered, 1 = one reflection
+	// triggered (Build #30 D2 caps at 1 to prevent loops). Set by
+	// chat_pipeline.PluginReflection.
+	ReflectionAttempted int `json:"reflection_attempted,omitempty"`
+	// ReflectionContext carries the pre/post retrieval params when reflection
+	// fires. nil when no reflection occurred. Set by
+	// chat_pipeline.PluginReflection when the rerank top-1 score falls below the
+	// threshold or the search produced an empty result set.
+	ReflectionContext *ReflectionContext `json:"reflection_context,omitempty"`
+
+	// CitationIndex is the user-visible citation index built by the chat
+	// pipeline's attachCitations pass. Position N (1-indexed) maps to
+	// CitationIndex[N-1]; the rendered answer replaces each <kb
+	// chunk_id="..." /> tag with the literal token [[cite:N]] so the
+	// frontend can render clickable citation chips. nil when citations are
+	// disabled (CitationsEnabled() == false) or no chunks were cited.
+	// Built by chat_pipeline.attachCitations during the
+	// CHAT_COMPLETION_STREAM stage and shipped alongside the answer via the
+	// final StreamResponse.Data["citation_index"].
+	CitationIndex []CitationEntry `json:"-"`
+}
+
+// CitationEntry is one row of the user-visible citation index. The Nth
+// citation in the answer (1-indexed) maps to CitationIndex[N-1]. ChunkID is
+// the durable identifier the frontend uses to fetch the source passage;
+// KnowledgeID / KnowledgeBaseID are convenience fields for tooltips and
+// cross-turn audit linkage (Build #30 B4 wires the citation_log handler to
+// record clicks against this row).
+type CitationEntry struct {
+	ChunkID         string `json:"chunk_id"`
+	KnowledgeID     string `json:"knowledge_id,omitempty"`
+	KnowledgeBaseID string `json:"knowledge_base_id,omitempty"`
+	Title           string `json:"title,omitempty"`
+}
+
+// ReflectionContext is the diff between pre- and post-reflection retrieval
+// parameters. Persisted on PipelineState so downstream plugin work can see the
+// adjusted values (top-k expanded by 50%, vector threshold loosened by 0.05
+// per Build #30 D3 — without modifying RerankModelID).
+type ReflectionContext struct {
+	Reason         string  `json:"reason"`
+	OriginalTopK   int     `json:"original_top_k"`
+	OriginalThresh float64 `json:"original_threshold"`
+	NewTopK        int     `json:"new_top_k"`
+	NewThresh      float64 `json:"new_threshold"`
 }
 
 // PipelineContext holds runtime context for the current pipeline execution.
@@ -282,6 +329,12 @@ const (
 	CHAT_COMPLETION        EventType = "chat_completion"
 	CHAT_COMPLETION_STREAM EventType = "chat_completion_stream"
 	FILTER_TOP_K           EventType = "filter_top_k"
+	// REFLECTION is Build #30's reflection stage — chat_pipeline.PluginReflection
+	// registers on it and runs the heuristic that decides whether to re-retrieve
+	// (top-1 score below threshold OR empty SearchResult). Distinct from
+	// event.EventAgentReflection ("reflection") which is the streaming notification
+	// sent to the client when reflection fires.
+	REFLECTION EventType = "chat_reflection"
 )
 
 // PipelineBuilder dynamically assembles a pipeline as an ordered list of EventTypes.

@@ -43,6 +43,7 @@ func RegisterSessionRoutes(
 	r *gin.RouterGroup,
 	handler *session.Handler,
 	suggestionHandler *handler.MessageSuggestionHandler,
+	citationLogHandler *handler.CitationLogHandler,
 	g *rbacGuards,
 ) {
 	// Sessions are per-user chat state, not knowledge-base content. The
@@ -78,6 +79,17 @@ func RegisterSessionRoutes(
 			sessions.GET("/:id/messages/:message_id/suggestions", suggestionHandler.Get)
 			sessions.POST("/:session_id/messages/:message_id/suggestions", suggestionHandler.Ensure)
 			sessions.POST("/:session_id/suggestion-events", suggestionHandler.RecordEvent)
+		}
+
+		// Build #30 B4 — chat citation access tracking. The chat answer
+		// pipeline rewrites every `<kb>` reference as a `[[cite:N]]`
+		// token; clicking the token (or finalising an answer that cited
+		// at least one chunk) posts here so the access lands a row in
+		// audit_logs with scope=knowledge_base + correlation_id tied
+		// to the originating turn. The handler is fire-and-forget so
+		// a transient audit outage cannot break the chat UX (D9).
+		if citationLogHandler != nil {
+			sessions.POST("/:session_id/citation-log", citationLogHandler.LogCitationAccess)
 		}
 
 		// Skill-generated file artifacts. The list endpoints only expose
