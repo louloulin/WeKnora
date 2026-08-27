@@ -760,19 +760,29 @@ type WikiBacklinksCacheRepository interface {
 // variants) to the slug set whose cache must be wiped. Keeping the
 // mapping outside the service means tests can drive it without
 // touching the DB; the service just calls Resolve + Invalidate.
+//
+// Build #28 — Resolve now also returns the picked SlugSetStrategy;
+// Invalidate takes it as a parameter and stamps it into the audit
+// row's details.strategy JSON field. The (op × strategy) matrix is
+// declared once in slugSetStrategies and exhaustively tested by
+// TestInvalidatorResolve_AllOpsHaveStrategy.
 type WikiBacklinksCacheInvalidator interface {
 	// Resolve returns the slug set whose cache row must be wiped for
-	// the given op. The implementation lives next to
-	// WikiPageService.CreatePage / UpdatePage / DeletePage / MovePage
-	// so it can read the just-written wiki_page row directly. Always
-	// returns a non-nil slice (possibly empty) — callers don't need
-	// a nil check.
-	Resolve(ctx context.Context, op types.BacklinkCacheInvalidateOp, kbID string, slug string) ([]string, error)
+	// the given op + the SlugSetStrategy that explains the choice.
+	// The implementation lives next to WikiPageService.CreatePage /
+	// UpdatePage / DeletePage / MovePage so it can read the just-
+	// written wiki_page row directly. Always returns a non-nil slice
+	// (possibly empty) — callers don't need a nil check.
+	//
+	// Panics on an unregistered op (Build #28 D1) — silent fallback
+	// was the production failure mode this rewrite fixes.
+	Resolve(ctx context.Context, op types.BacklinkCacheInvalidateOp, kbID string, slug string) ([]string, types.SlugSetStrategy, error)
 
-	// Invalidate runs DELETE for the given slug set. Returns the
-	// affected count; never fails — warnings only — because the read
-	// path recomputes on miss anyway.
-	Invalidate(ctx context.Context, req types.BacklinkCacheInvalidateRequest) (int64, error)
+	// Invalidate runs DELETE for the given slug set + writes the
+	// audit row tagged with `strategy`. Returns the affected count;
+	// never fails — warnings only — because the read path recomputes
+	// on miss anyway.
+	Invalidate(ctx context.Context, req types.BacklinkCacheInvalidateRequest, strategy types.SlugSetStrategy) (int64, error)
 }
 
 // WikiAclRepository is the read surface WikiAuditService needs from

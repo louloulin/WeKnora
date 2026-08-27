@@ -1565,6 +1565,51 @@ const (
 	BacklinkCacheInvalidateBatchStatus BacklinkCacheInvalidateOp = "batch_status"
 )
 
+// SlugSetStrategy labels which slug-set rule an invalidation picked.
+// Build #28 — every BacklinkCacheInvalidateOp maps to exactly one of
+// these five values via the slugSetStrategies table in
+// service/wiki_backlinks_cache.go. The strategy is then written into
+// the wiki_backlinks_cache_invalidation_log.details.strategy JSON
+// field so operators can answer "why did this wipe pick these slugs"
+// from the audit log alone, without grep'ing the source.
+//
+// Adding a new op requires adding a row to slugSetStrategies — an
+// unrecognised op in Resolve panics (Build #28 D1) so the missing
+// registration surfaces in dev, not silently as a partial wipe.
+type SlugSetStrategy string
+
+const (
+	// SlugSetStrategySelf — wipe only the slug itself. Used by
+	// BatchStatus: status changes don't reshape backlink topology,
+	// so the slug's cache row is the only stale one.
+	SlugSetStrategySelf SlugSetStrategy = "self"
+
+	// SlugSetStrategySelfOutgoing — wipe slug ∪ slug.out_links.
+	// Used by Create/Update/MovePage + BatchMove: the slug's own
+	// cache is stale, AND its out-link targets' in-link counts
+	// changed, so their cached graphs are stale too.
+	SlugSetStrategySelfOutgoing SlugSetStrategy = "self_outgoing"
+
+	// SlugSetStrategySelfIncoming — wipe slug ∪ slug.in_links.
+	// Used by DeletePage / BatchDelete: slug is gone, its source
+	// pages lost a backlink, so their cached graphs are stale.
+	SlugSetStrategySelfIncoming SlugSetStrategy = "self_incoming"
+
+	// SlugSetStrategyKBWide — wipe every cache row in the KB.
+	// Used by cleanup_sweep. Listed here for registry completeness
+	// even though the sweep path doesn't go through
+	// wikiBacklinksCacheInvalidator.Resolve (CleanupService owns it).
+	SlugSetStrategyKBWide SlugSetStrategy = "kb_wide"
+
+	// SlugSetStrategyReverseLookupIndexed — wipe the slug set
+	// returned by wiki_backlinks_cache_backref (Build #26 inverted
+	// index). Used by acl_change: a private-mode change on page A
+	// must wipe every cache row whose graph mentions A. The reverse-
+	// lookup path doesn't go through Resolve either — the acl service
+	// calls FindReferencingSlugs directly.
+	SlugSetStrategyReverseLookupIndexed SlugSetStrategy = "reverse_lookup_indexed"
+)
+
 // BacklinkCacheInvalidateRequest is the input to
 // WikiPageService.InvalidateBacklinksCache. AffectedSlugs is the slug
 // set the caller has already resolved (e.g. A + A.out_links for

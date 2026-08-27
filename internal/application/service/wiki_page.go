@@ -163,7 +163,7 @@ func (s *wikiPageService) CreatePage(ctx context.Context, page *types.WikiPage) 
 	// to it as a backlink target; wipe the cache for [self] ∪ out_links
 	// so the next panel read recomputes direct + indirect counts.
 	if s.cacheRepo != nil && s.cacheInvalidator != nil {
-		if slugs, err := s.resolveBacklinkInvalidation(ctx,
+		if slugs, _ := s.resolveBacklinkInvalidation(ctx,
 			types.BacklinkCacheInvalidateCreatePage,
 			page.KnowledgeBaseID, page.Slug); err == nil {
 			s.InvalidateBacklinksCache(ctx, types.BacklinkCacheInvalidateRequest{
@@ -179,15 +179,17 @@ func (s *wikiPageService) CreatePage(ctx context.Context, page *types.WikiPage) 
 
 // resolveBacklinkInvalidation resolves the affected-slug set for an op.
 // Wraps the invalidator's Resolve so the write-time hooks can stay
-// single-line. Returns the slug list and a non-nil error only on
-// contract violation (unknown op) — pure no-ops (empty kb/slug)
-// return ([], nil).
+// single-line. Returns the slug list and the picked SlugSetStrategy.
 //
 // Build #21.
+// Build #28 — return tuple now carries strategy; the underlying
+// Resolve panics on unknown ops (D1) so any caller that passes an
+// unregistered op crashes here, not in production.
 func (s *wikiPageService) resolveBacklinkInvalidation(
 	ctx context.Context, op types.BacklinkCacheInvalidateOp, kbID, slug string,
-) ([]string, error) {
-	return s.cacheInvalidator.Resolve(ctx, op, kbID, slug)
+) ([]string, types.SlugSetStrategy) {
+	slugs, strategy, _ := s.cacheInvalidator.Resolve(ctx, op, kbID, slug)
+	return slugs, strategy
 }
 //
 // Version bump policy: the `version` column is intended to track the user-
@@ -283,7 +285,7 @@ func (s *wikiPageService) UpdatePage(ctx context.Context, page *types.WikiPage) 
 	// out_links so the next panel read sees fresh direct + indirect
 	// counts (old targets lost [slug] in removeInLinks above).
 	if s.cacheRepo != nil && s.cacheInvalidator != nil {
-		if slugs, err := s.resolveBacklinkInvalidation(ctx,
+		if slugs, _ := s.resolveBacklinkInvalidation(ctx,
 			types.BacklinkCacheInvalidateUpdatePage,
 			existing.KnowledgeBaseID, existing.Slug); err == nil {
 			s.InvalidateBacklinksCache(ctx, types.BacklinkCacheInvalidateRequest{
@@ -533,7 +535,7 @@ func (s *wikiPageService) DeletePage(ctx context.Context, kbID string, slug stri
 	// [self] ∪ in_links so the next panel read recomputes from the
 	// remaining graph (removeInLinks above already trimmed the targets).
 	if s.cacheRepo != nil && s.cacheInvalidator != nil {
-		if slugs, err := s.resolveBacklinkInvalidation(ctx,
+		if slugs, _ := s.resolveBacklinkInvalidation(ctx,
 			types.BacklinkCacheInvalidateDeletePage,
 			kbID, slug); err == nil {
 			s.InvalidateBacklinksCache(ctx, types.BacklinkCacheInvalidateRequest{
@@ -1482,6 +1484,12 @@ func decodeCacheRow(row *types.WikiBacklinksCacheRow) (*types.WikiBacklinkGraph,
 // just means the next read recomputes on miss, so the system self-heals.
 //
 // Build #21.
+// Build #23 — stamps a metric + audit row on every call.
+// Build #28 — resolves the SlugSetStrategy from the slugSetStrategies
+// registry (panic on unknown op, D1) and delegates the actual wipe +
+// audit-log write to the invalidator. The audit row's Details JSON now
+// carries a `strategy` field so operators can read "what rule picked
+// this slug set" off the log alone.
 func (s *wikiPageService) InvalidateBacklinksCache(
 	ctx context.Context,
 	req types.BacklinkCacheInvalidateRequest,
@@ -1489,47 +1497,25 @@ func (s *wikiPageService) InvalidateBacklinksCache(
 	if s.cacheRepo == nil || req.KbID == "" || len(req.AffectedSlugs) == 0 {
 		return
 	}
-	// Build #23 D3: increment invalidations counter with op label, then
-	// write the audit row. Both are best-effort — losing a counter tick
-	// or a log row must not block the cache DELETE.
+	// Build #28: look up the strategy from the registry. Unknown ops
+	// panic — same D1 contract as Resolve; missing a registration
+	// surfaces in dev, not as a silent partial wipe.
+	strategy, ok := slugSetStrategies[req.Op]
+	if !ok {
+		panic(fmt.Sprintf(
+			"wikiPageService.InvalidateBacklinksCache: op %q not registered in slugSetStrategies; "+
+				"add it to the table in wiki_backlinks_cache.go before using it (Build #28 D1)",
+			req.Op,
+		))
+	}
+	// Build #23 D3: increment invalidations counter with op label so
+	// observability dashboards see every public API call. The actual
+	// wipe + audit row are delegated to the invalidator.
 	metricCacheInvalidationsTotal.WithLabelValues(string(req.Op)).Inc()
-	sourceEventID := wikiSourceEventIDFromContext(ctx)
-	actorUserID := wikiActorUserIDFromContext(ctx)
-	affected, err := s.cacheRepo.Delete(ctx, req.KbID, req.AffectedSlugs)
-	if err != nil {
-		logger.Warnf(ctx,
-			"wiki backlinks cache wipe failed (op=%s kb=%s slugs=%v): %v",
-			req.Op, req.KbID, req.AffectedSlugs, err)
+	if s.cacheInvalidator == nil {
 		return
 	}
-	if affected > 0 {
-		logger.Warnf(ctx,
-			"wiki backlinks cache wiped %d rows (op=%s kb=%s slugs=%v)",
-			affected, req.Op, req.KbID, req.AffectedSlugs)
-	}
-	// Best-effort: persist the audit row. Details captures the full slug
-	// set so operators can grep the log for "what got wiped" without
-	// joining against audit_logs.
-	detailsJSON, _ := json.Marshal(map[string]any{
-		"slugs": req.AffectedSlugs,
-		"op":    string(req.Op),
-	})
-	if logErr := s.cacheRepo.LogInvalidation(ctx, &types.WikiBacklinksCacheInvalidationLogEntry{
-		KbID:          req.KbID,
-		Slug:          req.AffectedSlugs[0], // first slug as the canonical "primary" key
-		Op:            string(req.Op),
-		ActorUserID:   actorUserID,
-		// Renamed from SourceEventID in Build #25 — column is now
-		// `correlation_id` to match the 4-source audit join key. The
-		// helper above still returns the X-Request-ID from middleware.
-		CorrelationID: sourceEventID,
-		AffectedCount: int(affected),
-		Details:       string(detailsJSON),
-	}); logErr != nil {
-		logger.Warnf(ctx,
-			"wiki backlinks cache invalidation log insert failed (op=%s kb=%s): %v",
-			req.Op, req.KbID, logErr)
-	}
+	_, _ = s.cacheInvalidator.Invalidate(ctx, req, strategy)
 }
 
 // GetPageBacklinksCacheStatus returns the slim metadata for one slug's
@@ -2778,7 +2764,7 @@ func (s *wikiPageService) MovePage(
 	// panel uses for display. Wipe [slug] ∪ out_links defensively; the
 	// over-invalidate is harmless because the next read recomputes.
 	if s.cacheRepo != nil && s.cacheInvalidator != nil {
-		if slugs, err := s.resolveBacklinkInvalidation(ctx,
+		if slugs, _ := s.resolveBacklinkInvalidation(ctx,
 			types.BacklinkCacheInvalidateMovePage,
 			kbID, slug); err == nil {
 			s.InvalidateBacklinksCache(ctx, types.BacklinkCacheInvalidateRequest{
@@ -2861,7 +2847,7 @@ func (s *wikiPageService) BatchMovePages(
 	if s.cacheRepo != nil && len(clean) > 0 {
 		slugs := make([]string, 0, len(clean))
 		for _, slug := range clean {
-			if list, err := s.resolveBacklinkInvalidation(ctx,
+			if list, _ := s.resolveBacklinkInvalidation(ctx,
 				types.BacklinkCacheInvalidateBatchMove, kbID, slug); err == nil {
 				slugs = append(slugs, list...)
 			}
@@ -2910,7 +2896,7 @@ func (s *wikiPageService) BatchDeletePages(
 	if s.cacheRepo != nil && len(clean) > 0 {
 		all := make([]string, 0, len(clean))
 		for _, slug := range clean {
-			if list, err := s.resolveBacklinkInvalidation(ctx,
+			if list, _ := s.resolveBacklinkInvalidation(ctx,
 				types.BacklinkCacheInvalidateBatchDelete, kbID, slug); err == nil {
 				all = append(all, list...)
 			}
@@ -2975,7 +2961,7 @@ func (s *wikiPageService) BatchUpdatePageStatus(
 		// header chips. Per-row wipe keeps the cache coherent; we also
 		// do a batch-level coalesced wipe below.
 		if s.cacheRepo != nil && s.cacheInvalidator != nil {
-			if list, err := s.resolveBacklinkInvalidation(ctx,
+			if list, _ := s.resolveBacklinkInvalidation(ctx,
 				types.BacklinkCacheInvalidateBatchStatus, kbID, slug); err == nil && len(list) > 0 {
 				s.InvalidateBacklinksCache(ctx, types.BacklinkCacheInvalidateRequest{
 					KbID:          kbID,
@@ -2994,7 +2980,7 @@ func (s *wikiPageService) BatchUpdatePageStatus(
 	if s.cacheRepo != nil && len(result.Succeeded) > 0 {
 		all := make([]string, 0, len(result.Succeeded))
 		for _, slug := range result.Succeeded {
-			if list, err := s.resolveBacklinkInvalidation(ctx,
+			if list, _ := s.resolveBacklinkInvalidation(ctx,
 				types.BacklinkCacheInvalidateBatchStatus, kbID, slug); err == nil {
 				all = append(all, list...)
 			}

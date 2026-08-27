@@ -239,10 +239,10 @@ func TestInvalidateCache_LogsAuditRow(t *testing.T) {
 	repo.seed("kb-1", "beta", time.Now().Add(-time.Hour))
 	repo.seed("kb-1", "gamma", time.Now().Add(-time.Hour))
 
-	svc := &wikiPageService{cacheRepo: repo}
+	svc := &wikiPageService{cacheRepo: repo, cacheInvalidator: newWikiBacklinksCacheInvalidator(nil, repo)}
 	svc.InvalidateBacklinksCache(context.Background(), types.BacklinkCacheInvalidateRequest{
 		KbID:           "kb-1",
-		Op:             types.BacklinkCacheInvalidateUpdate,
+		Op:             types.BacklinkCacheInvalidateUpdatePage,
 		AffectedSlugs:  []string{"alpha", "beta", "gamma"},
 	})
 
@@ -256,7 +256,7 @@ func TestInvalidateCache_LogsAuditRow(t *testing.T) {
 	if got.KbID != "kb-1" {
 		t.Errorf("audit kb_id = %q, want kb-1", got.KbID)
 	}
-	if got.Op != string(types.BacklinkCacheInvalidateUpdate) {
+	if got.Op != string(types.BacklinkCacheInvalidateUpdatePage) {
 		t.Errorf("audit op = %q, want update", got.Op)
 	}
 	if got.AffectedCount != 3 {
@@ -276,10 +276,10 @@ func TestInvalidateCache_LogsAuditRow(t *testing.T) {
 // per-write-path invalidations.
 func TestInvalidateCache_LogsAllOpsDistinct(t *testing.T) {
 	ops := []types.BacklinkCacheInvalidateOp{
-		types.BacklinkCacheInvalidateCreate,
-		types.BacklinkCacheInvalidateUpdate,
-		types.BacklinkCacheInvalidateDelete,
-		types.BacklinkCacheInvalidateMove,
+		types.BacklinkCacheInvalidateCreatePage,
+		types.BacklinkCacheInvalidateUpdatePage,
+		types.BacklinkCacheInvalidateDeletePage,
+		types.BacklinkCacheInvalidateMovePage,
 		types.BacklinkCacheInvalidateBatchMove,
 		types.BacklinkCacheInvalidateBatchDelete,
 		types.BacklinkCacheInvalidateBatchStatus,
@@ -288,7 +288,7 @@ func TestInvalidateCache_LogsAllOpsDistinct(t *testing.T) {
 	for _, op := range ops {
 		repo := newObsFakeRepo()
 		repo.seed("kb-1", "alpha", time.Now().Add(-time.Hour))
-		svc := &wikiPageService{cacheRepo: repo}
+		svc := &wikiPageService{cacheRepo: repo, cacheInvalidator: newWikiBacklinksCacheInvalidator(nil, repo)}
 		svc.InvalidateBacklinksCache(context.Background(), types.BacklinkCacheInvalidateRequest{
 			KbID:          "kb-1",
 			Op:            op,
@@ -308,10 +308,10 @@ func TestInvalidateCache_LogsAllOpsDistinct(t *testing.T) {
 // log row. Matches the existing Build #21 semantics.
 func TestInvalidateCache_EmptySlugsSkipsAudit(t *testing.T) {
 	repo := newObsFakeRepo()
-	svc := &wikiPageService{cacheRepo: repo}
+	svc := &wikiPageService{cacheRepo: repo, cacheInvalidator: newWikiBacklinksCacheInvalidator(nil, repo)}
 	svc.InvalidateBacklinksCache(context.Background(), types.BacklinkCacheInvalidateRequest{
 		KbID:          "kb-1",
-		Op:            types.BacklinkCacheInvalidateUpdate,
+		Op:            types.BacklinkCacheInvalidateUpdatePage,
 		AffectedSlugs: nil,
 	})
 	if repo.deleteCalls != 0 {
@@ -329,13 +329,13 @@ func TestInvalidateCache_EmptySlugsSkipsAudit(t *testing.T) {
 func TestInvalidateCache_XRequestIDPassthrough(t *testing.T) {
 	repo := newObsFakeRepo()
 	repo.seed("kb-1", "alpha", time.Now().Add(-time.Hour))
-	svc := &wikiPageService{cacheRepo: repo}
+	svc := &wikiPageService{cacheRepo: repo, cacheInvalidator: newWikiBacklinksCacheInvalidator(nil, repo)}
 
 	const rid = "test-req-abc-123"
 	ctx := context.WithValue(context.Background(), types.RequestIDContextKey, rid)
 	svc.InvalidateBacklinksCache(ctx, types.BacklinkCacheInvalidateRequest{
 		KbID:          "kb-1",
-		Op:            types.BacklinkCacheInvalidateCreate,
+		Op:            types.BacklinkCacheInvalidateCreatePage,
 		AffectedSlugs: []string{"alpha"},
 	})
 
@@ -468,7 +468,7 @@ func TestListBacklinksCacheStatuses_AggregatesFromRepo(t *testing.T) {
 	repo.seed("kb-1", "beta", now.Add(-2*time.Hour))
 	repo.seed("kb-2", "gamma", now.Add(-3*time.Hour))
 
-	svc := &wikiPageService{cacheRepo: repo}
+	svc := &wikiPageService{cacheRepo: repo, cacheInvalidator: newWikiBacklinksCacheInvalidator(nil, repo)}
 	resp, err := svc.ListBacklinksCacheStatuses(context.Background(), "kb-1", 50, 0)
 	if err != nil {
 		t.Fatalf("ListBacklinksCacheStatuses: %v", err)

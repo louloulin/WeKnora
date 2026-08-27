@@ -2,11 +2,37 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
+
+// slugSetStrategies is the Build #28 registry — every known op maps to
+// exactly one SlugSetStrategy. The 9-op × 1-strategy cells are
+// exhaustively tested by TestInvalidatorResolve_AllOpsHaveStrategy
+// in wiki_backlinks_cache_invalidator_test.go; adding an op without
+// registering it panics at Resolve time (D1 — no silent fallback).
+//
+// Two ops (cleanup_sweep, acl_change) never call into Resolve —
+// CleanupService and the acl service own their wipe paths directly.
+// They're listed anyway so the registry can flag future callers that
+// try to send them through the invalidator's standard dispatch and
+// forces an explicit decision rather than a "well, slug only" silent
+// fallback.
+var slugSetStrategies = map[types.BacklinkCacheInvalidateOp]types.SlugSetStrategy{
+	types.BacklinkCacheInvalidateCreatePage:  types.SlugSetStrategySelfOutgoing,
+	types.BacklinkCacheInvalidateUpdatePage:  types.SlugSetStrategySelfOutgoing,
+	types.BacklinkCacheInvalidateDeletePage:  types.SlugSetStrategySelfIncoming,
+	types.BacklinkCacheInvalidateMovePage:    types.SlugSetStrategySelfOutgoing,
+	types.BacklinkCacheInvalidateBatchMove:   types.SlugSetStrategySelfOutgoing,
+	types.BacklinkCacheInvalidateBatchDelete: types.SlugSetStrategySelfIncoming,
+	types.BacklinkCacheInvalidateBatchStatus: types.SlugSetStrategySelf,
+	types.BacklinkCacheInvalidateSweep:       types.SlugSetStrategyKBWide,
+	types.BacklinkCacheInvalidateAclChange:   types.SlugSetStrategyReverseLookupIndexed,
+}
 
 // wikiBacklinksCacheInvalidator is the service-layer implementation
 // of WikiBacklinksCacheInvalidator (Build #21). It only knows the
@@ -14,21 +40,15 @@ import (
 // repository (WikiBacklinksCacheRepository) which knows the table
 // layout.
 //
-// The invalidator does NOT depend on the WikiPageRepository directly:
-// every public method takes (op, kbID, slug) and lets the caller
-// (WikiPageService.CreatePage / UpdatePage / ...) supply the slug set
-// it has already resolved from the just-written wiki_pages row. This
-// keeps the dependency graph one-way:
-//
-//   WikiPageService ──> CacheInvalidator ──> CacheRepository
-//                              │
-//                              └── reads from WikiPageRepo (for in_links / out_links)
-//
-// In tests the WikiPageRepo is replaced by an in-memory stub so the
-// invalidator's slug-resolution rules can be driven without a DB.
+// Build #28 — Resolve now returns the picked SlugSetStrategy as a
+// second value; Invalidate takes it as a parameter and stamps it
+// into the audit row's details.strategy JSON field. The
+// (op × strategy) matrix is the single source of truth in
+// slugSetStrategies — the switch in Resolve is gone, replaced by a
+// table lookup + per-strategy helper.
 type wikiBacklinksCacheInvalidator struct {
-	pageRepo   interfaces.WikiPageRepository
-	cacheRepo  interfaces.WikiBacklinksCacheRepository
+	pageRepo  interfaces.WikiPageRepository
+	cacheRepo interfaces.WikiBacklinksCacheRepository
 }
 
 // newWikiBacklinksCacheInvalidator wires the invalidator into the DI
@@ -45,66 +65,76 @@ func newWikiBacklinksCacheInvalidator(
 }
 
 // Resolve returns the slug set whose cache row must be wiped for the
-// given op. The rule (from spec D5):
+// given op + the strategy label that explains the choice.
 //
-//   CreatePage(A)  → [A] ∪ A.out_links      (A is new; its out-links now
-//                                              resolve to it as a new target)
-//   UpdatePage(A)  → [A] ∪ A.out_links      (A.out_links might have changed;
-//                                              target pages' in_links changed
-//                                              transitively → their cache stale)
-//   DeletePage(A)  → [A] ∪ A.in_links       (A disappears; sources lose a backlink)
-//   MovePage(A old → new) → [old, new] ∪ new.out_links
-//                                            (slug rename: oldSlug no longer
-//                                              resolves; newSlug + its targets
-//                                              need fresh in_links counts)
-//   BatchMove(slugs[]) → uniq(slugs ∪ recursiveOutLinks(slugs))
-//   BatchDelete(slugs[]) → uniq(slugs ∪ recursiveInLinks(slugs))
-//   BatchStatus(slugs[]) → uniq(slugs)       (status doesn't affect backlink
-//                                              content; the slug itself may
-//                                              have lost visibility, but that's
-//                                              ACL-handled separately)
+// Build #21 rule set, lifted into the table-driven Build #28 form:
 //
-// `slug` is the primary slug affected; for batch ops we read each slug
-// and accumulate.
+//   CreatePage(A)  → [A] ∪ A.out_links        (self_outgoing)
+//   UpdatePage(A)  → [A] ∪ A.out_links        (self_outgoing)
+//   DeletePage(A)  → [A] ∪ A.in_links         (self_incoming)
+//   MovePage(A)    → [A] ∪ A.out_links        (self_outgoing)
+//                    (MovePage's caller has already prepended
+//                    oldSlug to the affected-slug set; we only see
+//                    newSlug here.)
+//   BatchMove(s)   → [s] ∪ s.out_links       (self_outgoing)
+//   BatchDelete(s) → [s] ∪ s.in_links        (self_incoming)
+//   BatchStatus(s) → [s]                      (self)
 //
-// The function never returns nil — callers can iterate / uniq safely.
+// `slug` is the primary slug affected; for batch ops the caller calls
+// Resolve once per slug. The function never returns nil — callers can
+// iterate / uniq safely.
+//
+// Unknown ops PANIC (D1). The previous switch had a default branch
+// that silently degraded to "slug only" — that branch is what
+// produced the production "missing wipe" incident class that
+// motivated Build #28.
 func (i *wikiBacklinksCacheInvalidator) Resolve(
 	ctx context.Context,
 	op types.BacklinkCacheInvalidateOp,
 	kbID string,
 	slug string,
-) ([]string, error) {
+) ([]string, types.SlugSetStrategy, error) {
 	if kbID == "" {
-		return []string{}, nil
+		return []string{}, "", nil
 	}
-	switch op {
-	case types.BacklinkCacheInvalidateCreatePage:
-		return i.slugWithOutLinks(ctx, kbID, slug), nil
-	case types.BacklinkCacheInvalidateUpdatePage:
-		return i.slugWithOutLinks(ctx, kbID, slug), nil
-	case types.BacklinkCacheInvalidateDeletePage:
-		return i.slugWithInLinks(ctx, kbID, slug), nil
-	case types.BacklinkCacheInvalidateMovePage:
-		// MovePage's caller already computed [oldSlug, newSlug]; the
-		// `slug` parameter here is the newSlug. Old-slug invalidation
-		// is the caller's responsibility (we never have the old slug
-		// post-rename).
-		return i.slugWithOutLinks(ctx, kbID, slug), nil
-	case types.BacklinkCacheInvalidateBatchMove:
-		return i.slugWithOutLinks(ctx, kbID, slug), nil
-	case types.BacklinkCacheInvalidateBatchDelete:
-		return i.slugWithInLinks(ctx, kbID, slug), nil
-	case types.BacklinkCacheInvalidateBatchStatus:
+	strategy, ok := slugSetStrategies[op]
+	if !ok {
+		panic(fmt.Sprintf(
+			"wikiBacklinksCacheInvalidator.Resolve: op %q not registered in slugSetStrategies; "+
+				"add it to the table in wiki_backlinks_cache.go before using it (Build #28 D1)",
+			op,
+		))
+	}
+	// self / self_outgoing / self_incoming run through Resolve because
+	// they need pageRepo. kb_wide / reverse_lookup_indexed are listed
+	// for registry completeness but their wipe paths live elsewhere —
+	// returning (nil, strategy, nil) lets the type system reflect
+	// "this op registered but didn't pick a slug set here" without
+	// forcing the caller to special-case them.
+	switch strategy {
+	case types.SlugSetStrategySelfOutgoing:
+		return i.slugWithOutLinks(ctx, kbID, slug), strategy, nil
+	case types.SlugSetStrategySelfIncoming:
+		return i.slugWithInLinks(ctx, kbID, slug), strategy, nil
+	case types.SlugSetStrategySelf:
 		if slug == "" {
-			return []string{}, nil
+			return []string{}, strategy, nil
 		}
-		return []string{slug}, nil
+		return []string{slug}, strategy, nil
+	case types.SlugSetStrategyKBWide, types.SlugSetStrategyReverseLookupIndexed:
+		// CleanupService / acl service own their wipe paths. Returning
+		// ([], strategy) here means a stray call through Resolve would
+		// wipe nothing — but the registry makes that visible. Defensive
+		// callers can still call Invalidate(req, strategy) and get the
+		// strategy stamped on the audit row.
+		return []string{}, strategy, nil
 	default:
-		log.Printf("wikiBacklinksCacheInvalidator.Resolve: unknown op %q (slug=%q), returning slug only", op, slug)
-		if slug == "" {
-			return []string{}, nil
-		}
-		return []string{slug}, nil
+		// Should be unreachable given the slugSetStrategies table
+		// already covered all 5 constants; defensive panic.
+		panic(fmt.Sprintf(
+			"wikiBacklinksCacheInvalidator.Resolve: strategy %q has no dispatch arm",
+			strategy,
+		))
 	}
 }
 
@@ -166,13 +196,23 @@ func (i *wikiBacklinksCacheInvalidator) slugWithInLinks(
 	return uniqNonEmpty(out)
 }
 
-// Invalidate runs the actual cache DELETE for the affected slug set.
+// Invalidate runs the actual cache DELETE for the affected slug set
+// and writes the audit row tagged with `strategy`. Strategy is
+// threaded into the audit row's details.strategy JSON field so
+// operators can read "what kind of wipe was this" off the log alone.
+//
+// Build #28 — the strategy parameter replaces the implicit "whatever
+// Resolve picked" the previous API forced callers to compute
+// separately. Now the contract is: caller runs Resolve(op, kbID,
+// slug) → (slugs, strategy), then Invalidate(req, strategy).
+//
 // Warnings are logged but never returned — a failed wipe just means
 // the next read recomputes on miss and writes the new value, so the
 // system self-heals on first read.
 func (i *wikiBacklinksCacheInvalidator) Invalidate(
 	ctx context.Context,
 	req types.BacklinkCacheInvalidateRequest,
+	strategy types.SlugSetStrategy,
 ) (int64, error) {
 	if req.KbID == "" || len(req.AffectedSlugs) == 0 {
 		return 0, nil
@@ -187,7 +227,41 @@ func (i *wikiBacklinksCacheInvalidator) Invalidate(
 		log.Printf("wikiBacklinksCacheInvalidator.Invalidate: %s op=%s kb=%s slugs=%v (cache row already absent)",
 			"noop", req.Op, req.KbID, req.AffectedSlugs)
 	}
+	// Best-effort: persist the audit row. Details now carries
+	// strategy so the reader can render "what rule wiped these
+	// slugs" without consulting the source. Errors are warn-logged
+	// but never returned — losing one audit row must not block the
+	// cache DELETE.
+	detailsJSON, _ := encodeInvalidationDetails(req.AffectedSlugs, string(req.Op), string(strategy))
+	sourceEventID := wikiSourceEventIDFromContext(ctx)
+	actorUserID := wikiActorUserIDFromContext(ctx)
+	if logErr := i.cacheRepo.LogInvalidation(ctx, &types.WikiBacklinksCacheInvalidationLogEntry{
+		KbID:          req.KbID,
+		Slug:          req.AffectedSlugs[0], // first slug as the canonical "primary" key
+		Op:            string(req.Op),
+		ActorUserID:   actorUserID,
+		CorrelationID: sourceEventID,
+		AffectedCount: int(affected),
+		Details:       string(detailsJSON),
+	}); logErr != nil {
+		log.Printf("wikiBacklinksCacheInvalidator.Invalidate: invalidation log insert failed (op=%s kb=%s): %v",
+			req.Op, req.KbID, logErr)
+	}
 	return affected, nil
+}
+
+// encodeInvalidationDetails marshals the audit row's Details JSON.
+// Build #28 — adds a `strategy` field so the audit log can answer
+// "what rule picked this slug set" without grep'ing the source. Old
+// rows pre-Build #28 lack the field; the reader is responsible for
+// the missing-key fallback (see WikiAuditService.ListAuditEvents).
+func encodeInvalidationDetails(slugs []string, op string, strategy string) ([]byte, error) {
+	payload := map[string]any{
+		"slugs":    slugs,
+		"op":       op,
+		"strategy": strategy,
+	}
+	return json.Marshal(payload)
 }
 
 // trimLink trims a single link entry. The Build #20 service stores
