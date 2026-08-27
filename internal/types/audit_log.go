@@ -195,6 +195,25 @@ const (
 	// originating chat message_id (source_message_id) so the WikiAuditDrawer
 	// chip (Build #25) can pivot back to the originating turn.
 	AuditActionChatCitationAccessed AuditAction = "chat.citation_accessed"
+
+	// Build #31 — eval system observability. Five new actions back the
+	// EvalRunner + dataset CRUD + badcase flow:
+	//   - eval.run_started: emitted when EvalRunner accepts a new run.
+	//   - eval.run_completed: emitted when EvalRunner finishes (success or fail).
+	//   - eval.badcase_flagged: emitted whenever a QA scores below the auto
+	//     threshold OR is manually promoted into the badcase library.
+	//   - eval.dataset_updated: emitted on dataset create/update/delete so the
+	//     audit feed shows dataset lifecycle alongside run activity.
+	//   - eval.run_reviewed: emitted when an admin promotes / resolves a
+	//     badcase so review actions land in the same timeline.
+	// All five ride the same WikiAuditSourceActivity projection (Build #24);
+	// Details JSON carries dataset_id / run_id / qid so the WikiAuditDrawer
+	// chip (Build #25) can pivot back to the eval record.
+	AuditActionEvalRunStarted     AuditAction = "eval.run_started"
+	AuditActionEvalRunCompleted   AuditAction = "eval.run_completed"
+	AuditActionEvalBadcaseFlagged AuditAction = "eval.badcase_flagged"
+	AuditActionEvalDatasetUpdated AuditAction = "eval.dataset_updated"
+	AuditActionEvalRunReviewed    AuditAction = "eval.run_reviewed"
 )
 
 // AuditOutcome separates asynchronous acceptance from terminal business

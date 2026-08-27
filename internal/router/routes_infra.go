@@ -73,6 +73,68 @@ func RegisterEvaluationRoutes(r *gin.RouterGroup, handler *handler.EvaluationHan
 	}
 }
 
+// RegisterEvalRoutes registers the new /api/v1/eval/* namespace
+// (Build #31). The legacy /api/v1/evaluation route is intentionally
+// kept untouched so parquet-fixture callers do not break.
+//
+// Routing:
+//
+//   - /eval/datasets         (Viewer+ reads, Admin+ writes)
+//   - /eval/runs             (Viewer+ reads, Admin+ starts/cancels)
+//   - /eval/runs/:id/results (Viewer+)
+//   - /eval/badcases         (Viewer+ reads, Admin+ promote/resolve)
+//
+// API-key access is the same matrix as the legacy evaluation route:
+// full-access keys can drive runs, scoped keys need a dedicated
+// permission set that we add to the RBAC matrix.
+func RegisterEvalRoutes(
+	r *gin.RouterGroup,
+	datasetHandler *handler.EvalDatasetHandler,
+	runHandler *handler.EvalRunHandler,
+	badcaseHandler *handler.EvalBadcaseHandler,
+	g *rbacGuards,
+) {
+	eval := g.apiKeyGroup(r.Group("/eval"), apiKeyRunEvaluations(apiKeyFullAccess()))
+	{
+		// Dataset CRUD
+		datasets := eval.Group("/datasets")
+		{
+			// POST /eval/datasets/import is a public alias so admin
+			// tooling can post a single payload without first creating
+			// the dataset shell. Order matters in Gin's tree — the
+			// static path must register before the :id wildcard.
+			datasets.POST("/import", g.Admin(), datasetHandler.ImportJSON)
+			datasets.POST("", g.Admin(), datasetHandler.CreateDataset)
+			datasets.GET("", g.Viewer(), datasetHandler.ListDatasets)
+			datasets.GET("/:id", g.Viewer(), datasetHandler.GetDatasetByID)
+			datasets.PUT("/:id", g.Admin(), datasetHandler.UpdateDataset)
+			datasets.PUT("/:id/qa", g.Admin(), datasetHandler.ReplaceQAList)
+			datasets.DELETE("/:id", g.Admin(), datasetHandler.DeleteDataset)
+		}
+
+		// Run lifecycle
+		runs := eval.Group("/runs")
+		{
+			runs.POST("", g.Admin(), runHandler.StartRun)
+			runs.GET("", g.Viewer(), runHandler.ListRuns)
+			runs.GET("/:id", g.Viewer(), runHandler.GetRun)
+			runs.GET("/:id/results", g.Viewer(), runHandler.ListResults)
+			runs.POST("/:id/cancel", g.Admin(), runHandler.CancelRun)
+		}
+
+		// Badcase library
+		badcases := eval.Group("/badcases")
+		{
+			badcases.GET("", g.Viewer(), badcaseHandler.ListBadcases)
+			// Promote must register before :id/resolve since both share
+			// the badcases root. Promote takes JSON body, resolve takes
+			// :id in the URL — different verbs and paths so no conflict.
+			badcases.POST("/promote", g.Admin(), badcaseHandler.Promote)
+			badcases.POST("/:id/resolve", g.Admin(), badcaseHandler.Resolve)
+		}
+	}
+}
+
 func RegisterInitializationRoutes(r *gin.RouterGroup, handler *handler.InitializationHandler, g *rbacGuards) {
 	// 初始化接口
 	// GetCurrentConfigByKB 是只读，Viewer+ 即可（KB 受限 key 可读其范围内的 KB）。

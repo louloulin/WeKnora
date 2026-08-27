@@ -217,6 +217,26 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewModelService))
 	must(container.Provide(service.NewDatasetService))
 	must(container.Provide(service.NewEvaluationService))
+	must(container.Provide(func(db *gorm.DB, auditSvc interfaces.AuditLogService) interfaces.EvalDatasetService {
+		return service.NewEvalDatasetService(db, auditSvc)
+	}))
+	must(container.Provide(func(db *gorm.DB, auditSvc interfaces.AuditLogService) interfaces.EvalBadcaseService {
+		return service.NewEvalBadcaseService(db, auditSvc)
+	}))
+	must(container.Provide(func(
+		db *gorm.DB,
+		datasetSvc interfaces.EvalDatasetService,
+		badcaseSvc interfaces.EvalBadcaseService,
+		modelSvc interfaces.ModelService,
+		auditSvc interfaces.AuditLogService,
+	) interfaces.EvalRunService {
+		// EvalChatPipeline is wired to the chat completion service so
+		// real chat runs work; tests pass a stub via DI override. The
+		// runner survives a nil pipeline (run-level failure) so an
+		// environment without chat backend does not panic at boot.
+		chatPipeline := newDefaultEvalChatPipeline(db, modelSvc)
+		return service.NewEvalRunnerService(db, datasetSvc, badcaseSvc, modelSvc, chatPipeline, auditSvc)
+	}))
 	must(container.Provide(service.NewUserService))
 	must(container.Provide(service.NewSystemSettingService))
 	must(container.Provide(func(
@@ -448,6 +468,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewModelHandler))
 	must(container.Provide(handler.NewSandboxConfigHandler))
 	must(container.Provide(handler.NewEvaluationHandler))
+	must(container.Provide(handler.NewEvalDatasetHandler))
+	must(container.Provide(handler.NewEvalRunHandler))
+	must(container.Provide(handler.NewEvalBadcaseHandler))
 	must(container.Provide(handler.NewInitializationHandler))
 	must(container.Provide(handler.NewAuthHandler))
 	must(container.Provide(handler.NewSystemHandler))
