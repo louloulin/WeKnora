@@ -1,0 +1,144 @@
+name: Wiki Verify
+
+# Phase 0 / B-T2: gates every push & PR on `lumos0826` with three jobs:
+#   1. go-test   — B19-B28 harness + cache + ACL + audit subsystem
+#   2. frontend  — vue-tsc + build-only + i18n parity + wiki component tests
+#   3. smoke     — dry-run safe smoke scripts (no live backend)
+#
+# This is the "red-green light" referenced in the Phase 0 reply. The existing
+# app.yml / frontend.yml / go-lint.yml only fire on main + PRs to main, so a
+# regression on lumos0826 itself would slip through silently — this workflow
+# closes that gap without touching the existing matrix workflows.
+#
+# Required status checks (repo Settings → Branches → Require status checks):
+#   - "Go Wiki Harness"
+#   - "Frontend Wiki Verify"
+#   - "Wiki Smoke (dry-run)"
+
+on:
+  push:
+    branches: [lumos0826, main]
+    paths:
+      - "internal/**"
+      - "migrations/**"
+      - "frontend/**"
+      - "scripts/smoke-wiki-*.sh"
+      - ".github/workflows/wiki-verify.yml"
+  pull_request:
+    branches: [lumos0826, main]
+    paths:
+      - "internal/**"
+      - "migrations/**"
+      - "frontend/**"
+      - "scripts/smoke-wiki-*.sh"
+      - ".github/workflows/wiki-verify.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.26"
+  NODE_VERSION: "24"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  go-test:
+    name: Go Wiki Harness
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.sum
+
+      - name: go vet
+        run: go vet ./internal/application/service/...
+
+      - name: go test (wiki subsystem harness)
+        run: |
+          go test -short -count=1 -timeout 5m \
+            -run 'TestWikiAudit|TestInvalidator|TestPutAcl|TestWikiBacklinksCache|TestWikiAcl|TestWikiBatch|TestCache_Invalidation|TestWikiSearch|TestWikiTag|TestWikiPageMove|TestWikiPageContent' \
+            ./internal/application/service/...
+
+      - name: go test (wiki migration + audit types)
+        run: |
+          go test -short -count=1 -timeout 3m \
+            -run 'TestWiki|TestBacklinks|TestAudit' \
+            ./internal/types/... ./internal/application/repository/...
+
+  frontend:
+    name: Frontend Wiki Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Type-check
+        run: npm run type-check
+
+      - name: Build
+        run: npm run build-only
+
+      - name: i18n parity check
+        run: npm run check-i18n
+
+      - name: Wiki component tests
+        run: npx tsx --test src/components/wiki/*.test.ts
+
+  smoke:
+    name: Wiki Smoke (dry-run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Bash syntax check
+        run: |
+          set -e
+          for s in scripts/smoke-wiki-cache-observability.sh \
+                   scripts/smoke-wiki-audit.sh \
+                   scripts/smoke-wiki-audit-correlation.sh \
+                   scripts/smoke-wiki-backlinks-backref.sh \
+                   scripts/smoke-wiki-acl-snapshot-hash.sh \
+                   scripts/smoke-wiki-cache-invalidators.sh; do
+            bash -n "$s"
+            echo "OK: $s"
+          done
+
+      - name: Run dry-run smoke (no BASE_URL)
+        run: |
+          set -e
+          for s in scripts/smoke-wiki-cache-observability.sh \
+                   scripts/smoke-wiki-audit.sh \
+                   scripts/smoke-wiki-audit-correlation.sh \
+                   scripts/smoke-wiki-backlinks-backref.sh \
+                   scripts/smoke-wiki-acl-snapshot-hash.sh \
+                   scripts/smoke-wiki-cache-invalidators.sh; do
+            echo "===== $s ====="
+            bash "$s" || { echo "FAILED: $s"; exit 1; }
+          done
