@@ -61,12 +61,24 @@ func kbLabelFor(kbID string) string {
 
 func wikiCacheObsIncHit(kbID string) {
 	wikiCacheObs.hits.Add(1)
-	metricCacheHitsTotal.WithLabelValues(kbLabelFor(kbID)).Inc()
+	metricCacheHitsTotal.WithLabelValues(kbLabelFor(kbID), readStrategyLabel()).Inc()
 }
 
 func wikiCacheObsIncMiss(kbID string) {
 	wikiCacheObs.misses.Add(1)
-	metricCacheMissesTotal.WithLabelValues(kbLabelFor(kbID)).Inc()
+	metricCacheMissesTotal.WithLabelValues(kbLabelFor(kbID), readStrategyLabel()).Inc()
+}
+
+// readStrategyLabel returns the strategy label value used on hit / miss
+// counters. The read path has no op — it doesn't know what kind of
+// invalidation last wiped the row. As a pragmatic, additive step
+// (Build #29), we stamp "self" — the most-local invalidation strategy —
+// so the metric label cardinality stays bounded and dashboard queries
+// keep working. A future Build can promote this to the row-level
+// invalidation_strategy stamped at write time without changing the
+// metric schema; the "self" bucket will simply get redistributed.
+func readStrategyLabel() string {
+	return string(types.SlugSetStrategySelf)
 }
 
 func wikiCacheObsIncError(kbID string) {

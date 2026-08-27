@@ -71,13 +71,13 @@ var (
 	// observability surface unified across the subsystem.
 	metricCacheHitsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "wiki_cache_hits_total",
-		Help: "Total cache hits in ListBacklinkGraph, by kb_id.",
-	}, []string{"kb_id"})
+		Help: "Total cache hits in ListBacklinkGraph, by kb_id and invalidation strategy.",
+	}, []string{"kb_id", "strategy"})
 
 	metricCacheMissesTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "wiki_cache_misses_total",
-		Help: "Total cache misses in ListBacklinkGraph, by kb_id.",
-	}, []string{"kb_id"})
+		Help: "Total cache misses in ListBacklinkGraph, by kb_id and invalidation strategy.",
+	}, []string{"kb_id", "strategy"})
 
 	metricCacheErrorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "wiki_cache_errors_total",
