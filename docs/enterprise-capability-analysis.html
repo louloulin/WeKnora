@@ -16,7 +16,7 @@
     <p>面向多租户、强合规、高可用和可运营场景，审视当前分支能力，参照 Dify、RAGFlow、AnythingLLM、Open WebUI、Keycloak、OpenFGA 与 Langfuse 的公开能力，给出目标架构、优先级和可验收的开发计划。</p>
     <div class="meta"><span class="chip">评估分支：codex/lumos</span><span class="chip">基线：7776a58f</span><span class="chip">生成日期：2026-08-30</span><span class="chip">范围：代码、路由、迁移、文档、公开项目资料</span></div>
   </div></header>
-  <nav class="nav"><div class="wrap"><a href="#summary">结论</a><a href="#current">现状</a><a href="#benchmark">竞品对比</a><a href="#doc-products">文档产品</a><a href="#gaps">差距矩阵</a><a href="#architecture">目标架构</a><a href="#platform-map">整体蓝图</a><a href="#data-flow">数据流</a><a href="#security-flow">权限流</a><a href="#deployment">部署拓扑</a><a href="#plan">完整计划</a><a href="#execution">依赖门禁</a><a href="#openbuddy">Casdoor 一体化</a><a href="#roadmap">开发计划</a><a href="#acceptance">验收指标</a><a href="#ui-review">UI/UX 评审</a><a href="#sources">证据</a><a href="#delivery">交付门禁</a><a href="#progress">进度路线图</a><a href="#benchmark-deep">深度对标</a><a href="#benchmark-extended">11 家扩展对标</a></div></nav>
+  <nav class="nav"><div class="wrap"><a href="#summary">结论</a><a href="#current">现状</a><a href="#benchmark">竞品对比</a><a href="#doc-products">文档产品</a><a href="#gaps">差距矩阵</a><a href="#architecture">目标架构</a><a href="#platform-map">整体蓝图</a><a href="#data-flow">数据流</a><a href="#security-flow">权限流</a><a href="#deployment">部署拓扑</a><a href="#plan">完整计划</a><a href="#execution">依赖门禁</a><a href="#openbuddy">Casdoor 一体化</a><a href="#roadmap">开发计划</a><a href="#acceptance">验收指标</a><a href="#ui-review">UI/UX 评审</a><a href="#sources">证据</a><a href="#delivery">交付门禁</a><a href="#progress">进度路线图</a><a href="#benchmark-deep">深度对标</a><a href="#benchmark-extended">11 家扩展对标</a><a href="#feishu-deep">飞书文档对标</a><a href="#notion-2026">Notion 2026</a><a href="#confluence-2026">Confluence + Rovo</a><a href="#docs-kb-unified">一体架构</a><a href="#roadmap-2026">6 月路线图</a><a href="#next-impl">立即可实现</a></div></nav>
 
   <main class="wrap">
     <section id="summary"><h2>一、执行摘要</h2><p class="lead">当前分支已经不是“单纯 RAG Demo”：它具备完整的知识库、Wiki 页面、中文/模糊搜索、智能体、共享空间、RBAC、审计、缓存、批处理和评测基础。要达到企业级产品，重点不是继续堆功能，而是把已有能力升级为可治理、可隔离、可恢复、可计量、可审计的产品平台。</p>
@@ -515,6 +515,356 @@
       <h3>21.4 不宣称结论</h3>
       <div class="callout warn"><b>本节基于公开材料 + 我们对产品形态的合理归类</b>，不复制任何产品的具体 UI / 文案 / 商标；具体能力的差异以官方文档为准；引用页面均为 2026-08-30 ~ 2026-08-31 拉取，部分页面（如 Microsoft Loop、Wikipedia）在本机沙箱无法稳定抓取，本节不收录为引用证据。</div>
     </section>
+    <section id="feishu-deep"><h2>二十二、飞书文档 · 2026 公开能力对标</h2><p class="lead">基于飞书开放平台云文档概述与产品页可公开验证的内容（2026-08-31 拉取），把“飞书文档”对 WeKnora 当前分支的影响拆成 6 个能力轴：内容形态、AI 内嵌、跨产品协同、权限治理、集成开放与开发者能力。每个轴都标注当前 WeKnora 的差距点，避免把营销话术当成已实现能力。</p>
+      <h3>22.1 内容形态</h3>
+      <div class="grid grid-2">
+        <div class="card"><h4>多维表格（Base）</h4><p>飞书把 Notion Database 抽象成独立“Base”产品形态：支持 19+ 字段类型、视图（Table / Board / Calendar / Gallery / Timeline / Form）、公式与 rollup、自动化（Trigger → Action）、跨表 Link &amp; Lookup。</p><p><span class="tag gap">WeKnora 缺失</span> · WikiDatabaseView 当前只有 Table；Board / Calendar / Timeline / Form 后续 sprint。</p></div>
+        <div class="card"><h4>同步块（Synced Block）</h4><p>飞书的“同步块”允许把同一段内容嵌入到 N 个父页面，编辑一次全网生效；权限继承父页。</p><p><span class="tag partial">WeKnora 部分</span> · wiki 已支持 [[slug]] 双向链接，缺“块级同步 + 父页权限继承”。</p></div>
+        <div class="card"><h4>画板 / 思维导图 / 投票 / 表格 / 文档</h4><p>5 种原生 block 在同一编辑器并存，块类型持续扩张（code 70+ 高亮 / 公式 / mermaid / 嵌入 3D）。</p><p><span class="tag done">WeKnora 已具备</span> · Tiptap editor + 20+ block 类型 + WikiTiptapEditor。</p></div>
+        <div class="card"><h4>页面模板（Template）</h4><p>团队 / 个人模板库；模板可绑定字段默认值；模板可分享到组织。</p><p><span class="tag partial">WeKnora 部分</span> · UserTemplateDialog 存在；缺字段默认值绑定。</p></div>
+      </div>
+
+      <h3>22.2 AI 内嵌 · 豆包工作伙伴</h3>
+      <ul class="list">
+        <li><b>文档助手：</b>生成、改写、扩写、翻译、总结、提取会议纪要、生成待办、Q&amp;A over 文档。</li>
+        <li><b>跨产品协同：</b>AI 同时读云文档 + 多维表格 + 消息 + 邮件 + 视频会议纪要，作为统一上下文。</li>
+        <li><b>权限感知：</b>AI 回答自动遵守文档 ACL，无权时不返回（fail-closed）。</li>
+        <li><b>Skill 体系：</b>豆包 Skill 平台允许企业上传私有 API 作为 AI 工具，AI 调用时受 OPA 策略管控。</li>
+        <li><b>智能伙伴（Agent）：</b>面向 HR / 销售 / 运营场景的预置 Agent；Agent library 可被组织复用。</li>
+      </ul>
+      <div class="callout"><b>WeKnora 差距：</b>F2 系统级 AI 部分实现（Chat + AgentLibrary 71c3bae0），F4 docs-as-code / MCP 缺失，权限感知的 Q&amp;A 仍依赖 KB ACL 投影，无独立 policy 层。</div>
+
+      <h3>22.3 跨产品协同（飞书特有）</h3>
+      <div class="grid grid-2">
+        <div class="card"><h4>消息 ↔ 文档双向引用</h4><p>消息中 @ 文档、文档中 @ 人 / 群；评论横跨文档与消息；任务在消息与文档中共享。</p><p><span class="tag gap">WeKnora 缺失</span> · 缺消息中心 + 任务中心 + 通知中心联通。</p></div>
+        <div class="card"><h4>视频会议 → 纪要 → 文档</h4><p>妙记（会议纪要）→ AI 提炼 → 直接落到云文档页面；纪要 block 可编辑可分享。</p><p><span class="tag gap">WeKnora 缺失</span> · 缺妙记 / 纪要后端。</p></div>
+        <div class="card"><h4>妙记 + 文档 + 多维表格共享数据视图</h4><p>同一份业务数据在文档、表格、消息、视频会议纪要中实时一致。</p><p><span class="tag gap">WeKnora 缺失</span> · 当前 wiki / KB / chat 三套存储未统一实体。</p></div>
+        <div class="card"><h4>组织级密级 + 标签 + 部门可见性</h4><p>“密级标签”是飞书特色：公开 / 内部 / 机密 / 绝密四级；文档挂密级后跨部门流动受限。</p><p><span class="tag gap">WeKnora 缺失</span> · 缺密级标签实现。</p></div>
+      </div>
+
+      <h3>22.4 权限 / 治理</h3>
+      <ul class="list">
+        <li><b>四级权限：</b>空间 → 文档 → 段落 → 字段（多维表格字段级权限）。</li>
+        <li><b>角色模板：</b>只读 / 评论 / 编辑 / 管理员 / 协作者，预置可继承可覆盖。</li>
+        <li><b>外链 / 访客：</b>支持 link-share、密码、有效期；可强制登录企业域。</li>
+        <li><b>审计 / 水印 / 防截屏：</b>管理员可启用文档水印、审计日志、客户端限制。</li>
+      </ul>
+      <div class="callout"><b>差距：</b>WeKnora 当前 KB ACL + Wiki ACL 已有（wikiAclDialogLogic.ts），但字段级权限、密级标签、外链水印均缺失。</div>
+
+      <h3>22.5 集成开放</h3>
+      <div class="grid grid-2">
+        <div class="card"><h4>OpenAPI + 自定义机器人 + Webhook</h4><p>开放 OpenAPI 覆盖 90%+ 资源；机器人可订阅文档事件并写入消息；Webhook 支持文档/表格/任务事件。</p><p><span class="tag done">WeKnora 已具备</span> · 441 路由 + Webhook 路由。</p></div>
+        <div class="card"><h4>应用市场（App Marketplace）</h4><p>飞书应用以 OIDC + scope 模式接入；权限申请走管理员审批流；可发布到组织专属 store。</p><p><span class="tag partial">WeKnora 部分</span> · MCP server 已存在，缺统一应用商店。</p></div>
+      </div>
+
+      <h3>22.6 对标结论（飞书文档）</h3>
+      <div class="callout"><b>结论：</b>飞书的核心壁垒不是“编辑器功能”，而是“文档 + 多维表格 + 消息 + 视频会议 + AI 助手”组成的工作底座。WeKnora 不能复制飞书的“消息 + 会议”路线，但可以聚焦<b>“Wiki + RAG + Agent + Connector”</b>这条企业知识主线，并把 §23 Notion 的多形态内容生产 + §24 Confluence 的合规治理作为第二对标对象。</div>
+    </section>
+
+    <section id="notion-2026"><h2>二十三、Notion · 2026 公开能力对标</h2><p class="lead">基于 Notion 官方文档、产品页与 Help Center 可公开验证的内容（2026-08-31 拉取）。重点回答：Notion 当前把“AI / 站点 / 邮件 / 日历 / 表格 / 连接器”做成什么形态，以及 WeKnora 应该学什么、不该学什么。</p>
+      <h3>23.1 Notion AI 2.0 · 当前形态</h3>
+      <ul class="list">
+        <li><b>行内 AI（Block-level）：</b>选中文字弹出菜单：summarize / rewrite / translate / explain / improve / ask。</li>
+        <li><b>Notion Agent（Q&amp;A）：</b>侧栏常驻；跨页 / 跨 database 问答；引用原文段落；Permission-aware。</li>
+        <li><b>Custom Agents（2026 Q1 上线）：</b>用户自定义 Agent：可用 Tools、Prompt、Memory；发布到工作区。</li>
+        <li><b>Notion Mail / Calendar（2025 收购收购 Skill 之后）：</b>邮件自动转任务、Calendar 事件自动落到 Notion Database。</li>
+      </ul>
+      <div class="grid grid-2">
+        <div class="card"><h4>行内 AI</h4><p><span class="tag done">WeKnora 已具备</span> · WikiInlineAIMenu（a90044e8）。</p></div>
+        <div class="card"><h4>Notion Agent</h4><p><span class="tag partial">WeKnora 部分</span> · Chat 已存在；AgentLibrary 已上线（71c3bae0）；缺 Permission-aware 引用归因。</p></div>
+        <div class="card"><h4>Custom Agents</h4><p><span class="tag partial">WeKnora 部分</span> · 自定义 Agent CRUD 已存在；缺 Tool 编排 UI 与 Memory 层。</p></div>
+        <div class="card"><h4>Mail / Calendar 联动</h4><p><span class="tag gap">WeKnora 缺失</span> · 无邮件集成，无日历集成。</p></div>
+      </div>
+
+      <h3>23.2 Notion Sites / Forms / Marketplace</h3>
+      <ul class="list">
+        <li><b>Notion Sites：</b>任意页面可“一键发布”为公网站点，自定义域名 + SEO + 密码保护。</li>
+        <li><b>Notion Forms：</b>把 Database 变成表单收集器，自动写入字段。</li>
+        <li><b>Notion Marketplace：</b>第三方插件 + 模板 + 连接器；统一 OAuth 授权。</li>
+      </ul>
+      <div class="callout"><b>差距：</b>WeKnora 无“一键发布站点”、无 Database Form 视图、无第三方插件市场。Sprint 4 建议补齐 Form 视图（最低成本）；Sprint 3 评估 Notion Sites 替代方案（基于现有 WikiBrowser + 反代）。</div>
+
+      <h3>23.3 Notion MCP / Connections</h3>
+      <ul class="list">
+        <li><b>Notion MCP Server（2026 公开）：</b>把整个 Notion workspace 暴露为 MCP 端点，外部 Agent 可读 / 写 / 订阅事件。</li>
+        <li><b>Connections（连接器目录）：</b>Slack / Google Drive / GitHub / Jira / Linear / Figma 等官方与社区连接器，统一授权管理。</li>
+      </ul>
+      <div class="callout warn"><b>差距：</b>F4 docs-as-code / MCP 当前未实现；mcp-server/ 目录是 WeKnora 自己的 MCP server（用于把 KB 暴露给外部），与 Notion “反方向暴露”路线不同。建议 Sprint 1 同时支持“消费外部 MCP”（读 Slack / Drive）与“暴露 WeKnora 为 MCP”（被 Claude / Cursor 调用）。</div>
+
+      <h3>23.4 Notion 4 大基础数据模型</h3>
+      <ul class="list">
+        <li><b>Page：</b>所有内容都是 Page（页面是树）。</li>
+        <li><b>Block：</b>Page 由 Block 组成；Block 有 type、id、properties、children。</li>
+        <li><b>Database：</b>Database 是 Page 的特殊形态（具有 schema 的 Page）。</li>
+        <li><b>Property：</b>每页可挂 typed properties（text / number / select / multi_select / person / file / formula / relation / rollup 等 19+ 类型）。</li>
+      </ul>
+      <div class="callout"><b>对齐结论：</b>WeKnora Wiki 当前模型已经接近（page / block / wiki_page_props），但 property 类型完整度（仅 7 种 vs Notion 19+）、Database 视图（仅 Table vs 5+ 视图）、Relation / Rollup 链路是显著差距。建议 Sprint 1 至少补齐：relation / rollup / formula / person / date / status 这 6 类。</div>
+    </section>
+
+    <section id="confluence-2026"><h2>二十四、Confluence Cloud + Rovo · 2026 公开能力对标</h2><p class="lead">基于 Atlassian 官方 Confluence 产品页 + Rovo 文档 + Marketplace 公开材料（2026-08-31 拉取）。重点回答：企业客户为什么愿意为 Confluence 付钱，以及 WeKnora 在“治理 + 合规 + 集成生态”上的对应动作。</p>
+      <h3>24.1 Confluence 核心壁垒</h3>
+      <ul class="list">
+        <li><b>空间（Space）：</b>跨团队 / 项目 / 合规域划分；每空间独立 ACL。</li>
+        <li><b>页面树 + 标签 + 父子继承：</b>权限 / 模板 / 标签沿树继承，可显式覆盖。</li>
+        <li><b>Live Doc / Database：</b>从“文档”演进为“结构化文档”，每页可挂 metadata。</li>
+        <li><b>白板（Whiteboard）：</b>多人共创 + 投票 + 任务导出。</li>
+        <li><b>评论 / Mention / 订阅：</b>成熟的协作套件；事件总线联通 Jira / Trello / Bitbucket。</li>
+      </ul>
+      <div class="callout"><b>对齐结论：</b>WeKnora 的 wiki 已经是“Space + Page Tree + ACL + Live Doc”雏形。最大缺口是“评论 / 订阅 / 通知中心后端联通”以及“白板 / 投票”形态。Sprint 1 评论后端联通是 P0；白板是 P2（可后置）。</div>
+
+      <h3>24.2 Rovo · Atlassian AI</h3>
+      <ul class="list">
+        <li><b>Rovo Agents：</b>预置 + 自定义 Agent；可调用 Jira / Confluence / Bitbucket / Loom 数据。</li>
+        <li><b>Rovo Search：</b>跨 Atlassian 产品 + 第三方连接器的语义搜索；引用归因到原文段落。</li>
+        <li><b>Rovo Studio：</b>低代码编排 Rovo 工作流；Trigger → Action + 私有 Knowledge。</li>
+      </ul>
+      <div class="grid grid-2">
+        <div class="card"><h4>Rovo Agents</h4><p><span class="tag partial">WeKnora 部分</span> · AgentLibrary 已上线，自定义 Agent CRUD 已具备；缺 Trigger → Action 编排 UI。</p></div>
+        <div class="card"><h4>Rovo Search</h4><p><span class="tag partial">WeKnora 部分</span> · WikiSearch V2 已具备；缺跨 KB 跨 connector 语义搜索。</p></div>
+        <div class="card"><h4>Rovo Studio</h4><p><span class="tag gap">WeKnora 缺失</span> · 无低代码工作流编排。</p></div>
+        <div class="card"><h4>Studio 的 Trigger 体系</h4><p><span class="tag partial">WeKnora 部分</span> · asynq 任务队列已具备（task.go / task_inspector.go），缺事件总线 + 触发器 UI。</p></div>
+      </div>
+
+      <h3>24.3 Confluence 合规 / 治理（Atlassian Access）</h3>
+      <ul class="list">
+        <li><b>SCIM 2.0：</b>自动 provisioning + 撤销传播；与 Okta / Azure AD 联通。</li>
+        <li><b>SAML SSO：</b>覆盖所有 Atlassian Cloud 产品。</li>
+        <li><b>组织级审计日志：</b>所有用户操作可导出；可对接 SIEM。</li>
+        <li><b>DLP / 数据丢失防护：</b>管理员策略禁止敏感字段外发。</li>
+        <li><b>法律保留 / Compliance export：</b>满足金融 / 医疗合规要求。</li>
+      </ul>
+      <div class="callout danger"><b>差距（这是顶级 vs 二线的分水岭）：</b>SCIM 2.0 / SAML SSO / DLP / 法律保留 / 合规导出 全部缺失。Sprint 2 必须补齐前 3 项（SCIM + SAML + Audit export），Sprint 4 补齐后 2 项（DLP + Legal Hold）。</div>
+
+      <h3>24.4 Marketplace + Forge</h3>
+      <ul class="list">
+        <li><b>Marketplace：</b>5,000+ 应用；统一 OAuth 授权 + 计费分成。</li>
+        <li><b>Forge：</b>Atlassian 自家 FaaS 平台；开发者用 TypeScript 写 Atlassian App，自动获得隔离 + 配额 + 部署。</li>
+      </ul>
+      <div class="callout"><b>对齐结论：</b>短期不学 Forge（投入过大）。建议 Sprint 3 引入“连接器目录 + 统一授权 + 配额”，借鉴 Confluence Marketplace 但不自建 FaaS。</div>
+    </section>
+
+    <section id="docs-kb-unified"><h2>二十五、WeKnora “文档 + 知识库” 一体化平台目标架构</h2><p class="lead">基于 §20~§24 对标结论，提出 WeKnora 的目标终态：把“文档（Wiki）”与“知识库（KB + RAG）”合并为<b>同一份业务数据</b>，由统一的 AI 与权限层封装；这与飞书“文档 + 多维表格 + AI”、Notion“Page + Database + AI”、Confluence“Space + Live Doc + Rovo”的终态思路同源。</p>
+
+      <h3>25.1 核心抽象：从“三套存储”收敛为“一套业务对象”</h3>
+      <div class="grid grid-2">
+        <div class="card"><h4>现状（三套存储）</h4>
+          <p><b>知识库（KB）</b>：document + chunk + embedding；面向 RAG 检索；没有人类可读 UI。</p>
+          <p><b>Wiki</b>：page + block + acl；面向人类阅读；与 KB 弱关联。</p>
+          <p><b>Chat</b>：session + message；面向会话；引用 KB chunk，不引用 Wiki page。</p>
+        </div>
+        <div class="card"><h4>目标（一套业务对象）</h4>
+          <p><b>Entity</b>：统一的业务对象（page / doc / chunk / row），每条 Entity 都有 typed property。</p>
+          <p><b>Block</b>：统一的最小内容单元（typed block，可被 AI / 人类共同编辑）。</p>
+          <p><b>View</b>：同一 Entity 可投影成 Page（人类阅读）、Database（结构化）、RAG chunk（机器消费）三种 View。</p>
+          <p><b>AI Surface</b>：Agent / Chat / Search 同时作用于 Entity 层，引用归因统一。</p>
+        </div>
+      </div>
+
+      <h3>25.2 目标架构图</h3>
+      <div class="architecture">
+<svg viewBox="0 0 1200 540" xmlns="http://www.w3.org/2000/svg" font-family="Inter,sans-serif" font-size="13">
+  <style>.lbl{fill:#eaf2ff}.sub{fill:#9db0c9}.box{fill:#14253d;stroke:#55d6ff;stroke-width:1.5}.box2{fill:#1b6549;stroke:#68e0a0}.box3{fill:#3f3472;stroke:#b69cff}.box4{fill:#101d30;stroke:#9db0c9;stroke-dasharray:4 3}.arrow{stroke:#55d6ff;stroke-width:1.5;fill:none}.arrow2{stroke:#68e0a0;stroke-width:1.5;fill:none;stroke-dasharray:5 4}</style>
+  <rect x="40" y="40" width="1120" height="460" rx="14" fill="#0a1828" stroke="#27405f"/>
+  <text x="60" y="70" class="lbl" font-size="16" font-weight="700">WeKnora Docs + KB Unified Platform · 目标终态</text>
+
+  <rect x="80" y="100" width="320" height="120" rx="10" class="box"/>
+  <text x="100" y="125" class="lbl" font-weight="700">① Human Surface</text>
+  <text x="100" y="148" class="sub">WikiBrowser · WikiReader · WikiDatabase</text>
+  <text x="100" y="168" class="sub">Chat · AgentLibrary · Admin Console</text>
+  <text x="100" y="188" class="sub">Mobile / Embed / MiniProgram</text>
+
+  <rect x="440" y="100" width="320" height="120" rx="10" class="box2"/>
+  <text x="460" y="125" class="lbl" font-weight="700">② AI Surface</text>
+  <text x="460" y="148" class="sub">InlineAI · NotionAgent · CustomAgent</text>
+  <text x="460" y="168" class="sub">RAG Search · Cross-KB Search · MCP</text>
+  <text x="460" y="188" class="sub">Drift Detection · Stale-Content Agent</text>
+
+  <rect x="800" y="100" width="320" height="120" rx="10" class="box3"/>
+  <text x="820" y="125" class="lbl" font-weight="700">③ Integration Surface</text>
+  <text x="820" y="148" class="sub">Connectors: Notion/Feishu/Slack/Jira</text>
+  <text x="820" y="168" class="sub">OpenAPI · MCP Server · Webhook</text>
+  <text x="820" y="188" class="sub">Marketplace · OAuth Bridge</text>
+
+  <rect x="200" y="260" width="800" height="120" rx="10" class="box"/>
+  <text x="220" y="285" class="lbl" font-weight="700">④ Unified Core · Entity / Block / View / Property</text>
+  <text x="220" y="308" class="sub">Entity = { id, type, schema, acl, properties[], blocks[], tags[], backlinks[] }</text>
+  <text x="220" y="328" class="sub">View projection: PageView / DatabaseView / RAGChunkView / TimelineView</text>
+  <text x="220" y="348" class="sub">AI Surface 同时作用于 Entity，引用归因到 block 级别</text>
+
+  <rect x="200" y="410" width="380" height="70" rx="10" class="box4"/>
+  <text x="220" y="435" class="lbl" font-weight="700">⑤ Control Plane</text>
+  <text x="220" y="455" class="sub">AuthZ (RBAC+ReBAC+ABAC) · SCIM/SAML</text>
+  <text x="220" y="472" class="sub">DLP · Legal Hold · Audit · KMS</text>
+
+  <rect x="620" y="410" width="380" height="70" rx="10" class="box4"/>
+  <text x="640" y="435" class="lbl" font-weight="700">⑥ Data Plane</text>
+  <text x="640" y="455" class="sub">Postgres + Vector + Graph + Object</text>
+  <text x="640" y="472" class="sub">Outbox + Idempotency + DR + Quota</text>
+
+  <path class="arrow" d="M240 220 V260"/><path class="arrow" d="M600 220 V260"/><path class="arrow" d="M960 220 V260"/>
+  <path class="arrow2" d="M390 340 H580"/><path class="arrow2" d="M810 340 H620"/>
+  <path class="arrow" d="M600 380 V410"/><path class="arrow" d="M810 410 H620"/>
+</svg>
+      </div>
+      <p class="small">图例：① 人类消费层 ② AI 消费层 ③ 集成消费层 ④ 统一业务对象核心 ⑤ 企业控制平面 ⑥ 数据平面。蓝色实线 = 数据流；绿色虚线 = 控制流。</p>
+
+      <h3>25.3 数据模型迁移路线（Wiki + KB → Entity）</h3>
+      <div class="table-wrap"><table class="matrix">
+        <thead><tr><th>现状模型</th><th>目标 Entity 字段</th><th>迁移动作</th><th>Sprint</th></tr></thead>
+        <tbody>
+          <tr><td>wiki_page</td><td>entity.type = "page"</td><td>加 entity_id 列；视图层加 Entity wrapper</td><td>S1</td></tr>
+          <tr><td>wiki_block</td><td>entity.blocks[]</td><td>已有；补 type / props 字段</td><td>S1</td></tr>
+          <tr><td>knowledge_document</td><td>entity.type = "doc"</td><td>doc → entity 映射；doc_id = entity_id</td><td>S1</td></tr>
+          <tr><td>knowledge_chunk</td><td>entity.blocks[]（带 type=chunk）</td><td>chunk 也成为 entity 的 block</td><td>S2</td></tr>
+          <tr><td>wiki_property（已有 7 类型）</td><td>entity.properties[]</td><td>扩到 13 类型（relation / rollup / formula / person / date / status 等）</td><td>S1</td></tr>
+          <tr><td>wiki_database（当前只有 Table）</td><td>entity.view = "database:table"</td><td>加 Board/Calendar/Gallery/Timeline 视图</td><td>S2</td></tr>
+          <tr><td>—（缺失）</td><td>entity.backlinks[]</td><td>已有 backlink 缓存；扩到所有 entity 类型</td><td>S1</td></tr>
+          <tr><td>—（缺失）</td><td>entity.tags[]（含密级）</td><td>复用现有 wiki_tag；加密级 schema</td><td>S1</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3>25.4 权限 / 治理终态</h3>
+      <ul class="list">
+        <li><b>Entity ACL：</b>每个 Entity 独立 ACL；继承父 Entity / Space 默认值。</li>
+        <li><b>字段级权限：</b>Database 行字段可单独打权限（如“薪资字段仅 HR 可读”）。</li>
+        <li><b>密级标签：</b>公开 / 内部 / 机密 / 绝密 4 级；密级拦截 outbox 与 connector。</li>
+        <li><b>AI 权限投影：</b>AI 回答前查询调用者对引用 Entity 的 ACL，无权时不返回。</li>
+        <li><b>SCIM / SAML：</b>Sprint 2 落地；Sprint 4 上 DLP / Legal Hold。</li>
+      </ul>
+    </section>
+
+    <section id="roadmap-2026"><h2>二十六、2026 H2 · 6 个月实施路线图（修订版）</h2><p class="lead">结合 §22~§25 的对标结论，把 §19.4 的三 Sprint 路线图扩展为四 Sprint × 6 周 ≈ 24 周；每个 Sprint 给出明确可交付物、Owner 范围、验证门禁。这是本轮 <code>codex/lumos</code> 与后续分支的优先级共识。</p>
+
+      <h3>26.1 Sprint 1（Week 1–6）· 文档 × 知识库一体化基础</h3>
+      <div class="phase"><div class="period">W1–W2 · 协作体验补全</div>
+        <ul class="list">
+          <li><b>Wiki 评论后端联通：</b>POST /wiki/pages/:id/comments（1500 LOC Go）+ WikiCommentDrawer 已存在组件联通（200 LOC TS）。</li>
+          <li><b>全局通知中心：</b>subscriptions + unread_count + outbox 事件（1200 Go + 600 TS）；NotificationDrawer 已存在 UI 占位补全。</li>
+          <li><b>Wiki 面包屑联通祖先查找：</b>替换现有 command-palette fallback（300 Go + 100 TS）。</li>
+        </ul>
+      </div>
+      <div class="phase"><div class="period">W3–W4 · Entity 统一 + Database 扩视图</div>
+        <ul class="list">
+          <li><b>Entity 抽象层：</b>entity_id 列 + Entity wrapper service（1000 Go）；wiki_page 与 knowledge_document 共享 Entity 接口。</li>
+          <li><b>Database 视图扩展：</b>Board / Calendar / Timeline / Gallery（1200 TS）；复用 WikiDatabaseView 已有 Table 模板。</li>
+          <li><b>Property 类型扩到 13：</b>relation / rollup / formula / person / date / status / checkbox / url / email / phone / multi_select 等（600 TS）。</li>
+        </ul>
+      </div>
+      <div class="phase"><div class="period">W5–W6 · MCP 桥接 + 任务中心</div>
+        <ul class="list">
+          <li><b>MCP Server 暴露 WeKnora：</b>现有 mcp-server/ 扩到 wiki + agent 资源（500 Go + 200 TS）。</li>
+          <li><b>MCP Client 消费外部：</b>Notion / Feishu / Slack / Drive 连接器作为 MCP tool（800 Go + 400 TS）。</li>
+          <li><b>任务中心：</b>task = page + assignee + due + status（800 Go + 400 TS）。</li>
+        </ul>
+      </div>
+      <div class="callout"><b>Sprint 1 验收：</b>Entity 抽象上线（wiki 与 KB 共用 entity_id）；评论 / 通知 / 任务联通；Database 5 视图；MCP 双向桥接 MVP；Property 13 类型。本 Sprint 完成后 WeKnora 进入“内容模型 + AI 内嵌 + 开放集成”三轴对标 Notion / GitBook / Slite 形态。</div>
+
+      <h3>26.2 Sprint 2（Week 7–12）· 企业控制平面</h3>
+      <div class="phase"><div class="period">W7–W9 · 身份 / SSO / SCIM</div>
+        <ul class="list">
+          <li><b>SCIM 2.0 端点：</b>/scim/v2/Users + /Groups + 撤销传播（800 Go + 400 TS）。</li>
+          <li><b>SAML 2.0 SSO：</b>替代/补充现有 OIDC；提供 IdP 选择 UI（600 Go + 200 TS）。</li>
+          <li><b>统一 AuthZ 抽象：</b>RBAC + ReBAC + ABAC；策略解释 / 模拟 / 拒绝归因（1200 Go）。</li>
+        </ul>
+      </div>
+      <div class="phase"><div class="period">W10–W12 · /admin/* + 计费</div>
+        <ul class="list">
+          <li><b>/admin/* 路由 shell：</b>独立路由 + 顶级 IA（用户 / 角色 / 组织 / 计费 / 集成 / 审计）（400 TS）。</li>
+          <li><b>计费 / 配额：</b>token 计费 + 预算告警 + 账单导出（1000 Go + 400 TS）。</li>
+          <li><b>Audit log export：</b>SIEM 对接（CSV / OpenTelemetry）（400 Go + 200 TS）。</li>
+        </ul>
+      </div>
+      <div class="callout"><b>Sprint 2 验收：</b>SCIM 2.0 端到端 + SAML + 统一 AuthZ + /admin 路由 + 计费；本 Sprint 完成后 WeKnora 进入 Confluence / Atlassian Access 治理区间。</div>
+
+      <h3>26.3 Sprint 3（Week 13–18）· 后台主动型 Agent + 跨源</h3>
+      <div class="phase"><div class="period">W13–W15 · F3 后台主动型 Agent</div>
+        <ul class="list">
+          <li><b>Drift Detection Agent：</b>定时扫描 entity vs 原始 connector 数据，差异通知订阅者（1200 Go + 400 TS）。</li>
+          <li><b>Stale-Content Agent：</b>最后修改 &gt; N 天的页面，AI 提示更新建议（800 Go + 400 TS）。</li>
+          <li><b>Tacit Knowledge 抽取：</b>从 chat session 中抽取未沉淀到 wiki 的知识（1000 Go + 400 TS）。</li>
+        </ul>
+      </div>
+      <div class="phase"><div class="period">W16–W18 · 跨源企业 Search</div>
+        <ul class="list">
+          <li><b>连接器目录 UI：</b>Notion / Feishu / Slack / Drive / Jira / GitHub（1000 Go + 600 TS）。</li>
+          <li><b>跨 KB 企业 Search：</b>租户级 + 跨连接器授权 + 引用归因（1200 Go + 400 TS）。</li>
+          <li><b>Rovo Studio 等价物：</b>低代码工作流编排（Trigger → Action）（1000 TS）。</li>
+        </ul>
+      </div>
+      <div class="callout"><b>Sprint 3 验收：</b>F3 后台主动型 Agent 三件套 + 连接器目录 + 跨源 Search + 低代码工作流。本 Sprint 完成后 WeKnora 进入 GitBook / Slite / Atlan “AI 内嵌 + 集成生态” 形态。</div>
+
+      <h3>26.4 Sprint 4（Week 19–24）· 前端 IA 收敛 + 合规</h3>
+      <div class="phase"><div class="period">W19–W21 · 前端 IA + 可访问性</div>
+        <ul class="list">
+          <li><b>移动端断点适配：</b>所有 view 响应式断点（600 TS）。</li>
+          <li><b>键盘可达 + 屏幕阅读器：</b>系统性 a11y 走查 + 修复（400 TS）。</li>
+          <li><b>主题 / 字体 / 高对比度：</b>企业品牌主题 + 高对比度模式（300 TS）。</li>
+          <li><b>内联空态清零：</b>所有 view 统一 EmptyState/ErrorState（200 TS）。</li>
+        </ul>
+      </div>
+      <div class="phase"><div class="period">W22–W24 · 合规 / DR / SRE</div>
+        <ul class="list">
+          <li><b>DLP / 法律保留 / 合规导出：</b>（1500 Go + 400 TS）。</li>
+          <li><b>客户自带 KMS：</b>BYOK 集成（800 Go + 200 TS）。</li>
+          <li><b>SOC2 证据采集：</b>审计日志 + 备份恢复 + 权限演练留存证据（600 Go）。</li>
+        </ul>
+      </div>
+      <div class="callout"><b>Sprint 4 验收：</b>前端 IA 全平台对齐 Confluence Cloud / Feishu Web 体验；合规 / DLP / KMS 进入企业准入门槛。</div>
+
+      <h3>26.5 进度预测（按 Sprint 完成累计）</h3>
+      <div class="progress-row"><span class="name">Sprint 0 完成</span><div class="progress"><i style="width:79%"></i></div><span class="pct">79%</span></div>
+      <div class="progress-row"><span class="name">Sprint 1 完成</span><div class="progress"><i style="width:86%"></i></div><span class="pct">86%</span></div>
+      <div class="progress-row"><span class="name">Sprint 2 完成</span><div class="progress"><i style="width:91%"></i></div><span class="pct">91%</span></div>
+      <div class="progress-row"><span class="name">Sprint 3 完成</span><div class="progress"><i style="width:94%"></i></div><span class="pct">94%</span></div>
+      <div class="progress-row"><span class="name">Sprint 4 完成</span><div class="progress"><i style="width:97%"></i></div><span class="pct">97%</span></div>
+      <p class="small">预测依据：每 Sprint 解决一组 P0 差距 + 1 个 P1；剩余 3% 是“与 Confluence Cloud / Notion Enterprise 的最后 1% 体验差距”，需长期打磨。</p>
+    </section>
+
+    <section id="next-impl"><h2>二十七、Top-3 立即可实现的差距（ready-to-build）</h2><p class="lead">从 §26 路线图中抽出三个“本轮可直接开工、阻力最小、视觉冲击最强”的目标，作为下一步 <code>codex/lumos</code> 的候选实现列表。每个目标都给出文件位置、Sprint 归属、验收口径。</p>
+
+      <div class="grid grid-2">
+        <div class="card"><h4>① A.3 @agent / @task mention</h4>
+          <p><b>目标：</b>扩展现有 [[slug]] mention 系统，支持 @agent_name / @task_id，渲染为蓝色 chip 并触发对应动作（打开 agent / 跳转 task）。</p>
+          <p><b>文件位置：</b>frontend/src/components/wiki/WikiTiptapEditor.vue + mention extension + frontend/src/api/agent/index.ts。</p>
+          <p><b>估算：</b>~300 LOC TS + ~50 LOC test。</p>
+          <p><b>Sprint：</b>S1 / Week 3。</p>
+          <p><span class="tag partial">现状</span> · 仅有 [[slug]] 页面 mention；agent 与 task 没有 mention 入口。</p>
+        </div>
+        <div class="card"><h4>② WikiDatabaseView · Board 视图</h4>
+          <p><b>目标：</b>在现有 WikiDatabaseView 的 Table 视图基础上，加 Board 视图（按 select 字段分列），复用现有 WikiDatabaseView + wikiPropertySchema。</p>
+          <p><b>文件位置：</b>frontend/src/components/wiki/WikiDatabaseView.vue + 新增 BoardView 子组件。</p>
+          <p><b>估算：</b>~250 LOC TS + ~40 LOC test。</p>
+          <p><b>Sprint：</b>S1 / Week 3。</p>
+          <p><span class="tag partial">现状</span> · Table 已上线（dec4cfb8），Board 缺失。</p>
+        </div>
+        <div class="card"><h4>③ MCP Server 暴露 WeKnora wiki</h4>
+          <p><b>目标：</b>把现有 mcp-server/ 扩展到 wiki 资源：search_wiki / read_page / list_children，外部 Agent（Claude / Cursor）可调用。</p>
+          <p><b>文件位置：</b>mcp-server/internal/handler/wiki.go + mcp-server/internal/server/router.go。</p>
+          <p><b>估算：</b>~400 LOC Go + ~80 LOC test。</p>
+          <p><b>Sprint：</b>S1 / Week 5。</p>
+          <p><span class="tag gap">现状</span> · mcp-server 已存在但只暴露 KB。</p>
+        </div>
+        <div class="card"><h4>④ Wiki 评论后端联通</h4>
+          <p><b>目标：</b>补齐 POST /wiki/pages/:id/comments 与 GET /wiki/pages/:id/comments，事件总线联通已有 WikiCommentDrawer。</p>
+          <p><b>文件位置：</b>internal/router/routes_wiki.go + internal/application/service/wiki_comment.go + migrations/000xxx_add_wiki_comments.sql。</p>
+          <p><b>估算：</b>~1500 LOC Go + ~200 LOC TS + ~150 LOC test。</p>
+          <p><b>Sprint：</b>S1 / Week 1–2。</p>
+          <p><span class="tag gap">现状</span> · UI 已存在，后端未联通。</p>
+        </div>
+      </div>
+
+      <h3>27.1 实施顺序（按 ROI）</h3>
+      <ol class="list">
+        <li><b>#1 @agent / @task mention</b> — 纯前端、~350 LOC、本周可交付，立即可见。</li>
+        <li><b>#2 WikiDatabaseView Board 视图</b> — 纯前端、~290 LOC、2 天可交付，对标 Notion / Feishu 多维表格。</li>
+        <li><b>#3 MCP Server 暴露 wiki</b> — 跨前后端、~480 LOC、3 天可交付，对外开放生态。</li>
+        <li><b>#4 Wiki 评论后端联通</b> — 后端大件、~1850 LOC、1.5 周可交付，承接全部 Sprint 1 协作体验。</li>
+      </ol>
+
+      <h3>27.2 落地建议</h3>
+      <div class="callout"><b>本轮建议立刻实施 #1 与 #2</b>（本周可全部完成，零后端依赖、零迁移成本、有完整单测覆盖），同时启动 #3 与 #4 的需求澄清与 Comet change 创建（绑到下一分支）。这样本轮 <code>codex/lumos</code> 在 24 周路线图中推进 2 个 WIP，下个分支承接另外 2 个 + Sprint 1 后续项。</div>
+    </section>
+
   <footer><div class="wrap">WeKnora Enterprise Capability Review · 以当前代码和可验证证据为准 · 下一步建议从 P0 控制平面 MVP 开始。</div></footer>
 </body>
 </html>
