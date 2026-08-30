@@ -3753,6 +3753,8 @@ export default {
     loadingInfo: 'Loading information...',
     retry: 'Retry',
     unknown: 'Unknown',
+    tooltipWithRole: 'Active workspace: {tenant} · Role: {role} (click to switch)',
+    tooltipNoRole: 'Active workspace: {tenant} (click to switch)',
     formatError: 'Format error',
     searchPlaceholder: 'Search by name or enter workspace ID...',
     noMatch: 'No matching workspaces found',

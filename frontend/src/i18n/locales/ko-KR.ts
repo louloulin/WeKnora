@@ -3121,6 +3121,8 @@ export default {
     loadingInfo: '정보 로딩 중...',
     retry: '재시도',
     unknown: '알 수 없음',
+    tooltipWithRole: '현재 작업공간: {tenant} · 역할: {role} (전환하려면 클릭)',
+    tooltipNoRole: '현재 작업공간: {tenant} (전환하려면 클릭)',
     formatError: '형식 오류',
     searchPlaceholder: '워크스페이스 이름 검색 또는 워크스페이스 ID 입력...',
     noMatch: '일치하는 워크스페이스를 찾을 수 없습니다',

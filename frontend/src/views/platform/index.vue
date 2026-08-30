@@ -1,6 +1,12 @@
 <template>
     <div class="main" ref="dropzone">
         <Menu></Menu>
+        <!-- 全局工作区上下文条：当前租户 + 当前角色，点击弹出 TenantSelector。
+             放在 Menu 之后、RouterView 之前，作为平台区常驻状态指示，
+             解决「在 ListSpaceSidebar / KB 卡片头部看不到当前工作区」的 P0 缺口。 -->
+        <div class="workspace-context-strip">
+          <WorkspaceContextChip @switch="openTenantSwitcher" />
+        </div>
         <div v-if="isRouterAlive" class="platform-route-outlet">
             <RouterView />
         </div>
@@ -18,6 +24,16 @@
         <NewUserGuide />
     </div>
 </template>
+
+<style scoped>
+.workspace-context-strip {
+  position: fixed;
+  top: 14px;
+  right: 60px;
+  z-index: 5;
+  pointer-events: auto;
+}
+</style>
 <script setup lang="ts">
 import Menu from '@/components/menu.vue'
 import { ref, onMounted, onUnmounted, nextTick, provide, watch } from 'vue';
@@ -27,6 +43,7 @@ import Settings from '@/views/settings/Settings.vue'
 import GlobalCommandPalette from '@/components/GlobalCommandPalette.vue'
 import GlobalInvitationBell from '@/components/GlobalInvitationBell.vue'
 import NewUserGuide from '@/components/NewUserGuide.vue'
+import WorkspaceContextChip from '@/components/WorkspaceContextChip.vue'
 import { useCommandPaletteStore } from '@/stores/commandPalette'
 import { useChatResourcesStore } from '@/stores/chatResources'
 import { getKnowledgeBaseById } from '@/api/knowledge-base/index'
@@ -36,6 +53,19 @@ import { collectDroppedFiles } from './collectDroppedFiles'
 
 const route = useRoute();
 const router = useRouter();
+
+/**
+ * 打开 TenantSelector 下拉。
+ *
+ * TenantSelector 是 Menu 的子组件，没有对外暴露 imperative API；
+ * 这里通过 ref 穿透 + 自定义事件拿到实例。最简实现是 dispatch 一个
+ * 在 TenantSelector 内部监听的自定义事件，因为这是平台唯一一处
+ * 需要程序化触发 TenantSelector 的地方（其他都是用户点击）。
+ */
+const openTenantSwitcher = () => {
+  window.dispatchEvent(new CustomEvent('weknora:open-tenant-switcher'))
+}
+
 const commandPaletteStore = useCommandPaletteStore();
 let ismask = ref(false)
 const { t } = useI18n();

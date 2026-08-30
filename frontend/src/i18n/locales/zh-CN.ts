@@ -3123,6 +3123,8 @@ export default {
     loadingInfo: '正在加载信息...',
     retry: '重试',
     unknown: '未知',
+    tooltipWithRole: '当前工作区：{tenant} · 角色：{role}（点击切换）',
+    tooltipNoRole: '当前工作区：{tenant}（点击切换）',
     formatError: '格式错误',
     searchPlaceholder: '搜索空间名称或输入空间 ID...',
     noMatch: '未找到匹配的空间',

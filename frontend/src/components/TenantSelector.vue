@@ -70,7 +70,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, onUnmounted, nextTick } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { searchTenants, type TenantInfo } from '@/api/tenant'
 import { useI18n } from 'vue-i18n'
@@ -302,6 +302,27 @@ onMounted(() => {
   // 预加载空间列表
   loadTenants()
 })
+
+// Allow external code (e.g. the global WorkspaceContextChip) to open this
+// switcher without needing to traverse Vue refs. Window-level dispatch is
+// the simplest mechanism that survives HMR and lazy loading.
+const openTenantSwitcherExternally = () => {
+  if (tenants.value.length === 0) {
+    loadTenants()
+  }
+  showDropdown.value = true
+  nextTick(() => {
+    searchInput.value?.focus()
+  })
+}
+const handleExternalOpen = () => openTenantSwitcherExternally()
+onMounted(() => {
+  window.addEventListener('weknora:open-tenant-switcher', handleExternalOpen)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('weknora:open-tenant-switcher', handleExternalOpen)
+})
+
 
 onUnmounted(() => {
   if (searchTimer.value) {
