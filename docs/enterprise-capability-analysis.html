@@ -16,7 +16,7 @@
     <p>面向多租户、强合规、高可用和可运营场景，审视当前分支能力，参照 Dify、RAGFlow、AnythingLLM、Open WebUI、Keycloak、OpenFGA 与 Langfuse 的公开能力，给出目标架构、优先级和可验收的开发计划。</p>
     <div class="meta"><span class="chip">评估分支：codex/lumos</span><span class="chip">基线：7776a58f</span><span class="chip">生成日期：2026-08-30</span><span class="chip">范围：代码、路由、迁移、文档、公开项目资料</span></div>
   </div></header>
-  <nav class="nav"><div class="wrap"><a href="#summary">结论</a><a href="#current">现状</a><a href="#benchmark">竞品对比</a><a href="#doc-products">文档产品</a><a href="#gaps">差距矩阵</a><a href="#architecture">目标架构</a><a href="#platform-map">整体蓝图</a><a href="#data-flow">数据流</a><a href="#security-flow">权限流</a><a href="#deployment">部署拓扑</a><a href="#plan">完整计划</a><a href="#execution">依赖门禁</a><a href="#openbuddy">Casdoor 一体化</a><a href="#roadmap">开发计划</a><a href="#acceptance">验收指标</a><a href="#ui-review">UI/UX 评审</a><a href="#sources">证据</a><a href="#delivery">交付门禁</a><a href="#progress">进度路线图</a></div></nav>
+  <nav class="nav"><div class="wrap"><a href="#summary">结论</a><a href="#current">现状</a><a href="#benchmark">竞品对比</a><a href="#doc-products">文档产品</a><a href="#gaps">差距矩阵</a><a href="#architecture">目标架构</a><a href="#platform-map">整体蓝图</a><a href="#data-flow">数据流</a><a href="#security-flow">权限流</a><a href="#deployment">部署拓扑</a><a href="#plan">完整计划</a><a href="#execution">依赖门禁</a><a href="#openbuddy">Casdoor 一体化</a><a href="#roadmap">开发计划</a><a href="#acceptance">验收指标</a><a href="#ui-review">UI/UX 评审</a><a href="#sources">证据</a><a href="#delivery">交付门禁</a><a href="#progress">进度路线图</a><a href="#benchmark-deep">深度对标</a></div></nav>
 
   <main class="wrap">
     <section id="summary"><h2>一、执行摘要</h2><p class="lead">当前分支已经不是“单纯 RAG Demo”：它具备完整的知识库、Wiki 页面、中文/模糊搜索、智能体、共享空间、RBAC、审计、缓存、批处理和评测基础。要达到企业级产品，重点不是继续堆功能，而是把已有能力升级为可治理、可隔离、可恢复、可计量、可审计的产品平台。</p>
@@ -411,6 +411,76 @@
 
       <div class="callout warn"><b>本节不宣称已完成：</b>评论 / 通知 / 任务中心后端联通、Wiki 页面属性、SCIM、统一 AuthZ、Admin 路由、移动端响应式与 a11y 走查均为下一阶段目标；当前进度为“核心能力完成 + 控制平面待补”。</div>
       <div class="callout"><b>下一步建议：</b>先做 Sprint 1 的“Wiki 协作补全”（评论 + 通知 + 属性 / 数据库视图），与已有的 Wiki 阅读器形成完整闭环后再启动 SCIM / AuthZ，避免后端先行后 UI 拖垮上线。</div>
+    </section>
+    <section id="benchmark-deep"><h2>二十、对标顶级的深度能力基准（Notion · Confluence · Glean · Slab · Outline）</h2><p class="lead">基于本轮实时拉取的公开产品页 / 帮助中心 / 营销材料（2026-08-30 至 2026-08-31），把“企业级文档 / 知识平台”拆成 8 个能力域，每一项对标真实在售产品的具体形态，给出 WeKnora 当前分支的能力位置与下一步具体动作。</p>
+
+      <h3>20.1 资料来源（可核验链接）</h3>
+      <div class="grid grid-2" style="margin-top:14px">
+        <div class="card"><h4>Notion</h4><ul class="list">
+          <li><a href="https://www.notion.com/product">Notion · Product overview</a>（2026-08-30 拉取）</li>
+          <li><a href="https://www.notion.com/help/category/notion-ai">Notion Help · AI category</a>：Notion AI / Agents / AI Meeting Notes / Enterprise Search / MCP / Skills。</li>
+          <li><a href="https://developers.notion.com/reference/intro">Notion Developers · Introduction</a>（REST API 能力清单）</li>
+        </ul></div>
+        <div class="card"><h4>Confluence + Rovo</h4><ul class="list">
+          <li><a href="https://www.atlassian.com/software/confluence">Confluence 产品页</a>（2026-08-30 拉取）：Live docs / Whiteboards / Databases / Pages / Videos / Slides / Rovo。</li>
+          <li><a href="https://support.atlassian.com/confluence-cloud/docs/what-is-a-space/">Confluence Support · Space</a></li>
+          <li>Rovo：AI Agents（笔记→演示、原型→规格）、Remix（内容→时间线/图表/地图/演示）、Teamwork Graph。</li>
+        </ul></div>
+        <div class="card"><h4>Glean</h4><ul class="list">
+          <li><a href="https://www.glean.com/platform">Glean · Platform overview</a>（2026-08-30 拉取）</li>
+          <li>四大模块：Enterprise Context / Glean Protect / Glean Intelligence / Open Platform。</li>
+          <li>Glean Agents：Agent builder / orchestration / governance / library（Coming soon：Transform）。</li>
+        </ul></div>
+        <div class="card"><h4>Outline · Slab · 其余</h4><ul class="list">
+          <li><a href="https://www.getoutline.com/">Outline · Your team's knowledge base</a>：强调团队知识库与“Compare”卖点。</li>
+          <li><a href="https://slab.com/">Slab · Unified Search</a>：跨工具统一搜索 + 集成生态。</li>
+          <li>对标补充：Atlassian Teamwork Graph、Notion MCP、Glean Open Platform 均代表“可被集成/可被治理”的新形态。</li>
+        </ul></div>
+      </div>
+
+      <h3>20.2 8 个能力域的真实对标</h3>
+      <div class="table-wrap"><table class="matrix"><thead><tr><th style="width:14%">能力域</th><th style="width:18%">Notion</th><th style="width:18%">Confluence + Rovo</th><th style="width:18%">Glean</th><th style="width:18%">Outline / Slab</th><th style="width:14%">WeKnora 当前分支</th></tr></thead><tbody>
+        <tr><td><b>内容模型</b><br>Block / Page / DB</td><td>Block + Page + Database（含 6+ view）</td><td>Page + Database（live doc、whiteboard、video、slide）</td><td>接入第三方内容；不重做存储</td><td>Outline：Markdown-first；Slab：富文本 + 集成</td><td><span class="tag done">已实现</span> Wiki + Tiptap + HTML；缺 Database view / Properties</td></tr>
+        <tr><td><b>AI 内嵌</b><br>块内 / 行内 / Agent</td><td>Notion AI（搜索/写作/问答）+ Custom/External Agents + MCP + Skills</td><td>Rovo AI（创作 / 搜索 / 代理）+ Rovo Agents + Audio Briefings</td><td>Glean Assistant（主动 / 创作 / 多人协作 / 工作执行）+ Agents builder + 治理</td><td>Outline：弱 AI；Slab：Unified Search 为主</td><td><span class="tag partial">部分实现</span> ReAct Agent + 工具调用；缺 Skills / MCP / 主动助手</td></tr>
+        <tr><td><b>搜索</b><br>关键词 + 语义 + 跨源</td><td>Enterprise Search（连接器）+ AI 块内问答</td><td>AI Search（跨空间）+ Rovo Answers</td><td>Glean Search（核心产品，跨 SaaS）</td><td>Slab Unified Search（跨工具）</td><td><span class="tag done">已实现</span> Wiki Search V2（中文 jieba + tsvector + 模糊）；缺跨源 / 企业 Search</td></tr>
+        <tr><td><b>协作</b><br>评论 / @ / 任务</td><td>评论 / @ / Mention / 任务；Notion Sites 公开发布</td><td>评论 + Mention + 任务 + Confluence 白板</td><td>Assistant multiplayer（多人共创）</td><td>Outline 评论；Slab 评论 + 集成</td><td><span class="tag gap">缺失</span> 评论组件已存在但后端事件未联通</td></tr>
+        <tr><td><b>权限 / 治理</b><br>RBAC + ReBAC + ABAC</td><td>Workspace / Share / Guest / Permissions</td><td>Space + Page ACL + 权限组</td><td>Glean Protect（治理 / DLP / 权限）</td><td>Outline 团队 ACL；Slab 团队权限</td><td><span class="tag partial">部分实现</span> 应用内 RBAC / 资源 ACL；缺统一 AuthZ</td></tr>
+        <tr><td><b>合规 / 安全</b><br>SSO / SCIM / DLP / 保留</td><td>SAML/SCIM SSO；Enterprise 安全合规</td><td>Atlassian Access（SCIM/SAML）；Audit</td><td>Glean Protect（合规 + 数据治理）</td><td>Outline SAML/SSO；Slab SSO</td><td><span class="tag partial">部分实现</span> OIDC + 审计；缺 SCIM / DLP / 法律保留</td></tr>
+        <tr><td><b>集成 / 开放</b><br>API / MCP / 连接器</td><td>Notion API + MCP + Connections</td><td>Atlassian Marketplace + Forge</td><td>Glean Open Platform（连接器目录）</td><td>Outline API；Slab 集成市场</td><td><span class="tag partial">部分实现</span> HTTP API 413 routes；缺 MCP / 开放平台</td></tr>
+        <tr><td><b>企业级运营</b><br>计费 / 配额 / SLO / DR</td><td>Plan + Credits + 企业 SSO</td><td>Atlassian Cloud Enterprise（SLA + 多区域）</td><td>Enterprise tier + Customer-managed keys</td><td>Outline 自托管 + SaaS；Slab Enterprise</td><td><span class="tag gap">缺失</span> Lite/Compose 已具备；缺计费 / SLO / DR 演练</td></tr>
+      </tbody></table></div>
+
+      <h3>20.3 借鉴清单（按 ROI 排序，落到具体组件）</h3>
+      <div class="grid grid-2" style="margin-top:14px">
+        <div class="card"><h4>A · 内容模型（3 项）</h4><ul class="list">
+          <li>页面属性（properties）：每页可挂类型化字段，作为 Database view 的输入（对齐 Notion properties + Confluence live doc metadata）。</li>
+          <li>Database view（5 形态）：Table / Board / Calendar / Gallery / List + 自定义筛选。</li>
+          <li>嵌入引用（mention）：<code>@page</code>、<code>[[slug]]</code> 已存在；扩展到 <code>@agent</code>、<code>@task</code>。</li>
+        </ul></div>
+        <div class="card"><h4>B · AI 内嵌（4 项）</h4><ul class="list">
+          <li>Notion MCP：把 wiki / kb / agent 暴露为 MCP 端点供外部 Agent 调用。</li>
+          <li>Skills：可重用 prompt + tool 集合，类似 Notion Skills。</li>
+          <li>Agent library：组织级可发现、可重用的 Agent 目录（对齐 Glean Agent library）。</li>
+          <li>行内 AI：块级 / 行级 inline rewrite / summarize / translate，与已有 chat 解耦。</li>
+        </ul></div>
+        <div class="card"><h4>C · 搜索 / 跨源（2 项）</h4><ul class="list">
+          <li>连接器目录（Confluence / Notion / Slack / Drive / Jira / GitHub 等）。</li>
+          <li>跨 KB 企业 Search（对齐 Glean Search）：租户级 + 跨租户授权 + 跨连接器。</li>
+        </ul></div>
+        <div class="card"><h4>D · 协作 / 治理 / 集成（5 项）</h4><ul class="list">
+          <li>评论 / Mention / 订阅 / 通知中心（后端联通）。</li>
+          <li>任务中心（task = page + assignee + due + status）。</li>
+          <li>SCIM 2.0 + Audit log export。</li>
+          <li>独立 <code>/admin/*</code> 路由 shell + 用户 / 角色 / 计费 / 集成控制台。</li>
+          <li>OpenAPI / MCP 双向桥接外部 Agent。</li>
+        </ul></div>
+      </div>
+
+      <h3>20.4 一句话定位</h3>
+      <div class="callout"><b>对标结论：</b>Notion / Confluence / Glean 在“内容形态 + AI 内嵌 + 跨源搜索”上的领先地位，本质是“控制平面 + 集成生态”的成熟度差异。WeKnora 当前在“Wiki-RAG 体验 + ReAct Agent + Wiki Search V2”上具备差异化（AI 与知识深耦合），下一阶段要把控制平面（统一 AuthZ、SCIM、Admin 路由）和协作补全（评论 / 通知 / 属性 / 数据库视图）拉齐，才能进入“顶级企业级知识平台”区间。</div>
+
+      <h3>20.5 后续 Sprint 排序的调整</h3>
+      <div class="callout"><b>基于本轮对标的修订建议：</b>在原 Sprint 1（评论 + 通知 + 属性 / 数据库视图）基础上，把<b>Notion MCP 桥接</b>与<b>Skills 系统</b>同时纳入第 1 个 Sprint；Sprint 2 顺序保持 SCIM + AuthZ + Admin 路由不变；Sprint 3 调整为“连接器目录 + 跨源企业 Search”（替代原本的纯前端 IA 收敛），把 IA / 响应式 / a11y 推到 Sprint 4。这样 4 个 Sprint × 6 周 ≈ 24 周覆盖“对标顶级”所需的关键缺口。</div>
     </section>
   <footer><div class="wrap">WeKnora Enterprise Capability Review · 以当前代码和可验证证据为准 · 下一步建议从 P0 控制平面 MVP 开始。</div></footer>
 </body>
