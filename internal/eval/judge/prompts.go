@@ -45,7 +45,7 @@ Score the model answer for factuality on an integer scale of 1-5:
 - 1: contradicts multiple key claims, or invents unsupported facts.
 
 Output JSON ONLY in this exact shape (no prose, no markdown):
-{"score": <integer 1-5>, "rationale": "<one short sentence>"}
+{"score": <integer 1-5>, "rationale": "<one short sentence>"}`
 
 // Build #31 judge prompt v1.
 
@@ -74,7 +74,7 @@ For each [[cite:N]] token in the model answer, decide whether the cited passage 
 - 1: multiple citations are unrelated, or the answer fabricates citations.
 
 Output JSON ONLY in this exact shape (no prose, no markdown):
-{"score": <integer 1-5>, "rationale": "<one short sentence>"}
+{"score": <integer 1-5>, "rationale": "<one short sentence>"}`
 
 // Build #31 judge prompt v1.
 
@@ -104,7 +104,7 @@ Decide whether reflection would have helped and score 1-5:
 - 1: reflection would have prevented a user-facing mistake.
 
 Output JSON ONLY in this exact shape (no prose, no markdown):
-{"score": <integer 1-5>, "rationale": "<one short sentence>"}
+{"score": <integer 1-5>, "rationale": "<one short sentence>"}`
 
 // Build #31 judge prompt v1.
 
