@@ -3391,6 +3391,11 @@ export default {
     attachmentStillProcessing: '附件 {name} 仍在解析，请稍候'
   },
   knowledgeEditor: {
+    wikiBreadcrumb: {
+      copyLink: '复制当前页链接',
+      copied: '已复制',
+      breadcrumb: 'Wiki 页面路径',
+    },
     titleCreate: '新建知识库',
     titleEdit: '知识库设置',
     advanced: {

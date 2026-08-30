@@ -3389,6 +3389,11 @@ export default {
     attachmentStillProcessing: 'Вложение {name} ещё обрабатывается'
   },
   knowledgeEditor: {
+    wikiBreadcrumb: {
+      copyLink: 'Скопировать ссылку',
+      copied: 'Скопировано',
+      breadcrumb: 'Путь к странице Wiki',
+    },
     titleCreate: 'Создать базу знаний',
     titleEdit: 'Настройки базы знаний',
     advanced: {

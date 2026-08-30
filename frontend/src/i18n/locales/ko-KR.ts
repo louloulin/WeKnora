@@ -3389,6 +3389,11 @@ export default {
     attachmentStillProcessing: '첨부 파일 {name}을(를) 아직 분석 중입니다'
   },
   knowledgeEditor: {
+    wikiBreadcrumb: {
+      copyLink: '페이지 링크 복사',
+      copied: '복사됨',
+      breadcrumb: 'Wiki 페이지 경로',
+    },
     titleCreate: '지식베이스 생성',
     titleEdit: '지식베이스 설정',
     advanced: {

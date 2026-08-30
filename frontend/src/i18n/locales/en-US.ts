@@ -2593,6 +2593,11 @@ export default {
     defaultLocaleBrowser: 'Browser / host default'
   },
   knowledgeEditor: {
+    wikiBreadcrumb: {
+      copyLink: 'Copy page link',
+      copied: 'Copied',
+      breadcrumb: 'Wiki page path',
+    },
     activity: {
       title: 'Activity',
       description: 'Important changes and background-task entry points for this knowledge base. Retention follows the audit-log policy.',
