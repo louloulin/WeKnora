@@ -16,7 +16,7 @@
     <p>面向多租户、强合规、高可用和可运营场景，审视当前分支能力，参照 Dify、RAGFlow、AnythingLLM、Open WebUI、Keycloak、OpenFGA 与 Langfuse 的公开能力，给出目标架构、优先级和可验收的开发计划。</p>
     <div class="meta"><span class="chip">评估分支：codex/lumos</span><span class="chip">基线：7776a58f</span><span class="chip">生成日期：2026-08-30</span><span class="chip">范围：代码、路由、迁移、文档、公开项目资料</span></div>
   </div></header>
-  <nav class="nav"><div class="wrap"><a href="#summary">结论</a><a href="#current">现状</a><a href="#benchmark">竞品对比</a><a href="#doc-products">文档产品</a><a href="#gaps">差距矩阵</a><a href="#architecture">目标架构</a><a href="#platform-map">整体蓝图</a><a href="#data-flow">数据流</a><a href="#security-flow">权限流</a><a href="#deployment">部署拓扑</a><a href="#plan">完整计划</a><a href="#execution">依赖门禁</a><a href="#openbuddy">Casdoor 一体化</a><a href="#roadmap">开发计划</a><a href="#acceptance">验收指标</a><a href="#ui-review">UI/UX 评审</a><a href="#sources">证据</a><a href="#delivery">交付门禁</a><a href="#progress">进度路线图</a><a href="#benchmark-deep">深度对标</a></div></nav>
+  <nav class="nav"><div class="wrap"><a href="#summary">结论</a><a href="#current">现状</a><a href="#benchmark">竞品对比</a><a href="#doc-products">文档产品</a><a href="#gaps">差距矩阵</a><a href="#architecture">目标架构</a><a href="#platform-map">整体蓝图</a><a href="#data-flow">数据流</a><a href="#security-flow">权限流</a><a href="#deployment">部署拓扑</a><a href="#plan">完整计划</a><a href="#execution">依赖门禁</a><a href="#openbuddy">Casdoor 一体化</a><a href="#roadmap">开发计划</a><a href="#acceptance">验收指标</a><a href="#ui-review">UI/UX 评审</a><a href="#sources">证据</a><a href="#delivery">交付门禁</a><a href="#progress">进度路线图</a><a href="#benchmark-deep">深度对标</a><a href="#benchmark-extended">11 家扩展对标</a></div></nav>
 
   <main class="wrap">
     <section id="summary"><h2>一、执行摘要</h2><p class="lead">当前分支已经不是“单纯 RAG Demo”：它具备完整的知识库、Wiki 页面、中文/模糊搜索、智能体、共享空间、RBAC、审计、缓存、批处理和评测基础。要达到企业级产品，重点不是继续堆功能，而是把已有能力升级为可治理、可隔离、可恢复、可计量、可审计的产品平台。</p>
@@ -481,6 +481,39 @@
 
       <h3>20.5 后续 Sprint 排序的调整</h3>
       <div class="callout"><b>基于本轮对标的修订建议：</b>在原 Sprint 1（评论 + 通知 + 属性 / 数据库视图）基础上，把<b>Notion MCP 桥接</b>与<b>Skills 系统</b>同时纳入第 1 个 Sprint；Sprint 2 顺序保持 SCIM + AuthZ + Admin 路由不变；Sprint 3 调整为“连接器目录 + 跨源企业 Search”（替代原本的纯前端 IA 收敛），把 IA / 响应式 / a11y 推到 Sprint 4。这样 4 个 Sprint × 6 周 ≈ 24 周覆盖“对标顶级”所需的关键缺口。</div>
+    </section>
+    <section id="benchmark-extended"><h2>二十一、扩展对标：11 家平台 × 6 个 AI 形态</h2><p class="lead">在 §20 的 5 家基础上，本轮新增 Feishu Docs、GitBook、Slite、Atlan、AFFiNE、Tettra、BookStack、Linear、ClickUp、Tana、Capacities 共 11 家可公开验证的产品，聚焦回答一个问题：“顶级知识平台的 AI 形态各自是什么？”。本节先列出每家的 AI/集成/治理关键词，再把答案归并成 6 种 AI 形态，作为 WeKnora Sprint 1–4 的形态选型依据。</p>
+
+      <h3>21.1 11 家产品的关键能力（公开资料）</h3>
+      <div class="table-wrap"><table class="matrix"><thead><tr><th style="width:10%">产品</th><th style="width:22%">AI / Agent 形态</th><th style="width:22%">集成与开放</th><th style="width:22%">协作与治理亮点</th><th style="width:14%">来源</th><th style="width:10%">类型</th></tr></thead><tbody>
+        <tr><td><b>Feishu Docs</b><br>飞书文档</td><td>飞书 AI（豆包工作伙伴）；文档内 AI 助手</td><td>嵌入业务系统；同步块跨消息/文档；多维表格（数据库视图）</td><td>实时协同；投票；任务；画板；思维导图；70+ 代码高亮；多重密级标签</td><td><a href="https://www.feishu.cn/product/docs">官网</a></td><td>企业协作</td></tr>
+        <tr><td><b>GitBook</b></td><td>GitBook Agent（Turn docs into answers）</td><td>Claude / ChatGPT / Cursor 插件（MCP 形态）；Skill generator</td><td>Git Sync（branch / PR 评审文档）；Proactive stale-content detection</td><td><a href="https://www.gitbook.com/">官网</a></td><td>开发者文档</td></tr>
+        <tr><td><b>Slite</b></td><td>Slite Agent（triage / search / channels）</td><td>MCP 集成；Permission-aware citations</td><td>Self-maintaining KB；Verified knowledge；knowledge drift detection</td><td><a href="https://www.slite.com/">官网</a></td><td>AI 知识库</td></tr>
+        <tr><td><b>Atlan</b></td><td>Context Agents；AI teammates 记录 tacit knowledge</td><td>Slack / Teams / Claude / ChatGPT 桥接</td><td>Enterprise Data Graph；Context Engineering Studio；Vector-native AI search</td><td><a href="https://www.atlan.com/">官网</a></td><td>数据上下文</td></tr>
+        <tr><td><b>AFFiNE</b></td><td>AFFiNE AI（Create Smarter with AI）</td><td>开源；本地优先；自托管</td><td>Docs / Whiteboard / Database / Edgeless collab；Teamhub</td><td><a href="https://affine.pro/">官网</a></td><td>开源 all-in-one</td></tr>
+        <tr><td><b>Tettra</b></td><td>Kai bot（AI-powered Q&A）</td><td>Slack 集成</td><td>AI Internal KB；CSAT；Knowledge management system</td><td><a href="https://tettra.com/">官网</a></td><td>内部 Q&A</td></tr>
+        <tr><td><b>BookStack</b></td><td>无内置 AI；定位简单</td><td>开源；自托管；LDAP</td><td>角色/权限系统；MFA；全文搜索；图片管理</td><td><a href="https://www.bookstackapp.com/">官网</a></td><td>开源 wiki</td></tr>
+        <tr><td><b>Linear</b></td><td>Linear AI（issues 自动归类/总结）</td><td>API + Webhooks；与 Slack/GitHub 深度集成</td><td>键盘优先；Graph view；项目/周期管理</td><td><a href="https://linear.app/">官网</a></td><td>项目管理</td></tr>
+        <tr><td><b>ClickUp</b></td><td>ClickUp Brain（knows your work）</td><td>1000+ 集成；Whiteboards + Docs + Chat + Tasks</td><td>Docs ↔ Task 双向链接；自定义视图</td><td><a href="https://clickup.com/">官网</a></td><td>一站式生产力</td></tr>
+        <tr><td><b>Tana</b></td><td>AI meeting / voice → structured nodes</td><td>Supertags；live search</td><td>Connected knowledge；会议→结构化</td><td><a href="https://tana.inc/">官网</a></td><td>结构化笔记</td></tr>
+        <tr><td><b>Capacities</b></td><td>AI assistant；Objects & Connections</td><td>本地优先；离线</td><td>Networked notes；对象化笔记</td><td><a href="https://capacities.io/">官网</a></td><td>个人/PKM</td></tr>
+      </tbody></table></div>
+
+      <h3>21.2 6 种 AI 形态（提炼结果）</h3>
+      <div class="grid grid-2" style="margin-top:14px">
+        <div class="card"><h4>F1 · 行内 AI（block-level）</h4><p>选中文字弹出菜单：summarize / rewrite / translate / explain / improve。代表：Notion AI、Confluence Rovo。</p><p><span class="tag gap">WeKnora 缺失</span> · 下一轮 Sprint 1 行内 AI 菜单即可覆盖。</p></div>
+        <div class="card"><h4>F2 · 系统级 AI 助手</h4><p>侧栏常驻：跨页 / 跨 KB 问答、引用原文、Permission-aware。代表：Notion Agent、Confluence Rovo Agents、Glean Assistant、Slite Agent、Tettra Kai。</p><p><span class="tag partial">WeKnora 部分实现</span> · 已有 Chat；缺 Agent library / 跨 KB / 引用归因。</p></div>
+        <div class="card"><h4>F3 · 后台主动型 Agent</h4><p>事件驱动：stale-content 检测、知识漂移、tacit knowledge 抽取。代表：GitBook drift detection、Slite verification、Atlan Context Agents。</p><p><span class="tag gap">WeKnora 缺失</span> · Sprint 3 跨源 + 后台事件驱动位置。</p></div>
+        <div class="card"><h4>F4 · 文档-代码化（docs as code）</h4><p>Git Sync / branch / PR 评审；OpenAPI 双向桥接。代表：GitBook、BookStack（基础）。</p><p><span class="tag planned">WeKnora 规划</span> · 与 MCP 桥接同批，可在 Sprint 1 一并启动。</p></div>
+        <div class="card"><h4>F5 · 数据上下文图（Context Graph）</h4><p>统一业务系统的语义层，向 AI Agent 输出 certifiable context。代表：Atlan Enterprise Data Graph、Confluence Teamwork Graph。</p><p><span class="tag partial">WeKnora 部分实现</span> · 已有 wiki backlinks / 知识图；缺 ontology 与认证层。</p></div>
+        <div class="card"><h4>F6 · 开源本地优先（self-host）</h4><p>AFFiNE / BookStack / Outline / Capacities 都强调本地优先或自托管。代表：开源知识库的核心卖点。</p><p><span class="tag done">WeKnora 已具备</span> · Lite / Compose / K8s 三档部署。</p></div>
+      </div>
+
+      <h3>21.3 形态优先级（落到 WeKnora 路线图）</h3>
+      <div class="callout"><b>结论：</b>Sprint 1 主攻 <b>F1（行内 AI）</b> + <b>F4（MCP / docs-as-code 桥接）</b>，这是实现门槛最低、视觉冲击最强的两项；Sprint 2 落到 <b>F2（系统级 AI 助手 / Agent library）</b> + <b>F5（Context Graph 认证层）</b>；Sprint 3 推到 <b>F3（后台主动型 Agent）</b>；F6 已在主线持续投入。这种顺序与 §20.5 的修订一致，并且让 WeKnora 在“AI 内嵌 + 开放集成”两个维度上一次性追上 Notion / GitBook / Slite / Atlan 当前形态。</div>
+
+      <h3>21.4 不宣称结论</h3>
+      <div class="callout warn"><b>本节基于公开材料 + 我们对产品形态的合理归类</b>，不复制任何产品的具体 UI / 文案 / 商标；具体能力的差异以官方文档为准；引用页面均为 2026-08-30 ~ 2026-08-31 拉取，部分页面（如 Microsoft Loop、Wikipedia）在本机沙箱无法稳定抓取，本节不收录为引用证据。</div>
     </section>
   <footer><div class="wrap">WeKnora Enterprise Capability Review · 以当前代码和可验证证据为准 · 下一步建议从 P0 控制平面 MVP 开始。</div></footer>
 </body>
