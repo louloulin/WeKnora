@@ -251,6 +251,31 @@
             @delete="onBulkDelete"
             @tag="onBulkTag"
           />
+
+          <!-- Build #24: 数据库视图 — 把所有页面以表格形式列出,
+               与 Notion table view / Feishu 多维表格对齐。
+               默认折叠,用户按需展开。select 触发后导航到对应页。 -->
+          <section class="wiki-db-view-toggle">
+            <button
+              type="button"
+              class="wiki-db-view-toggle__btn"
+              :aria-expanded="showDatabaseView"
+              :aria-controls="'wiki-db-view-panel'"
+              @click="showDatabaseView = !showDatabaseView"
+            >
+              <t-icon :name="showDatabaseView ? 'chevron-down' : 'chevron-right'" size="14px" />
+              <t-icon name="table" size="14px" />
+              <span>{{ $t('knowledgeEditor.wikiDatabaseView.title') }}</span>
+              <span class="wiki-db-view-toggle__count">{{ pages.length }}</span>
+            </button>
+            <div v-if="showDatabaseView" id="wiki-db-view-panel" class="wiki-db-view-toggle__panel">
+              <WikiDatabaseView
+                :pages="pages"
+                :loading="loading"
+                @select="onRecentSelect"
+              />
+            </div>
+          </section>
           <!-- Search mode: flat list of hits, no group chrome. Clearing
                the search snaps back to the bucketed view below. -->
           <template v-if="searchResults !== null">
@@ -1080,6 +1105,7 @@ import WikiBreadcrumb from '@/components/WikiBreadcrumb.vue'
 import WikiRecentPages from '@/components/wiki/WikiRecentPages.vue'
 import WikiInlineAIMenu from '@/components/wiki/WikiInlineAIMenu.vue'
 import WikiPropertiesPanel from '@/components/wiki/WikiPropertiesPanel.vue'
+import WikiDatabaseView from '@/components/wiki/WikiDatabaseView.vue'
 import { useWikiPageAclStore } from '@/stores/wikiPageAcl'
 import { aclToolbarVisibility } from './wikiBrowserAclVisibility'
 import WikiBacklinksPanel from '@/components/wiki/WikiBacklinksPanel.vue'
@@ -1483,6 +1509,9 @@ const graphDrawerPage = ref<WikiPage | null>(null)
 const navHistory = ref<WikiPage[]>([])
 const RECENT_PAGES_LIMIT = 5
 const recentPages = ref<WikiPage[]>([])
+
+// Build #24: 数据库视图折叠状态 (默认折叠,避免侧栏过长)
+const showDatabaseView = ref(false)
 
 function pushRecent(page: WikiPage | null | undefined) {
   if (!page || !page.slug) return
@@ -6074,6 +6103,41 @@ onUnmounted(() => {
   padding: 0 8px 12px 0;
   margin-left: -8px;
   padding-left: 8px;
+}
+
+.wiki-db-view-toggle {
+  border-top: 1px solid var(--td-component-stroke, #e7e7e7);
+  padding-top: 6px;
+  margin-top: 8px;
+}
+.wiki-db-view-toggle__btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--td-text-color-secondary, #666);
+}
+.wiki-db-view-toggle__btn:hover {
+  background: var(--td-bg-color-container-hover, #f5f5f5);
+}
+.wiki-db-view-toggle__count {
+  margin-left: auto;
+  background: var(--td-bg-color-secondarycontainer, #f3f3f3);
+  color: var(--td-text-color-secondary, #666);
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.wiki-db-view-toggle__panel {
+  margin-top: 6px;
 }
 
 .wiki-tree-list {
