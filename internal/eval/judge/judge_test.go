@@ -210,39 +210,39 @@ func TestCombinedCitationFidelity(t *testing.T) {
 
 func TestHeuristicReflectionNecessity(t *testing.T) {
 	cases := []struct {
-		name     string
-		events   string
-		passed   bool
+		name      string
+		events    string
+		passed    bool
 		wantScore int
 	}{
 		{
-			name:    "no events, passed",
-			events:  `null`,
-			passed:  true,
+			name:      "no events, passed",
+			events:    `null`,
+			passed:    true,
 			wantScore: 4,
 		},
 		{
-			name:    "no events, failed",
-			events:  `null`,
-			passed:  false,
+			name:      "no events, failed",
+			events:    `null`,
+			passed:    false,
 			wantScore: 1,
 		},
 		{
-			name:    "events improved",
-			events:  `[{"type":"chat_reflection","outcome":"resolved"}]`,
-			passed:  true,
+			name:      "events improved",
+			events:    `[{"type":"chat_reflection","outcome":"resolved"}]`,
+			passed:    true,
 			wantScore: 5,
 		},
 		{
-			name:    "events errored",
-			events:  `[{"type":"chat_reflection","outcome":"error"}]`,
-			passed:  false,
+			name:      "events errored",
+			events:    `[{"type":"chat_reflection","outcome":"error"}]`,
+			passed:    false,
 			wantScore: 3,
 		},
 		{
-			name:    "events empty array",
-			events:  `[]`,
-			passed:  true,
+			name:      "events empty array",
+			events:    `[]`,
+			passed:    true,
 			wantScore: 4,
 		},
 	}
@@ -262,16 +262,16 @@ func TestShouldAutoFlag(t *testing.T) {
 		fact, cite, refl int
 		want             bool
 	}{
-		{5, 5, 5, false},  // avg 5
-		{3, 3, 3, false},  // avg 3 (boundary; not below)
-		{2, 4, 4, true},   // avg ~3.33? No: (2+4+4)/3 = 3.33 → false
-		{2, 3, 3, true},   // avg 2.67
-		{1, 1, 1, true},   // avg 1
-		{4, 2, 2, true},   // avg ~2.67
+		{5, 5, 5, false}, // avg 5
+		{3, 3, 3, false}, // avg 3 (boundary; not below)
+		{2, 4, 4, true},  // avg ~3.33? No: (2+4+4)/3 = 3.33 → false
+		{2, 3, 3, true},  // avg 2.67
+		{1, 1, 1, true},  // avg 1
+		{4, 2, 2, true},  // avg ~2.67
 	}
 	for _, c := range cases {
 		got := ShouldAutoFlag(c.fact, c.cite, c.refl)
-		avg := (c.fact + c.cite + c.refl) / 3.0
+		avg := float64(c.fact+c.cite+c.refl) / 3.0
 		wantFlag := avg < AutoBadcaseThreshold
 		if got != wantFlag {
 			t.Fatalf("ShouldAutoFlag(%d,%d,%d)=%v, want %v (avg=%.2f, threshold=%.2f)",

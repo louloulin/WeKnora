@@ -137,11 +137,11 @@ func (s *evalBadcaseService) Promote(ctx context.Context, tenantID uint64, runID
 			severity = existing.Severity
 		}
 		updates := map[string]any{
-			"severity":     severity,
-			"status":       types.EvalBadcaseStatusTriaged,
-			"notes":        mergeNotes(existing.Notes, notes),
-			"promoted_by":  promotedBy,
-			"promoted_at":  now,
+			"severity":    severity,
+			"status":      types.EvalBadcaseStatusTriaged,
+			"notes":       mergeNotes(existing.Notes, notes),
+			"promoted_by": promotedBy,
+			"promoted_at": now,
 		}
 		if err := s.db.WithContext(ctx).
 			Model(&types.EvalBadcase{}).
@@ -232,9 +232,9 @@ func validSeverity(s types.EvalSeverity) bool {
 // Used by Promote to never downgrade through an admin action.
 func severityHigher(a, b types.EvalSeverity) bool {
 	rank := map[types.EvalSeverity]int{
-		types.EvalSeverityLow: 0,
-		types.EvalSeverityMedium: 1,
-		types.EvalSeverityHigh: 2,
+		types.EvalSeverityLow:      0,
+		types.EvalSeverityMedium:   1,
+		types.EvalSeverityHigh:     2,
 		types.EvalSeverityCritical: 3,
 	}
 	return rank[a] > rank[b]
@@ -265,15 +265,15 @@ func (s *evalBadcaseService) emitBadcaseAudit(ctx context.Context, tenantID uint
 	}
 	detailJSON, _ := json.Marshal(details)
 	entry := &types.AuditLog{
-		TenantID:    tenantID,
-		ActorUserID: actorUserID,
-		Action:      action,
-		ScopeType:   "eval_badcase",
-		ScopeID:     row.ID,
-		TargetType:  "eval_badcase",
-		TargetID:    row.ID,
-		Outcome:     types.AuditOutcomeSuccess,
-		Details:     types.JSON(detailJSON),
+		TenantID:      tenantID,
+		ActorUserID:   actorUserID,
+		Action:        action,
+		ScopeType:     "eval_badcase",
+		ScopeID:       row.ID,
+		TargetType:    "eval_badcase",
+		TargetID:      row.ID,
+		Outcome:       types.AuditOutcomeSuccess,
+		Details:       types.JSON(detailJSON),
 		CorrelationID: types.CorrelationIDFromContext(ctx),
 	}
 	if s.auditSvc == nil {
@@ -286,3 +286,4 @@ func (s *evalBadcaseService) emitBadcaseAudit(ctx context.Context, tenantID uint
 			row.ID, action, err)
 	}
 	_ = strconv.Itoa // keep strconv import for future row id formatting
+}
