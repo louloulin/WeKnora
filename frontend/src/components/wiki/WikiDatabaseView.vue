@@ -26,6 +26,16 @@
         >
           <t-option v-for="t in knownPageTypes" :key="t" :value="t" :label="t" />
         </t-select>
+        <t-radio-group v-model="viewMode" size="small" variant="default-filled">
+          <t-radio-button value="table">
+            <t-icon name="table" size="14px" />
+            <span>{{ $t('knowledgeEditor.wikiDatabaseView.viewTable') }}</span>
+          </t-radio-button>
+          <t-radio-button value="board">
+            <t-icon name="kanban" size="14px" />
+            <span>{{ $t('knowledgeEditor.wikiDatabaseView.viewBoard') }}</span>
+          </t-radio-button>
+        </t-radio-group>
       </div>
     </header>
 
@@ -49,7 +59,7 @@
       :description="$t('knowledgeEditor.wikiDatabaseView.noMatchDesc')"
     />
 
-    <div v-else class="wiki-database-view__table-wrap">
+    <div v-else-if="viewMode === 'table'" class="wiki-database-view__table-wrap">
       <table class="wiki-database-view__table" role="grid">
         <thead>
           <tr>
@@ -104,6 +114,58 @@
         </tbody>
       </table>
     </div>
+    </div>
+    <div v-else-if="viewMode === 'board'" class="wiki-database-view__board-wrap">
+      <div class="wiki-database-view__board-toolbar">
+        <span class="wiki-database-view__board-label">{{ $t('knowledgeEditor.wikiDatabaseView.boardGroupBy') }}</span>
+        <t-select
+          v-model="boardGroupBy"
+          size="small"
+          :placeholder="$t('knowledgeEditor.wikiDatabaseView.boardGroupByPlaceholder')"
+          clearable={false}
+        >
+          <t-option
+            v-for="prop in boardGroupableProperties"
+            :key="prop.id"
+            :value="prop.id"
+            :label="prop.name"
+          />
+        </t-select>
+      </div>
+      <div v-if="boardColumns.length === 0" class="wiki-database-view__board-empty">
+        {{ $t('knowledgeEditor.wikiDatabaseView.boardEmpty') }}
+      </div>
+      <div v-else class="wiki-database-view__board-scroll">
+        <div
+          v-for="col in boardColumns"
+          :key="col.key"
+          class="wiki-database-view__board-col"
+        >
+          <header class="wiki-database-view__board-col-header">
+            <span class="wiki-database-view__board-col-title">{{ col.label }}</span>
+            <span class="wiki-database-view__board-col-count">{{ col.pages.length }}</span>
+          </header>
+          <div class="wiki-database-view__board-col-body">
+            <article
+              v-for="page in col.pages"
+              :key="page.id"
+              class="wiki-database-view__board-card"
+              @click="$emit('select', page.slug)"
+            >
+              <h4 class="wiki-database-view__board-card-title">{{ page.title }}</h4>
+              <p v-if="page.summary" class="wiki-database-view__board-card-summary">{{ page.summary }}</p>
+              <footer class="wiki-database-view__board-card-meta">
+                <span v-if="page.page_type" class="wiki-database-view__chip">{{ page.page_type }}</span>
+                <span class="wiki-database-view__board-card-time">{{ formatRelativeTime(page.updated_at) }}</span>
+              </footer>
+            </article>
+            <div v-if="col.pages.length === 0" class="wiki-database-view__board-col-empty">
+              {{ $t('knowledgeEditor.wikiDatabaseView.boardColEmpty') }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -143,6 +205,11 @@ const filterType = ref<string>('')
 const sortKey = ref<string>('title')
 const sortDir = ref<SortDir>('asc')
 
+// View mode: 'table' (rows × cols) or 'board' (grouped by select property)
+const viewMode = ref<'table' | 'board'>('table')
+// Selectable properties for board grouping: must be 'select' or 'multi-select'
+const boardGroupBy = ref<string>('status')
+
 const knownPageTypes = computed(() => {
   const set = new Set<string>()
   for (const p of props.pages) {
@@ -152,6 +219,11 @@ const knownPageTypes = computed(() => {
 })
 
 const propertyColumns = computed<WikiProperty[]>(() => DEFAULT_PROPERTY_SCHEMA)
+
+/** Selectable properties that can act as board grouping axis. */
+const boardGroupableProperties = computed<WikiProperty[]>(() =>
+  propertyColumns.value.filter(p => p.type === 'select' || p.type === 'multi-select')
+)
 
 const columns = computed<ColumnDef[]>(() => [
   { id: 'title', label: t('knowledgeEditor.wikiDatabaseView.colTitle') },
@@ -230,6 +302,68 @@ function onSort(id: string) {
 
 function formatCell(prop: WikiProperty, value: PropertyValue): string {
   return formatPropertyValue(prop, value)
+}
+
+/**
+ * Group pages by the selected board property (single select for now; multi-select
+ * pages appear in every group whose value they include, so a page with all 4
+ * status values shows up in all 4 columns). Order respects the property's
+ * declared options so users see Draft → Review → Published → Archived.
+ */
+interface BoardColumn {
+  key: string
+  label: string
+  pages: WikiPage[]
+}
+
+const boardColumns = computed<BoardColumn[]>(() => {
+  const propId = boardGroupBy.value
+  if (!propId) return []
+  const prop = boardGroupableProperties.value.find(p => p.id === propId)
+  const options = prop?.options ?? []
+  const filtered = props.pages.filter(matchesFilter)
+  // Build a bucket per option plus an ungrouped bucket for empty values.
+  const buckets: Record<string, WikiPage[]> = {}
+  for (const opt of options) buckets[opt] = []
+  buckets['__ungrouped__'] = []
+  for (const page of filtered) {
+    const raw = readPropertyValues(propertyColumns.value, page.page_metadata || {})[propId]
+    const keys: string[] = []
+    if (Array.isArray(raw)) keys.push(...raw.filter((x): x is string => typeof x === 'string'))
+    else if (typeof raw === 'string' && raw) keys.push(raw)
+    if (keys.length === 0) buckets['__ungrouped__'].push(page)
+    else {
+      const seen = new Set<string>()
+      for (const k of keys) {
+        if (!(k in buckets) || seen.has(k)) continue
+        seen.add(k)
+        buckets[k].push(page)
+      }
+    }
+  }
+  const columns: BoardColumn[] = options.map(opt => ({
+    key: opt, label: opt, pages: buckets[opt] ?? [],
+  }))
+  if (buckets['__ungrouped__'].length > 0) {
+    columns.push({
+      key: '__ungrouped__',
+      label: t('knowledgeEditor.wikiDatabaseView.boardUngrouped', 'Ungrouped'),
+      pages: buckets['__ungrouped__'],
+    })
+  }
+  return columns
+})
+
+function formatRelativeTime(value: string | number | Date | null | undefined): string {
+  if (!value) return ''
+  const ts = new Date(value).getTime()
+  if (Number.isNaN(ts)) return ''
+  const diff = Date.now() - ts
+  if (diff < 60_000) return t('common.justNow')
+  if (diff < 3_600_000) return t('common.minutesAgo', { n: Math.floor(diff / 60_000) })
+  if (diff < 86_400_000) return t('common.hoursAgo', { n: Math.floor(diff / 3_600_000) })
+  if (diff < 30 * 86_400_000) return t('common.daysAgo', { n: Math.floor(diff / 86_400_000) })
+  return new Date(value).toISOString().slice(0, 10)
 }
 </script>
 
@@ -344,6 +478,121 @@ function formatCell(prop: WikiProperty, value: PropertyValue): string {
   max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wiki-database-view__board-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px 10px;
+}
+.wiki-database-view__board-label {
+  font-size: 12px;
+  color: var(--td-text-color-secondary, #666);
+}
+.wiki-database-view__board-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--td-text-color-placeholder, #999);
+  font-size: 13px;
+}
+.wiki-database-view__board-scroll {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scroll-snap-type: x proximity;
+}
+.wiki-database-view__board-col {
+  flex: 0 0 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--td-bg-color-container, #fafbfc);
+  border: 1px solid var(--td-component-stroke, #e7e7e7);
+  border-radius: 10px;
+  padding: 10px;
+  scroll-snap-align: start;
+  max-height: 65vh;
+  overflow: hidden;
+}
+.wiki-database-view__board-col-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px;
+  border-bottom: 1px dashed var(--td-component-stroke, #e7e7e7);
+}
+.wiki-database-view__board-col-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--td-text-color-primary, #222);
+}
+.wiki-database-view__board-col-count {
+  font-size: 11px;
+  color: var(--td-text-color-secondary, #666);
+  background: var(--td-bg-color-secondarycontainer, #f3f3f3);
+  padding: 0 6px;
+  border-radius: 999px;
+}
+.wiki-database-view__board-col-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.wiki-database-view__board-col-empty {
+  padding: 16px 4px;
+  font-size: 12px;
+  text-align: center;
+  color: var(--td-text-color-placeholder, #999);
+}
+.wiki-database-view__board-card {
+  background: var(--td-bg-color-container, #fff);
+  border: 1px solid var(--td-component-stroke, #e7e7e7);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+  transition: box-shadow .15s ease, transform .15s ease;
+}
+.wiki-database-view__board-card:hover {
+  box-shadow: var(--td-shadow-1, 0 2px 8px rgba(0,0,0,0.08));
+  transform: translateY(-1px);
+}
+.wiki-database-view__board-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--td-text-color-primary, #222);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.wiki-database-view__board-card-summary {
+  font-size: 12px;
+  color: var(--td-text-color-secondary, #666);
+  margin: 0;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.wiki-database-view__board-card-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--td-text-color-secondary, #666);
+}
+.wiki-database-view__board-card-time {
   white-space: nowrap;
 }
 </style>
