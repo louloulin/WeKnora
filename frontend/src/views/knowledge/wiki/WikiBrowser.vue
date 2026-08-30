@@ -452,6 +452,16 @@
                 </a>
               </div>
 
+              <!-- Breadcrumb: KB > categories > current page title -->
+              <div v-if="selectedPage" class="wiki-breadcrumb-row">
+                <WikiBreadcrumb
+                  :knowledge-base-name="knowledgeBaseName"
+                  :category-path="selectedPage.category_path || []"
+                  :current-title="selectedPage.title"
+                  @navigate="onBreadcrumbNavigate"
+                />
+              </div>
+
               <!-- Page header -->
               <div class="wiki-reader-header">
                 <div class="wiki-reader-title-row">
@@ -1014,6 +1024,8 @@
 import { ref, computed, reactive, onMounted, onUnmounted, watch, nextTick, defineAsyncComponent } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useMenuStore } from '@/stores/menu'
+import { useAuthStore } from '@/stores/auth'
+import { useCommandPaletteStore } from '@/stores/commandPalette'
 import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
@@ -1031,6 +1043,7 @@ import { useWikiShareLinksStore } from '@/stores/wikiShareLinks'
 import WikiAclDialog from '@/components/wiki/WikiAclDialog.vue'
 import WikiBatchAuditPanel from '@/components/wiki/WikiBatchAuditPanel.vue'
 import WikiAuditDrawer from '@/components/wiki/WikiAuditDrawer.vue'
+import WikiBreadcrumb from '@/components/WikiBreadcrumb.vue'
 import { useWikiPageAclStore } from '@/stores/wikiPageAcl'
 import { aclToolbarVisibility } from './wikiBrowserAclVisibility'
 import WikiBacklinksPanel from '@/components/wiki/WikiBacklinksPanel.vue'
@@ -1118,6 +1131,8 @@ const router = useRouter()
 const route = useRoute()
 const menuStore = useMenuStore()
 const settingsStore = useSettingsStore()
+const authStore = useAuthStore()
+const commandPaletteStore = useCommandPaletteStore()
 
 const { t } = useI18n()
 
@@ -1143,6 +1158,16 @@ const kbFileAccess = computed<ProtectedFileAccessContext>(() => ({
   mode: 'knowledgeBase',
   kbId: props.knowledgeBaseId,
 }))
+
+// KB display name for the breadcrumb root. Falls back to KB id string when
+// not available; the component handles the empty case by hiding the root.
+const knowledgeBaseName = computed(() => {
+  const orgId = String(props.knowledgeBaseId || '')
+  if (!orgId) return ''
+  // Pull from auth store resource counts when available.
+  const counts = (authStore.tenant as any)?.resource_counts
+  return (counts && counts.knowledge_base_name) || ''
+})
 const pages = ref<WikiPage[]>([])
 const selectedPage = ref<WikiPage | null>(null)
 
@@ -4093,8 +4118,17 @@ async function onBacklinkNavigate(slug: string): Promise<void> {
   // WikiBacklinksPanel emits `navigate(slug)` when the user clicks
   // a backlink row. We just forward to the existing reader-level
   // `navigateToSlug` so the click is indistinguishable from a
+
   // body `[[slug]]` click (D6 — same code path, same back-stack).
   await navigateToSlug(slug)
+}
+
+// Breadcrumb segment click: open the global command palette pre-filled
+// with the segment name. This is a safe default — a future iteration can
+// extend it to a true ancestor-page or folder fetch once the API surfaces
+// folder-id-by-name lookup.
+function onBreadcrumbNavigate(payload: { segment: string; index: number }) {
+  commandPaletteStore.openPalette(payload.segment)
 }
 
 // Build #20 — WikiBacklinksPanel "View full graph →" link. Reuses
@@ -4554,6 +4588,7 @@ function goBack() {
     loadPageIssues(prev.slug)
     return
   }
+
   // History stack is empty but we remember the page was opened from
   // a system view — restore that instead of leaving the reader empty.
   if (navFromSystemView.value) {
