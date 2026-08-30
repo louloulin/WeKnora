@@ -4509,6 +4509,7 @@ export default {
     defaultLocaleBrowser: '브라우저 / 호스트 기본값'
   },
   knowledgeList: {
+    retry: '다시 시도',
     create: '지식베이스 생성',
     subtitle: '지식베이스를 관리하고 구성합니다. 문서형과 Q&A형 지식베이스를 지원합니다',
     sharedToOrgs: '{count} 스페이스에 공유됨',
@@ -4548,7 +4549,8 @@ export default {
       deleted: '삭제됨',
       deleteFailed: '삭제 실패',
       duplicateSuccess: '지식베이스 복제본이 생성되었습니다(콘텐츠 제외)',
-      duplicateFailed: '지식베이스 복제본 생성 실패'
+      duplicateFailed: '지식베이스 복제본 생성 실패',
+      loadFailed: '지식 베이스 목록을 불러오지 못했습니다',
     },
     sections: {
       pinned: '고정됨',

@@ -4509,6 +4509,7 @@ export default {
     defaultLocaleBrowser: 'Браузер / хост'
   },
   knowledgeList: {
+    retry: 'Повторить',
     create: 'Создать базу знаний',
     subtitle: 'Управляйте и организуйте свои базы знаний, поддерживаются документные и FAQ-базы знаний',
     sharedToOrgs: 'Shared to {count} space(s)',
@@ -4548,7 +4549,8 @@ export default {
       deleted: 'База знаний удалена',
       deleteFailed: 'Не удалось удалить базу знаний',
       duplicateSuccess: 'Дубликат базы знаний создан (без содержимого)',
-      duplicateFailed: 'Не удалось создать дубликат базы знаний'
+      duplicateFailed: 'Не удалось создать дубликат базы знаний',
+      loadFailed: 'Не удалось загрузить список баз знаний',
     },
     sections: {
       pinned: 'Закреплённые',

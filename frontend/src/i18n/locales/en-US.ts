@@ -2386,6 +2386,7 @@ export default {
     }
   },
   knowledgeList: {
+    retry: 'Retry',
     create: 'Create Knowledge Base',
     subtitle: 'Manage and organize your knowledge bases, supporting document-based and FAQ-based knowledge bases',
     sharedToOrgs: 'Shared to {count} space(s)',
@@ -2429,7 +2430,8 @@ export default {
       deleted: 'Knowledge base deleted',
       deleteFailed: 'Failed to delete knowledge base',
       duplicateSuccess: 'Knowledge base duplicate created (content not included)',
-      duplicateFailed: 'Failed to create knowledge base duplicate'
+      duplicateFailed: 'Failed to create knowledge base duplicate',
+      loadFailed: 'Failed to load knowledge base list',
     },
     detail: {
       title: 'Shared Knowledge Base',

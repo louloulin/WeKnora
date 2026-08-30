@@ -4516,6 +4516,7 @@ export default {
     defaultLocaleBrowser: '跟随浏览器 / 宿主'
   },
   knowledgeList: {
+    retry: '重试',
     create: '新建知识库',
     subtitle: '管理和组织您的知识库，支持文档型和问答型知识库',
     sharedToOrgs: '已共享给 {count} 个空间',
@@ -4555,7 +4556,8 @@ export default {
       deleted: '已删除',
       deleteFailed: '删除失败',
       duplicateSuccess: '知识库副本已创建（不包含知识内容）',
-      duplicateFailed: '创建知识库副本失败'
+      duplicateFailed: '创建知识库副本失败',
+      loadFailed: '加载知识库列表失败',
     },
     sections: {
       pinned: '置顶',
