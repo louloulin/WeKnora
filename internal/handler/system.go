@@ -1359,6 +1359,7 @@ func (h *SystemHandler) PromoteUserToSystemAdmin(c *gin.Context) {
 		return
 	}
 	user.IsSystemAdmin = true
+	user.OIDCManagedSystemAdmin = false
 	if err := h.userSvc.UpdateUser(ctx, user); err != nil {
 		logger.Errorf(ctx, "Error promoting user %s to system admin: %v", req.UserID, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to promote user"})

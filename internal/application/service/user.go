@@ -457,6 +457,9 @@ func (s *userService) GetOIDCAuthorizationURL(ctx context.Context, redirectURI s
 	if strings.TrimSpace(redirectURI) == "" {
 		return nil, errors.New("redirect_uri is required")
 	}
+	if configured := strings.TrimSpace(cfg.RedirectURI); configured != "" && redirectURI != configured {
+		return nil, errors.New("redirect_uri is not registered for OIDC client")
+	}
 
 	nonce, err := generateRandomString(24)
 	if err != nil {
@@ -477,6 +480,7 @@ func (s *userService) GetOIDCAuthorizationURL(ctx context.Context, redirectURI s
 	query.Set("redirect_uri", redirectURI)
 	query.Set("scope", strings.Join(cfg.Scopes, " "))
 	query.Set("state", state)
+	query.Set("nonce", nonce)
 
 	authURL := cfg.AuthorizationEndpoint
 	if strings.Contains(authURL, "?") {
@@ -531,6 +535,9 @@ func (s *userService) LoginWithOIDC(
 	if strings.TrimSpace(userInfo.Email) == "" {
 		return nil, errors.New("OIDC provider did not return email")
 	}
+	if strings.TrimSpace(userInfo.Issuer) == "" || strings.TrimSpace(userInfo.Subject) == "" {
+		return nil, errors.New("OIDC provider returned incomplete stable identity")
+	}
 
 	isNewUser := false
 	var user *types.User
@@ -580,6 +587,9 @@ func (s *userService) LoginWithOIDC(
 
 	if !user.IsActive {
 		return &types.OIDCCallbackResponse{Success: false, Message: "Account is disabled"}, nil
+	}
+	if err := s.syncOIDCAuthorization(ctx, user, userInfo, cfg); err != nil {
+		return nil, err
 	}
 
 	// Resolve target tenant once so the JWT claim and the tenant we
@@ -1479,6 +1489,9 @@ func validateOIDCEndpoints(cfg *config.OIDCAuthConfig) error {
 	if err := validateOIDCEndpoint("userinfo", cfg.UserInfoEndpoint, false); err != nil {
 		return err
 	}
+	if err := validateOIDCEndpoint("jwks", cfg.JWKSURI, true); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -1497,7 +1510,7 @@ func (s *userService) getOIDCConfig(ctx context.Context) (*config.OIDCAuthConfig
 }
 
 func (s *userService) populateOIDCEndpoints(ctx context.Context, cfg *config.OIDCAuthConfig) error {
-	if strings.TrimSpace(cfg.AuthorizationEndpoint) != "" && strings.TrimSpace(cfg.TokenEndpoint) != "" {
+	if strings.TrimSpace(cfg.AuthorizationEndpoint) != "" && strings.TrimSpace(cfg.TokenEndpoint) != "" && strings.TrimSpace(cfg.IssuerURL) != "" && strings.TrimSpace(cfg.JWKSURI) != "" {
 		return validateOIDCEndpoints(cfg)
 	}
 	if strings.TrimSpace(cfg.DiscoveryURL) == "" {
@@ -1567,7 +1580,7 @@ func (s *userService) verifyOIDCIDToken(ctx context.Context, cfg *config.OIDCAut
 	if err != nil {
 		return nil, err
 	}
-	parser := jwt.NewParser(jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg()}), jwt.WithIssuer(strings.TrimRight(cfg.IssuerURL, "/")), jwt.WithAudience(cfg.ClientID), jwt.WithExpirationRequired())
+	parser := jwt.NewParser(jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg()}), jwt.WithIssuer(strings.TrimRight(cfg.IssuerURL, "/")), jwt.WithAudience(cfg.ClientID), jwt.WithExpirationRequired(), jwt.WithIssuedAt())
 	claims := jwt.MapClaims{}
 	token, err := parser.ParseWithClaims(rawToken, claims, func(token *jwt.Token) (interface{}, error) {
 		if token.Method != jwt.SigningMethodRS256 {
@@ -1702,8 +1715,13 @@ func (s *userService) resolveOIDCUserInfo(ctx context.Context, cfg *config.OIDCA
 		if err != nil {
 			logger.Warnf(ctx, "Failed to fetch OIDC userinfo, fallback to id_token claims: %v", err)
 		} else {
+			if userInfoClaimsSub, ok := userInfoClaims["sub"].(string); ok && strings.TrimSpace(userInfoClaimsSub) != "" && userInfoClaimsSub != infoSubject(claims) {
+				return nil, errors.New("OIDC userinfo subject mismatch")
+			}
 			for k, v := range userInfoClaims {
-				claims[k] = v
+				if _, alreadyVerified := claims[k]; !alreadyVerified {
+					claims[k] = v
+				}
 			}
 		}
 	}
@@ -1725,6 +1743,133 @@ func (s *userService) resolveOIDCUserInfo(ctx context.Context, cfg *config.OIDCA
 		info.Username = strings.Split(info.Email, "@")[0]
 	}
 	return info, nil
+}
+
+func infoSubject(claims map[string]interface{}) string {
+	sub, _ := claims["sub"].(string)
+	return strings.TrimSpace(sub)
+}
+
+func (s *userService) syncOIDCAuthorization(ctx context.Context, user *types.User, info *types.OIDCUserInfo, cfg *config.OIDCAuthConfig) error {
+	if !cfg.SyncRoles || user == nil {
+		return nil
+	}
+	permissions := oidcStringClaims(info.Claims["permissions"])
+	permissions = append(permissions, oidcStringClaims(info.Claims["permission"])...)
+	permissions = append(permissions, oidcStringClaims(info.Claims["roles"])...)
+	permissionSet := make(map[string]struct{}, len(permissions))
+	for _, permission := range permissions {
+		permissionSet[strings.ToLower(strings.TrimSpace(permission))] = struct{}{}
+	}
+	_, hasPlatformAdmin := permissionSet[strings.ToLower(strings.TrimSpace(cfg.PlatformAdminPermission))]
+	if hasPlatformAdmin && !user.IsSystemAdmin {
+		user.IsSystemAdmin = true
+		user.OIDCManagedSystemAdmin = true
+		user.UpdatedAt = time.Now()
+		if err := s.userRepo.UpdateUser(ctx, user); err != nil {
+			return fmt.Errorf("failed to persist OIDC platform-admin mapping: %w", err)
+		}
+	} else if !hasPlatformAdmin && user.OIDCManagedSystemAdmin && user.IsSystemAdmin {
+		user.IsSystemAdmin = false
+		user.OIDCManagedSystemAdmin = false
+		user.UpdatedAt = time.Now()
+		if err := s.userRepo.UpdateUser(ctx, user); err != nil {
+			return fmt.Errorf("failed to revoke OIDC platform-admin mapping: %w", err)
+		}
+	}
+	if s.memberService == nil || len(cfg.OrganizationTenantMap) == 0 {
+		return nil
+	}
+	organizations := oidcStringClaims(info.Claims[cfg.OrganizationClaim])
+	role := oidcTenantRole(permissionSet, cfg)
+	desiredTenants := make(map[uint64]struct{})
+	for _, organization := range organizations {
+		tenantID, mapped := cfg.OrganizationTenantMap[organization]
+		if !mapped || tenantID == 0 {
+			continue
+		}
+		desiredTenants[tenantID] = struct{}{}
+		if role == "" {
+			continue
+		}
+		member, err := s.memberService.GetMembership(ctx, user.ID, tenantID)
+		if err != nil {
+			return fmt.Errorf("failed to load OIDC tenant membership: %w", err)
+		}
+		if member == nil {
+			syncCtx := context.WithValue(ctx, types.TenantMemberSourceContextKey, "oidc")
+			if _, err := s.memberService.AddMember(syncCtx, user.ID, tenantID, role, nil); err != nil && !errors.Is(err, ErrMembershipAlreadyExists) {
+				return fmt.Errorf("failed to create OIDC tenant membership: %w", err)
+			}
+			continue
+		}
+		if member.RoleSource == "oidc" && member.Role != role {
+			if err := s.memberService.UpdateRole(ctx, user.ID, tenantID, role); err != nil {
+				return fmt.Errorf("failed to synchronize OIDC tenant membership role: %w", err)
+			}
+		}
+	}
+	if memberships, err := s.memberService.ListByUser(ctx, user.ID); err == nil {
+		for _, member := range memberships {
+			if member.RoleSource == "oidc" {
+				if _, wanted := desiredTenants[member.TenantID]; !wanted || role == "" {
+					if err := s.memberService.RemoveMember(ctx, user.ID, member.TenantID); err != nil {
+						if errors.Is(err, ErrLastOwner) {
+							logger.Warnf(ctx, "OIDC role revocation kept last owner membership user=%s tenant=%d", user.ID, member.TenantID)
+							continue
+						}
+						return fmt.Errorf("failed to revoke OIDC tenant membership: %w", err)
+					}
+				}
+			}
+		}
+	} else {
+		return fmt.Errorf("failed to list OIDC tenant memberships: %w", err)
+	}
+	return nil
+}
+
+func oidcTenantRole(permissions map[string]struct{}, cfg *config.OIDCAuthConfig) types.TenantRole {
+	checks := []struct {
+		permission string
+		role       types.TenantRole
+	}{
+		{cfg.WorkspaceOwnerPermission, types.TenantRoleOwner},
+		{cfg.WorkspaceAdminPermission, types.TenantRoleAdmin},
+		{cfg.WorkspaceContributePermission, types.TenantRoleContributor},
+		{cfg.WorkspaceReadPermission, types.TenantRoleViewer},
+	}
+	for _, check := range checks {
+		if _, ok := permissions[strings.ToLower(strings.TrimSpace(check.permission))]; ok {
+			return check.role
+		}
+	}
+	return ""
+}
+
+func oidcStringClaims(value interface{}) []string {
+	switch typed := value.(type) {
+	case string:
+		parts := strings.FieldsFunc(typed, func(r rune) bool { return r == ',' || r == ';' || r == ' ' })
+		return parts
+	case []interface{}:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			out = append(out, oidcStringClaims(item)...)
+		}
+		return out
+	case []string:
+		return append([]string(nil), typed...)
+	case map[string]interface{}:
+		for _, key := range []string{"name", "value", "id"} {
+			if text, ok := typed[key].(string); ok && strings.TrimSpace(text) != "" {
+				return []string{strings.TrimSpace(text)}
+			}
+		}
+		return nil
+	default:
+		return nil
+	}
 }
 
 func (s *userService) fetchOIDCUserInfo(ctx context.Context, endpoint, accessToken string) (map[string]interface{}, error) {

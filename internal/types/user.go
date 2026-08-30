@@ -96,6 +96,10 @@ type User struct {
 	CanAccessAllTenants bool `json:"can_access_all_tenants" gorm:"default:false"`
 	// Whether the user is a system administrator (independent of workspace roles)
 	IsSystemAdmin bool `json:"is_system_admin" gorm:"default:false;index"`
+	// OIDCManagedSystemAdmin records whether the system-admin grant came from
+	// the configured OIDC platform permission. Manual grants are never revoked
+	// by a later OIDC claim change.
+	OIDCManagedSystemAdmin bool `json:"-" gorm:"default:false;index"`
 	// Per-user UI/feature preferences.
 	// Stored as JSON (jsonb on Postgres, TEXT on SQLite) via the
 	// driver.Valuer / sql.Scanner methods on UserPreferences.

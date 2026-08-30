@@ -19,6 +19,9 @@ const (
 	// OIDCNonceContextKey carries the nonce bound to the browser callback into
 	// the service that validates the returned ID token.
 	OIDCNonceContextKey ContextKey = "OIDCNonce"
+	// TenantMemberSourceContextKey carries the source for a membership created
+	// by an identity synchronization flow. Empty means local/manual.
+	TenantMemberSourceContextKey ContextKey = "TenantMemberSource"
 	// PrincipalContextKey is the context key for the terminal caller principal.
 	PrincipalContextKey ContextKey = "Principal"
 	// TenantAPIKeyScopeContextKey carries per-API-key operation and KB scopes.

@@ -114,6 +114,9 @@ var contextCloneAcrossDetach = map[ContextKey]bool{
 	// The OIDC nonce belongs to one browser callback and must not be reused by
 	// detached work after that callback has completed.
 	OIDCNonceContextKey: false,
+	// Membership provenance is only needed while creating the membership row;
+	// carrying it into detached work could misattribute unrelated writes.
+	TenantMemberSourceContextKey: false,
 }
 
 // ContextKeysClonedAcrossDetach returns the keys logger.CloneContext carries

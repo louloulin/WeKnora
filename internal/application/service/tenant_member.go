@@ -181,6 +181,9 @@ func (s *tenantMemberService) AddMember(
 		InvitedBy: invitedBy,
 		JoinedAt:  time.Now(),
 	}
+	if source, _ := ctx.Value(types.TenantMemberSourceContextKey).(string); source != "" {
+		member.RoleSource = source
+	}
 	if err := s.repo.Create(ctx, member); err != nil {
 		// TOCTOU race: a concurrent AddMember / EnsureOwner slipped past
 		// the Get above. The DB's partial unique index on

@@ -93,6 +93,9 @@ type TenantMember struct {
 	TenantID uint64 `json:"tenant_id" gorm:"not null;index"`
 	// Role held by the user inside this tenant.
 	Role TenantRole `json:"role" gorm:"type:varchar(20);not null;default:'contributor'"`
+	// RoleSource identifies memberships managed by an external identity
+	// provider. Only oidc rows are eligible for automatic sync changes.
+	RoleSource string `json:"-" gorm:"type:varchar(20);not null;default:'local'"`
 	// Status controls whether this membership is honoured by the auth
 	// middleware; see TenantMemberStatus constants.
 	Status TenantMemberStatus `json:"status" gorm:"type:varchar(20);not null;default:'active'"`

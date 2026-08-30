@@ -318,6 +318,7 @@ type OIDCAuthConfig struct {
 	TokenEndpoint                 string               `yaml:"token_endpoint"         json:"token_endpoint"`
 	UserInfoEndpoint              string               `yaml:"user_info_endpoint"     json:"user_info_endpoint"`
 	JWKSURI                       string               `yaml:"jwks_uri"               json:"-"`
+	RedirectURI                   string               `yaml:"redirect_uri"           json:"redirect_uri"`
 	Scopes                        []string             `yaml:"scopes"                 json:"scopes"`
 	UserInfoMapping               *OIDCUserInfoMapping `yaml:"user_info_mapping"      json:"user_info_mapping"`
 	AllowEmailLinking             bool                 `yaml:"allow_email_linking"    json:"allow_email_linking"`
@@ -737,6 +738,9 @@ func applyOIDCEnvOverrides(cfg *Config) {
 	}
 	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_USER_INFO_ENDPOINT")); value != "" {
 		cfg.OIDCAuth.UserInfoEndpoint = value
+	}
+	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_REDIRECT_URI")); value != "" {
+		cfg.OIDCAuth.RedirectURI = value
 	}
 	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_JWKS_URI")); value != "" {
 		cfg.OIDCAuth.JWKSURI = value
