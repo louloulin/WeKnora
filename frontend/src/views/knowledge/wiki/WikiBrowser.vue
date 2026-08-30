@@ -190,6 +190,18 @@
           @select="onRecentSelect"
         />
 
+        <!-- Build #23: 页面属性 — 与 Notion / Feishu 多维表格对齐。
+             读自 page.page_metadata,类型化字段。Save 触发
+             onPropertiesSave(),把合并后的新 metadata 发回父组件
+             写回 (父组件目前仅 console.log 占位,真实 PATCH 路由待
+             Sprint 1 后端联通时补)。 -->
+        <WikiPropertiesPanel
+          v-if="selectedPage"
+          :page-metadata="selectedPage.page_metadata"
+          :can-edit="!!props.canEdit"
+          @save="onPropertiesSave"
+        />
+
         <div class="wiki-sidebar-header">
           <div v-if="stats && (stats.pending_tasks > 0 || stats.is_active)" class="wiki-queue-status">
             <t-loading size="small" />
@@ -1067,6 +1079,7 @@ import WikiAuditDrawer from '@/components/wiki/WikiAuditDrawer.vue'
 import WikiBreadcrumb from '@/components/WikiBreadcrumb.vue'
 import WikiRecentPages from '@/components/wiki/WikiRecentPages.vue'
 import WikiInlineAIMenu from '@/components/wiki/WikiInlineAIMenu.vue'
+import WikiPropertiesPanel from '@/components/wiki/WikiPropertiesPanel.vue'
 import { useWikiPageAclStore } from '@/stores/wikiPageAcl'
 import { aclToolbarVisibility } from './wikiBrowserAclVisibility'
 import WikiBacklinksPanel from '@/components/wiki/WikiBacklinksPanel.vue'
@@ -1482,6 +1495,15 @@ function pushRecent(page: WikiPage | null | undefined) {
 
 function onRecentSelect(slug: string) {
   void navigateToSlug(slug)
+}
+
+// Build #23 stub: forward property updates to console + local mutation.
+// Real implementation will PATCH the page via the wiki update API.
+function onPropertiesSave(newMetadata: Record<string, any>) {
+  if (selectedPage.value) {
+    selectedPage.value = { ...selectedPage.value, page_metadata: newMetadata }
+  }
+  console.info('[wiki-properties] saved', Object.keys(newMetadata))
 }
 
 // Build #22 stub: forward inline-AI actions to console + toast placeholder.

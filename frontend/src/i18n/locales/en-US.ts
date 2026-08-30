@@ -2616,6 +2616,14 @@ export default {
       ask: 'Ask',
       askTitle: 'Ask AI about the selection',
     },
+    wikiProperties: {
+      regionLabel: 'Page properties',
+      title: 'Properties',
+      save: 'Save',
+      saved: 'Saved',
+      empty: 'Not set',
+      multiSelectPlaceholder: 'Comma-separated',
+    },
     activity: {
       title: 'Activity',
       description: 'Important changes and background-task entry points for this knowledge base. Retention follows the audit-log policy.',

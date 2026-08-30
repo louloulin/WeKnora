@@ -3414,6 +3414,14 @@ export default {
       ask: '提问',
       askTitle: '基于选中内容向 AI 提问',
     },
+    wikiProperties: {
+      regionLabel: '页面属性',
+      title: '属性',
+      save: '保存',
+      saved: '已保存',
+      empty: '未设置',
+      multiSelectPlaceholder: '逗号分隔',
+    },
     titleCreate: '新建知识库',
     titleEdit: '知识库设置',
     advanced: {

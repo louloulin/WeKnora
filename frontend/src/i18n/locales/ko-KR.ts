@@ -3412,6 +3412,14 @@ export default {
       ask: '질문',
       askTitle: '선택 영역에 대해 AI에게 질문',
     },
+    wikiProperties: {
+      regionLabel: '페이지 속성',
+      title: '속성',
+      save: '저장',
+      saved: '저장됨',
+      empty: '설정 안 됨',
+      multiSelectPlaceholder: '쉼표로 구분',
+    },
     titleCreate: '지식베이스 생성',
     titleEdit: '지식베이스 설정',
     advanced: {

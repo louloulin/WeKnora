@@ -3412,6 +3412,14 @@ export default {
       ask: 'Спросить',
       askTitle: 'Спросить ИИ о выделенном',
     },
+    wikiProperties: {
+      regionLabel: 'Свойства страницы',
+      title: 'Свойства',
+      save: 'Сохранить',
+      saved: 'Сохранено',
+      empty: 'Не задано',
+      multiSelectPlaceholder: 'Через запятую',
+    },
     titleCreate: 'Создать базу знаний',
     titleEdit: 'Настройки базы знаний',
     advanced: {
