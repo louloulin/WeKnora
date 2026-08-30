@@ -7,10 +7,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
-	"github.com/Tencent/WeKnora/internal/utils"
 	"gorm.io/gorm"
 )
 
@@ -67,8 +68,8 @@ var ErrDatasetNotFound = errors.New("eval dataset not found")
 // not talk to a KB or to the chat pipeline — those happen in
 // EvalRunnerService.
 type EvalDatasetService struct {
-	db         *gorm.DB
-	auditSvc   interfaces.AuditLogService
+	db       *gorm.DB
+	auditSvc interfaces.AuditLogService
 }
 
 // NewEvalDatasetService wires the dataset service. auditSvc may be nil
@@ -278,7 +279,7 @@ func (s *EvalDatasetService) ImportJSON(ctx context.Context, tenantID uint64, cr
 		return "", ErrQACapReached
 	}
 
-	datasetID := utils.GenerateID("evaldataset")
+	datasetID := uuid.NewString()
 	ds := &types.EvalDataset{
 		ID:            datasetID,
 		TenantID:      tenantID,
@@ -324,7 +325,7 @@ func (s *EvalDatasetService) ImportJSON(ctx context.Context, tenantID uint64, cr
 // caller never sees an audit-only failure.
 func (s *EvalDatasetService) emitDatasetAudit(ctx context.Context, tenantID uint64, actorUserID, verb, datasetID, extra string) {
 	details := map[string]any{
-		"verb":      verb,
+		"verb":       verb,
 		"dataset_id": datasetID,
 	}
 	if extra != "" {

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -67,16 +68,16 @@ func (h *EvalDatasetHandler) CreateDataset(c *gin.Context) {
 	actorID, _ := types.UserIDFromContext(c.Request.Context())
 
 	ds := &types.EvalDataset{
-		ID:          "evaldataset-" + req.Name, // overwritten by service GenerateID
-		TenantID:    tenantID,
-		Name:        req.Name,
-		Description: req.Description,
+		ID:            "evaldataset-" + req.Name, // overwritten by service GenerateID
+		TenantID:      tenantID,
+		Name:          req.Name,
+		Description:   req.Description,
 		SchemaVersion: 1,
-		CreatedBy:   actorID,
+		CreatedBy:     actorID,
 	}
 	if err := h.svc.CreateDataset(c.Request.Context(), ds); err != nil {
 		switch {
-		case errors.Is(err, interfaces.ErrDatasetCapReached):
+		case errors.Is(err, service.ErrDatasetCapReached):
 			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 		default:
 			if isValidationErr(err) {
@@ -137,7 +138,7 @@ func (h *EvalDatasetHandler) GetDatasetByID(c *gin.Context) {
 	}
 	ds, qas, err := h.svc.GetDatasetByID(c.Request.Context(), id)
 	if err != nil {
-		if errors.Is(err, interfaces.ErrDatasetNotFound) {
+		if errors.Is(err, service.ErrDatasetNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "dataset not found"})
 			return
 		}
@@ -190,7 +191,7 @@ func (h *EvalDatasetHandler) UpdateDataset(c *gin.Context) {
 		Description: req.Description,
 	}
 	if err := h.svc.UpdateDataset(c.Request.Context(), ds); err != nil {
-		if errors.Is(err, interfaces.ErrDatasetNotFound) {
+		if errors.Is(err, service.ErrDatasetNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "dataset not found"})
 			return
 		}
@@ -218,7 +219,7 @@ func (h *EvalDatasetHandler) DeleteDataset(c *gin.Context) {
 		return
 	}
 	if err := h.svc.DeleteDataset(c.Request.Context(), tenantID, id); err != nil {
-		if errors.Is(err, interfaces.ErrDatasetNotFound) {
+		if errors.Is(err, service.ErrDatasetNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "dataset not found"})
 			return
 		}
@@ -252,7 +253,7 @@ func (h *EvalDatasetHandler) ReplaceQAList(c *gin.Context) {
 	}
 	if err := h.svc.ReplaceQAList(c.Request.Context(), id, req.QA); err != nil {
 		switch {
-		case errors.Is(err, interfaces.ErrQACapReached):
+		case errors.Is(err, service.ErrQACapReached):
 			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 		default:
 			logger.Errorf(c.Request.Context(), "[eval_dataset] replace QA failed id=%s: %v", id, err)
@@ -289,8 +290,8 @@ func (h *EvalDatasetHandler) ImportJSON(c *gin.Context) {
 	datasetID, err := h.svc.ImportJSON(c.Request.Context(), tenantID, actorID, &req.EvalDatasetJSONPayload)
 	if err != nil {
 		switch {
-		case errors.Is(err, interfaces.ErrDatasetCapReached),
-			errors.Is(err, interfaces.ErrQACapReached):
+		case errors.Is(err, service.ErrDatasetCapReached),
+			errors.Is(err, service.ErrQACapReached):
 			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 		default:
 			if isValidationErr(err) {

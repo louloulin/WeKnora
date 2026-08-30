@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strconv"
 	"sync"
 	"sync/atomic"
 
@@ -154,8 +155,14 @@ func wikiActorUserIDFromContext(ctx context.Context) *uint64 {
 	if v, ok := ctx.Value(wikiObsCtxKeyActorUserID).(uint64); ok && v > 0 {
 		return &v
 	}
-	if v := types.UserIDFromContext(ctx); v > 0 {
-		return &v
+	if v, ok := types.UserIDFromContext(ctx); ok && v != "" {
+		id := uint64(0)
+		if parsed, err := strconv.ParseUint(v, 10, 64); err == nil && parsed > 0 {
+			id = parsed
+		}
+		if id > 0 {
+			return &id
+		}
 	}
 	return nil
 }

@@ -64,21 +64,29 @@ func newWikiBacklinksCacheInvalidator(
 	}
 }
 
+// NewWikiBacklinksCacheInvalidator wires the production invalidator for DI.
+func NewWikiBacklinksCacheInvalidator(
+	pageRepo interfaces.WikiPageRepository,
+	cacheRepo interfaces.WikiBacklinksCacheRepository,
+) interfaces.WikiBacklinksCacheInvalidator {
+	return newWikiBacklinksCacheInvalidator(pageRepo, cacheRepo)
+}
+
 // Resolve returns the slug set whose cache row must be wiped for the
 // given op + the strategy label that explains the choice.
 //
 // Build #21 rule set, lifted into the table-driven Build #28 form:
 //
-//   CreatePage(A)  → [A] ∪ A.out_links        (self_outgoing)
-//   UpdatePage(A)  → [A] ∪ A.out_links        (self_outgoing)
-//   DeletePage(A)  → [A] ∪ A.in_links         (self_incoming)
-//   MovePage(A)    → [A] ∪ A.out_links        (self_outgoing)
-//                    (MovePage's caller has already prepended
-//                    oldSlug to the affected-slug set; we only see
-//                    newSlug here.)
-//   BatchMove(s)   → [s] ∪ s.out_links       (self_outgoing)
-//   BatchDelete(s) → [s] ∪ s.in_links        (self_incoming)
-//   BatchStatus(s) → [s]                      (self)
+//	CreatePage(A)  → [A] ∪ A.out_links        (self_outgoing)
+//	UpdatePage(A)  → [A] ∪ A.out_links        (self_outgoing)
+//	DeletePage(A)  → [A] ∪ A.in_links         (self_incoming)
+//	MovePage(A)    → [A] ∪ A.out_links        (self_outgoing)
+//	                 (MovePage's caller has already prepended
+//	                 oldSlug to the affected-slug set; we only see
+//	                 newSlug here.)
+//	BatchMove(s)   → [s] ∪ s.out_links       (self_outgoing)
+//	BatchDelete(s) → [s] ∪ s.in_links        (self_incoming)
+//	BatchStatus(s) → [s]                      (self)
 //
 // `slug` is the primary slug affected; for batch ops the caller calls
 // Resolve once per slug. The function never returns nil — callers can

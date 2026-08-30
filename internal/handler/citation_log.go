@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -169,9 +170,9 @@ func (h *CitationLogHandler) LogCitationAccess(c *gin.Context) {
 	}(goroutineCtx, entry, req.CitationIndex)
 
 	c.JSON(http.StatusOK, gin.H{
-		"status":           "accepted",
-		"chunk_id":         req.ChunkID,
-		"citation_index":   req.CitationIndex,
+		"status":            "accepted",
+		"chunk_id":          req.ChunkID,
+		"citation_index":    req.CitationIndex,
 		"source_message_id": req.SourceMessageID,
 	})
 }

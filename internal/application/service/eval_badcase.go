@@ -8,10 +8,11 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
-	"github.com/Tencent/WeKnora/internal/utils"
 	"gorm.io/gorm"
 )
 
@@ -97,7 +98,7 @@ func (s *evalBadcaseService) FlagAuto(ctx context.Context, tenantID uint64, runI
 		return existing, nil
 	}
 	row := &types.EvalBadcase{
-		ID:         utils.GenerateID("evalbadcase"),
+		ID:         uuid.NewString(),
 		TenantID:   tenantID,
 		RunID:      runID,
 		QID:        qid,
@@ -159,7 +160,7 @@ func (s *evalBadcaseService) Promote(ctx context.Context, tenantID uint64, runID
 	}
 	// No auto row — create a human-promote row directly.
 	row := &types.EvalBadcase{
-		ID:         utils.GenerateID("evalbadcase"),
+		ID:         uuid.NewString(),
 		TenantID:   tenantID,
 		RunID:      runID,
 		QID:        qid,

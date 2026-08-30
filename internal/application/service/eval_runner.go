@@ -10,12 +10,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/Tencent/WeKnora/internal/eval/judge"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
-	"github.com/Tencent/WeKnora/internal/utils"
 	"gorm.io/gorm"
 )
 
@@ -68,20 +69,20 @@ type EvalChatRequest struct {
 // into eval_run_results so the frontend can render evidence without
 // re-running.
 type EvalChatResponse struct {
-	ModelAnswer       string
-	SearchTopK        json.RawMessage
-	CitationIndex     json.RawMessage
-	ReflectionEvents  json.RawMessage
+	ModelAnswer      string
+	SearchTopK       json.RawMessage
+	CitationIndex    json.RawMessage
+	ReflectionEvents json.RawMessage
 }
 
 // evalRunner is the concrete runner.
 type evalRunner struct {
-	db              *gorm.DB
-	datasetSvc      interfaces.EvalDatasetService
-	badcaseSvc      interfaces.EvalBadcaseService
-	modelSvc        interfaces.ModelService
-	chatPipeline    EvalChatPipeline
-	auditSvc        interfaces.AuditLogService
+	db           *gorm.DB
+	datasetSvc   interfaces.EvalDatasetService
+	badcaseSvc   interfaces.EvalBadcaseService
+	modelSvc     interfaces.ModelService
+	chatPipeline EvalChatPipeline
+	auditSvc     interfaces.AuditLogService
 }
 
 // NewEvalRunnerService wires the runner with the production pipeline.
@@ -147,7 +148,7 @@ func (r *evalRunner) StartRun(ctx context.Context, req *interfaces.EvalRunStartR
 		}
 	}
 
-	runID := utils.GenerateID("evalrun")
+	runID := uuid.NewString()
 	run := &types.EvalRun{
 		ID:                 runID,
 		TenantID:           tenantID,
@@ -416,9 +417,9 @@ func (r *evalRunner) persistResult(
 		Question:                 qa.Question,
 		ModelAnswer:              modelAnswer,
 		ExpectedAnswer:           qa.ExpectedAnswer,
-		SearchTopK:               types.JSON(searchTopK),
-		CitationIndex:            types.JSON(citationIndex),
-		ReflectionEvents:         types.JSON(reflectionEvents),
+		SearchTopK:               searchTopK,
+		CitationIndex:            citationIndex,
+		ReflectionEvents:         reflectionEvents,
 		FactualityScore:          factuality,
 		CitationFidelityScore:    citation,
 		ReflectionNecessityScore: reflection,
@@ -600,15 +601,15 @@ func (r *evalRunner) emitRunAudit(ctx context.Context, tenantID uint64, actorUse
 	}
 	detailJSON, _ := json.Marshal(details)
 	entry := &types.AuditLog{
-		TenantID:    tenantID,
-		ActorUserID: actorUserID,
-		Action:      action,
-		ScopeType:   "eval_run",
-		ScopeID:     runID,
-		TargetType:  "eval_run",
-		TargetID:    runID,
-		Outcome:     types.AuditOutcome(outcome),
-		Details:     types.JSON(detailJSON),
+		TenantID:      tenantID,
+		ActorUserID:   actorUserID,
+		Action:        action,
+		ScopeType:     "eval_run",
+		ScopeID:       runID,
+		TargetType:    "eval_run",
+		TargetID:      runID,
+		Outcome:       types.AuditOutcome(outcome),
+		Details:       types.JSON(detailJSON),
 		CorrelationID: types.CorrelationIDFromContext(ctx),
 	}
 	if r.auditSvc == nil {

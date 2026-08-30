@@ -17,29 +17,7 @@ import (
 // kept private to the ACL service so the canonical WikiPageRepository
 // interface (which is huge and used by every read path) does not have to
 // grow an ACL-specific method on every implementation.
-type WikiAclRepo interface {
-	// GetAclBySlug fetches just the acl column for a page. Returns
-	// (nil, nil) when the row exists but acl is NULL (legacy inherit).
-	// Build #27 — the returned WikiPageAcl.SnapshotHash carries the
-	// sibling acl_snapshot_hash value so PutAcl can compare-and-skip.
-	GetAclBySlug(ctx context.Context, kbID string, slug string) (*types.WikiPageAcl, error)
-	// UpdateAclWithRevision writes a new ACL value after checking the
-	// stored revision still matches expectedRevision. Returns
-	// types.ErrWikiPageAclRevisionConflict on mismatch. Audit row is
-	// written in the same transaction. Build #27 — snapshotHash is the
-	// fingerprint of the new ACL payload; pass "" to clear the column
-	// (safe default: the next PutAcl will then run the cache wipe).
-	UpdateAclWithRevision(ctx context.Context, kbID string, slug string,
-		newAcl types.WikiPageAcl, expectedRevision int64, snapshotHash string,
-		actorUserID string, actorRole string, action string) (*types.WikiPageAcl, error)
-	// PageOwnerAndAdmin returns the page's owner user id and whether the
-	// caller is a KB admin. Used by Resolve to short-circuit owner/admin
-	// to allow before reading the allow_list.
-	PageOwnerAndAdmin(ctx context.Context, kbID string, slug string, callerUserID string) (ownerID string, isAdmin bool, err error)
-	// GroupMembers returns the union of user IDs belonging to any of the
-	// given groups. Used by Resolve to expand allow_group_ids.
-	GroupMembers(ctx context.Context, tenantID uint64, groupIDs []string) ([]string, error)
-}
+type WikiAclRepo = interfaces.WikiAclRepository
 
 // aclChangeCacheThreshold is the per-KB row count above which the
 // Build #24 ACL→cache hook switches from a full-wipe path
@@ -281,9 +259,9 @@ func (s *wikiAclService) PutAcl(ctx context.Context, kbID string, slug string,
 	// failure here is treated as "no prior state" → noop=false → wipe
 	// runs (the safe default — never skip a wipe we couldn't verify).
 	var (
-		beforeMode  = ""
-		beforeHash  = ""
-		noop        = false
+		beforeMode = ""
+		beforeHash = ""
+		noop       = false
 	)
 	if before, getErr := s.repo.GetAclBySlug(ctx, kbID, slug); getErr == nil && before != nil {
 		beforeMode = before.Mode
@@ -442,10 +420,10 @@ func (s *wikiAclService) logAclChange(
 	sourceEventID := wikiSourceEventIDFromContext(ctx)
 	actorPtr := wikiActorUserIDFromContext(ctx)
 	logEntry := &types.WikiBacklinksCacheInvalidationLogEntry{
-		KbID:          kbID,
-		Slug:          slug,
-		Op:            string(types.BacklinkCacheInvalidateAclChange),
-		ActorUserID:   actorPtr,
+		KbID:        kbID,
+		Slug:        slug,
+		Op:          string(types.BacklinkCacheInvalidateAclChange),
+		ActorUserID: actorPtr,
 		// Renamed from SourceEventID in Build #25 — column is now
 		// `correlation_id` to match the 4-source audit join key. The
 		// helper above still returns the X-Request-ID from middleware

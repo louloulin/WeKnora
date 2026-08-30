@@ -50,7 +50,7 @@ type wikiSearchV2Service struct {
 }
 
 // NewWikiSearchV2Service wires the service.
-func NewWikiSearchV2Service(p WikiSearchV2ServiceParams) WikiSearchV2Service {
+func NewWikiSearchV2Service(p WikiSearchV2ServiceParams) interfaces.WikiSearchV2Service {
 	return &wikiSearchV2Service{repo: p.Repo, kb: p.KB, acl: p.ACL}
 }
 

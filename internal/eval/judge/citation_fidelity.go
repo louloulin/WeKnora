@@ -51,11 +51,12 @@ type CitationIndex map[int]string
 //     either a rephrased copy or a mistake; we flag both as score -1)
 //
 // Score bands:
-//   5: every citation valid, no duplicates, no out-of-range
-//   4: one duplicate or one gap (cited N+1 with no N)
-//   3: one or two out-of-range references
-//   2: missing citation_index or empty answer text
-//   1: parse failure or three+ bad references
+//
+//	5: every citation valid, no duplicates, no out-of-range
+//	4: one duplicate or one gap (cited N+1 with no N)
+//	3: reserved for future partial-evidence cases
+//	2: missing citation_index or empty answer text
+//	1: parse failure or three+ bad references
 //
 // The function is pure: same inputs → same output. The harness pins
 // this so a regex tweak never silently changes the score distribution.
@@ -109,6 +110,12 @@ func HeuristicCitationFidelity(modelAnswer string, citationIndexJSON json.RawMes
 	}
 
 	bad := outOfRangeCount + duplicateCount
+	if outOfRangeCount >= 3 {
+		return 1
+	}
+	if outOfRangeCount > 0 {
+		return 2
+	}
 	switch {
 	case bad == 0:
 		return 5
@@ -159,7 +166,13 @@ func parseCitationIndex(raw json.RawMessage) (CitationIndex, error) {
 // alone so the score column is never 0.
 func CombinedCitationFidelity(heuristic, llmScore int) int {
 	if llmScore <= 0 {
+		if heuristic <= 0 {
+			return clampScore(llmScore)
+		}
 		return clampScore(heuristic)
+	}
+	if heuristic <= 0 {
+		return clampScore(llmScore)
 	}
 	h := clampScore(heuristic)
 	l := clampScore(llmScore)

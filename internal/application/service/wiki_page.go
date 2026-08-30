@@ -163,9 +163,10 @@ func (s *wikiPageService) CreatePage(ctx context.Context, page *types.WikiPage) 
 	// to it as a backlink target; wipe the cache for [self] ∪ out_links
 	// so the next panel read recomputes direct + indirect counts.
 	if s.cacheRepo != nil && s.cacheInvalidator != nil {
-		if slugs, _ := s.resolveBacklinkInvalidation(ctx,
+		slugs, _ := s.resolveBacklinkInvalidation(ctx,
 			types.BacklinkCacheInvalidateCreatePage,
-			page.KnowledgeBaseID, page.Slug); err == nil {
+			page.KnowledgeBaseID, page.Slug)
+		{
 			s.InvalidateBacklinksCache(ctx, types.BacklinkCacheInvalidateRequest{
 				KbID:          page.KnowledgeBaseID,
 				Op:            types.BacklinkCacheInvalidateCreatePage,
@@ -191,7 +192,7 @@ func (s *wikiPageService) resolveBacklinkInvalidation(
 	slugs, strategy, _ := s.cacheInvalidator.Resolve(ctx, op, kbID, slug)
 	return slugs, strategy
 }
-//
+
 // Version bump policy: the `version` column is intended to track the user-
 // visible content revision, not every row rewrite. We therefore bump it only
 // when at least one of the user-facing fields actually changes — title,
@@ -1334,11 +1335,11 @@ func graphToCachedGraph(g *types.WikiBacklinkGraph) *cachedGraph {
 
 // cachedGraph is the JSON-friendly wrapper that binds the four section arrays.
 type cachedGraph struct {
-	Direct   []cachedBacklink                 `json:"direct"`
-	Indirect []cachedIndirect                 `json:"indirect"`
-	Related  []cachedRelated                  `json:"related"`
-	Broken   []cachedBroken                   `json:"broken"`
-	Stats    types.WikiBacklinkGraphStats     `json:"stats"`
+	Direct   []cachedBacklink             `json:"direct"`
+	Indirect []cachedIndirect             `json:"indirect"`
+	Related  []cachedRelated              `json:"related"`
+	Broken   []cachedBroken               `json:"broken"`
+	Stats    types.WikiBacklinkGraphStats `json:"stats"`
 }
 
 // cachedGraphToGraph inverts graphToCachedGraph.
@@ -1769,21 +1770,15 @@ func (s *wikiPageService) filterBacklinkGraphByAcl(
 		return d == types.WikiPageAclAllow
 	}
 
-	filtered := &types.WikiBacklinkGraph{
-		KbID:         graph.KbID,
-		Slug:         graph.Slug,
-		ComputedAt:   graph.ComputedAt,
-		Stats:        graph.Stats, // approximate — see comment above
-		Broken:       graph.Broken,
-	}
+	filtered := &types.WikiBacklinkGraph{Stats: graph.Stats, Broken: graph.Broken}
 	if filtered.Direct == nil {
-		filtered.Direct = []types.WikiPageBacklink{}
+		filtered.Direct = []*types.WikiPageBacklink{}
 	}
 	if filtered.Indirect == nil {
-		filtered.Indirect = []types.WikiPageBacklink{}
+		filtered.Indirect = []*types.WikiBacklinkIndirect{}
 	}
 	if filtered.Related == nil {
-		filtered.Related = []types.WikiPageBacklink{}
+		filtered.Related = []*types.WikiPageBacklinkRelated{}
 	}
 	for _, row := range graph.Direct {
 		if allowed(row.Slug) {
@@ -1809,13 +1804,13 @@ func (s *wikiPageService) filterBacklinkGraphByAcl(
 //
 //   - Direct   (1-hop):  pages whose `in_links` contains `slug`
 //   - Indirect (2-hop):  pages that link to one of the direct set,
-//                        minus self and the direct set itself; each
-//                        row carries `via` = the direct slug it came from
+//     minus self and the direct set itself; each
+//     row carries `via` = the direct slug it came from
 //   - Related  (Jaccard): pages whose `out_links` set overlaps the
-//                        current page's `out_links` above the configured
-//                        threshold; rows carry `jaccard` ∈ [0, 1]
+//     current page's `out_links` above the configured
+//     threshold; rows carry `jaccard` ∈ [0, 1]
 //   - Broken:           slugs in the current page's `out_links` that
-//                        do not resolve to any live page in the KB
+//     do not resolve to any live page in the KB
 //
 // Parameters (clamp semantics; see handler):
 //   - MaxIndirect       default 50, clamp [0, 200]
@@ -1923,7 +1918,11 @@ func (s *wikiPageService) computeBacklinkGraph(
 		if !ok || srcLite == nil {
 			continue
 		}
-		for _, in := range srcLite.InLinks {
+		srcPage, err := s.repo.GetBySlug(ctx, kbID, srcSlug)
+		if err != nil || srcPage == nil {
+			continue
+		}
+		for _, in := range srcPage.InLinks {
 			if in == "" || in == slug {
 				continue
 			}
@@ -2480,16 +2479,6 @@ func buildWikiPath(pageType string, categoryPath []string, display string) strin
 	return strings.Join(parts, "/")
 }
 
-// containsString checks if a string slice contains a given string
-func containsString(slice []string, s string) bool {
-	for _, v := range slice {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}
-
 // removeString removes a string from a slice
 func removeString(slice []string, s string) types.StringArray {
 	result := make(types.StringArray, 0, len(slice))
@@ -2859,10 +2848,8 @@ func (s *wikiPageService) BatchMovePages(
 	if s.cacheRepo != nil && len(clean) > 0 {
 		slugs := make([]string, 0, len(clean))
 		for _, slug := range clean {
-			if list, _ := s.resolveBacklinkInvalidation(ctx,
-				types.BacklinkCacheInvalidateBatchMove, kbID, slug); err == nil {
-				slugs = append(slugs, list...)
-			}
+			list, _ := s.resolveBacklinkInvalidation(ctx, types.BacklinkCacheInvalidateBatchMove, kbID, slug)
+			slugs = append(slugs, list...)
 		}
 		if len(slugs) > 0 {
 			s.InvalidateBacklinksCache(ctx, types.BacklinkCacheInvalidateRequest{
@@ -2908,10 +2895,8 @@ func (s *wikiPageService) BatchDeletePages(
 	if s.cacheRepo != nil && len(clean) > 0 {
 		all := make([]string, 0, len(clean))
 		for _, slug := range clean {
-			if list, _ := s.resolveBacklinkInvalidation(ctx,
-				types.BacklinkCacheInvalidateBatchDelete, kbID, slug); err == nil {
-				all = append(all, list...)
-			}
+			list, _ := s.resolveBacklinkInvalidation(ctx, types.BacklinkCacheInvalidateBatchDelete, kbID, slug)
+			all = append(all, list...)
 		}
 		if len(all) > 0 {
 			s.InvalidateBacklinksCache(ctx, types.BacklinkCacheInvalidateRequest{
@@ -2992,10 +2977,8 @@ func (s *wikiPageService) BatchUpdatePageStatus(
 	if s.cacheRepo != nil && len(result.Succeeded) > 0 {
 		all := make([]string, 0, len(result.Succeeded))
 		for _, slug := range result.Succeeded {
-			if list, _ := s.resolveBacklinkInvalidation(ctx,
-				types.BacklinkCacheInvalidateBatchStatus, kbID, slug); err == nil {
-				all = append(all, list...)
-			}
+			list, _ := s.resolveBacklinkInvalidation(ctx, types.BacklinkCacheInvalidateBatchStatus, kbID, slug)
+			all = append(all, list...)
 		}
 		if len(all) > 0 {
 			s.InvalidateBacklinksCache(ctx, types.BacklinkCacheInvalidateRequest{

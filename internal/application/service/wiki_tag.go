@@ -96,12 +96,12 @@ func (s *wikiTagService) Create(ctx context.Context, kbID, name, color string) (
 		return nil, fmt.Errorf("kb id required")
 	}
 	tag := &types.WikiTag{
-		ID:               uuid.NewString(),
-		TenantID:         types.TenantIDFromContextOrZero(ctx),
-		KnowledgeBaseID:  kbID,
-		Name:             cleaned,
-		Color:            color,
-		SortOrder:        0,
+		ID:              uuid.NewString(),
+		TenantID:        types.TenantIDFromContextOrZero(ctx),
+		KnowledgeBaseID: kbID,
+		Name:            cleaned,
+		Color:           color,
+		SortOrder:       0,
 	}
 	if err := s.repo.Create(ctx, tag); err != nil {
 		return nil, err
@@ -322,22 +322,4 @@ func validateWikiTagName(raw string) (string, error) {
 		return "", types.ErrWikiTagInvalidName
 	}
 	return trimmed, nil
-}
-
-// dedupStrings returns the unique set of `in` preserving first-seen
-// order. Cheap O(n) dedup; tag sets are tiny (<= WikiTagMaxPerPage).
-func dedupStrings(in []string) []string {
-	if len(in) == 0 {
-		return in
-	}
-	seen := make(map[string]struct{}, len(in))
-	out := make([]string, 0, len(in))
-	for _, s := range in {
-		if _, ok := seen[s]; ok {
-			continue
-		}
-		seen[s] = struct{}{}
-		out = append(out, s)
-	}
-	return out
 }

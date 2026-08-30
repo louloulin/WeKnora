@@ -8,6 +8,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"
 )
 
@@ -22,7 +23,7 @@ type wikiAclRepository struct {
 // NewWikiAclRepository wires the production ACL storage. The returned
 // concrete type satisfies service.WikiAclRepo; the DI container wires it
 // in directly.
-func NewWikiAclRepository(db *gorm.DB) *wikiAclRepository {
+func NewWikiAclRepository(db *gorm.DB) interfaces.WikiAclRepository {
 	return &wikiAclRepository{db: db}
 }
 

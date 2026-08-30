@@ -338,21 +338,21 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		// KBAccessRead guard as the batch-audit endpoints — operators
 		// and KB admins can read the merged 4-source audit stream.
 		wikiRead.GET("/audit-events", g.OwnedWikiKBOrAdmin(), g.KBAccessRead("kb_id"), wikiHandler.ListAuditEvents)
-		wikiRead.GET("/pages/*slug", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetPage)
+		wikiRead.GET("/pages/:slug", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetPage)
 		// Page-level backlinks (Build #11) — sibling of GetPage, same
 		// KBAccessRead guard so a KB member can list inbound links to
 		// a page they're allowed to read.
-		wikiRead.GET("/pages/*slug/backlinks", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetPageBacklinks)
+		wikiRead.GET("/pages/:slug/backlinks", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetPageBacklinks)
 		// Backlink graph v2 (Build #20) — same KBAccessRead guard; returns
 		// four sections (direct / indirect / related / broken) + stats in
 		// one round-trip so the panel can render the full graph without
 		// additional calls.
-		wikiRead.GET("/pages/*slug/backlinks/graph", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetPageBacklinksGraph)
+		wikiRead.GET("/pages/:slug/backlinks/graph", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetPageBacklinksGraph)
 		// Cache-status probe (Build #21) — returns the slim metadata
 		// (computed_at + source_event_id) for the cached graph. Panel
 		// footer reads this to show "last computed at" without paying
 		// the full graph cost.
-		wikiRead.GET("/pages/*slug/backlinks/cache-status", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetPageBacklinksCacheStatus)
+		wikiRead.GET("/pages/:slug/backlinks/cache-status", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetPageBacklinksCacheStatus)
 		// KB-wide cache-status admin list (Build #23) — returns the
 		// paginated row list plus row_count / payload_size_bytes /
 		// hit_ratio rollups. Same Viewer guard as the per-page probe
@@ -360,15 +360,15 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		// gating is not strictly required because the data reveals
 		// nothing beyond what the per-page probe already exposes.
 		wikiRead.GET("/backlinks/cache-statuses", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.ListBacklinksCacheStatuses)
-		wiki.PUT("/pages/*slug", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.UpdatePage)
-		wiki.DELETE("/pages/*slug", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.DeletePage)
+		wiki.PUT("/pages/:slug", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.UpdatePage)
+		wiki.DELETE("/pages/:slug", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.DeletePage)
 
 		// Page-level ACL (Build #7). GET follows the page-read guard so a
 		// KB member can inspect the ACL they currently live under; PUT is
 		// gated by KB-write ownership so only the KB owner / tenant admin
 		// can mutate the policy.
-		wikiRead.GET("/pages/*slug/acl", g.Viewer(), g.KBAccessRead("kb_id"), wikiAclHandler.GetAcl)
-		wiki.PUT("/pages/*slug/acl", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiAclHandler.PutAcl)
+		wikiRead.GET("/pages/:slug/acl", g.Viewer(), g.KBAccessRead("kb_id"), wikiAclHandler.GetAcl)
+		wiki.PUT("/pages/:slug/acl", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiAclHandler.PutAcl)
 
 		// Wiki tags (Build #17). Same RBAC chain as the surrounding
 		// page/ACL handlers — every KB member can read tag lists + per-
@@ -380,8 +380,8 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		wikiRead.GET("/tags/:tag_id", g.Viewer(), g.KBAccessRead("kb_id"), wikiTagHandler.GetTag)
 		wiki.PUT("/tags/:tag_id", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiTagHandler.UpdateTag)
 		wiki.DELETE("/tags/:tag_id", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiTagHandler.DeleteTag)
-		wikiRead.GET("/pages/*slug/tags", g.Viewer(), g.KBAccessRead("kb_id"), wikiTagHandler.GetPageTags)
-		wiki.PUT("/pages/*slug/tags", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiTagHandler.SetPageTags)
+		wikiRead.GET("/pages/:slug/tags", g.Viewer(), g.KBAccessRead("kb_id"), wikiTagHandler.GetPageTags)
+		wiki.PUT("/pages/:slug/tags", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiTagHandler.SetPageTags)
 		wiki.POST("/pages/batch-tag", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiTagHandler.BatchTagPages)
 
 		// Page template skeleton engine (Build #18). Both endpoints run
@@ -391,12 +391,12 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		// "preview but not execute" privilege gap. The `*slug` catch-all
 		// from the page CRUD already occupies /pages/*slug; the apply /
 		// preview paths live one segment deeper so they don't collide.
-		wiki.POST("/pages/*slug/apply-template", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiTemplateHandler.ApplyTemplate)
-		wiki.POST("/pages/*slug/preview-template", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiTemplateHandler.PreviewTemplate)
+		wiki.POST("/pages/:slug/apply-template", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiTemplateHandler.ApplyTemplate)
+		wiki.POST("/pages/:slug/preview-template", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiTemplateHandler.PreviewTemplate)
 
 		// Revision history (slug is a catch-all like /pages; revert carries
 		// the slug in the body for the same reason move-page does)
-		wikiRead.GET("/revisions/*slug", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.ListRevisions)
+		wikiRead.GET("/revisions/:slug", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.ListRevisions)
 		wiki.POST("/revert", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.RevertPage)
 
 		// Folder tree (directory nodes)

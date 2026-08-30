@@ -24,12 +24,12 @@ import (
 
 // WikiPageHandler handles HTTP requests for wiki page operations
 type WikiPageHandler struct {
-	wikiService      interfaces.WikiPageService
-	kbService        interfaces.KnowledgeBaseService
-	lintService      *service.WikiLintService
-	auditService     interfaces.AuditLogService
-	memoryService    interfaces.MemoryService
-	batchJobService  interfaces.WikiBatchJobService
+	wikiService     interfaces.WikiPageService
+	kbService       interfaces.KnowledgeBaseService
+	lintService     *service.WikiLintService
+	auditService    interfaces.AuditLogService
+	memoryService   interfaces.MemoryService
+	batchJobService interfaces.WikiBatchJobService
 	// batchAuditRepo exposes the wiki batch audit log (Build #14).
 	// May be nil for very old harness tests; the audit handlers return
 	// 503 in that case so callers see a clear "not configured" error
@@ -788,11 +788,19 @@ func (h *WikiPageHandler) GetBatchJobFailures(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, types.WikiBatchFailureListResponse{
-		Failures:  failures,
-		Groups:    groups,
-		Total:     int(total),
-		Page:      page,
-		PageSize:  pageSize,
+		Failures: func() []types.WikiBatchJobFailureRecord {
+			out := make([]types.WikiBatchJobFailureRecord, 0, len(failures))
+			for _, failure := range failures {
+				if failure != nil {
+					out = append(out, *failure)
+				}
+			}
+			return out
+		}(),
+		Groups:   groups,
+		Total:    int(total),
+		Page:     page,
+		PageSize: pageSize,
 	})
 }
 
@@ -1003,13 +1011,16 @@ func respondBatchServiceError(c *gin.Context, err error) bool {
 // with the same 400 contract across all three batch endpoints (D4, A5, A9).
 func validateBatchSlugs(slugs []string) error {
 	if len(slugs) == 0 {
-		return errors.New("slugs must not be empty")
+		return stderrors.New("slugs must not be empty")
 	}
 	if len(slugs) > types.MaxWikiBatchSize {
 		return fmt.Errorf("too many slugs: %d (max %d)", len(slugs), types.MaxWikiBatchSize)
 	}
 	return nil
 }
+
+func writeWikiFolderError(c *gin.Context, err error) {
+	switch {
 	case stderrors.Is(err, repository.ErrWikiFolderNotFound), stderrors.Is(err, repository.ErrWikiPageNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case stderrors.Is(err, repository.ErrWikiFolderConflict), stderrors.Is(err, repository.ErrWikiFolderNotEmpty):

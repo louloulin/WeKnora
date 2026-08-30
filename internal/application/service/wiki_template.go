@@ -38,7 +38,7 @@ type wikiTemplateService struct {
 // invoke SetPageService + SetTagService before use. Failing to wire
 // surfaces as a friendly error on first call rather than a confusing
 // nil-deref panic.
-func NewWikiTemplateService() *wikiTemplateService {
+func NewWikiTemplateService() interfaces.WikiTemplateService {
 	return &wikiTemplateService{}
 }
 
@@ -280,7 +280,7 @@ func (s *wikiTemplateService) materialiseChildren(
 	// derived slug already exists in this KB, append `-2`, `-3`, ...
 	used := map[string]bool{parent.Slug: true}
 
-	for i, child := range skel.Children {
+	for _, child := range skel.Children {
 		desired := child.Slug
 		if desired == "" {
 			desired = slugifyChildSlug(parent.Slug, child.Title)
@@ -601,8 +601,8 @@ func slugifyAnchor(s string) string {
 
 // Placeholder regexes — kept package-level so they compile once.
 var (
-	childPagesToken  = regexp.MustCompile(`\{\{child_pages\}\}`)
+	childPagesToken   = regexp.MustCompile(`\{\{child_pages\}\}`)
 	childSectionToken = regexp.MustCompile(`\{\{child_section\}\}`)
-	taggedPagesToken = regexp.MustCompile(`\{\{tagged_pages:[^}]+\}\}`)
-	taggedPagesInner = regexp.MustCompile(`\{\{tagged_pages:([^}]+)\}\}`)
+	taggedPagesToken  = regexp.MustCompile(`\{\{tagged_pages:[^}]+\}\}`)
+	taggedPagesInner  = regexp.MustCompile(`\{\{tagged_pages:([^}]+)\}\}`)
 )

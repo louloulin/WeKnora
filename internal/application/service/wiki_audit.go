@@ -70,7 +70,7 @@ type WikiAuditService interface {
 // WikiPageService / WikiBatchJobService / WikiAclService graph into
 // the constructor signature.
 type WikiAuditServiceDeps struct {
-	AuditLogSvc        interfaces.AuditLogService
+	AuditLogSvc interfaces.AuditLogService
 	// BatchJobRepo is the wiki_batch_job_audit read surface (Build #14).
 	// Originally typed as WikiBatchJobRepository in Build #24 — that
 	// interface has no ListByKB method, so the fan-out never compiled.
@@ -401,23 +401,23 @@ func mergeAuditEvents(fanOuts []auditFanOut) []*types.WikiAuditEvent {
 // across all four sources.
 func projectActivityEvent(r *types.AuditLog, kbID string) *types.WikiAuditEvent {
 	ev := &types.WikiAuditEvent{
-		ID:            fmt.Sprintf("al:%d", r.ID),
-		Timestamp:     r.CreatedAt,
-		KbID:          kbID,
-		Op:            string(r.Action),
-		Source:        types.WikiAuditSourceActivity,
-		Actor:         r.ActorUserID,
-		ActorKind:     classifyActorKind(r.ActorUserID, string(r.Action)),
+		ID:        fmt.Sprintf("al:%d", r.ID),
+		Timestamp: r.CreatedAt,
+		KbID:      kbID,
+		Op:        string(r.Action),
+		Source:    types.WikiAuditSourceActivity,
+		Actor:     r.ActorUserID,
+		ActorKind: classifyActorKind(r.ActorUserID, string(r.Action)),
 		// Build #25 — project correlation_id so the unified envelope
 		// surfaces the X-Request-ID for activity-feed rows.
 		SourceEventID: r.CorrelationID,
 	}
-	if r.Details != "" {
+	if len(r.Details) > 0 {
 		var m map[string]any
-		if err := json.Unmarshal([]byte(r.Details), &m); err == nil {
+		if err := json.Unmarshal(r.Details, &m); err == nil {
 			ev.Details = m
 		} else {
-			ev.Details = map[string]any{"raw": r.Details}
+			ev.Details = map[string]any{"raw": string(r.Details)}
 		}
 	}
 	return ev
@@ -428,21 +428,16 @@ func projectBatchJobAuditEvent(r *types.WikiBatchJobAuditEvent, kbID string) *ty
 		ID:        fmt.Sprintf("ba:%d", r.ID),
 		Timestamp: r.OccurredAt,
 		KbID:      kbID,
-		Op:        r.Action,
+		Op:        string(r.Action),
 		Source:    types.WikiAuditSourceBatchJobAudit,
 		Actor:     r.ActorID,
-		ActorKind: classifyActorKind(r.ActorID, r.Action),
+		ActorKind: classifyActorKind(r.ActorID, string(r.Action)),
 		// Build #25 — correlation_id joins the batch row with the
 		// matching activity/invalidation rows from the same request.
 		SourceEventID: r.CorrelationID,
 	}
-	if r.Metadata != "" {
-		var m map[string]any
-		if err := json.Unmarshal([]byte(r.Metadata), &m); err == nil {
-			ev.Details = m
-		} else {
-			ev.Details = map[string]any{"raw": r.Metadata}
-		}
+	if len(r.Metadata) > 0 {
+		ev.Details = r.Metadata
 	}
 	return ev
 }

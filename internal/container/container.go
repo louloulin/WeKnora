@@ -265,36 +265,35 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewMCPToolApprovalService))
 	must(container.Provide(service.NewCustomAgentService))
 	must(container.Provide(service.NewUserResourceFavoriteService))
+	// Register page ACL before WikiPageService: the page service consults
+	// ACLs on read paths and therefore needs this dependency at construction.
+	must(container.Provide(repository.NewWikiAclRepository))
+	must(container.Provide(service.NewWikiAclService))
 	must(container.Provide(service.NewWikiPageService))
 	must(container.Provide(repository.NewWikiBatchJobRepository))
 	must(container.Provide(repository.NewWikiBatchAuditRepository))
 	must(container.Provide(repository.NewWikiBatchFailureRepository))
 	must(container.Provide(service.NewWikiBatchJobService))
-	must(container.Invoke(wireWikiBatchJobService))
 	// Wiki backlinks graph cache (Build #21). The repo persists the
 	// four-section payload as TEXT (json strings) for dialect
 	// portability; the invalidator service owns the slug-resolution
 	// policy for the seven write-path hooks.
 	must(container.Provide(repository.NewWikiBacklinksCacheRepository))
 	must(container.Provide(service.NewWikiBacklinksCacheInvalidator))
-	must(container.Invoke(wireWikiBacklinksCache))
 	// Wiki backlinks cache cleanup sweeper (Build #22). Owns the
 	// 24h cron loop, in-process mutex, and multi-instance coordination
 	// via SELECT ... FOR UPDATE SKIP LOCKED. Started by cmd/server
 	// after the DI graph resolves.
 	must(container.Provide(newWikiBacklinksCacheCleanupServiceFromConfig))
-	must(container.Provide(repository.NewWikiAclRepository))
 	// Build #24: wiki audit service is a 4-source fan-out — it pulls
 	// dependencies (audit log svc, batch job repo, backlinks cache repo,
 	// ACL repo) from the DI graph rather than asking the caller to
 	// thread them through. The wiring helper builds the dep bag.
 	must(container.Provide(newWikiAuditServiceFromConfig))
-	must(container.Provide(service.NewWikiAclService))
 	// Build #24: ACL service has a cacheRepo setter so the same DI entry
 	// keeps the legacy 2-arg constructor; container.go injects the
 	// backlinks cache repo via wireWikiAclCacheRepo below (mirrors
 	// wireWikiBacklinksCache).
-	must(container.Invoke(wireWikiAclCacheRepo))
 	// Wiki tag system (Build #17).
 	must(container.Provide(repository.NewWikiTagRepository))
 	must(container.Provide(service.NewWikiTagService))
@@ -303,14 +302,29 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// and tag services so the apply-template path can create child
 	// pages, rewrite the parent body, and resolve tagged-pages tokens.
 	must(container.Provide(service.NewWikiTemplateService))
-	must(container.Invoke(wireWikiTemplateService))
 	// Wiki search v2 (Build #19). The repo is its own gorm-backed store;
 	// the service wraps ACL post-filtering on top of the repo. The
 	// handler fans out ?v=2 to v2 and ?legacy=1 / missing v to the
 	// legacy WikiPageHandler.SearchPages path.
 	must(container.Provide(repository.NewWikiSearchV2Repository))
-	must(container.Provide(service.NewWikiSearchV2Service))
-	must(container.Provide(handler.NewWikiSearchV2Handler))
+	must(container.Provide(func(
+		repo interfaces.WikiSearchV2Repository,
+		kb interfaces.KnowledgeBaseService,
+		acl service.WikiAclService,
+	) interfaces.WikiSearchV2Service {
+		return service.NewWikiSearchV2Service(service.WikiSearchV2ServiceParams{
+			Repo: repo,
+			KB:   kb,
+			ACL:  acl,
+		})
+	}))
+	must(container.Provide(func(
+		kbSvc interfaces.KnowledgeBaseService,
+		searchSvc interfaces.WikiSearchV2Service,
+		pageHandler *handler.WikiPageHandler,
+	) *handler.WikiSearchV2Handler {
+		return handler.NewWikiSearchV2Handler(kbSvc, searchSvc, pageHandler.SearchPages)
+	}))
 	must(container.Provide(service.NewWikiIngestService, dig.Name("wikiIngest")))
 	must(container.Provide(service.NewWikiLintService))
 	must(container.Provide(service.NewEmbedChannelService))
@@ -518,10 +532,18 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// Wiki page handler
 	must(container.Provide(handler.NewWikiPageHandler))
 	// Wiki page ACL handler (Build #7 backend).
-	must(container.Provide(handler.NewWikiAclHandler))
+	must(container.Provide(func(acl service.WikiAclService) *handler.WikiAclHandler {
+		return handler.NewWikiAclHandler(acl)
+	}))
 	// Wiki tag handler (Build #17 backend).
 	must(container.Provide(handler.NewWikiTagHandler))
 	must(container.Provide(handler.NewWikiTemplateHandler))
+	// Complete the Wiki post-construction wiring only after all providers
+	// participating in the page-service dependency graph are registered.
+	must(container.Invoke(wireWikiBatchJobService))
+	must(container.Invoke(wireWikiBacklinksCache))
+	must(container.Invoke(wireWikiAclCacheRepo))
+	must(container.Invoke(wireWikiTemplateService))
 	// IM integration
 	logger.Debugf(ctx, "[Container] Registering IM integration...")
 	must(container.Provide(imPkg.NewService))
@@ -681,7 +703,7 @@ func wireWikiBacklinksCache(
 //
 // Build #24.
 func wireWikiAclCacheRepo(
-	aclSvc interfaces.WikiAclService,
+	aclSvc service.WikiAclService,
 	cacheRepo interfaces.WikiBacklinksCacheRepository,
 ) {
 	if setter, ok := aclSvc.(interface {
@@ -2073,7 +2095,7 @@ func startWikiBacklinksCacheCleanup(
 // tenant-scoped rows means audit_logs contributes nothing).
 func newWikiAuditServiceFromConfig(
 	auditSvc interfaces.AuditLogService,
-	batchJobRepo interfaces.WikiBatchJobRepository,
+	batchJobRepo interfaces.WikiBatchAuditRepository,
 	backlinksCacheRepo interfaces.WikiBacklinksCacheRepository,
 	aclRepo interfaces.WikiAclRepository,
 	kbRepo interfaces.KnowledgeBaseRepository,

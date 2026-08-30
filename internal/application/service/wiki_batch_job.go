@@ -299,7 +299,7 @@ func (s *wikiBatchJobService) undoDelete(ctx context.Context, job *types.WikiBat
 	if len(shortID) > 8 {
 		shortID = shortID[:8]
 	}
-	for originalSlug, prev := range state.PageStates {
+	for originalSlug := range state.PageStates {
 		restoredSlug := originalSlug + "__restored_" + shortID
 		if _, err := s.pageSvc.RestoreDeletedPage(ctx, job.KnowledgeBaseID, originalSlug, restoredSlug); err != nil {
 			logger.Errorf(ctx, "wiki batch undo delete: slug=%s err=%v", originalSlug, err)

@@ -367,6 +367,17 @@ func (a *apiKeyRouteGroup) With(policy middleware.APIKeyRoutePolicy) *apiKeyRout
 	return &apiKeyRouteGroup{g: a.g, grp: a.grp, policy: policy}
 }
 
+// Group creates a nested route group that inherits the parent's API-key
+// policy. Routes registered through the returned wrapper remain declared in
+// the authorizer with the same policy as the parent group.
+func (a *apiKeyRouteGroup) Group(rel string, handlers ...gin.HandlerFunc) *apiKeyRouteGroup {
+	return &apiKeyRouteGroup{
+		g:      a.g,
+		grp:    a.grp.Group(rel, handlers...),
+		policy: a.policy,
+	}
+}
+
 func (a *apiKeyRouteGroup) handle(method, rel string, handlers ...gin.HandlerFunc) gin.IRoutes {
 	full := path.Join(a.grp.BasePath(), rel)
 	a.g.ensureAPIKeyAuthorizer().Register(method, full, a.policy)
