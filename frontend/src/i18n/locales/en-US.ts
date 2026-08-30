@@ -2598,6 +2598,11 @@ export default {
       copied: 'Copied',
       breadcrumb: 'Wiki page path',
     },
+    wikiRecentPages: {
+      regionLabel: 'Recently viewed region',
+      title: 'Recently viewed',
+      empty: 'Pages you visit will appear here',
+    },
     activity: {
       title: 'Activity',
       description: 'Important changes and background-task entry points for this knowledge base. Retention follows the audit-log policy.',

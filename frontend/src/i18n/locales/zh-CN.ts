@@ -3396,6 +3396,11 @@ export default {
       copied: '已复制',
       breadcrumb: 'Wiki 页面路径',
     },
+    wikiRecentPages: {
+      regionLabel: '最近浏览区域',
+      title: '最近浏览',
+      empty: '浏览过的页面会出现在这里',
+    },
     titleCreate: '新建知识库',
     titleEdit: '知识库设置',
     advanced: {

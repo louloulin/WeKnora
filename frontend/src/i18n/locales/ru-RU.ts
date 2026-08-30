@@ -3394,6 +3394,11 @@ export default {
       copied: 'Скопировано',
       breadcrumb: 'Путь к странице Wiki',
     },
+    wikiRecentPages: {
+      regionLabel: 'Область недавно просмотренных страниц',
+      title: 'Недавно просмотренные',
+      empty: 'Здесь будут отображаться посещённые вами страницы',
+    },
     titleCreate: 'Создать базу знаний',
     titleEdit: 'Настройки базы знаний',
     advanced: {

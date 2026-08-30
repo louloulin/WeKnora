@@ -179,6 +179,17 @@
           </t-button>
         </div>
 
+        <!-- Build #21: 最近浏览 rail — 改进 IA,把用户高频访问的页面
+             放在侧栏顶部,与搜索/审计并列。selectPage/navigateToSlug
+             进入新页面时由 pushRecent() 推入,组件内部按 slug 去重并
+             截断到 5 条。 -->
+        <WikiRecentPages
+          v-if="!searchResults"
+          :pages="recentPages"
+          :active-slug="selectedPage?.slug || ''"
+          @select="onRecentSelect"
+        />
+
         <div class="wiki-sidebar-header">
           <div v-if="stats && (stats.pending_tasks > 0 || stats.is_active)" class="wiki-queue-status">
             <t-loading size="small" />
@@ -1044,6 +1055,7 @@ import WikiAclDialog from '@/components/wiki/WikiAclDialog.vue'
 import WikiBatchAuditPanel from '@/components/wiki/WikiBatchAuditPanel.vue'
 import WikiAuditDrawer from '@/components/wiki/WikiAuditDrawer.vue'
 import WikiBreadcrumb from '@/components/WikiBreadcrumb.vue'
+import WikiRecentPages from '@/components/wiki/WikiRecentPages.vue'
 import { useWikiPageAclStore } from '@/stores/wikiPageAcl'
 import { aclToolbarVisibility } from './wikiBrowserAclVisibility'
 import WikiBacklinksPanel from '@/components/wiki/WikiBacklinksPanel.vue'
@@ -1445,6 +1457,21 @@ function fitGraphToView() {
 const graphDrawerVisible = ref(false)
 const graphDrawerPage = ref<WikiPage | null>(null)
 const navHistory = ref<WikiPage[]>([])
+const RECENT_PAGES_LIMIT = 5
+const recentPages = ref<WikiPage[]>([])
+
+function pushRecent(page: WikiPage | null | undefined) {
+  if (!page || !page.slug) return
+  // Drop any prior entry for the same slug (most-recent first invariant).
+  recentPages.value = [
+    page,
+    ...recentPages.value.filter((p) => p.slug !== page.slug),
+  ].slice(0, RECENT_PAGES_LIMIT)
+}
+
+function onRecentSelect(slug: string) {
+  void navigateToSlug(slug)
+}
 // navFromSystemView remembers that the user was viewing the Index when they
 // clicked into a slug, so goBack can restore it
 // once the page-level history stack is empty. We keep this parallel to
@@ -4098,6 +4125,7 @@ async function selectPage(page: WikiPage) {
   try {
     if (selectedPage.value && selectedPage.value.id !== page.id) {
       navHistory.value.push(selectedPage.value)
+      pushRecent(selectedPage.value)
     } else if (!selectedPage.value && activeSystemView.value) {
       // Jumping out of a system view (Index / Log) onto a page.
       // navHistory only holds WikiPages, so we stash the origin
@@ -4566,6 +4594,7 @@ async function navigateToSlug(slug: string) {
   try {
     if (selectedPage.value && selectedPage.value.slug !== slug) {
       navHistory.value.push(selectedPage.value)
+      pushRecent(selectedPage.value)
     } else if (!selectedPage.value && activeSystemView.value) {
       // Clicking a [[slug]] from inside Index / Log — same rationale
       // as selectPage above: record the system-view origin so the

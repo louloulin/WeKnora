@@ -3394,6 +3394,11 @@ export default {
       copied: '복사됨',
       breadcrumb: 'Wiki 페이지 경로',
     },
+    wikiRecentPages: {
+      regionLabel: '최근 본 페이지 영역',
+      title: '최근 본 페이지',
+      empty: '방문한 페이지가 여기에 표시됩니다',
+    },
     titleCreate: '지식베이스 생성',
     titleEdit: '지식베이스 설정',
     advanced: {
