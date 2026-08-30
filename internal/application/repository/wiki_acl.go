@@ -205,7 +205,7 @@ func (r *wikiAclRepository) UpdateAclWithRevision(
 			auditFields["after_acl"] = gorm.Expr("?::jsonb", string(afterBytes))
 		}
 
-		auditInsert := tx.Table("wiki_page_acl_audit").Insert(auditFields)
+		auditInsert := tx.Table("wiki_page_acl_audit").Create(&auditFields)
 		if auditInsert.Error != nil {
 			return fmt.Errorf("wiki_acl repo: write audit: %w", auditInsert.Error)
 		}

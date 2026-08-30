@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"gorm.io/gorm"
 )
 
@@ -41,7 +42,7 @@ type wikiSearchV2Repository struct {
 }
 
 // NewWikiSearchV2Repository wires a new instance.
-func NewWikiSearchV2Repository(db *gorm.DB) WikiSearchV2Repository {
+func NewWikiSearchV2Repository(db *gorm.DB) interfaces.WikiSearchV2Repository {
 	return &wikiSearchV2Repository{db: db}
 }
 
