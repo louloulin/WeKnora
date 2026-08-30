@@ -13,7 +13,7 @@ package interfaces
 import (
 	"context"
 
-	"github.com/louloulin/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types"
 )
 
 // WikiSearchV2Repository performs PostgreSQL tsvector search with
