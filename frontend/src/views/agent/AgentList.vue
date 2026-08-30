@@ -32,6 +32,24 @@
                 </template>
               </t-button>
             </t-tooltip>
+            <!-- Build #25: 跳转 Agent library（发现型视图,与个人 AgentList 互补） -->
+            <router-link to="/platform/agents/library" custom v-slot="{ navigate }">
+              <t-tooltip :content="$t('agent.library.title')" placement="bottom">
+                <t-button
+                  variant="text"
+                  theme="default"
+                  size="small"
+                  class="header-action-btn"
+                  data-guide="agent-library-open"
+                  style="--wails-draggable: no-drag"
+                  @click="navigate"
+                >
+                  <template #icon>
+                    <t-icon name="app" size="18px" />
+                  </template>
+                </t-button>
+              </t-tooltip>
+            </router-link>
           </div>
           <p class="header-subtitle" style="--wails-draggable: drag">{{ $t('agent.subtitle') }}</p>
         </div>
