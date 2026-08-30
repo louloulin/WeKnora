@@ -291,7 +291,7 @@ func (r *wikiTagRepository) applyBatchToPages(ctx context.Context, kbID string, 
 			// ON CONFLICT DO NOTHING — Postgres / SQLite support the
 			// clause natively; MySQL uses INSERT IGNORE.
 			err := r.db.WithContext(ctx).Exec(
-				insertIgnoreWikiPageTags(tagID, pageID),
+				insertIgnoreWikiPageTags(tagID, pageID, r.db.Dialector.Name()),
 			).Error
 			if err != nil {
 				failed = append(failed, types.WikiPageBatchFailure{Slug: slug, Code: "internal", Error: err.Error()})
@@ -316,8 +316,8 @@ func (r *wikiTagRepository) applyBatchToPages(ctx context.Context, kbID string, 
 
 // insertIgnoreWikiPageTags returns the dialect-appropriate upsert SQL.
 // One helper avoids spreading driver detection across the service.
-func insertIgnoreWikiPageTags(tagID, pageID string) string {
-	if isMySQL(r.db.Dialector.Name()) {
+func insertIgnoreWikiPageTags(tagID, pageID, dialect string) string {
+	if isMySQL(dialect) {
 		return "INSERT IGNORE INTO wiki_page_tags (wiki_tag_id, wiki_page_id) VALUES ('" + tagID + "','" + pageID + "')"
 	}
 	return "INSERT INTO wiki_page_tags (wiki_tag_id, wiki_page_id) VALUES ('" + tagID + "','" + pageID + "') ON CONFLICT DO NOTHING"
