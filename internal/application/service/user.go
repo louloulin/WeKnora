@@ -122,6 +122,7 @@ type userService struct {
 	memberService    interfaces.TenantMemberService
 	config           *config.Config
 	oidcJWKSCache    map[string]*rsa.PublicKey
+	oidcJWKSEndpoint string
 	oidcJWKSAt       time.Time
 	oidcJWKSLock     sync.Mutex
 }
@@ -481,6 +482,9 @@ func (s *userService) GetOIDCAuthorizationURL(ctx context.Context, redirectURI s
 	query.Set("scope", strings.Join(cfg.Scopes, " "))
 	query.Set("state", state)
 	query.Set("nonce", nonce)
+	if resource := strings.TrimSpace(cfg.Resource); resource != "" {
+		query.Set("resource", resource)
+	}
 
 	authURL := cfg.AuthorizationEndpoint
 	if strings.Contains(authURL, "?") {
@@ -518,6 +522,9 @@ func (s *userService) LoginWithOIDC(
 	if err != nil {
 		return nil, err
 	}
+	if configured := strings.TrimSpace(cfg.RedirectURI); configured != "" && redirectURI != configured {
+		return nil, errors.New("redirect_uri is not registered for OIDC client")
+	}
 
 	tokenResp, err := s.exchangeOIDCCode(ctx, cfg, code, redirectURI)
 	if err != nil {
@@ -527,6 +534,9 @@ func (s *userService) LoginWithOIDC(
 	verifiedClaims, err := s.verifyOIDCIDToken(ctx, cfg, tokenResp.IDToken, oidcNonceFromContext(ctx))
 	if err != nil {
 		return nil, err
+	}
+	if oidcClaimBool(verifiedClaims, "isForbidden") || oidcClaimBool(verifiedClaims, "isDeleted") {
+		return nil, errors.New("OIDC account is disabled")
 	}
 	userInfo, err := s.resolveOIDCUserInfo(ctx, cfg, tokenResp, verifiedClaims)
 	if err != nil {
@@ -541,11 +551,15 @@ func (s *userService) LoginWithOIDC(
 
 	isNewUser := false
 	var user *types.User
+	var oidcBinding *types.OIDCIdentity
 	if s.oidcIdentityRepo == nil {
 		return nil, errors.New("OIDC identity repository is not configured")
 	}
 	identity, identityErr := s.oidcIdentityRepo.GetByIssuerSubject(ctx, userInfo.Issuer, userInfo.Subject)
 	if identityErr == nil {
+		if identity.RevokedAt != nil {
+			return nil, errors.New("OIDC identity has been revoked")
+		}
 		user, err = s.userRepo.GetUserByID(ctx, identity.UserID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load OIDC-bound user: %w", err)
@@ -553,6 +567,7 @@ func (s *userService) LoginWithOIDC(
 		if err := s.oidcIdentityRepo.Touch(ctx, identity.ID, userInfo.Email); err != nil {
 			return nil, fmt.Errorf("failed to update OIDC identity: %w", err)
 		}
+		oidcBinding = identity
 	} else if !errors.Is(identityErr, apprepo.ErrOIDCIdentityNotFound) {
 		return nil, fmt.Errorf("failed to query OIDC identity: %w", identityErr)
 	} else {
@@ -568,9 +583,11 @@ func (s *userService) LoginWithOIDC(
 				return nil, fmt.Errorf("failed to query user by email: %w", err)
 			}
 			if user != nil {
-				if err := s.oidcIdentityRepo.Create(ctx, &types.OIDCIdentity{UserID: user.ID, Issuer: userInfo.Issuer, Subject: userInfo.Subject, Provider: "oidc", EmailAtLastLogin: userInfo.Email, LastLoginAt: time.Now()}); err != nil {
+				identity := &types.OIDCIdentity{UserID: user.ID, Issuer: userInfo.Issuer, Subject: userInfo.Subject, Provider: "oidc", EmailAtLastLogin: userInfo.Email, LastLoginAt: time.Now()}
+				if err := s.oidcIdentityRepo.Create(ctx, identity); err != nil {
 					return nil, fmt.Errorf("failed to link OIDC identity: %w", err)
 				}
+				oidcBinding = identity
 			}
 		}
 		if user == nil {
@@ -578,9 +595,11 @@ func (s *userService) LoginWithOIDC(
 			if err != nil {
 				return nil, err
 			}
-			if err := s.oidcIdentityRepo.Create(ctx, &types.OIDCIdentity{UserID: user.ID, Issuer: userInfo.Issuer, Subject: userInfo.Subject, Provider: "oidc", EmailAtLastLogin: userInfo.Email, LastLoginAt: time.Now()}); err != nil {
+			identity := &types.OIDCIdentity{UserID: user.ID, Issuer: userInfo.Issuer, Subject: userInfo.Subject, Provider: "oidc", EmailAtLastLogin: userInfo.Email, LastLoginAt: time.Now()}
+			if err := s.oidcIdentityRepo.Create(ctx, identity); err != nil {
 				return nil, fmt.Errorf("failed to persist OIDC identity: %w", err)
 			}
+			oidcBinding = identity
 			isNewUser = true
 		}
 	}
@@ -595,7 +614,7 @@ func (s *userService) LoginWithOIDC(
 	// Resolve target tenant once so the JWT claim and the tenant we
 	// return below stay in sync; see Login for the rationale.
 	resolvedTenantID := s.resolveLoginTenantID(ctx, user)
-	accessToken, refreshToken, err := s.generateTokensForTenant(ctx, user, resolvedTenantID)
+	accessToken, refreshToken, err := s.generateTokensForTenant(ctx, user, resolvedTenantID, oidcBinding)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate local tokens: %w", err)
 	}
@@ -911,7 +930,7 @@ func (s *userService) GenerateTokens(
 	ctx context.Context,
 	user *types.User,
 ) (accessToken, refreshToken string, err error) {
-	return s.generateTokensForTenant(ctx, user, s.resolveLoginTenantID(ctx, user))
+	return s.generateTokensForTenant(ctx, user, s.resolveLoginTenantID(ctx, user), oidcBindingFromUser(user))
 }
 
 // resolveLoginTenantID picks the tenant whose ID should be encoded in a
@@ -1099,7 +1118,12 @@ func (s *userService) generateTokensForTenant(
 	ctx context.Context,
 	user *types.User,
 	activeTenantID uint64,
+	oidcBindings ...*types.OIDCIdentity,
 ) (accessToken, refreshToken string, err error) {
+	var oidcBinding *types.OIDCIdentity
+	if len(oidcBindings) > 0 {
+		oidcBinding = oidcBindings[0]
+	}
 	// Generate access token (expires in 24 hours)
 	accessClaims := jwt.MapClaims{
 		"user_id":   user.ID,
@@ -1108,6 +1132,10 @@ func (s *userService) generateTokensForTenant(
 		"exp":       time.Now().Add(24 * time.Hour).Unix(),
 		"iat":       time.Now().Unix(),
 		"type":      "access",
+	}
+	if oidcBinding != nil {
+		accessClaims["oidc_issuer"] = oidcBinding.Issuer
+		accessClaims["oidc_subject"] = oidcBinding.Subject
 	}
 
 	accessTokenObj := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
@@ -1118,10 +1146,15 @@ func (s *userService) generateTokensForTenant(
 
 	// Generate refresh token (expires in 7 days)
 	refreshClaims := jwt.MapClaims{
-		"user_id": user.ID,
-		"exp":     time.Now().Add(7 * 24 * time.Hour).Unix(),
-		"iat":     time.Now().Unix(),
-		"type":    "refresh",
+		"user_id":   user.ID,
+		"tenant_id": activeTenantID,
+		"exp":       time.Now().Add(7 * 24 * time.Hour).Unix(),
+		"iat":       time.Now().Unix(),
+		"type":      "refresh",
+	}
+	if oidcBinding != nil {
+		refreshClaims["oidc_issuer"] = oidcBinding.Issuer
+		refreshClaims["oidc_subject"] = oidcBinding.Subject
 	}
 
 	refreshTokenObj := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)
@@ -1151,8 +1184,16 @@ func (s *userService) generateTokensForTenant(
 		UpdatedAt: time.Now(),
 	}
 
-	_ = s.tokenRepo.CreateToken(ctx, accessTokenRecord)
-	_ = s.tokenRepo.CreateToken(ctx, refreshTokenRecord)
+	if err := s.tokenRepo.CreateToken(ctx, accessTokenRecord); err != nil {
+		return "", "", fmt.Errorf("persist access token: %w", err)
+	}
+	if err := s.tokenRepo.CreateToken(ctx, refreshTokenRecord); err != nil {
+		accessTokenRecord.IsRevoked = true
+		if revokeErr := s.tokenRepo.UpdateToken(ctx, accessTokenRecord); revokeErr != nil {
+			logger.Warnf(ctx, "Failed to revoke partially persisted access token: %v", revokeErr)
+		}
+		return "", "", fmt.Errorf("persist refresh token: %w", err)
+	}
 
 	return accessToken, refreshToken, nil
 }
@@ -1178,6 +1219,11 @@ func (s *userService) SwitchTenant(
 	if targetTenantID == 0 {
 		return nil, errors.New("target workspace ID is required")
 	}
+	if strings.TrimSpace(currentRefreshToken) != "" {
+		if err := s.validateRefreshTokenOwner(ctx, currentRefreshToken, user.ID); err != nil {
+			return nil, err
+		}
+	}
 
 	// Verify membership unless the caller is a cross-tenant superuser
 	// switching outside their home tenant.
@@ -1199,18 +1245,15 @@ func (s *userService) SwitchTenant(
 		return nil, fmt.Errorf("load target workspace: %w", err)
 	}
 
-	accessToken, refreshToken, err := s.generateTokensForTenant(ctx, user, targetTenantID)
-	if err != nil {
-		return nil, fmt.Errorf("generate tokens: %w", err)
-	}
-
-	// Best-effort revoke of the previous refresh token. Failure is
-	// logged but not fatal — the new tokens are already issued and the
-	// old refresh token will expire naturally.
 	if strings.TrimSpace(currentRefreshToken) != "" {
 		if err := s.RevokeToken(ctx, currentRefreshToken); err != nil {
-			logger.Warnf(ctx, "Failed to revoke previous refresh token during tenant switch: %v", err)
+			return nil, fmt.Errorf("revoke previous refresh token: %w", err)
 		}
+	}
+
+	accessToken, refreshToken, err := s.generateTokensForTenant(ctx, user, targetTenantID, oidcBindingFromUser(user))
+	if err != nil {
+		return nil, fmt.Errorf("generate tokens: %w", err)
 	}
 
 	memberships := s.buildMembershipsForUser(ctx, user, tenant)
@@ -1232,6 +1275,9 @@ func (s *userService) SwitchTenant(
 // call. Tokens minted before tenant-level RBAC don't carry the claim;
 // in that case we fall back to user.TenantID for backward compatibility.
 func (s *userService) ValidateToken(ctx context.Context, tokenString string) (*types.User, uint64, error) {
+	if user, tenantID, err := s.validateGatewayExchangeToken(ctx, tokenString); err == nil {
+		return user, tenantID, nil
+	}
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
@@ -1270,6 +1316,16 @@ func (s *userService) ValidateToken(ctx context.Context, tokenString string) (*t
 	if err != nil {
 		return nil, 0, err
 	}
+	if !user.IsActive {
+		return nil, 0, errors.New("user account is disabled")
+	}
+	if err := s.validateOIDCBinding(ctx, userID, claims); err != nil {
+		return nil, 0, err
+	}
+	if binding := oidcBindingFromClaims(claims); binding != nil {
+		user.OIDCIssuer = binding.Issuer
+		user.OIDCSubject = binding.Subject
+	}
 
 	// Extract active tenant from the JWT. Anything missing or unparseable
 	// falls back to the user's home tenant so old tokens (and tokens issued
@@ -1277,6 +1333,72 @@ func (s *userService) ValidateToken(ctx context.Context, tokenString string) (*t
 	activeTenantID := tenantIDFromClaims(claims, user.TenantID)
 
 	return user, activeTenantID, nil
+}
+
+func (s *userService) validateGatewayExchangeToken(ctx context.Context, tokenString string) (*types.User, uint64, error) {
+	cfg := s.config.OIDCAuth
+	if s.oidcIdentityRepo == nil || cfg == nil || strings.TrimSpace(cfg.GatewayExchangeSecret) == "" || strings.TrimSpace(cfg.GatewayExchangeIssuer) == "" || strings.TrimSpace(cfg.GatewayExchangeAudience) == "" {
+		return nil, 0, errors.New("gateway exchange is not configured")
+	}
+	claims := jwt.MapClaims{}
+	parser := jwt.NewParser(
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithIssuer(strings.TrimRight(cfg.GatewayExchangeIssuer, "/")),
+		jwt.WithAudience(strings.TrimSpace(cfg.GatewayExchangeAudience)),
+		jwt.WithExpirationRequired(),
+		jwt.WithIssuedAt(),
+	)
+	token, err := parser.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		if token.Method != jwt.SigningMethodHS256 {
+			return nil, errors.New("gateway exchange token uses an unsupported signing method")
+		}
+		return []byte(cfg.GatewayExchangeSecret), nil
+	})
+	if err != nil || token == nil || !token.Valid {
+		return nil, 0, errors.New("invalid gateway exchange token")
+	}
+	if tokenType, _ := claims["token_type"].(string); tokenType != "weknora_exchange" {
+		return nil, 0, errors.New("invalid gateway exchange token type")
+	}
+	issuer, _ := claims["oidc_issuer"].(string)
+	subject, _ := claims["oidc_subject"].(string)
+	sub, _ := claims["sub"].(string)
+	sessionID, _ := claims["session_id"].(string)
+	membershipVersion, _ := claims["membership_version"].(string)
+	jti, _ := claims["jti"].(string)
+	if strings.TrimSpace(issuer) == "" || strings.TrimSpace(subject) == "" || strings.TrimSpace(sub) == "" || sub != subject || strings.TrimSpace(sessionID) == "" || strings.TrimSpace(membershipVersion) == "" || strings.TrimSpace(jti) == "" {
+		return nil, 0, errors.New("gateway exchange token missing external identity")
+	}
+	identity, err := s.oidcIdentityRepo.GetByIssuerSubject(ctx, issuer, subject)
+	if err != nil || identity == nil || identity.RevokedAt != nil {
+		return nil, 0, errors.New("OIDC identity is no longer valid")
+	}
+	user, err := s.userRepo.GetUserByID(ctx, identity.UserID)
+	if err != nil || user == nil {
+		return nil, 0, errors.New("gateway exchange user is unavailable")
+	}
+	if !user.IsActive {
+		return nil, 0, errors.New("user account is disabled")
+	}
+	tenantID := tenantIDFromClaims(claims, 0)
+	if tenantID == 0 {
+		return nil, 0, errors.New("gateway exchange token missing tenant")
+	}
+	casdoorTenant, _ := claims["casdoor_tenant"].(string)
+	if mapped, ok := cfg.GatewayTenantMap[strings.TrimSpace(casdoorTenant)]; !ok || mapped != tenantID {
+		return nil, 0, errors.New("gateway exchange tenant mapping is not configured")
+	}
+	if s.memberService == nil {
+		return nil, 0, errors.New("gateway exchange membership service is unavailable")
+	}
+	membership, err := s.memberService.GetMembership(ctx, user.ID, tenantID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("gateway exchange membership lookup failed: %w", err)
+	}
+	if membership == nil || membership.Status != types.TenantMemberStatusActive {
+		return nil, 0, errors.New("gateway exchange membership is no longer active")
+	}
+	return user, tenantID, nil
 }
 
 func isRefreshTokenClaims(claims jwt.MapClaims) bool {
@@ -1337,6 +1459,39 @@ func tenantIDFromClaims(claims jwt.MapClaims, fallback uint64) uint64 {
 	return fallback
 }
 
+func oidcBindingFromClaims(claims jwt.MapClaims) *types.OIDCIdentity {
+	issuer, _ := claims["oidc_issuer"].(string)
+	subject, _ := claims["oidc_subject"].(string)
+	issuer = strings.TrimSpace(issuer)
+	subject = strings.TrimSpace(subject)
+	if issuer == "" || subject == "" {
+		return nil
+	}
+	return &types.OIDCIdentity{Issuer: issuer, Subject: subject}
+}
+
+func oidcBindingFromUser(user *types.User) *types.OIDCIdentity {
+	if user == nil || strings.TrimSpace(user.OIDCIssuer) == "" || strings.TrimSpace(user.OIDCSubject) == "" {
+		return nil
+	}
+	return &types.OIDCIdentity{UserID: user.ID, Issuer: user.OIDCIssuer, Subject: user.OIDCSubject}
+}
+
+func (s *userService) validateOIDCBinding(ctx context.Context, userID string, claims jwt.MapClaims) error {
+	binding := oidcBindingFromClaims(claims)
+	if binding == nil {
+		return nil
+	}
+	if s.oidcIdentityRepo == nil {
+		return errors.New("OIDC identity repository is not configured")
+	}
+	identity, err := s.oidcIdentityRepo.GetByIssuerSubject(ctx, binding.Issuer, binding.Subject)
+	if err != nil || identity == nil || identity.RevokedAt != nil || identity.UserID != userID {
+		return errors.New("OIDC identity is no longer valid")
+	}
+	return nil
+}
+
 // RefreshToken refreshes access token using refresh token
 func (s *userService) RefreshToken(
 	ctx context.Context,
@@ -1382,13 +1537,46 @@ func (s *userService) RefreshToken(
 	if err != nil {
 		return "", "", err
 	}
+	if !user.IsActive {
+		return "", "", errors.New("user account is disabled")
+	}
+	if err := s.validateOIDCBinding(ctx, userID, claims); err != nil {
+		return "", "", err
+	}
 
 	// Revoke old refresh token
 	tokenRecord.IsRevoked = true
 	_ = s.tokenRepo.UpdateToken(ctx, tokenRecord)
 
-	// Generate new tokens
-	return s.GenerateTokens(ctx, user)
+	// Preserve the external identity binding across refresh-token rotation so
+	// revoking or unlinking the Casdoor identity invalidates the new session.
+	activeTenantID := tenantIDFromClaims(claims, s.resolveLoginTenantID(ctx, user))
+	return s.generateTokensForTenant(ctx, user, activeTenantID, oidcBindingFromClaims(claims))
+}
+
+func (s *userService) validateRefreshTokenOwner(ctx context.Context, tokenString, userID string) error {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(getJwtSecret()), nil
+	})
+	if err != nil || token == nil || !token.Valid {
+		return errors.New("invalid refresh token")
+	}
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok || !isRefreshTokenClaims(claims) {
+		return errors.New("not a refresh token")
+	}
+	claimedUserID, ok := claims["user_id"].(string)
+	if !ok || claimedUserID != userID {
+		return errors.New("refresh token does not belong to user")
+	}
+	record, err := s.tokenRepo.GetTokenByValue(ctx, tokenString)
+	if err != nil || record == nil || record.IsRevoked || record.TokenType != "refresh_token" || record.UserID != userID {
+		return errors.New("refresh token is revoked")
+	}
+	return nil
 }
 
 // Logout invalidates every outstanding session for the user identified by
@@ -1551,11 +1739,14 @@ func (s *userService) populateOIDCEndpoints(ctx context.Context, cfg *config.OID
 	if cfg.JWKSURI == "" {
 		cfg.JWKSURI = doc.JWKSURI
 	}
+	if strings.TrimSpace(doc.Issuer) == "" {
+		return errors.New("OIDC discovery document missing issuer")
+	}
 	if strings.TrimSpace(cfg.IssuerURL) == "" {
 		cfg.IssuerURL = strings.TrimRight(doc.Issuer, "/")
 	}
-	if strings.TrimSpace(cfg.IssuerURL) == "" {
-		return errors.New("OIDC discovery document missing issuer")
+	if strings.TrimSpace(doc.Issuer) != "" && strings.TrimRight(cfg.IssuerURL, "/") != strings.TrimRight(doc.Issuer, "/") {
+		return errors.New("OIDC issuer does not match discovery document")
 	}
 	if cfg.AuthorizationEndpoint == "" || cfg.TokenEndpoint == "" {
 		return errors.New("OIDC discovery document missing required endpoints")
@@ -1576,11 +1767,15 @@ func (s *userService) verifyOIDCIDToken(ctx context.Context, cfg *config.OIDCAut
 	if strings.TrimSpace(cfg.IssuerURL) == "" || strings.TrimSpace(cfg.JWKSURI) == "" {
 		return nil, errors.New("OIDC issuer and jwks_uri are required")
 	}
-	keys, err := s.loadOIDCJWKS(ctx, cfg.JWKSURI)
+	keys, err := s.loadOIDCJWKS(ctx, cfg.JWKSURI, false)
 	if err != nil {
 		return nil, err
 	}
-	parser := jwt.NewParser(jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg()}), jwt.WithIssuer(strings.TrimRight(cfg.IssuerURL, "/")), jwt.WithAudience(cfg.ClientID), jwt.WithExpirationRequired(), jwt.WithIssuedAt())
+	audience := strings.TrimSpace(cfg.Resource)
+	if audience == "" {
+		audience = strings.TrimSpace(cfg.ClientID)
+	}
+	parser := jwt.NewParser(jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg()}), jwt.WithIssuer(strings.TrimRight(cfg.IssuerURL, "/")), jwt.WithAudience(audience), jwt.WithExpirationRequired(), jwt.WithIssuedAt())
 	claims := jwt.MapClaims{}
 	token, err := parser.ParseWithClaims(rawToken, claims, func(token *jwt.Token) (interface{}, error) {
 		if token.Method != jwt.SigningMethodRS256 {
@@ -1593,11 +1788,33 @@ func (s *userService) verifyOIDCIDToken(ctx context.Context, cfg *config.OIDCAut
 		}
 		return key, nil
 	})
+	if err != nil && strings.Contains(err.Error(), "OIDC id_token signing key not found") {
+		if refreshed, refreshErr := s.loadOIDCJWKS(ctx, cfg.JWKSURI, true); refreshErr == nil {
+			claims = jwt.MapClaims{}
+			token, err = parser.ParseWithClaims(rawToken, claims, func(token *jwt.Token) (interface{}, error) {
+				if token.Method != jwt.SigningMethodRS256 {
+					return nil, errors.New("OIDC id_token uses an unsupported signing method")
+				}
+				kid, _ := token.Header["kid"].(string)
+				key := refreshed[kid]
+				if key == nil {
+					return nil, errors.New("OIDC id_token signing key not found")
+				}
+				return key, nil
+			})
+		}
+	}
 	if err != nil || token == nil || !token.Valid {
 		if err == nil {
 			err = errors.New("invalid OIDC id_token")
 		}
 		return nil, err
+	}
+	if azp, present := claims["azp"]; present {
+		azpValue, ok := azp.(string)
+		if !ok || strings.TrimSpace(azpValue) != strings.TrimSpace(cfg.ClientID) {
+			return nil, errors.New("OIDC id_token authorized party mismatch")
+		}
 	}
 	if issuedAt, ok := claims["iat"]; !ok || issuedAt == nil {
 		return nil, errors.New("OIDC id_token is missing iat")
@@ -1611,14 +1828,14 @@ func (s *userService) verifyOIDCIDToken(ctx context.Context, cfg *config.OIDCAut
 	return map[string]interface{}(claims), nil
 }
 
-func (s *userService) loadOIDCJWKS(ctx context.Context, endpoint string) (map[string]*rsa.PublicKey, error) {
+func (s *userService) loadOIDCJWKS(ctx context.Context, endpoint string, forceRefresh bool) (map[string]*rsa.PublicKey, error) {
 	endpoint = strings.TrimSpace(endpoint)
 	if err := validateOIDCEndpoint("jwks", endpoint, true); err != nil {
 		return nil, err
 	}
 	s.oidcJWKSLock.Lock()
 	defer s.oidcJWKSLock.Unlock()
-	if len(s.oidcJWKSCache) > 0 && time.Since(s.oidcJWKSAt) < 10*time.Minute {
+	if !forceRefresh && len(s.oidcJWKSCache) > 0 && s.oidcJWKSEndpoint == endpoint && time.Since(s.oidcJWKSAt) < 10*time.Minute {
 		return s.oidcJWKSCache, nil
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
@@ -1661,6 +1878,7 @@ func (s *userService) loadOIDCJWKS(ctx context.Context, endpoint string) (map[st
 		return nil, errors.New("OIDC jwks did not contain an RS256 signing key")
 	}
 	s.oidcJWKSCache = keys
+	s.oidcJWKSEndpoint = endpoint
 	s.oidcJWKSAt = time.Now()
 	return keys, nil
 }
@@ -1718,9 +1936,12 @@ func (s *userService) resolveOIDCUserInfo(ctx context.Context, cfg *config.OIDCA
 			if userInfoClaimsSub, ok := userInfoClaims["sub"].(string); ok && strings.TrimSpace(userInfoClaimsSub) != "" && userInfoClaimsSub != infoSubject(claims) {
 				return nil, errors.New("OIDC userinfo subject mismatch")
 			}
-			for k, v := range userInfoClaims {
-				if _, alreadyVerified := claims[k]; !alreadyVerified {
-					claims[k] = v
+			for _, key := range []string{"email", "email_verified", "name", "preferred_username", "picture", "avatar", "phone"} {
+				if _, alreadyVerified := claims[key]; alreadyVerified {
+					continue
+				}
+				if value, present := userInfoClaims[key]; present {
+					claims[key] = value
 				}
 			}
 		}
@@ -1759,9 +1980,9 @@ func (s *userService) syncOIDCAuthorization(ctx context.Context, user *types.Use
 	permissions = append(permissions, oidcStringClaims(info.Claims["roles"])...)
 	permissionSet := make(map[string]struct{}, len(permissions))
 	for _, permission := range permissions {
-		permissionSet[strings.ToLower(strings.TrimSpace(permission))] = struct{}{}
+		permissionSet[normalizeOIDCPermission(permission)] = struct{}{}
 	}
-	_, hasPlatformAdmin := permissionSet[strings.ToLower(strings.TrimSpace(cfg.PlatformAdminPermission))]
+	_, hasPlatformAdmin := permissionSet[normalizeOIDCPermission(cfg.PlatformAdminPermission)]
 	if hasPlatformAdmin && !user.IsSystemAdmin {
 		user.IsSystemAdmin = true
 		user.OIDCManagedSystemAdmin = true
@@ -1805,6 +2026,10 @@ func (s *userService) syncOIDCAuthorization(ctx context.Context, user *types.Use
 		}
 		if member.RoleSource == "oidc" && member.Role != role {
 			if err := s.memberService.UpdateRole(ctx, user.ID, tenantID, role); err != nil {
+				if errors.Is(err, ErrLastOwner) {
+					logger.Warnf(ctx, "OIDC role downgrade kept last owner membership user=%s tenant=%d", user.ID, tenantID)
+					continue
+				}
 				return fmt.Errorf("failed to synchronize OIDC tenant membership role: %w", err)
 			}
 		}
@@ -1840,11 +2065,26 @@ func oidcTenantRole(permissions map[string]struct{}, cfg *config.OIDCAuthConfig)
 		{cfg.WorkspaceReadPermission, types.TenantRoleViewer},
 	}
 	for _, check := range checks {
-		if _, ok := permissions[strings.ToLower(strings.TrimSpace(check.permission))]; ok {
+		if _, ok := permissions[normalizeOIDCPermission(check.permission)]; ok {
 			return check.role
 		}
 	}
 	return ""
+}
+
+func normalizeOIDCPermission(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func oidcClaimBool(claims map[string]interface{}, key string) bool {
+	switch value := claims[key].(type) {
+	case bool:
+		return value
+	case string:
+		return strings.EqualFold(strings.TrimSpace(value), "true")
+	default:
+		return false
+	}
 }
 
 func oidcStringClaims(value interface{}) []string {

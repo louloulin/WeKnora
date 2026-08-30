@@ -19,6 +19,9 @@ func TestOIDCTenantRoleUsesExplicitPermissionsOnly(t *testing.T) {
 	if got := oidcTenantRole(map[string]struct{}{"isadmin": {}}, cfg); got != "" {
 		t.Fatalf("isAdmin claim must not grant a tenant role, got %q", got)
 	}
+	if got := oidcTenantRole(map[string]struct{}{"evil/weknora.workspace.read": {}}, cfg); got != "" {
+		t.Fatalf("lookalike permission must not grant a tenant role, got %q", got)
+	}
 	if got := oidcTenantRole(map[string]struct{}{cfg.WorkspaceReadPermission: {}}, cfg); got != types.TenantRoleViewer {
 		t.Fatalf("read permission mapped to %q, want viewer", got)
 	}

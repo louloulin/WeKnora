@@ -56,8 +56,9 @@ Provider 回调后端 `/auth/oidc/callback`，后端用 `code` 换 token、拉�
 |--------|------|
 | `OIDC_AUTH_ENABLE` | 是否启用 OIDC 登录 |
 | `OIDC_AUTH_CLIENT_ID` | OIDC Client ID |
+| `OIDC_AUTH_RESOURCE` | Casdoor `resource`/JWT audience；为空时默认使用 `OIDC_AUTH_CLIENT_ID` |
 | `OIDC_AUTH_CLIENT_SECRET` | OIDC Client Secret |
-| `OIDC_AUTH_DISCOVERY_URL` | OIDC Discovery 地址 |
+| `OIDC_AUTH_DISCOVERY_URL` | OIDC Discovery 地址；Casdoor 测试地址为 `http://124.221.146.145:8000/.well-known/openid-configuration`，生产必须使用 HTTPS |
 | `OIDC_AUTH_SCOPES` | Scope 列表，默认 `openid profile email` |
 
 启用时的最小要求：`client_id` + `client_secret` + (`discovery_url` 或 `authorization_endpoint + token_endpoint`)

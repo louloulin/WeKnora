@@ -109,7 +109,9 @@ type User struct {
 	// Last updated time of the user
 	UpdatedAt time.Time `json:"updated_at"`
 	// Deletion time of the user
-	DeletedAt gorm.DeletedAt `json:"deleted_at" gorm:"index"`
+	DeletedAt   gorm.DeletedAt `json:"deleted_at" gorm:"index"`
+	OIDCIssuer  string         `json:"-" gorm:"-"`
+	OIDCSubject string         `json:"-" gorm:"-"`
 
 	// Association relationship, not stored in the database
 	Tenant *Tenant `json:"tenant,omitempty" gorm:"foreignKey:TenantID"`

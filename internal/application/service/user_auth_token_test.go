@@ -10,6 +10,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/types"
 )
 
@@ -20,9 +21,24 @@ func init() {
 type stubAuthTokenRepo struct {
 	tokens         map[string]*types.AuthToken
 	revokedUserIDs []string
+	createdTokens  []*types.AuthToken
 }
 
-func (s *stubAuthTokenRepo) CreateToken(context.Context, *types.AuthToken) error { return nil }
+type stubOIDCIdentityRepoForAuth struct {
+	identity *types.OIDCIdentity
+	err      error
+}
+
+func (s *stubOIDCIdentityRepoForAuth) GetByIssuerSubject(context.Context, string, string) (*types.OIDCIdentity, error) {
+	return s.identity, s.err
+}
+func (s *stubOIDCIdentityRepoForAuth) Create(context.Context, *types.OIDCIdentity) error { return nil }
+func (s *stubOIDCIdentityRepoForAuth) Touch(context.Context, string, string) error       { return nil }
+
+func (s *stubAuthTokenRepo) CreateToken(_ context.Context, token *types.AuthToken) error {
+	s.createdTokens = append(s.createdTokens, token)
+	return nil
+}
 func (s *stubAuthTokenRepo) GetTokenByValue(_ context.Context, tokenValue string) (*types.AuthToken, error) {
 	token, ok := s.tokens[tokenValue]
 	if !ok {
@@ -88,7 +104,7 @@ func newAuthTestUserService(tokenRepo *stubAuthTokenRepo) *userService {
 	return &userService{
 		userRepo: &stubUserRepoForAuth{
 			users: map[string]*types.User{
-				"user-1": {ID: "user-1", TenantID: 1},
+				"user-1": {ID: "user-1", TenantID: 1, IsActive: true},
 			},
 		},
 		tokenRepo: tokenRepo,
@@ -138,6 +154,124 @@ func TestValidateTokenRejectsRefreshToken(t *testing.T) {
 	_, _, err = svc.ValidateToken(ctx, legacyRefresh)
 	if err == nil || err.Error() != "refresh token cannot be used as access token" {
 		t.Fatalf("ValidateToken(legacy refresh in DB) err = %v, want refresh rejection", err)
+	}
+}
+
+func TestValidateTokenRejectsDisabledUser(t *testing.T) {
+	ctx := context.Background()
+	tokenRepo := &stubAuthTokenRepo{tokens: map[string]*types.AuthToken{}}
+	svc := newAuthTestUserService(tokenRepo)
+	userRepo := svc.userRepo.(*stubUserRepoForAuth)
+	userRepo.users["user-1"].IsActive = false
+	token := signTestJWT(jwt.MapClaims{"user_id": "user-1", "type": "access", "exp": time.Now().Add(time.Hour).Unix()})
+	tokenRepo.tokens[token] = &types.AuthToken{UserID: "user-1", Token: token, TokenType: "access_token"}
+	if _, _, err := svc.ValidateToken(ctx, token); err == nil || err.Error() != "user account is disabled" {
+		t.Fatalf("ValidateToken() err = %v, want disabled-user rejection", err)
+	}
+}
+
+func TestValidateTokenRejectsRevokedOIDCIdentity(t *testing.T) {
+	ctx := context.Background()
+	tokenRepo := &stubAuthTokenRepo{tokens: map[string]*types.AuthToken{}}
+	svc := newAuthTestUserService(tokenRepo)
+	svc.oidcIdentityRepo = &stubOIDCIdentityRepoForAuth{identity: &types.OIDCIdentity{UserID: "user-1", Issuer: "http://issuer", Subject: "subject", RevokedAt: func() *time.Time { value := time.Now(); return &value }()}}
+	token := signTestJWT(jwt.MapClaims{"user_id": "user-1", "type": "access", "oidc_issuer": "http://issuer", "oidc_subject": "subject", "exp": time.Now().Add(time.Hour).Unix()})
+	tokenRepo.tokens[token] = &types.AuthToken{UserID: "user-1", Token: token, TokenType: "access_token"}
+	if _, _, err := svc.ValidateToken(ctx, token); err == nil || err.Error() != "OIDC identity is no longer valid" {
+		t.Fatalf("ValidateToken() err = %v, want revoked-identity rejection", err)
+	}
+}
+
+func TestValidateTokenRejectsExchangeWithoutActiveTenantMembership(t *testing.T) {
+	ctx := context.Background()
+	identityRepo := &stubOIDCIdentityRepoForAuth{identity: &types.OIDCIdentity{
+		UserID: "user-1", Issuer: "http://issuer", Subject: "subject",
+	}}
+	memberService := &membershipLookupService{byTenant: map[uint64]*types.TenantMember{}}
+	svc := newAuthTestUserService(&stubAuthTokenRepo{tokens: map[string]*types.AuthToken{}})
+	svc.oidcIdentityRepo = identityRepo
+	svc.memberService = memberService
+	svc.config = &config.Config{OIDCAuth: &config.OIDCAuthConfig{
+		GatewayExchangeSecret:   "exchange-secret-for-tests",
+		GatewayExchangeIssuer:   "http://gateway",
+		GatewayExchangeAudience: "weknora",
+		GatewayTenantMap:        map[string]uint64{"tenant-a": 1},
+	}}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"iss":                "http://gateway",
+		"aud":                "weknora",
+		"sub":                "subject",
+		"oidc_issuer":        "http://issuer",
+		"oidc_subject":       "subject",
+		"casdoor_tenant":     "tenant-a",
+		"tenant_id":          1,
+		"token_type":         "weknora_exchange",
+		"session_id":         "session-1",
+		"membership_version": "version-1",
+		"jti":                "jti-1",
+		"iat":                time.Now().Unix(),
+		"exp":                time.Now().Add(time.Minute).Unix(),
+	})
+	signed, err := token.SignedString([]byte("exchange-secret-for-tests"))
+	if err != nil {
+		t.Fatalf("sign exchange token: %v", err)
+	}
+	if _, _, err := svc.ValidateToken(ctx, signed); err == nil || err.Error() != "gateway exchange membership is no longer active" {
+		t.Fatalf("ValidateToken() err = %v, want inactive-membership rejection", err)
+	}
+
+	memberService.byTenant[1] = &types.TenantMember{UserID: "user-1", TenantID: 1, Status: types.TenantMemberStatusSuspended}
+	if _, _, err := svc.ValidateToken(ctx, signed); err == nil || err.Error() != "gateway exchange membership is no longer active" {
+		t.Fatalf("ValidateToken() err = %v, want suspended-membership rejection", err)
+	}
+
+	memberService.byTenant[1].Status = types.TenantMemberStatusActive
+	if user, tenantID, err := svc.ValidateToken(ctx, signed); err != nil || user.ID != "user-1" || tenantID != 1 {
+		t.Fatalf("ValidateToken() = user=%v tenant=%d err=%v, want active membership", user, tenantID, err)
+	}
+}
+
+func TestRefreshTokenRejectsRevokedOIDCIdentity(t *testing.T) {
+	ctx := context.Background()
+	tokenRepo := &stubAuthTokenRepo{tokens: map[string]*types.AuthToken{}}
+	svc := newAuthTestUserService(tokenRepo)
+	svc.oidcIdentityRepo = &stubOIDCIdentityRepoForAuth{identity: &types.OIDCIdentity{UserID: "user-1", Issuer: "http://issuer", Subject: "subject", RevokedAt: func() *time.Time { value := time.Now(); return &value }()}}
+	token := signTestJWT(jwt.MapClaims{"user_id": "user-1", "type": "refresh", "oidc_issuer": "http://issuer", "oidc_subject": "subject", "exp": time.Now().Add(time.Hour).Unix()})
+	tokenRepo.tokens[token] = &types.AuthToken{UserID: "user-1", Token: token, TokenType: "refresh_token"}
+	if _, _, err := svc.RefreshToken(ctx, token); err == nil || err.Error() != "OIDC identity is no longer valid" {
+		t.Fatalf("RefreshToken() err = %v, want revoked-identity rejection", err)
+	}
+}
+
+func TestRefreshTokenPreservesActiveTenant(t *testing.T) {
+	ctx := context.Background()
+	refreshToken := signTestJWT(jwt.MapClaims{
+		"user_id":   "user-1",
+		"tenant_id": float64(7),
+		"type":      "refresh",
+		"exp":       time.Now().Add(time.Hour).Unix(),
+	})
+	tokenRepo := &stubAuthTokenRepo{tokens: map[string]*types.AuthToken{
+		refreshToken: {UserID: "user-1", Token: refreshToken, TokenType: "refresh_token"},
+	}}
+	svc := newAuthTestUserService(tokenRepo)
+
+	accessToken, _, err := svc.RefreshToken(ctx, refreshToken)
+	if err != nil {
+		t.Fatalf("RefreshToken() error = %v", err)
+	}
+	parsed, err := jwt.Parse(accessToken, func(token *jwt.Token) (interface{}, error) {
+		return []byte(getJwtSecret()), nil
+	})
+	if err != nil || !parsed.Valid {
+		t.Fatalf("generated access token is invalid: %v", err)
+	}
+	claims, ok := parsed.Claims.(jwt.MapClaims)
+	if !ok {
+		t.Fatal("generated access token claims have unexpected type")
+	}
+	if got := tenantIDFromClaims(claims, 0); got != 7 {
+		t.Fatalf("refreshed access token tenant_id = %d, want 7", got)
 	}
 }
 

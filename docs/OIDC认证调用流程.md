@@ -529,10 +529,11 @@ OIDC 配置定义位于 `internal/config/config.go`，环境变量示例见 `.en
 | 配置项 | 说明 |
 |---|---|
 | `OIDC_AUTH_ENABLE` | 是否启用 OIDC 登录 |
-| `OIDC_AUTH_ISSUER_URL` | Issuer 地址，可用于自动拼 discovery URL |
+| `OIDC_AUTH_ISSUER_URL` | Issuer 地址，可用于自动拼 discovery URL；Casdoor 测试地址为 `http://124.221.146.145:8000`，生产必须使用 HTTPS |
 | `OIDC_AUTH_DISCOVERY_URL` | OIDC Discovery 地址 |
 | `OIDC_AUTH_PROVIDER_DISPLAY_NAME` | 前端按钮显示名称 |
 | `OIDC_AUTH_CLIENT_ID` | OIDC Client ID |
+| `OIDC_AUTH_RESOURCE` | Casdoor `resource`/JWT audience；为空时默认使用 `OIDC_AUTH_CLIENT_ID` |
 | `OIDC_AUTH_CLIENT_SECRET` | OIDC Client Secret |
 | `OIDC_AUTH_AUTHORIZATION_ENDPOINT` | 授权端点，可选 |
 | `OIDC_AUTH_TOKEN_ENDPOINT` | Token 端点，可选 |

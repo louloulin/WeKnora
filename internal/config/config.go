@@ -314,6 +314,7 @@ type OIDCAuthConfig struct {
 	ProviderDisplayName           string               `yaml:"provider_display_name"  json:"provider_display_name"`
 	ClientID                      string               `yaml:"client_id"              json:"client_id"`
 	ClientSecret                  string               `yaml:"client_secret"          json:"-"`
+	Resource                      string               `yaml:"resource"              json:"resource"`
 	AuthorizationEndpoint         string               `yaml:"authorization_endpoint" json:"authorization_endpoint"`
 	TokenEndpoint                 string               `yaml:"token_endpoint"         json:"token_endpoint"`
 	UserInfoEndpoint              string               `yaml:"user_info_endpoint"     json:"user_info_endpoint"`
@@ -330,6 +331,10 @@ type OIDCAuthConfig struct {
 	WorkspaceContributePermission string               `yaml:"workspace_contribute_permission" json:"workspace_contribute_permission"`
 	WorkspaceAdminPermission      string               `yaml:"workspace_admin_permission" json:"workspace_admin_permission"`
 	WorkspaceOwnerPermission      string               `yaml:"workspace_owner_permission" json:"workspace_owner_permission"`
+	GatewayExchangeSecret         string               `yaml:"gateway_exchange_secret" json:"-"`
+	GatewayExchangeIssuer         string               `yaml:"gateway_exchange_issuer" json:"gateway_exchange_issuer"`
+	GatewayExchangeAudience       string               `yaml:"gateway_exchange_audience" json:"gateway_exchange_audience"`
+	GatewayTenantMap              map[string]uint64    `yaml:"gateway_tenant_map" json:"gateway_tenant_map"`
 }
 
 // PromptTemplateI18n holds localized name and description for a prompt template.
@@ -641,6 +646,9 @@ func ValidateConfig(cfg *Config) error {
 		if strings.TrimSpace(cfg.OIDCAuth.ClientSecret) == "" {
 			errs = append(errs, "oidc_auth.client_secret is required when OIDC is enabled")
 		}
+		if strings.TrimSpace(cfg.OIDCAuth.GatewayExchangeSecret) != "" && len(strings.TrimSpace(cfg.OIDCAuth.GatewayExchangeSecret)) < 32 {
+			errs = append(errs, "oidc_auth.gateway_exchange_secret must be at least 32 characters")
+		}
 		if strings.TrimSpace(cfg.OIDCAuth.DiscoveryURL) == "" &&
 			(strings.TrimSpace(cfg.OIDCAuth.AuthorizationEndpoint) == "" || strings.TrimSpace(cfg.OIDCAuth.TokenEndpoint) == "") {
 			errs = append(errs, "oidc_auth.discovery_url or both oidc_auth.authorization_endpoint and oidc_auth.token_endpoint are required when OIDC is enabled")
@@ -730,6 +738,9 @@ func applyOIDCEnvOverrides(cfg *Config) {
 	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_CLIENT_SECRET")); value != "" {
 		cfg.OIDCAuth.ClientSecret = value
 	}
+	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_RESOURCE")); value != "" {
+		cfg.OIDCAuth.Resource = value
+	}
 	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_AUTHORIZATION_ENDPOINT")); value != "" {
 		cfg.OIDCAuth.AuthorizationEndpoint = value
 	}
@@ -778,6 +789,21 @@ func applyOIDCEnvOverrides(cfg *Config) {
 	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_WORKSPACE_OWNER_PERMISSION")); value != "" {
 		cfg.OIDCAuth.WorkspaceOwnerPermission = value
 	}
+	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_GATEWAY_EXCHANGE_SECRET")); value != "" {
+		cfg.OIDCAuth.GatewayExchangeSecret = value
+	}
+	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_GATEWAY_EXCHANGE_ISSUER")); value != "" {
+		cfg.OIDCAuth.GatewayExchangeIssuer = value
+	}
+	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_GATEWAY_EXCHANGE_AUDIENCE")); value != "" {
+		cfg.OIDCAuth.GatewayExchangeAudience = value
+	}
+	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_GATEWAY_TENANT_MAP")); value != "" {
+		var mappings map[string]uint64
+		if err := json.Unmarshal([]byte(value), &mappings); err == nil {
+			cfg.OIDCAuth.GatewayTenantMap = mappings
+		}
+	}
 	if value := strings.TrimSpace(os.Getenv("OIDC_USER_INFO_MAPPING_USER_NAME")); value != "" {
 		cfg.OIDCAuth.UserInfoMapping.Username = value
 	}
@@ -787,6 +813,9 @@ func applyOIDCEnvOverrides(cfg *Config) {
 
 	if cfg.OIDCAuth.ProviderDisplayName == "" {
 		cfg.OIDCAuth.ProviderDisplayName = "OIDC"
+	}
+	if cfg.OIDCAuth.Resource == "" {
+		cfg.OIDCAuth.Resource = cfg.OIDCAuth.ClientID
 	}
 	if len(cfg.OIDCAuth.Scopes) == 0 {
 		cfg.OIDCAuth.Scopes = []string{"openid", "profile", "email"}

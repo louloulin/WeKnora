@@ -24,7 +24,7 @@ func NewOIDCIdentityRepository(db *gorm.DB) interfaces.OIDCIdentityRepository {
 func (r *oidcIdentityRepository) GetByIssuerSubject(ctx context.Context, issuer, subject string) (*types.OIDCIdentity, error) {
 	var identity types.OIDCIdentity
 	err := r.db.WithContext(ctx).
-		Where("issuer = ? AND subject = ? AND revoked_at IS NULL", issuer, subject).
+		Where("issuer = ? AND subject = ?", issuer, subject).
 		First(&identity).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrOIDCIdentityNotFound
@@ -43,7 +43,14 @@ func (r *oidcIdentityRepository) Create(ctx context.Context, identity *types.OID
 }
 
 func (r *oidcIdentityRepository) Touch(ctx context.Context, id, email string) error {
-	return r.db.WithContext(ctx).Model(&types.OIDCIdentity{}).
+	result := r.db.WithContext(ctx).Model(&types.OIDCIdentity{}).
 		Where("id = ? AND revoked_at IS NULL", id).
-		Updates(map[string]interface{}{"email_at_last_login": email, "last_login_at": time.Now(), "updated_at": time.Now()}).Error
+		Updates(map[string]interface{}{"email_at_last_login": email, "last_login_at": time.Now(), "updated_at": time.Now()})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ErrOIDCIdentityNotFound
+	}
+	return nil
 }
