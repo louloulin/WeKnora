@@ -275,6 +275,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewWikiBatchAuditRepository))
 	must(container.Provide(repository.NewWikiBatchFailureRepository))
 	must(container.Provide(service.NewWikiBatchJobService))
+	// Wiki page comments (Sprint 1 §27 #4).
+	must(container.Provide(repository.NewWikiCommentRepository))
+	must(container.Provide(service.NewWikiPageCommentService))
+	must(container.Provide(handler.NewWikiCommentHandler))
 	// Wiki backlinks graph cache (Build #21). The repo persists the
 	// four-section payload as TEXT (json strings) for dialect
 	// portability; the invalidator service owns the slug-resolution

@@ -294,7 +294,7 @@ func RegisterKnowledgeTagRoutes(r *gin.RouterGroup, tagHandler *handler.TagHandl
 //
 // wikiAclHandler is the Build #7 surface — it is independent of the page
 // CRUD so a future split of the handler package can pass either alone.
-func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHandler, wikiAclHandler *handler.WikiAclHandler, wikiTagHandler *handler.WikiTagHandler, wikiTemplateHandler *handler.WikiTemplateHandler, wikiSearchV2Handler *handler.WikiSearchV2Handler, g *rbacGuards) {
+func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHandler, wikiAclHandler *handler.WikiAclHandler, wikiTagHandler *handler.WikiTagHandler, wikiTemplateHandler *handler.WikiTemplateHandler, wikiSearchV2Handler *handler.WikiSearchV2Handler, wikiCommentHandler *handler.WikiCommentHandler, g *rbacGuards) {
 	wiki := g.apiKeyGroup(r.Group("/knowledgebase/:kb_id/wiki"), apiKeyIngest(apiKeyFullAccess()))
 	wikiRead := wiki.With(apiKeyRetrieve(apiKeyFullAccess()))
 	{
@@ -360,6 +360,15 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		// gating is not strictly required because the data reveals
 		// nothing beyond what the per-page probe already exposes.
 		wikiRead.GET("/backlinks/cache-statuses", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.ListBacklinksCacheStatuses)
+		// Wiki page comments (Sprint 1 §27 #4). Reads use Viewer+ with KB read
+		// access; writes use OwnedWikiKBOrAdmin + KB write access so the
+		// same authz envelope as the rest of the wiki write surface.
+		wikiRead.GET("/pages/:page_id/comments", g.Viewer(), g.KBAccessRead("kb_id"), wikiCommentHandler.List)
+		wiki.POST("/pages/:page_id/comments", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiCommentHandler.Create)
+		wikiRead.GET("/comments/:comment_id", g.Viewer(), g.KBAccessRead("kb_id"), wikiCommentHandler.List)
+		wiki.PATCH("/comments/:comment_id", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiCommentHandler.Update)
+		wiki.PATCH("/comments/:comment_id/resolve", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiCommentHandler.SetResolved)
+		wiki.DELETE("/comments/:comment_id", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiCommentHandler.Delete)
 		wiki.PUT("/pages/:slug", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.UpdatePage)
 		wiki.DELETE("/pages/:slug", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiHandler.DeletePage)
 
