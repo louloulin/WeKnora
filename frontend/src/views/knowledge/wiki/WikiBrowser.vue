@@ -463,6 +463,16 @@
                 </a>
               </div>
 
+              <!-- Build #22: 行内 AI 菜单 — 选中文字后弹出 summarize /
+                   translate / explain / improve / ask。当前 emit 仅交给
+                   控制台日志 + 占位提示,后端 Agent / Chat 接入后会替换
+                   onInlineAI() 实现。containerRef 指向 reader-body。 -->
+              <WikiInlineAIMenu
+                v-if="selectedPage && !editingPage"
+                :container-ref="readerBodyRef"
+                @ai="onInlineAI"
+              />
+
               <!-- Breadcrumb: KB > categories > current page title -->
               <div v-if="selectedPage" class="wiki-breadcrumb-row">
                 <WikiBreadcrumb
@@ -1056,6 +1066,7 @@ import WikiBatchAuditPanel from '@/components/wiki/WikiBatchAuditPanel.vue'
 import WikiAuditDrawer from '@/components/wiki/WikiAuditDrawer.vue'
 import WikiBreadcrumb from '@/components/WikiBreadcrumb.vue'
 import WikiRecentPages from '@/components/wiki/WikiRecentPages.vue'
+import WikiInlineAIMenu from '@/components/wiki/WikiInlineAIMenu.vue'
 import { useWikiPageAclStore } from '@/stores/wikiPageAcl'
 import { aclToolbarVisibility } from './wikiBrowserAclVisibility'
 import WikiBacklinksPanel from '@/components/wiki/WikiBacklinksPanel.vue'
@@ -1471,6 +1482,21 @@ function pushRecent(page: WikiPage | null | undefined) {
 
 function onRecentSelect(slug: string) {
   void navigateToSlug(slug)
+}
+
+// Build #22 stub: forward inline-AI actions to console + toast placeholder.
+// Real implementation will route to the chat panel / agent endpoint.
+function onInlineAI(payload: { action: string; text: string }) {
+  // Stub for now — the action is recorded but no LLM call yet.
+  console.info('[wiki-inline-ai] action queued', payload.action, 'len=', payload.text.length)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('weknora:toast', {
+      detail: {
+        type: 'info',
+        message: `AI ${payload.action} 即将上线（占位）`,
+      },
+    }))
+  }
 }
 // navFromSystemView remembers that the user was viewing the Index when they
 // clicked into a slug, so goBack can restore it
