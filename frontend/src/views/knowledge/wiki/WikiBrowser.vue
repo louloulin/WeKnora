@@ -243,9 +243,13 @@
                 <span>{{ formatDate(page.updated_at) }}</span>
               </div>
             </div>
-            <div v-if="searchResults.length === 0 && !loading" class="wiki-empty-state">
-              <p class="wiki-empty-desc">{{ $t('knowledgeEditor.wikiBrowser.searchNoResults') || '没有找到匹配的页面' }}</p>
-            </div>
+            <!-- 搜索无结果：unified EmptyState -->
+            <EmptyState
+              v-if="searchResults.length === 0 && !loading"
+              compact
+              icon="search"
+              :title="$t('knowledgeEditor.wikiBrowser.searchNoResults') || '没有找到匹配的页面'"
+            />
           </template>
 
           <template v-else>
@@ -422,14 +426,14 @@
               </template>
             </div>
 
-            <!-- Empty state -->
-            <div v-if="!hasContentPages && !loading" class="wiki-empty-state">
-              <div class="wiki-empty-icon">
-                <t-icon name="file-unknown" size="36px" />
-              </div>
-              <p class="wiki-empty-title">{{ $t('knowledgeEditor.wikiBrowser.emptyTitle') }}</p>
-              <p class="wiki-empty-desc">{{ $t('knowledgeEditor.wikiBrowser.emptyDesc') }}</p>
-            </div>
+            <!-- Empty state：unified EmptyState component (compact mode for sidebar) -->
+            <EmptyState
+              v-if="!hasContentPages && !loading"
+              compact
+              icon="file-unknown"
+              :title="$t('knowledgeEditor.wikiBrowser.emptyTitle')"
+              :description="$t('knowledgeEditor.wikiBrowser.emptyDesc')"
+            />
           </template>
         </div>
         <WikiTagPanel :kb-id="props.knowledgeBaseId" />
