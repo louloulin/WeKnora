@@ -41,7 +41,7 @@ import {
   type AgentNotReadyReasonKey,
 } from '@/utils/agent-readiness';
 import { formatLocalizedList } from '@/utils/format-list';
-import { SKILL_ICON, type MentionItem, type MentionItemType, type MentionRequestItem } from '@/types/mention';
+import { AGENT_ICON, SKILL_ICON, TASK_ICON, type MentionItem, type MentionItemType, type MentionRequestItem } from '@/types/mention';
 
 const route = useRoute();
 const router = useRouter();
@@ -668,6 +668,8 @@ const getMentionIcon = (item: MentionItem) => {
     case 'tag': return 'tag';
     case 'mcp': return 'tools';
     case 'skill': return SKILL_ICON;
+    case 'agent': return AGENT_ICON;
+    case 'task': return TASK_ICON;
     default: return 'folder';
   }
 };
