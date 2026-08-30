@@ -1,6 +1,8 @@
 package service
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,10 +10,13 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
+	"github.com/Tencent/WeKnora/internal/agent/skills"
 	"github.com/Tencent/WeKnora/internal/agent/tools"
 	apperrors "github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/event"
@@ -19,6 +24,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/models/chat"
 	"github.com/Tencent/WeKnora/internal/sandbox"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
 
 const (
@@ -33,6 +39,11 @@ const (
 	// still missing is the row that says so.
 	readySkillWriteAttempts = 3
 	readySkillWriteDelay    = 100 * time.Millisecond
+
+	// skillSeedArchivePath is the single remote write used to land a skill's
+	// files. Writing each file with MakeDir+WriteFile is two round trips per
+	// entry, which is why a 50-file skill crawled through "seeding 12/56".
+	skillSeedArchivePath = sandbox.SkillsImageRoot + "/.weknora-seed.tar"
 )
 
 // InstallSkill validates an uploaded archive, records it, and kicks off the
@@ -61,30 +72,69 @@ func (s *TenantSkillService) InstallSkill(
 	if err != nil {
 		return "", err
 	}
+	if s.canSkipInstall(ctx, existing, bundle) {
+		catalog, catalogErr := s.upsertCatalogFromBundle(ctx, tenantID, bundle, archive, false)
+		if catalogErr != nil {
+			return "", fmt.Errorf("record skill catalog: %w", catalogErr)
+		}
+		if err := s.refreshSkippedBundle(ctx, existing, archive); err != nil {
+			return "", fmt.Errorf("store bundle for skill %s: %w", existing.ID, err)
+		}
+		if catalog != nil && existing.CatalogID != catalog.ID {
+			if err := s.updateSkillFields(ctx, tenantID, configID, existing.ID, func(e *types.TenantSkillEntity) {
+				e.CatalogID = catalog.ID
+			}); err != nil {
+				return "", err
+			}
+		}
+		return existing.ID, nil
+	}
+
+	catalog, err := s.upsertCatalogFromBundle(ctx, tenantID, bundle, archive, false)
+	if err != nil {
+		return "", fmt.Errorf("record skill catalog: %w", err)
+	}
+	catalogID := ""
+	if catalog != nil {
+		catalogID = catalog.ID
+	}
 
 	skillID := uuid.NewString()
 	now := s.now()
 	if existing != nil {
 		skillID = existing.ID
-		existing.Version = bundle.Version
-		existing.Description = bundle.Description
-		existing.Instructions = bundle.Instructions
-		existing.BundleSHA256 = bundle.SHA256
-		existing.Status = types.SkillStatusInstalling
-		existing.Error = ""
-		existing.InstallingSince = &now
+		takeSkillRowForInstall(existing, bundle, now)
+		existing.CatalogID = catalogID
 		if err := s.skills.UpdateSkill(ctx, existing); err != nil {
 			return "", err
 		}
 	} else {
 		if err := s.skills.CreateSkill(ctx, &types.TenantSkillEntity{
 			ID: skillID, TenantID: tenantID, SandboxConfigID: configID,
-			Name: bundle.Name, Version: bundle.Version,
+			CatalogID: catalogID,
+			Name:      bundle.Name, Version: bundle.Version,
 			Description: bundle.Description, Instructions: bundle.Instructions,
 			BundleSHA256: bundle.SHA256, Enabled: true,
 			Status: types.SkillStatusInstalling, InstallingSince: &now,
 		}); err != nil {
-			return "", err
+			if !isSkillNameConflict(err) {
+				return "", err
+			}
+			// Two first-time uploads of the same name raced the unique index.
+			// Take the row that won rather than surfacing a 500.
+			winner, lookupErr := s.skills.GetSkillByName(ctx, tenantID, configID, bundle.Name)
+			if lookupErr != nil {
+				return "", lookupErr
+			}
+			if winner == nil {
+				return "", err
+			}
+			skillID = winner.ID
+			takeSkillRowForInstall(winner, bundle, now)
+			winner.CatalogID = catalogID
+			if err := s.skills.UpdateSkill(ctx, winner); err != nil {
+				return "", err
+			}
 		}
 	}
 
@@ -96,7 +146,10 @@ func (s *TenantSkillService) InstallSkill(
 	if err != nil {
 		failCtx, cancelFail := s.cleanupContext(ctx)
 		defer cancelFail()
-		s.failSkill(failCtx, tenantID, configID, skillID, bundle, fmt.Errorf("store bundle: %w", err))
+		storeErr := fmt.Errorf("store bundle: %w", err)
+		logger.Errorf(ctx, "[skill] store bundle failed tenant=%d config=%s skill=%s name=%s: %v",
+			tenantID, configID, skillID, bundle.Name, err)
+		s.failSkill(failCtx, tenantID, configID, skillID, bundle, storeErr)
 		return "", fmt.Errorf("store bundle for skill %s: %w", skillID, err)
 	}
 	_ = s.updateSkillFields(ctx, tenantID, configID, skillID, func(e *types.TenantSkillEntity) {
@@ -120,6 +173,62 @@ func (s *TenantSkillService) InstallSkill(
 	}()
 
 	return skillID, nil
+}
+
+// takeSkillRowForInstall hands an existing row to the run about to start.
+//
+// The transcript locators are cleared along with the error. They name the
+// session and message of the run that just ended, and a row that says
+// "installing" while still pointing at them tells every reader that the
+// finished conversation is this one's live output — which is how a retry came
+// to replay the previous attempt's report before its own agent had started.
+// They are rewritten by beginInstallTranscript once this run has a message of
+// its own; until then the honest answer is that there is nothing to show yet.
+func takeSkillRowForInstall(row *types.TenantSkillEntity, bundle *SkillBundle, now time.Time) {
+	row.Version = bundle.Version
+	row.Description = bundle.Description
+	row.Instructions = bundle.Instructions
+	row.BundleSHA256 = bundle.SHA256
+	row.Status = types.SkillStatusInstalling
+	row.Error = ""
+	row.InstallingSince = &now
+	row.InstallSessionID = ""
+	row.InstallMessageID = ""
+}
+
+// ReinstallSkill runs the install again from the archive already stored for
+// this skill. Most failed installs have nothing to do with the archive — an
+// unreachable sandbox, a package index that timed out, a checker that has
+// since been corrected — and making the operator find the original zip again
+// (or the registry URL it came from) is a poor answer to any of them.
+//
+// It deliberately goes through InstallSkill rather than jumping to runInstall.
+// That path owns the in-flight check, the row ownership handover and the
+// per-config lock, and a retry is exactly the moment two installs of one
+// config are most likely to overlap.
+func (s *TenantSkillService) ReinstallSkill(
+	ctx context.Context, tenantID uint64, configID, skillID string,
+) (string, error) {
+	skill, err := s.skills.GetSkill(ctx, tenantID, configID, skillID)
+	if err != nil {
+		return "", err
+	}
+	if skill == nil {
+		return "", apperrors.NewNotFoundError("skill not found")
+	}
+	// Reported apart from a generic read failure: nothing a retry does can
+	// recover a skill whose archive is gone, and the operator needs to be told
+	// to upload it rather than to press the button again.
+	if strings.TrimSpace(skill.BundleRef) == "" {
+		return "", apperrors.NewBadRequestError(
+			"the archive of this skill is no longer stored; install it again from the original bundle",
+		)
+	}
+	archive, err := s.skillBundleArchive(ctx, tenantID, configID, skillID)
+	if err != nil {
+		return "", err
+	}
+	return s.InstallSkill(ctx, tenantID, configID, archive)
 }
 
 func (s *TenantSkillService) runInstall(
@@ -173,6 +282,14 @@ func (s *TenantSkillService) runInstall(
 	if !owned {
 		return nil
 	}
+
+	// From here on this run is the row's owner, and everything below can take
+	// minutes. The heartbeat is what tells a second upload of the same archive
+	// (and the reaper) that those minutes are work rather than a dead process.
+	// It is deferred before it is stopped explicitly below, so a failure path
+	// still stops it ahead of the deferred failSkill.
+	stopHeartbeat := s.startInstallHeartbeat(ctx, tenantID, configID, skillID)
+	defer stopHeartbeat()
 
 	// The name comes from SKILL.md and is already validated on parse, so a
 	// rejection here means the bundle was accepted by a looser rule than the
@@ -228,22 +345,40 @@ func (s *TenantSkillService) runInstall(
 	if err := s.resetSkillDir(ctx, mgr, sess.ID, skillDir); err != nil {
 		return err
 	}
+
+	// Locators must land before the file seed. A large skill is copied file by
+	// file over the sandbox API and can take minutes; the console attaches to
+	// the transcript as soon as the directory is ready, not after that copy.
+	transcript, prompt := s.beginInstallTranscript(ctx, tenantID, skillID, sess, mgr, skillDir, bundle)
+
+	fileCount := 0
+	if bundle != nil {
+		fileCount = len(bundle.Files)
+	}
+	if fileCount > 0 {
+		logger.Infof(ctx, "[skill] seeding %d files for %s as one archive", fileCount, skillID)
+		s.publishProgress(ctx, tenantID, configID, skillID, SkillProgress{
+			Percent: 28, Stage: "seeding",
+			Log: fmt.Sprintf("seeding %d files", fileCount),
+		})
+	}
 	if err := s.seedSkillFiles(ctx, mgr, sess.ID, skillDir, bundle); err != nil {
 		return err
 	}
 	s.publishProgress(ctx, tenantID, configID, skillID, SkillProgress{Percent: 35, Stage: "seeded"})
 
 	// 3. Let the installer agent install dependencies.
-	if err := s.driveInstallerAgent(ctx, tenantID, sess, mgr, skillDir, bundle); err != nil {
+	if err := s.driveInstallerAgent(ctx, tenantID, skillID, sess, transcript, prompt); err != nil {
 		return err
 	}
 	s.publishProgress(ctx, tenantID, configID, skillID, SkillProgress{Percent: 80, Stage: "agent_done"})
 
 	// 4. Hand the tree to the execution user BEFORE verifying it. The agent
-	//    created these files as root, and the smoke run below deliberately
-	//    runs as the ordinary user: verifying first would test permissions
-	//    that never reach the image, and a restrictive root umask would fail a
-	//    perfectly good install because the .venv interpreter was unreadable.
+	//    created these files as root, and the language passes below
+	//    deliberately run as the ordinary user: verifying first would test
+	//    permissions that never reach the image, and a restrictive root umask
+	//    would fail a perfectly good install because the .venv interpreter was
+	//    unreadable.
 	if err := s.normalizeSkillPermissions(ctx, mgr, sess.ID, skillDir); err != nil {
 		return err
 	}
@@ -256,6 +391,10 @@ func (s *TenantSkillService) runInstall(
 	if err := s.writeManifestEntry(ctx, mgr, sess.ID, skillID, bundle); err != nil {
 		return err
 	}
+	// Read before the scratch wipe. requirements.json lives under skillDir and
+	// is not scratch, but reading it first removes an implicit dependency on
+	// what cleanImageScratch happens to delete.
+	s.recordEnvDeclaration(ctx, mgr, sess.ID, tenantID, configID, skillID, bundle)
 	s.publishProgress(ctx, tenantID, configID, skillID, SkillProgress{Percent: 90, Stage: "verified"})
 
 	// 6. Wipe the scratch state. It must happen BEFORE the snapshot, or the
@@ -285,24 +424,30 @@ func (s *TenantSkillService) runInstall(
 	if !owned {
 		return nil
 	}
-	// The generation comes from the config read at the top of this function,
-	// while switchImagePointer deliberately re-reads for everything else it
-	// writes. That asymmetry is sound because the two fields have different
-	// writers: SkillImage is written only by an install or a removal, and
-	// withConfigLock serialises every one of those per config, so no other
-	// writer can have advanced the generation while this run held the lock.
-	// The rest of the entity is written by the config service under its own
-	// cordon, which this lock says nothing about — hence the re-read there.
-	generation := currentGeneration(cfgEntity) + 1
+	// Generation is max(live pointer, ledger)+1 so a build that died after
+	// the commit but before the pointer moved cannot share a name with the
+	// next install. withConfigLock still serialises writers of SkillImage;
+	// the ledger read is what closes the crash window the lock cannot see.
+	ledger, err := s.skills.ListSnapshotsByConfig(ctx, tenantID, configID)
+	if err != nil {
+		return fmt.Errorf("list snapshots of config %s: %w", configID, err)
+	}
+	generation := nextSnapshotGeneration(currentGeneration(cfgEntity), ledger)
 	installRowID := uuid.NewString()
+	// The name is recorded with the row rather than derived at the call below,
+	// so a run that dies during the commit still leaves the ledger able to
+	// name what it was building. Without it the snapshot would be a provider
+	// resource nothing could ever address, let alone reclaim. The row id is
+	// in the name so two rows of the same generation cannot share a tag.
+	snapshotName := skillSnapshotBuildName(tenantID, configID, generation, installRowID)
 	if err := s.skills.CreateSnapshotRow(ctx, &types.TenantSkillSnapshotEntity{
 		ID: installRowID, TenantID: tenantID, SandboxConfigID: configID, SkillID: skillID,
 		ParentSnapshotID: currentSnapshotID(cfgEntity), Generation: generation,
 		Trigger: types.SkillSnapshotTriggerInstall, State: types.SkillSnapshotStateBuilding,
+		PlannedName: snapshotName,
 	}); err != nil {
 		return err
 	}
-	snapshotName := fmt.Sprintf("weknora-sk-%s-g%d", shortID(configID), generation)
 	ref, err := s.createSnapshot(ctx, mgr, sess.ID, snapshotName)
 	if err != nil {
 		return err
@@ -322,6 +467,10 @@ func (s *TenantSkillService) runInstall(
 		return err
 	}
 	pointerSwitched = true
+	// The heartbeat writes the whole row, so it must be gone before the
+	// terminal "ready" write below: a beat landing after it would put the row
+	// back to installing and have the reaper fail a skill that is serving.
+	stopHeartbeat()
 	s.markPreviousSnapshotsSuperseded(ctx, tenantID, configID, installRowID)
 
 	// The terminal write is the one that must not be best-effort: the pointer
@@ -449,20 +598,96 @@ func guardSkillDir(skillDir string) error {
 // server-side rather than asking the agent to unpack keeps the source of truth
 // byte-identical to what was uploaded. Provisioning the directory is
 // runInstall's step 2, not this function's job.
+//
+// The files travel as one tar: each remote WriteFile is a MakeDir plus an
+// upload, and a skill with dozens of files was spending minutes on that
+// round-trip tax. Extracting inside the sandbox is one local untar.
 func (s *TenantSkillService) seedSkillFiles(
 	ctx context.Context, mgr sandbox.Manager, sessionID, skillDir string, bundle *SkillBundle,
 ) error {
+	if bundle == nil || len(bundle.Files) == 0 {
+		return nil
+	}
 	store, err := installFileStore(mgr)
 	if err != nil {
 		return err
 	}
-	for rel, content := range bundle.Files {
-		target := path.Join(skillDir, rel)
-		if err := store.WriteSessionFile(ctx, sessionID, target, content); err != nil {
-			return fmt.Errorf("seed %s: %w", target, err)
-		}
+	archive, err := packSkillTar(bundle)
+	if err != nil {
+		return err
+	}
+	if err := store.WriteSessionFile(ctx, sessionID, skillSeedArchivePath, archive); err != nil {
+		return fmt.Errorf("seed skill archive: %w", err)
+	}
+	if _, err := s.execInstall(ctx, mgr, sessionID, seedExtractCommand(skillDir)); err != nil {
+		return fmt.Errorf("extract skill archive: %w", err)
 	}
 	return nil
+}
+
+func seedExtractCommand(skillDir string) string {
+	tarPath := sandbox.ShellQuote(skillSeedArchivePath)
+	dir := sandbox.ShellQuote(skillDir)
+	return fmt.Sprintf("tar -xf %s -C %s && rm -f %s", tarPath, dir, tarPath)
+}
+
+func packSkillTar(bundle *SkillBundle) ([]byte, error) {
+	if bundle == nil {
+		return nil, nil
+	}
+	names := make([]string, 0, len(bundle.Files))
+	for rel := range bundle.Files {
+		names = append(names, rel)
+	}
+	sort.Strings(names)
+
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	for _, rel := range names {
+		name := path.Clean(rel)
+		if name == "." || name == ".." || strings.HasPrefix(name, "../") || path.IsAbs(name) {
+			return nil, fmt.Errorf("skill file %q escapes the archive root", rel)
+		}
+		content := bundle.Files[rel]
+		if err := tw.WriteHeader(&tar.Header{
+			Name: name,
+			Mode: 0o644,
+			Size: int64(len(content)),
+		}); err != nil {
+			return nil, err
+		}
+		if _, err := tw.Write(content); err != nil {
+			return nil, err
+		}
+	}
+	if err := tw.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// beginInstallTranscript writes the locators and opening prompt after the
+// skill directory is reset, so a console that opens during the file seed
+// finds something to follow instead of 404-polling for minutes.
+func (s *TenantSkillService) beginInstallTranscript(
+	ctx context.Context, tenantID uint64, skillID string,
+	sess *types.Session, mgr sandbox.Manager, skillDir string, bundle *SkillBundle,
+) (*installTranscript, string) {
+	assistantMessageID := uuid.NewString()
+	prompt := buildInstallPrompt(skillDir, bundle, s.probeUv(ctx, mgr, sess.ID))
+	transcript := newInstallTranscript(ctx, event.NewEventBus(), s.streams, s.messages, sess.ID, assistantMessageID)
+	if err := transcript.Create(ctx, prompt); err != nil {
+		logger.Warnf(ctx, "[skill] seed install transcript for %s failed: %v", skillID, err)
+	}
+	transcript.Subscribe()
+	if err := s.updateSkillFields(ctx, tenantID, sess.SandboxConfigID, skillID,
+		func(e *types.TenantSkillEntity) {
+			e.InstallSessionID = sess.ID
+			e.InstallMessageID = assistantMessageID
+		}); err != nil {
+		logger.Warnf(ctx, "[skill] record transcript locators for %s failed: %v", skillID, err)
+	}
+	return transcript, prompt
 }
 
 // driveInstallerAgent runs one installer conversation. It calls the engine
@@ -470,11 +695,14 @@ func (s *TenantSkillService) seedSkillFiles(
 // swallows engine failures (it emits an error event and returns nil) and we
 // need a reliable signal before switching the image.
 func (s *TenantSkillService) driveInstallerAgent(
-	ctx context.Context, tenantID uint64, sess *types.Session, mgr sandbox.Manager,
-	skillDir string, bundle *SkillBundle,
+	ctx context.Context, tenantID uint64, skillID string, sess *types.Session,
+	transcript *installTranscript, prompt string,
 ) error {
 	if s.installerAgents == nil {
 		return errors.New("custom agent service is not configured")
+	}
+	if transcript == nil {
+		return errors.New("install transcript was not seeded")
 	}
 	// The record is tenant-writable: updateBuiltinAgent lets a tenant persist a
 	// Config for any built-in ID, this one included. It is therefore read for
@@ -491,94 +719,52 @@ func (s *TenantSkillService) driveInstallerAgent(
 		return err
 	}
 
-	bus := event.NewEventBus()
-	assistantMessageID := uuid.NewString()
 	engine, err := s.agents.CreateAgentEngine(
-		ctx, agentConfig, chatModel, nil, bus, sess.ID, assistantMessageID,
+		ctx, agentConfig, chatModel, nil, transcript.bus, sess.ID, transcript.assistantMessageID,
 	)
 	if err != nil {
-		return fmt.Errorf("create installer engine: %w", err)
+		runErr := fmt.Errorf("create installer engine: %w", err)
+		transcript.Finish(ctx, runErr)
+		return runErr
 	}
 
-	prompt := buildInstallPrompt(skillDir, bundle, s.probeUv(ctx, mgr, sess.ID))
-	state, err := engine.Execute(ctx, sess.ID, assistantMessageID, prompt, nil)
-	if err != nil {
-		return fmt.Errorf("installer agent failed: %w", err)
+	state, err := engine.Execute(ctx, sess.ID, transcript.assistantMessageID, prompt, nil)
+	runErr := err
+	if runErr == nil && (state == nil || !state.IsComplete) {
+		runErr = errors.New("installer agent stopped without completing")
 	}
-	if state == nil || !state.IsComplete {
-		return errors.New("installer agent stopped without completing")
-	}
-	return nil
-}
-
-// verifySkill is the server's own check. Both structure and smoke run are
-// gates for the snapshot switch: a broken install must leave the old image live.
-func (s *TenantSkillService) verifySkill(
-	ctx context.Context, mgr sandbox.Manager, sessionID, skillDir string, bundle *SkillBundle,
-) error {
-	if _, err := s.execInstall(ctx, mgr, sessionID,
-		fmt.Sprintf("test -f %s", sandbox.ShellQuote(path.Join(skillDir, "SKILL.md")))); err != nil {
-		return fmt.Errorf("skill directory is incomplete after install: %w", err)
-	}
-	for rel := range bundle.Files {
-		if !strings.HasSuffix(rel, ".py") && !strings.HasSuffix(rel, ".js") &&
-			!strings.HasSuffix(rel, ".mjs") && !strings.HasSuffix(rel, ".sh") {
-			continue
-		}
-		target := path.Join(skillDir, rel)
-		if _, err := s.execInstall(ctx, mgr, sessionID,
-			fmt.Sprintf("test -f %s", sandbox.ShellQuote(target))); err != nil {
-			return fmt.Errorf("script %s is missing after install: %w", rel, err)
-		}
-	}
-	if err := s.verifyDeclaredDependencies(ctx, mgr, sessionID, skillDir, bundle); err != nil {
-		return err
-	}
-	if entry := primaryEntryScript(bundle); entry != "" {
-		res, err := s.execSmoke(ctx, mgr, sessionID, skillDir, path.Join(skillDir, entry))
+	// Detached from cancellation: when the install lock's renewal fails the
+	// context dies, and the transcript of the run that just died is precisely
+	// what someone will want to read.
+	transcript.Finish(context.WithoutCancel(ctx), runErr)
+	if runErr != nil {
 		if err != nil {
-			return fmt.Errorf("smoke run %s: %w", entry, err)
+			return fmt.Errorf("installer agent failed: %w", err)
 		}
-		if res.ExitCode != 0 {
-			return fmt.Errorf("smoke run %s failed (%s)", entry, describeExecFailure(res))
-		}
+		return runErr
 	}
 	return nil
 }
 
-// verifyDeclaredDependencies checks that the isolated trees the installer was
-// told to create actually exist. Seeded source files surviving is not evidence
-// that pip/npm ran: those files were written server-side before the agent.
-func (s *TenantSkillService) verifyDeclaredDependencies(
-	ctx context.Context, mgr sandbox.Manager, sessionID, skillDir string, bundle *SkillBundle,
-) error {
-	if bundleHasPythonDeps(bundle) {
-		venvPython := path.Join(skillDir, ".venv", "bin", "python")
-		if _, err := s.execInstall(ctx, mgr, sessionID,
-			fmt.Sprintf("test -x %s", sandbox.ShellQuote(venvPython))); err != nil {
-			return fmt.Errorf("python dependencies were not installed into %s/.venv: %w", skillDir, err)
-		}
-	}
-	if bundleHasNodeDeps(bundle) {
-		nodeModules := path.Join(skillDir, "node_modules")
-		if _, err := s.execInstall(ctx, mgr, sessionID,
-			fmt.Sprintf("test -d %s", sandbox.ShellQuote(nodeModules))); err != nil {
-			return fmt.Errorf("node dependencies were not installed into %s/node_modules: %w", skillDir, err)
-		}
-	}
-	return nil
-}
-
-// normalizeSkillPermissions hands the skill tree to the execution user.
-// Installs run as root, so without this the non-root user that actually runs
-// skills could not read them — which is also why it runs before verification:
-// the smoke test has to exercise the permissions the snapshot will carry.
+// normalizeSkillPermissions makes the skill tree readable and executable by
+// the non-root execution user, and writable by nobody. Installs run as root,
+// so without the mode change the user that actually runs skills could not read
+// them at all — which is also why this runs before verification: the checks
+// read every script as that user, so they have to see the permissions the
+// snapshot will carry.
+//
+// Ownership stays with root rather than moving to the execution user because
+// this tree is baked into an image every session of the config inherits. A
+// session that could write here would be editing the skills every other
+// session runs. 555 leaves reads and execs to the "other" bits, which is all a
+// skill run needs; the cost is that Python cannot write __pycache__ into the
+// tree and silently skips bytecode caching.
 func (s *TenantSkillService) normalizeSkillPermissions(
 	ctx context.Context, mgr sandbox.Manager, sessionID, skillDir string,
 ) error {
 	cmds := []string{
-		fmt.Sprintf("chmod -R 755 %s", sandbox.ShellQuote(skillDir)),
-		fmt.Sprintf("chown -R %s %s", sandbox.DefaultSandboxExecUser, sandbox.ShellQuote(skillDir)),
+		fmt.Sprintf("chmod -R 555 %s", sandbox.ShellQuote(skillDir)),
+		fmt.Sprintf("chown -R root:root %s", sandbox.ShellQuote(skillDir)),
 	}
 	for _, cmd := range cmds {
 		if _, err := s.execInstall(ctx, mgr, sessionID, cmd); err != nil {
@@ -593,8 +779,23 @@ func (s *TenantSkillService) normalizeSkillPermissions(
 func (s *TenantSkillService) cleanImageScratch(
 	ctx context.Context, mgr sandbox.Manager, sessionID string,
 ) error {
+	user := sandbox.DefaultSandboxExecUser
+	inputRoot := sandbox.ShellQuote(sandbox.SessionInputRoot)
+	outputRoot := sandbox.ShellQuote(sandbox.SessionOutputRoot)
 	cmds := []string{
 		"rm -rf /workspace/* /workspace/.[!.]* || true",
+		// The wipe above takes the base image's own input/output directories
+		// with it, so every session booting from this snapshot would start on
+		// a bare /workspace. Restoring them here is the only place with root:
+		// a provider whose filesystem API runs as root would otherwise
+		// recreate them root-owned, and the session account can neither write
+		// them nor take them over.
+		fmt.Sprintf(
+			"mkdir -p %s %s && chown %s:%s %s %s && chmod 775 %s %s",
+			inputRoot, outputRoot,
+			user, user, inputRoot, outputRoot,
+			inputRoot, outputRoot,
+		),
 		// Spelled out for both accounts on purpose: this runs as root, so "~"
 		// would only ever clear root's caches, while the agent's own installs
 		// populate the exec user's caches and those are what reach the image.
@@ -646,8 +847,8 @@ func describeExecFailure(res *sandbox.ExecuteResult) string {
 
 // installExecutor resolves the one executor every command of an install runs
 // through. It goes through the capability accessor rather than a bare type
-// assertion so a manager that fell back to LocalSandbox reports no capability
-// instead of running the install on the WeKnora host.
+// assertion so a manager that cannot run install-mode shell reports no
+// capability instead of attempting the install on the WeKnora host.
 func installExecutor(mgr sandbox.Manager) (sandbox.SessionInstallShellExecutor, error) {
 	executor := sessionSandboxInstallShellExecutor(mgr)
 	if executor == nil {
@@ -675,18 +876,35 @@ func (s *TenantSkillService) execInstall(
 	return res, nil
 }
 
+func (s *TenantSkillService) tenantForStorage(ctx context.Context, tenantID uint64) *types.Tenant {
+	if info, ok := types.TenantInfoFromContext(ctx); ok && info.ID == tenantID {
+		return info
+	}
+	return &types.Tenant{ID: tenantID}
+}
+
+func (s *TenantSkillService) fileServiceForTenant(
+	ctx context.Context, tenantID uint64,
+) (interfaces.FileService, error) {
+	if s.resolver == nil {
+		return nil, errors.New("storage resolver is not configured")
+	}
+	fs, _, err := s.resolver.ResolveFileService(ctx, s.tenantForStorage(ctx, tenantID), "", "", "")
+	if err != nil {
+		return nil, err
+	}
+	if fs == nil {
+		return nil, errors.New("file service is not configured")
+	}
+	return fs, nil
+}
+
 func (s *TenantSkillService) saveBundle(
 	ctx context.Context, tenantID uint64, skillID string, archive []byte,
 ) (string, error) {
-	if s.resolver == nil {
-		return "", errors.New("storage resolver is not configured")
-	}
-	fs, _, err := s.resolver.ResolveFileService(ctx, &types.Tenant{ID: tenantID}, "", "", "")
+	fs, err := s.fileServiceForTenant(ctx, tenantID)
 	if err != nil {
 		return "", err
-	}
-	if fs == nil {
-		return "", errors.New("file service is not configured")
 	}
 	return fs.SaveBytes(ctx, archive, tenantID, fmt.Sprintf("tenant-skills/%s.zip", skillID), false)
 }
@@ -792,9 +1010,10 @@ func (s *TenantSkillService) failSkill(
 // installStillOwnsTheRow is the lock-side counterpart of InstallSkill's
 // optimistic row write. A remove that ran first deleted the row; a newer
 // upload of the same name replaced BundleSHA256; a queued remove flipped the
-// status. Any of those means this run must not snapshot — failSkill would
-// stamp the newer owner's row, and a snapshot with no matching row is an
-// orphan the ledger cannot name.
+// status; a sibling retry of the same archive found the first run had already
+// landed in the live image. Any of those means this run must not snapshot —
+// failSkill would stamp the newer owner's row, and a snapshot with no matching
+// row is an orphan the ledger cannot name.
 func (s *TenantSkillService) installStillOwnsTheRow(
 	ctx context.Context, tenantID uint64, configID, skillID string, bundle *SkillBundle,
 ) (bool, error) {
@@ -811,13 +1030,155 @@ func (s *TenantSkillService) installStillOwnsTheRow(
 	if bundle != nil && current.BundleSHA256 != "" && current.BundleSHA256 != bundle.SHA256 {
 		return false, nil
 	}
+	if current.Status == types.SkillStatusReady {
+		_, inImage, ok := s.skillFilesInLiveImage(ctx, current)
+		if ok && inImage {
+			return false, nil
+		}
+	}
 	return true, nil
+}
+
+// canSkipInstall reports whether this upload is a no-op. Re-uploading the
+// exact archive of a skill that is already ready (and still in the live image)
+// must not boot a billed sandbox or grow a new snapshot. An install of the
+// same bytes that is still beating is the same situation: the first run owns
+// the work.
+//
+// Only a ready row is answered from the image. An installing row is answered
+// from the heartbeat alone, deliberately: the ledger records which skill an
+// install snapshotted, not which archive, so a row that is installing bundle
+// B while the image still carries the earlier bundle A would look "already
+// installed" and this upload would report a success that never happened.
+//
+// A failed skill with the same digest is a retry: the previous attempt never
+// made it into the image. A removal in flight is not a skip either — taking
+// the row back to installing is how an upload cancels it.
+func (s *TenantSkillService) canSkipInstall(
+	ctx context.Context, existing *types.TenantSkillEntity, bundle *SkillBundle,
+) bool {
+	if existing == nil || bundle == nil {
+		return false
+	}
+	if existing.BundleSHA256 == "" || existing.BundleSHA256 != bundle.SHA256 {
+		return false
+	}
+	switch existing.Status {
+	case types.SkillStatusInstalling:
+		return s.installIsInFlight(existing)
+	case types.SkillStatusReady:
+		_, inImage, ok := s.skillFilesInLiveImage(ctx, existing)
+		return ok && inImage
+	default:
+		return false
+	}
+}
+
+// installIsInFlight reports whether an installing row still belongs to a live
+// process. The answer is the heartbeat: a running install restamps
+// InstallingSince every skillInstallHeartbeatInterval, so silence past
+// skillInstallInFlightSkip means the process is gone and the next upload must
+// be allowed to start a new run rather than wait for the stuck-run reaper.
+//
+// Reading the submission time instead would force a choice between calling a
+// slow install dead — a single agent command may take installCommandTimeout,
+// and an install runs several — and leaving a dead one unrecoverable.
+func (s *TenantSkillService) installIsInFlight(existing *types.TenantSkillEntity) bool {
+	if existing == nil || existing.InstallingSince == nil {
+		return false
+	}
+	return !existing.InstallingSince.Before(s.clock()().Add(-skillInstallInFlightSkip))
+}
+
+// startInstallHeartbeat keeps this run's liveness visible while it works, and
+// returns the stop function that must be called before any terminal write.
+//
+// The heartbeat writes the whole row, so it would otherwise race the "ready"
+// write past the pointer switch and revive an installing status. Both callers
+// stop it before that point: runInstall stops it the moment the pointer moves,
+// and the deferred stop runs before the deferred failSkill.
+func (s *TenantSkillService) startInstallHeartbeat(
+	ctx context.Context, tenantID uint64, configID, skillID string,
+) func() {
+	interval := s.installHeartbeat
+	if interval <= 0 {
+		interval = skillInstallHeartbeatInterval
+	}
+	beatCtx, stop := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-beatCtx.Done():
+				return
+			case <-ticker.C:
+				s.beatInstallHeartbeat(beatCtx, tenantID, configID, skillID)
+			}
+		}
+	}()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			stop()
+			<-done
+		})
+	}
+}
+
+// beatInstallHeartbeat stamps InstallingSince for a row this run still owns.
+// A row that has left the installing status belongs to a newer upload, a
+// queued removal, or a finished run, and reviving its timestamp would hide
+// one of those from the reaper.
+func (s *TenantSkillService) beatInstallHeartbeat(
+	ctx context.Context, tenantID uint64, configID, skillID string,
+) {
+	current, err := s.skills.GetSkill(ctx, tenantID, configID, skillID)
+	if err != nil {
+		logger.Warnf(ctx, "[skill] load %s for install heartbeat failed: %v", skillID, err)
+		return
+	}
+	if current == nil || current.Status != types.SkillStatusInstalling {
+		return
+	}
+	at := s.clock()()
+	current.InstallingSince = &at
+	if err := s.skills.UpdateSkill(ctx, current); err != nil {
+		logger.Warnf(ctx, "[skill] install heartbeat for %s failed: %v", skillID, err)
+	}
+}
+
+// refreshSkippedBundle stores the uploaded archive even when the image work
+// is skipped. read_skill serves file contents from it, so a re-upload of a
+// ready skill is how a missing object-store blob gets repaired without
+// growing a new snapshot. A failure here is returned to the caller rather
+// than turning the ready row into a failed install.
+func (s *TenantSkillService) refreshSkippedBundle(
+	ctx context.Context, existing *types.TenantSkillEntity, archive []byte,
+) error {
+	if existing == nil {
+		return nil
+	}
+	ref, err := s.saveBundle(ctx, existing.TenantID, existing.ID, archive)
+	if err != nil {
+		return err
+	}
+	return s.updateSkillFields(ctx, existing.TenantID, existing.SandboxConfigID, existing.ID,
+		func(e *types.TenantSkillEntity) {
+			e.BundleRef = ref
+		})
 }
 
 // startMaintenanceSession opens the session one image operation runs in. The
 // operation name is carried into the session because the transcript is kept
 // deliberately, for troubleshooting: filing a removal's under "Skill install"
 // would send whoever reads it looking at the wrong operation.
+//
+// The description marker is what keeps this row out of the console's session
+// list, and the owner is the admin who started the operation, so a transcript
+// is readable by the person who caused it rather than by the whole workspace.
 func (s *TenantSkillService) startMaintenanceSession(
 	ctx context.Context, tenantID uint64, configID, operation string,
 ) (*types.Session, sandbox.Manager, error) {
@@ -840,8 +1201,9 @@ func (s *TenantSkillService) startMaintenanceSession(
 	}
 	sess, err := s.sessions.CreateSession(ctx, &types.Session{
 		TenantID:        tenantID,
+		UserID:          sessionUserIDFromContext(ctx),
 		Title:           "Skill " + operation,
-		Description:     "Tenant skill image maintenance",
+		Description:     types.SkillMaintenanceSessionMarker + operation,
 		SandboxConfigID: configID,
 	})
 	if err != nil {
@@ -999,21 +1361,123 @@ func currentSnapshotID(cfgEntity *types.TenantSandboxConfigEntity) string {
 	return cfgEntity.Config.SkillImage.SnapshotID
 }
 
-func shortID(id string) string {
-	trimmed := strings.ReplaceAll(strings.TrimSpace(id), "-", "")
-	if len(trimmed) > 8 {
-		return trimmed[:8]
+func skillSnapshotNamePrefix(tenantID uint64, configID string) string {
+	return fmt.Sprintf("weknora-sk-t%d-%s", tenantID, compactConfigID(configID))
+}
+
+// nextSnapshotGeneration is one past both the live pointer and every ledger
+// row. An abandoned building row still occupies its generation; reusing it
+// would mint the same planned name and let the reaper delete a later install's
+// snapshot.
+func nextSnapshotGeneration(live int, rows []*types.TenantSkillSnapshotEntity) int {
+	highest := live
+	for _, row := range rows {
+		if row != nil && row.Generation > highest {
+			highest = row.Generation
+		}
 	}
-	if trimmed == "" {
-		return "config"
+	if highest < 0 {
+		highest = 0
 	}
-	return trimmed
+	return highest + 1
+}
+
+func compactSnapshotToken(id string) string {
+	s := compactConfigID(id)
+	const n = 8
+	if len(s) > n {
+		return s[:n]
+	}
+	if s == "" {
+		return "row"
+	}
+	return s
+}
+
+// skillSnapshotBuildName is the name every generation of a config's image
+// chain is committed under. It is recorded on the ledger row before the
+// provider call so an abandoned build stays identifiable. Tenant and the
+// full config id are in the name because Cube, E2B and Docker all list
+// snapshots across a shared account or daemon; the row token stops two
+// builds of the same generation from sharing a tag.
+func skillSnapshotBuildName(tenantID uint64, configID string, generation int, rowID string) string {
+	prefix := skillSnapshotNamePrefix(tenantID, configID)
+	return fmt.Sprintf("%s-g%d-%s", prefix, generation, compactSnapshotToken(rowID))
+}
+
+func compactConfigID(id string) string {
+	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(id), "-", ""))
+}
+
+// weknoraSkillSnapshotName pulls the weknora-sk-… token out of a provider
+// listing. Cube and E2B echo it in Names; Docker embeds it in the image tag.
+func weknoraSkillSnapshotName(raw string) string {
+	s := strings.TrimSpace(raw)
+	s = strings.TrimPrefix(s, "docker.io/")
+	if i := strings.LastIndex(s, "/"); i >= 0 {
+		s = s[i+1:]
+	}
+	if cut := strings.IndexByte(s, ':'); cut >= 0 {
+		s = s[:cut]
+	}
+	if strings.HasPrefix(s, "weknora-sk-") {
+		return s
+	}
+	return ""
+}
+
+// snapshotsNotFromOtherConfig drops provider listings that already name a
+// different WeKnora config. Cube, E2B and Docker all ListSnapshots across the
+// whole account/daemon, so without this a reconcile of one config would treat
+// every other config's image as an extra, and an abandoned-build match could
+// bind to the wrong snapshot.
+func snapshotsNotFromOtherConfig(
+	listed []sandbox.RemoteSnapshotRef, prefix string,
+) []sandbox.RemoteSnapshotRef {
+	if strings.TrimSpace(prefix) == "" {
+		return listed
+	}
+	out := make([]sandbox.RemoteSnapshotRef, 0, len(listed))
+	for _, snap := range listed {
+		if snapshotBelongsToOtherConfig(snap, prefix) {
+			continue
+		}
+		out = append(out, snap)
+	}
+	return out
+}
+
+func snapshotBelongsToOtherConfig(snap sandbox.RemoteSnapshotRef, prefix string) bool {
+	if strings.TrimSpace(prefix) == "" {
+		return false
+	}
+	needle := prefix + "-g"
+	sawForeign := false
+	for _, candidate := range append([]string{snap.ID}, snap.Names...) {
+		name := weknoraSkillSnapshotName(candidate)
+		if name == "" {
+			continue
+		}
+		if strings.HasPrefix(name, needle) {
+			return false
+		}
+		// New-format names are weknora-sk-t<tenant>-<config>-gN. Legacy
+		// weknora-sk-<short>-gN names are left alone so a row written before
+		// the prefix existed can still be matched.
+		rest := strings.TrimPrefix(name, "weknora-sk-")
+		if len(rest) > 1 && rest[0] == 't' && rest[1] >= '0' && rest[1] <= '9' {
+			sawForeign = true
+		}
+	}
+	return sawForeign
 }
 
 func buildInstallPrompt(skillDir string, bundle *SkillBundle, uvAvailable bool) string {
 	skillMD := ""
+	requirementsPath := ""
 	if bundle != nil {
 		skillMD = string(bundle.Files["SKILL.md"])
+		requirementsPath = sandbox.SkillRequirementsPath(bundle.Name)
 	}
 	return fmt.Sprintf(`Install this WeKnora skill into the sandbox image.
 
@@ -1024,50 +1488,88 @@ Hard requirements:
 - Install dependencies for exactly this one skill.
 - Python dependencies must go into %s/.venv. Do not install into system Python.
 - Node dependencies must go under %s/node_modules. Do not install global packages unless no local alternative exists.
-- Use shell_exec only. You may set work_dir to %s.
+- Use shell_exec only (write_sandbox_file is not available and cannot write
+  this tree). You may set work_dir to %s. Write .weknora/requirements.json
+  with a short shell redirect after mkdir -p.
 - Each command has a 10-minute budget; you do not need to set timeout_sec.
 - When finished, report what you installed and any global/system packages you changed.
+- Declare the environment variables this skill reads AT RUN TIME. Read its scripts to decide;
+  ignore anything only the installation itself needed. Run mkdir -p on the directory first, then
+  write the declaration to %s as JSON of this exact shape:
+  {"env":[{"name":"TAVILY_API_KEY","description":"what the skill uses it for","required":true}]}
+  Each name must be UPPER_SNAKE_CASE and must appear literally somewhere in the skill's own files.
+  Never write any value, placeholder or example credential: this file declares what is needed, and
+  a value you invent would be stored as this workspace's real credential. If one environment
+  variable is required, set required to true; if it is optional, set required to false. If the
+  skill needs no environment variables, write {"env":[]}.
+  Do not declare WEKNORA_SKILL_DIR, WEKNORA_SKILL_OUTPUT_DIR, WEKNORA_SKILL_HISTORY_ROOT or
+  WEKNORA_SESSION_INPUT_DIR: the sandbox injects those. Other WEKNORA_* names the skill reads
+  (WEKNORA_API_KEY, WEKNORA_BASE_URL, WEKNORA_HOST, WEKNORA_TOKEN, WEKNORA_KB_ID) MUST be declared.
+
+On-demand / optional extras MUST be installed now. After you finish, this
+tree is made read-only and session agents cannot pip/npm into it (uv venv also
+has no pip). Skills that ship scripts/install_deps.py or say "pip install when
+the user needs Word/PPT" will fail at chat time unless those packages are
+already in the venv.
+- Create the venv with pip present: `+"`uv venv --seed %s/.venv`"+` (or `+"`python3 -m venv`"+`).
+- Install requirements.txt / pyproject.toml with `+"`uv pip install`"+`.
+- Read SKILL.md and any on-demand installer for extra packages (python-docx,
+  python-pptx, …) and `+"`uv pip install`"+` every extra, not only the default set.
+%s
+- If an installer script needs --yes / --all / every extra flag, pass them.
+%s
+The server verifies the result itself before the image is kept, so report what
+you did rather than whether it passed. Verification parses every script with
+the interpreter that would run it, resolves the imports each one executes on
+load, and checks every distribution named in requirements.txt is present in the
+venv. It never runs the skill's code, so nothing is expected to answer --help.
+Lazy imports and install_deps.py extras are invisible to that check — you still
+have to install them.
 
 SKILL.md:
 %s
-`, skillDir, uvAvailable, skillDir, skillDir, skillDir, skillMD)
+`, skillDir, uvAvailable, skillDir, skillDir, skillDir,
+		requirementsPath, skillDir, formatOnDemandInstallers(bundle),
+		formatFrontmatterRepairNote(bundle), skillMD)
 }
 
-func primaryEntryScript(bundle *SkillBundle) string {
+// formatOnDemandInstallers names bundle files that install extras at first
+// use, so the installer agent does not have to discover them by grepping.
+func formatOnDemandInstallers(bundle *SkillBundle) string {
+	names := bundleOnDemandInstallers(bundle)
+	if len(names) == 0 {
+		return "- Look for scripts named install_deps.py (or similar) even if they are not listed here."
+	}
+	quoted := make([]string, len(names))
+	for i, name := range names {
+		quoted[i] = "`" + name + "`"
+	}
+	return "- This archive ships on-demand installer(s): " + strings.Join(quoted, ", ") +
+		". Run each one now with non-interactive flags covering every extra."
+}
+
+func bundleOnDemandInstallers(bundle *SkillBundle) []string {
 	if bundle == nil {
+		return nil
+	}
+	var names []string
+	for rel := range bundle.Files {
+		if skills.IsOnDemandInstallerPath(rel) {
+			names = append(names, rel)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+func formatFrontmatterRepairNote(bundle *SkillBundle) string {
+	if bundle == nil || !bundle.FrontmatterRepaired {
 		return ""
 	}
-	preferred := []string{".py", ".js", ".mjs", ".sh"}
-	for _, suffix := range preferred {
-		var matches []string
-		for rel := range bundle.Files {
-			if strings.HasPrefix(rel, "scripts/") && strings.HasSuffix(rel, suffix) {
-				matches = append(matches, rel)
-			}
-		}
-		if len(matches) > 0 {
-			sort.Strings(matches)
-			return matches[0]
-		}
-	}
-	return ""
-}
-
-func bundleHasPythonDeps(bundle *SkillBundle) bool {
-	if bundle == nil {
-		return false
-	}
-	_, req := bundle.Files["requirements.txt"]
-	_, pyproject := bundle.Files["pyproject.toml"]
-	return req || pyproject
-}
-
-func bundleHasNodeDeps(bundle *SkillBundle) bool {
-	if bundle == nil {
-		return false
-	}
-	_, ok := bundle.Files["package.json"]
-	return ok
+	return "\nThe SKILL.md YAML frontmatter was automatically repaired " +
+		"(keys nested under name, or an unquoted colon). Extra or still-broken " +
+		"keys were not reconstructed. Mention this in your summary so the user " +
+		"can fix the file.\n"
 }
 
 func (s *TenantSkillService) probeUv(ctx context.Context, mgr sandbox.Manager, sessionID string) bool {
@@ -1177,35 +1679,6 @@ func (s *TenantSkillService) resolveInstallerModel(
 	return nil, fmt.Errorf("workspace %d has no active chat model for skill installer", tenantID)
 }
 
-func (s *TenantSkillService) execSmoke(
-	ctx context.Context, mgr sandbox.Manager, sessionID, skillDir, scriptPath string,
-) (*sandbox.ExecuteResult, error) {
-	executor, err := installExecutor(mgr)
-	if err != nil {
-		return nil, err
-	}
-	// The interpreter argv must survive intact. For Python it is
-	// /bin/sh -c "<script referencing \"$@\">" <argv0>, so every element is
-	// quoted as one literal word and --help is appended AFTER argv0, where it
-	// becomes $1 of the inner script rather than a positional parameter of the
-	// outer shell that nothing ever reads.
-	cmd, args := sandbox.SkillInterpreterCommand(skillDir, scriptPath)
-	words := []string{sandbox.ShellQuote(cmd)}
-	for _, arg := range args {
-		words = append(words, sandbox.ShellQuote(arg))
-	}
-	words = append(words, "--help")
-	return executor.ExecShellCommandWithOptions(ctx, sessionID, strings.Join(words, " "),
-		sandbox.ShellExecOptions{
-			WorkDir: sandbox.SessionWorkspaceRoot,
-			Timeout: installCommandTimeout,
-			Env: map[string]string{
-				"WEKNORA_SKILL_DIR":        skillDir,
-				"WEKNORA_SKILL_OUTPUT_DIR": sandbox.SessionOutputRoot,
-			},
-		})
-}
-
 func (s *TenantSkillService) writeManifestEntry(
 	ctx context.Context, mgr sandbox.Manager, sessionID, skillID string, bundle *SkillBundle,
 ) error {
@@ -1243,6 +1716,75 @@ func (s *TenantSkillService) writeManifestEntry(
 	}
 	payload = append(payload, '\n')
 	return store.WriteSessionFile(ctx, sessionID, sandbox.SkillsManifestPath, payload)
+}
+
+// recordEnvDeclaration reads the environment variables the installer agent
+// declared and stores the ones that survive validation.
+//
+// It returns nothing because none of its failures is a failed install. The
+// agent may not have written the file, may have written prose, or may have
+// listed nothing that exists in the bundle; in every case the skill is
+// installed and working, and the missing declaration costs an admin one manual
+// entry in the settings page. Failing the install over it would throw away the
+// minutes of dependency installation that already succeeded.
+func (s *TenantSkillService) recordEnvDeclaration(
+	ctx context.Context, mgr sandbox.Manager, sessionID string,
+	tenantID uint64, configID, skillID string, bundle *SkillBundle,
+) {
+	if bundle == nil {
+		return
+	}
+	reader, ok := mgr.(sandbox.SessionFileReader)
+	if !ok {
+		logger.Warnf(ctx,
+			"[skill] sandbox backend cannot read files back; skill %s keeps no env declaration",
+			skillID)
+		return
+	}
+	requirementsPath := sandbox.SkillRequirementsPath(bundle.Name)
+	if requirementsPath == "" {
+		return
+	}
+	raw, err := reader.ReadSessionFile(ctx, sessionID, requirementsPath)
+	if err != nil {
+		// A skill that needs no credentials writes no file at all, so an
+		// absent one is normal. Any other read failure means a declaration
+		// may exist and was lost, which an operator has to be able to see.
+		if sandbox.IsRemoteNotFound(err) {
+			logger.Infof(ctx, "[skill] %s declared no environment variables (no %s)",
+				skillID, requirementsPath)
+			return
+		}
+		logger.Warnf(ctx, "[skill] %s: reading its env declaration at %s failed: %v",
+			skillID, requirementsPath, err)
+		return
+	}
+	declared, err := parseEnvDeclaration(raw)
+	if err != nil {
+		logger.Warnf(ctx, "[skill] %s wrote an unreadable env declaration: %v", skillID, err)
+		return
+	}
+	envs := validateEnvDeclarations(declared, bundle)
+	if len(envs) == 0 && len(declared) > 0 {
+		// The original count is the only clue an admin has for "why is my
+		// variable not in the list": every name was rejected, not ignored.
+		// Learning nothing usable must not erase a value already stored.
+		logger.Warnf(ctx,
+			"[skill] all %d environment variable(s) declared for %s were rejected "+
+				"(bad name, not mentioned anywhere in the bundle, or reserved)",
+			len(declared), skillID)
+		return
+	}
+
+	skill, err := s.skills.GetSkill(ctx, tenantID, configID, skillID)
+	if err != nil || skill == nil {
+		logger.Warnf(ctx, "[skill] load %s to store its env declaration failed: %v", skillID, err)
+		return
+	}
+	merged := mergeEnvDeclaration(skill.Envs, envs)
+	if err := s.skills.UpdateSkillEnvs(ctx, tenantID, configID, skillID, merged); err != nil {
+		logger.Warnf(ctx, "[skill] store the env declaration of %s failed: %v", skillID, err)
+	}
 }
 
 type skillImageManifest struct {
@@ -1303,36 +1845,108 @@ func currentBaseTemplate(cfg *types.TenantSandboxConfig) string {
 		if cfg.E2B != nil {
 			return cfg.E2B.TemplateID
 		}
+	case sandbox.SandboxTypeDocker:
+		if cfg.Docker != nil {
+			return cfg.Docker.Image
+		}
 	}
 	return ""
+}
+
+// isSkillNameConflict recognises the unique (config, name) violation two
+// concurrent first-time uploads of the same skill produce.
+func isSkillNameConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate") || strings.Contains(msg, "unique constraint")
 }
 
 func skillOwnerFingerprint(cfg *types.TenantSandboxConfig) string {
-	if cfg == nil {
-		return ""
-	}
-	switch sandbox.SandboxType(cfg.SandboxType) {
-	case sandbox.SandboxTypeCube:
-		if cfg.Cube != nil {
-			return sandbox.SkillImageFingerprint("cube", cfg.Cube.APIKey, cfg.Cube.APIURL)
-		}
-	case sandbox.SandboxTypeE2B:
-		if cfg.E2B != nil {
-			return sandbox.SkillImageFingerprint("e2b", cfg.E2B.APIKey, cfg.E2B.APIURL)
-		}
-	}
-	return ""
+	return sandbox.SkillOwnerFingerprint(cfg)
 }
 
-// markConfigSandboxesStale is deliberately a no-op here. Sessions that already
-// hold a live sandbox keep running on the previous image until it is replaced;
-// marking and rebuilding those bindings is Task 13 (stale sandbox rebuild),
-// which owns the session-side state this would have to touch. Future sessions
-// already pick up the new snapshot through the config pointer.
+// configSandboxInvalidator is the narrow capability marking bound sandboxes
+// needs. It is reached by type assertion rather than declared on Manager
+// because only the session-bound remote manager owns bindings to mark: a
+// disabled backend has none, and for that doing nothing is correct.
+type configSandboxInvalidator interface {
+	InvalidateConfigSandboxes(ctx context.Context, tenantID uint64, configID string) (int, error)
+}
+
+// The manager the resolver hands out must keep satisfying this, so a rename on
+// the sandbox side breaks the build instead of silently skipping every mark.
+var _ configSandboxInvalidator = (*sandbox.SessionBoundManager)(nil)
+
+// markConfigSandboxesStale tells every session already holding a sandbox of
+// this config that the image underneath it has been replaced.
+//
+// The pointer switch alone only reaches FUTURE sessions: one that is open right
+// now is bound to a sandbox booted from the previous image, and without this it
+// would keep serving that image until the session ends - so a skill installed
+// minutes ago would be missing from exactly the sessions whose user just asked
+// for it. Nothing is destroyed here; the binding is marked and the session's
+// next resolve rebuilds it.
+//
+// It is best-effort on purpose. It runs after the pointer switch, so the
+// install has already succeeded, and a binding that could not be marked is a
+// session serving a stale image - an annoyance, not a corruption. Turning that
+// into a failed install would be a lie about an image that is live and serving.
+//
+// The context is detached because the caller's is cancelled exactly when this
+// matters most: withConfigLock cancels the run's context the moment lock
+// renewal fails, and marking is ordinary Redis traffic that a dead context
+// fails outright.
 func (s *TenantSkillService) markConfigSandboxesStale(
 	ctx context.Context, tenantID uint64, configID string,
 ) {
-	_ = ctx
-	_ = tenantID
-	_ = configID
+	if s.sandboxes == nil {
+		return
+	}
+	markCtx, cancel := s.cleanupContext(context.WithoutCancel(ctx))
+	defer cancel()
+
+	if s.configs != nil {
+		entity, err := s.configs.GetByID(markCtx, tenantID, configID)
+		if err != nil {
+			logger.Warnf(markCtx,
+				"[skill] read config %s skill_rollout before marking sandboxes stale failed: %v",
+				configID, err)
+		} else if entity != nil && !entity.Config.RebuildsExistingOnSkillChange() {
+			logger.Infof(markCtx,
+				"[skill] config %s skill_rollout=%s; leaving live sandboxes on the previous image",
+				configID, types.SkillRolloutNewSession)
+			return
+		}
+	}
+
+	mgr, err := s.sandboxes.Resolve(markCtx, tenantID, configID)
+	if err != nil || mgr == nil {
+		logger.Warnf(markCtx,
+			"[skill] resolve sandbox config %s to mark its sandboxes stale failed: %v",
+			configID, err)
+		return
+	}
+	invalidator, ok := mgr.(configSandboxInvalidator)
+	if !ok {
+		return
+	}
+	marked, err := invalidator.InvalidateConfigSandboxes(markCtx, tenantID, configID)
+	if err != nil {
+		logger.Warnf(markCtx,
+			"[skill] mark live sandboxes of config %s stale failed: %v", configID, err)
+		return
+	}
+	if marked == 0 {
+		return
+	}
+	logger.Infof(markCtx,
+		"[skill] marked %d live sandbox binding(s) of config %s stale "+
+			"(this run's own maintenance session included); each remaining session "+
+			"rebuilds from the new image on its next use",
+		marked, configID)
 }

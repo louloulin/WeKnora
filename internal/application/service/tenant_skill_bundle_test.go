@@ -194,6 +194,69 @@ Use scripts/extract.py to pull text out of a PDF.
 		require.Equal(t, "1.2.3", bundle.Version)
 	})
 
+	t.Run("uses slug when name is a display title", func(t *testing.T) {
+		data := zipBundle(t, map[string]string{
+			"SKILL.md": `---
+name: Word / DOCX
+slug: word-docx
+version: 1.0.2
+description: Create and edit Microsoft Word documents.
+---
+Use this skill for .docx files.
+`,
+		})
+
+		bundle, err := ParseSkillBundle(data)
+
+		require.NoError(t, err)
+		require.Equal(t, "word-docx", bundle.Name)
+		require.Equal(t, "1.0.2", bundle.Version)
+	})
+
+	t.Run("repairs version and description nested under name", func(t *testing.T) {
+		data := zipBundle(t, map[string]string{
+			"SKILL.md": `---
+name: 命理大师
+  version: 1.2.6
+  description: |
+    全体系命理大师。
+---
+Use the scripts in this skill.
+`,
+		})
+
+		bundle, err := ParseSkillBundle(data)
+
+		require.NoError(t, err)
+		require.True(t, bundle.FrontmatterRepaired)
+		require.Equal(t, "命理大师", bundle.Name)
+		require.Equal(t, "1.2.6", bundle.Version)
+		require.Contains(t, bundle.Description, "全体系命理大师")
+	})
+
+	t.Run("rejects a SkillHub archive whose extra YAML is still invalid after repair", func(t *testing.T) {
+		data := zipBundle(t, map[string]string{
+			"SKILL.md": `---
+name: 命理大师
+  version: 1.2.6
+  description: |
+    全体系命理大师。
+metadata:
+  openclaw:
+    install:
+      - kind: node
+      package: iztro
+---
+Use the scripts in this skill.
+`,
+		})
+
+		_, err := ParseSkillBundle(data)
+
+		require.Error(t, err)
+		require.ErrorIs(t, err, ErrSkillBundleInvalid)
+	})
+
 	t.Run("tolerates a single top-level directory", func(t *testing.T) {
 		data := zipBundle(t, map[string]string{
 			"pdf-tools/SKILL.md":           validSkillMD,
@@ -206,6 +269,23 @@ Use scripts/extract.py to pull text out of a PDF.
 		require.Equal(t, "pdf-tools", bundle.Name)
 		require.Contains(t, bundle.Files, "scripts/extract.py",
 			"paths must be relative to the skill root, not to the archive root")
+	})
+
+	t.Run("remote options re-root a nested unique skill and drop extras", func(t *testing.T) {
+		data := zipBundle(t, map[string]string{
+			"repo-main/README.md":           "noise",
+			"repo-main/skills/pdf/SKILL.md": validSkillMD,
+			"repo-main/skills/pdf/run.py":   "print(1)\n",
+		})
+		bundle, err := ParseSkillBundleWithOptions(data, SkillBundleParseOptions{
+			Subdir:           "skills/pdf",
+			AllowExtraFiles:  true,
+			AllowNestedSkill: true,
+		})
+		require.NoError(t, err)
+		require.Equal(t, "pdf-tools", bundle.Name)
+		require.Contains(t, bundle.Files, "run.py")
+		require.NotContains(t, bundle.Files, "README.md")
 	})
 
 	t.Run("rejects files outside the wrapped skill directory", func(t *testing.T) {
@@ -315,4 +395,25 @@ Use scripts/extract.py to pull text out of a PDF.
 		require.NoError(t, err)
 		require.Equal(t, a.SHA256, b.SHA256)
 	})
+}
+
+func TestListSkillZipFilesDoesNotInflateBodies(t *testing.T) {
+	data := zipBundle(t, map[string]string{
+		"pdf-tools/SKILL.md":           validSkillMD,
+		"pdf-tools/scripts/extract.py": "print('hi')\n",
+	})
+
+	files, err := listSkillZipFiles(data)
+	require.NoError(t, err)
+	require.Equal(t, []SkillFileEntry{
+		{Path: "SKILL.md", Size: int64(len(validSkillMD))},
+		{Path: "scripts/extract.py", Size: int64(len("print('hi')\n"))},
+	}, files)
+
+	body, err := readSkillZipFile(data, "scripts/extract.py")
+	require.NoError(t, err)
+	require.Equal(t, []byte("print('hi')\n"), body)
+
+	_, err = readSkillZipFile(data, "missing.txt")
+	require.ErrorIs(t, err, errSkillFileMissing)
 }

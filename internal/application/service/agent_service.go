@@ -3,12 +3,15 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"io"
 
 	"github.com/Tencent/WeKnora/internal/agent"
 	"github.com/Tencent/WeKnora/internal/agent/approval"
 	"github.com/Tencent/WeKnora/internal/agent/skills"
 	"github.com/Tencent/WeKnora/internal/agent/tools"
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -197,6 +200,15 @@ func (s *agentService) CreateAgentEngine(
 	}
 	s.registerMCPTools(ctx, toolRegistry, config, eventBus, sessionID, assistantMessageID)
 
+	// File tools are a pure sandbox capability independent of the
+	// skill switch: register them whenever the workspace sandbox supports a
+	// session filesystem, even when skills are disabled.
+	s.registerSandboxFileTools(ctx, toolRegistry, sessionID, config)
+	// shell_exec follows SkillsEnabled (or install mode), not the presence
+	// of a ready skill. Register it independently of the skills manager so a
+	// fresh or still-installing sandbox still has a shell.
+	s.registerSandboxShellIfAllowed(ctx, toolRegistry, sessionID, config)
+
 	// 3. Resolve knowledge base and selected document metadata
 	kbInfos, selectedDocs := s.resolveKBAndDocInfos(ctx, config)
 
@@ -235,20 +247,25 @@ func (s *agentService) CreateAgentEngine(
 		}
 	}
 
-	skillsEnabledWithDirs := config.SkillsEnabled && len(config.SkillDirs) > 0
-	// Initialize the skills/sandbox manager when skills are configured, or for
-	// the skill installer, which keeps skills off yet needs the sandbox shell.
-	// The second disjunct is deliberately NOT "the config lists a sandbox
-	// tool": shell_exec is a user-selectable entry in the tool picker, so that
-	// rule would hand a live sandbox shell to every stored agent record that
-	// already lists it. Install mode is settable only through
-	// EnableSkillInstallMode, so only the built-in installer passes here and
-	// every other agent keeps exactly its previous behaviour.
-	if skillsEnabledWithDirs || config.SkillInstallMode() {
+	// TenantSkills is the sandbox image. SkillDirs is the host
+	// skills/preloaded tree and is no longer filled on the QA path; it
+	// remains so tests (and any caller that still points at a host
+	// directory) can construct a manager.
+	//
+	// The shell is registered above by registerSandboxShellIfAllowed and
+	// follows SkillsEnabled rather than requiring a ready skill to already
+	// exist. offerSkills only gates the skills manager that feeds the model
+	// the installed-skill list (and the read_skill / execute_skill_script
+	// tools that need it). A sandbox whose skills are still installing —
+	// or that simply has none yet — therefore gets a shell without an
+	// empty skills manager or skill tools that cannot succeed.
+	offerSkills := config.SkillsEnabled &&
+		(len(config.SkillDirs) > 0 || len(config.TenantSkills) > 0)
+	if offerSkills {
 		skillsManager, err := s.initializeSkillsManager(ctx, sessionID, config, toolRegistry)
 		if err != nil {
 			logger.Warnf(ctx, "Failed to initialize skills manager: %v", err)
-		} else if skillsEnabledWithDirs && skillsManager != nil {
+		} else if skillsManager != nil {
 			engine.SetSkillsManager(skillsManager)
 			logger.Infof(ctx, "Skills manager initialized with %d skills",
 				len(skillsManager.GetAllMetadata()))
@@ -364,6 +381,107 @@ func (s *agentService) resolveKBAndDocInfos(
 	return kbInfos, selectedDocs
 }
 
+// registerSandboxFileTools registers list_sandbox_files / read_sandbox_file /
+// write_sandbox_file / edit_sandbox_file.
+//
+// These expose per-session filesystem access and are a pure sandbox
+// capability, not a skill capability. They therefore do NOT follow
+// SkillsEnabled: an agent with skills disabled must still be able to read
+// staged attachments out of /workspace/input, and to write generated files
+// under /workspace. The tools themselves allow those directories (input is
+// read-only). Registration only requires a non-disabled sandbox whose
+// manager advertises a SessionFileStore.
+//
+// The skill installer is the exception: write_sandbox_file only accepts
+// /workspace, the installer must write .weknora/requirements.json under
+// /opt/weknora/tenant/skills, and its prompt forbids touching /workspace
+// (that tree is wiped before the snapshot). Offering the file tools made
+// the first write of every install fail, then fall back to a shell heredoc.
+// Install mode uses shell_exec alone.
+func (s *agentService) registerSandboxFileTools(
+	ctx context.Context,
+	toolRegistry *tools.ToolRegistry,
+	sessionID string,
+	config *types.AgentConfig,
+) {
+	if config != nil && config.SkillInstallMode() {
+		logger.Infof(ctx, "Skipping session file tools in skill install mode")
+		return
+	}
+	sandboxMgr, err := s.resolveWorkspaceSandbox(ctx, sessionID, config)
+	if err != nil {
+		logger.Warnf(ctx, "Failed to resolve sandbox for file tools: %v", err)
+		return
+	}
+	if sandboxMgr == nil {
+		return
+	}
+	if store := sessionSandboxFileStore(sandboxMgr); store != nil {
+		toolRegistry.RegisterTool(tools.NewListSandboxFilesTool(store))
+		toolRegistry.RegisterTool(tools.NewReadSandboxFileTool(store))
+		toolRegistry.RegisterTool(tools.NewWriteSandboxFileTool(store))
+		toolRegistry.RegisterTool(tools.NewEditSandboxFileTool(store))
+		logger.Infof(ctx, "Registered list_sandbox_files, read_sandbox_file, write_sandbox_file, and edit_sandbox_file tools")
+	} else {
+		logger.Infof(ctx, "Sandbox backend does not advertise session filesystem capability; "+
+			"list_sandbox_files/read_sandbox_file/write_sandbox_file/edit_sandbox_file not registered")
+	}
+}
+
+// registerSandboxShellIfAllowed registers shell_exec when this run is
+// entitled to a sandbox shell: SkillsEnabled, or the built-in skill
+// installer. It does not require a ready skill to already exist, so a
+// fresh sandbox still has a way to inspect its environment.
+func (s *agentService) registerSandboxShellIfAllowed(
+	ctx context.Context,
+	toolRegistry *tools.ToolRegistry,
+	sessionID string,
+	config *types.AgentConfig,
+) {
+	if config == nil || (!config.SkillsEnabled && !config.SkillInstallMode()) {
+		return
+	}
+	sandboxMgr, err := s.resolveWorkspaceSandbox(ctx, sessionID, config)
+	if err != nil {
+		logger.Warnf(ctx, "Failed to resolve sandbox for shell_exec: %v", err)
+		return
+	}
+	if sandboxMgr == nil {
+		return
+	}
+	s.registerSandboxShellTool(ctx, toolRegistry, sandboxMgr, config)
+}
+
+// resolveWorkspaceSandbox returns the session's remote sandbox manager, or
+// nil when the workspace is disabled / unresolved. Callers that only need
+// a capability (file store, shell) use this so they do not have to stand
+// up a skills manager.
+func (s *agentService) resolveWorkspaceSandbox(
+	ctx context.Context,
+	sessionID string,
+	config *types.AgentConfig,
+) (sandbox.Manager, error) {
+	if s == nil {
+		return nil, nil
+	}
+	configID := ""
+	if config != nil {
+		configID = config.SandboxConfigID
+	}
+	tenantID, _ := types.TenantIDFromContext(ctx)
+	sandboxMgr, _, err := resolveSandboxForExecution(
+		ctx, s.sandboxResolver, s.sandboxMgr, s.sandboxPinner,
+		tenantID, sessionID, configID, s.sandboxPolicy,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if sandboxMgr == nil || sandboxMgr.GetType() == sandbox.SandboxTypeDisabled {
+		return nil, nil
+	}
+	return sandboxMgr, nil
+}
+
 // initializeSkillsManager creates and initializes the skills manager.
 //
 // The sandbox manager is resolved per workspace: backends differ in
@@ -399,6 +517,12 @@ func (s *agentService) initializeSkillsManager(
 	}
 
 	skillsManager := skills.NewManager(skillsConfig, sandboxMgr)
+	if source := s.tenantSkillSource(ctx, config); source != nil {
+		skillsManager.WithTenantSource(source)
+	}
+	if resolver := s.userEnvResolver(ctx, config); resolver != nil {
+		skillsManager.WithEnvResolver(resolver)
+	}
 
 	// Initialize (discover skills)
 	if err := skillsManager.Initialize(ctx); err != nil {
@@ -406,54 +530,152 @@ func (s *agentService) initializeSkillsManager(
 	}
 
 	// Skill tools follow SkillsEnabled, not merely sandbox availability: the
-	// skill installer agent must have shell_exec WITHOUT
-	// execute_skill_script, since it is the thing installing skills.
+	// skill installer agent must have shell_exec WITHOUT execute_skill_script,
+	// since it is the thing installing skills. shell_exec itself is registered
+	// by registerSandboxShellIfAllowed, not here.
 	if config.SkillsEnabled {
 		toolRegistry.RegisterTool(tools.NewReadSkillTool(skillsManager))
 		logger.Infof(ctx, "Registered read_skill tool")
 	}
 
-	if sandboxMgr.GetType() != sandbox.SandboxTypeDisabled {
-		if config.SkillsEnabled {
-			toolRegistry.RegisterTool(tools.NewExecuteSkillScriptTool(skillsManager))
-			logger.Infof(ctx, "Registered execute_skill_script tool")
-		}
-
-		// list_sandbox_files / read_sandbox_file expose per-session
-		// filesystem inspection. Registration is gated on the sandbox
-		// manager advertising a SessionFileStore capability — providers
-		// that fell back to a stateless local sandbox return nil so we
-		// never surface tenant-isolated tools that would run on the
-		// WeKnora host.
-		//
-		// They follow SkillsEnabled for the same reason the skill tools do:
-		// the installer agent is here only for the shell it needs to install
-		// dependencies, and its prompt tells it to use shell_exec alone. A
-		// root shell can already read and list anything these two could, so
-		// offering them adds nothing but tool surface and iteration budget.
-		if config.SkillsEnabled {
-			if store := sessionSandboxFileStore(sandboxMgr); store != nil {
-				toolRegistry.RegisterTool(tools.NewListSandboxFilesTool(store))
-				toolRegistry.RegisterTool(tools.NewReadSandboxFileTool(store))
-				logger.Infof(ctx, "Registered list_sandbox_files and read_sandbox_file tools")
-			} else {
-				logger.Infof(ctx, "Sandbox backend does not advertise session filesystem capability; "+
-					"list_sandbox_files/read_sandbox_file not registered")
-			}
-		}
-
-		registerSandboxShellTool(ctx, toolRegistry, sandboxMgr, config)
+	if sandboxMgr.GetType() != sandbox.SandboxTypeDisabled && config.SkillsEnabled {
+		toolRegistry.RegisterTool(tools.NewExecuteSkillScriptTool(skillsManager))
+		logger.Infof(ctx, "Registered execute_skill_script tool")
 	}
 
 	return skillsManager, nil
+}
+
+// tenantSkillSource builds the source for the skills installed into this run's
+// sandbox image, or nil when the run has none. The set was already narrowed to
+// what this run can invoke when the config was built; nothing here re-decides
+// it.
+func (s *agentService) tenantSkillSource(
+	ctx context.Context, config *types.AgentConfig,
+) skills.SkillSource {
+	rows := config.TenantSkills
+	if len(rows) == 0 {
+		return nil
+	}
+	// The rows were fetched under the caller's workspace, so this is the
+	// caller's ID; it is read off the row rather than the context so the
+	// bundle download cannot resolve a different workspace's storage than the
+	// one the rows came from.
+	ownerTenantID := rows[0].TenantID
+	// The closure captures the engine-creation context because loadBundle
+	// takes no context of its own. That is the turn's context today -
+	// CreateAgentEngine and engine.Execute are called back to back with the
+	// same ctx - so it stays live for as long as read_skill can be called. If
+	// a caller ever creates the engine under a shorter-lived context, bundle
+	// downloads start failing for installed skills only, and loadBundle needs
+	// a ctx parameter.
+	return skills.NewTenantSkillSource(rows, func(ref string) ([]byte, error) {
+		return s.readSkillBundle(ctx, ownerTenantID, ref)
+	})
+}
+
+// userEnvResolver builds the per-caller environment resolver for this run, or
+// nil when there is no sandbox config to resolve against.
+//
+// It is built even when the run has no installed skills: the caller's
+// config-wide variables are injected into every execution, skills or not.
+//
+// The repository is constructed from s.db here rather than injected:
+// NewAgentService already takes 23 parameters, and this is the only place in
+// the agent path that touches the user env table.
+func (s *agentService) userEnvResolver(
+	ctx context.Context, config *types.AgentConfig,
+) skills.SkillEnvResolver {
+	configID := config.SandboxConfigID
+	if configID == "" {
+		return nil
+	}
+	rows := config.TenantSkills
+	if s.db == nil {
+		// Unreachable in production, but a wiring regression here would drop
+		// every admin and user value silently and present to a member as "my
+		// key stopped working" with nothing in the logs.
+		logger.Warnf(ctx,
+			"[skill] no database handle: sandbox config %s will run without "+
+				"any configured environment variable", configID)
+		return nil
+	}
+	// The workspace is read off a row for the same reason tenantSkillSource
+	// does it: the rows were fetched under the caller's workspace, and a value
+	// must never be looked up in a different one. With no rows there is nothing
+	// to disagree with the context.
+	tenantID, _ := types.TenantIDFromContext(ctx)
+	if len(rows) > 0 {
+		tenantID = rows[0].TenantID
+	}
+	if tenantID == 0 {
+		return nil
+	}
+	return NewUserEnvResolver(rows, repository.NewTenantSkillRepository(s.db), tenantID, configID)
+}
+
+// skillEnvCapture writes declared skill credentials a successful shell_exec
+// already used, for the current principal. Nil when there is nothing to write
+// against. Errors stay inside the callback so a failed persist cannot change
+// the tool result the model already received.
+func (s *agentService) skillEnvCapture(config *types.AgentConfig) tools.SkillEnvCapture {
+	if s.db == nil || config == nil || config.SandboxConfigID == "" {
+		return nil
+	}
+	configID := config.SandboxConfigID
+	return func(ctx context.Context, skillName string, pairs map[string]string) {
+		svc := NewUserEnvService(
+			repository.NewTenantSkillRepository(s.db),
+			repository.NewTenantSandboxConfigRepository(s.db),
+		)
+		if err := svc.CaptureSkillEnv(ctx, configID, skillName, pairs); err != nil {
+			logger.Warnf(ctx, "[skill] capture env for %s failed: %v", skillName, err)
+		}
+	}
+}
+
+// readSkillBundle downloads one uploaded skill archive. It backs read_skill for
+// installed skills: the image holds the executable copy, but reading a file out
+// of it would need a live sandbox, and the archive is byte-identical to what
+// was installed.
+func (s *agentService) readSkillBundle(
+	ctx context.Context, tenantID uint64, ref string,
+) ([]byte, error) {
+	if s.storageResolver == nil {
+		return nil, errors.New("storage resolver is not configured")
+	}
+	fs, _, err := s.storageResolver.ResolveFileService(
+		ctx, &types.Tenant{ID: tenantID}, "", "", "",
+	)
+	if err != nil {
+		return nil, err
+	}
+	if fs == nil {
+		return nil, errors.New("file service is not configured")
+	}
+	reader, err := fs.GetFile(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = reader.Close() }()
+	// Bounded because the object is read into memory: the upload limit is the
+	// only thing that says how large a legitimate archive can be.
+	archive, err := io.ReadAll(io.LimitReader(reader, maxSkillBundleTotalBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(archive) > maxSkillBundleTotalBytes {
+		return nil, fmt.Errorf("skill bundle %s is larger than the upload limit", ref)
+	}
+	return archive, nil
 }
 
 // registerSandboxShellTool registers the one shell_exec variant this run is
 // entitled to.
 //
 // shell_exec is a remote-only capability: the capability accessors yield nil
-// for stateless backends and for a SessionBoundManager that fell back to
-// LocalSandbox, so the same check works for every provider.
+// for backends that cannot run session-scoped shell, so the same check works
+// for every provider.
 //
 // The skill installer agent gets the install-mode variant, which runs as root
 // and may work inside the skills image root — it exists to install
@@ -462,7 +684,7 @@ func (s *agentService) initializeSkillsManager(
 // AgentConfig.SkillInstallMode is settable only through
 // EnableSkillInstallMode, which refuses every agent but the built-in
 // installer, so no tenant agent can reach this branch.
-func registerSandboxShellTool(
+func (s *agentService) registerSandboxShellTool(
 	ctx context.Context,
 	toolRegistry *tools.ToolRegistry,
 	sandboxMgr sandbox.Manager,
@@ -478,7 +700,10 @@ func registerSandboxShellTool(
 		return
 	}
 	if executor := sessionSandboxShellExecutor(sandboxMgr); executor != nil {
-		toolRegistry.RegisterTool(tools.NewShellExecTool(executor))
+		resolver := s.userEnvResolver(ctx, config)
+		toolRegistry.RegisterTool(
+			tools.NewShellExecTool(executor, resolver).WithEnvCapture(s.skillEnvCapture(config)),
+		)
 		logger.Infof(ctx, "Registered shell_exec tool")
 	} else {
 		logger.Infof(ctx, "Sandbox backend does not advertise remote shell capability; shell_exec not registered")
@@ -691,7 +916,6 @@ func (s *agentService) registerTools(
 				s.chunkService,
 				config.SearchTargets,
 				rerankModel,
-				chatModel,
 				s.cfg,
 			)
 		case tools.ToolGrepChunks:
@@ -768,6 +992,15 @@ func (s *agentService) registerTools(
 			toolToRegister = tools.NewWikiRenamePageTool(s.wikiPageService, wikiKBIDs, wikiRoutes)
 		case tools.ToolWikiDeletePage:
 			toolToRegister = tools.NewWikiDeletePageTool(s.wikiPageService, wikiKBIDs, wikiRoutes)
+
+		case tools.ToolShellExec, tools.ToolReadSkill, tools.ToolExecuteSkillScript,
+			tools.ToolListSandboxFiles, tools.ToolReadSandboxFile, tools.ToolWriteSandboxFile,
+			tools.ToolEditSandboxFile:
+			// Bound to the resolved sandbox manager in registerSandboxFileTools
+			// / registerSandboxShellIfAllowed / initializeSkillsManager.
+			// Listing them here would warn "Unknown tool: shell_exec" on every
+			// skill install, then register the real tool a few lines later.
+			continue
 
 		default:
 			logger.Warnf(ctx, "Unknown tool: %s", toolName)
@@ -1107,6 +1340,11 @@ func (s *agentService) resolvePinnedSkillInfos(config *types.AgentConfig) []*age
 					descByName[meta.Name] = meta.Description
 				}
 			}
+		}
+	}
+	for _, row := range config.TenantSkills {
+		if row != nil && row.Name != "" {
+			descByName[row.Name] = row.Description
 		}
 	}
 
