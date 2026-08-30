@@ -663,6 +663,19 @@
                         {{ formatDate(selectedPage.updated_at) }}
                       </span>
                     </div>
+                    <nav v-if="!editingPage && pageOutline.length" class="wiki-reader-outline" aria-label="本页目录">
+                      <div class="wiki-reader-outline__title">本页目录</div>
+                      <button
+                        v-for="item in pageOutline"
+                        :key="item.id"
+                        type="button"
+                        class="wiki-reader-outline__item"
+                        :class="`wiki-reader-outline__item--level-${item.level}`"
+                        @click="scrollToOutlineItem(item.id)"
+                      >
+                        {{ item.text }}
+                      </button>
+                    </nav>
                     <WikiBacklinksPanel
                       v-if="!editingPage && selectedPage"
                       :kb-id="props.knowledgeBaseId"
@@ -2260,11 +2273,43 @@ const renderedContent = computed(() => {
   // edits from older builds; defence-in-depth, not paranoia.
   const cachedHtml = (selectedPage.value.content_html || '').trim()
   if (cachedHtml) {
-    return sanitizeHTML(cachedHtml)
+    return addOutlineAnchors(sanitizeHTML(cachedHtml))
   }
   const body = stripDuplicateLeadingTitle(selectedPage.value.content || '', selectedPage.value.title)
-  return renderMarkdown(body)
+  return addOutlineAnchors(renderMarkdown(body))
 })
+
+interface WikiOutlineItem {
+  id: string
+  text: string
+  level: number
+}
+
+function addOutlineAnchors(html: string): string {
+  if (!html || typeof DOMParser === 'undefined') return html
+  const document = new DOMParser().parseFromString(html, 'text/html')
+  document.querySelectorAll('h1, h2, h3').forEach((heading, index) => {
+    heading.id = `wiki-outline-${index}`
+  })
+  return document.body.innerHTML
+}
+
+const pageOutline = computed<WikiOutlineItem[]>(() => {
+  if (!renderedContent.value || typeof DOMParser === 'undefined') return []
+  const document = new DOMParser().parseFromString(renderedContent.value, 'text/html')
+  return Array.from(document.querySelectorAll('h1, h2, h3'))
+    .map((heading, index) => ({
+      id: `wiki-outline-${index}`,
+      text: (heading.textContent || '').trim(),
+      level: Number(heading.tagName.slice(1)),
+    }))
+    .filter((item) => item.text.length > 0)
+})
+
+function scrollToOutlineItem(id: string): void {
+  const target = readerBodyRef.value?.querySelector(`#${id}`)
+  target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 
 function stripDuplicateLeadingTitle(content: string, title: string): string {
   if (!content || !title) return content
@@ -6740,6 +6785,49 @@ onUnmounted(() => {
 .wiki-reader-meta-text {
   font-size: 13px;
   color: var(--td-text-color-placeholder);
+}
+
+.wiki-reader-outline {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--td-border-level-1-color);
+  border-radius: 8px;
+  background: var(--td-bg-color-container);
+}
+
+.wiki-reader-outline__title {
+  margin-bottom: 6px;
+  color: var(--td-text-color-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wiki-reader-outline__item {
+  display: block;
+  width: 100%;
+  padding: 3px 4px;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: var(--td-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.wiki-reader-outline__item:hover {
+  color: var(--td-brand-color);
+}
+
+.wiki-reader-outline__item--level-2 {
+  padding-left: 12px;
+}
+
+.wiki-reader-outline__item--level-3 {
+  padding-left: 24px;
 }
 
 .wiki-page-editor {

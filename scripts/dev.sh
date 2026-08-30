@@ -519,6 +519,11 @@ start_app() {
 
     enable_anydoc_build_tag
 
+    if [ "${DB_DRIVER:-}" = "sqlite" ] && [ -z "${GO_BUILD_TAGS:-}" ]; then
+        export GO_BUILD_TAGS=sqlite_fts5
+        log_info "检测到 SQLite，已启用 -tags sqlite_fts5"
+    fi
+
     # 检查是否安装了 Air（热重载工具）
     if command -v air &> /dev/null; then
         log_success "检测到 Air，使用热重载模式启动..."

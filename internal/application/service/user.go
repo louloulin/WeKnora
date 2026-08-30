@@ -1398,7 +1398,46 @@ func (s *userService) validateGatewayExchangeToken(ctx context.Context, tokenStr
 	if membership == nil || membership.Status != types.TenantMemberStatusActive {
 		return nil, 0, errors.New("gateway exchange membership is no longer active")
 	}
+	if err := s.introspectGatewayExchangeToken(ctx, cfg, tokenString, subject, casdoorTenant, tenantID, sessionID, membershipVersion, jti); err != nil {
+		return nil, 0, err
+	}
 	return user, tenantID, nil
+}
+
+func (s *userService) introspectGatewayExchangeToken(ctx context.Context, cfg *config.OIDCAuthConfig, tokenString, subject, casdoorTenant string, tenantID uint64, sessionID, membershipVersion, jti string) error {
+	endpoint := strings.TrimSpace(cfg.GatewayExchangeIntrospectionURL)
+	if endpoint == "" {
+		return errors.New("gateway exchange introspection is not configured")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return errors.New("gateway exchange introspection request is invalid")
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+tokenString)
+	resp, err := newOIDCHTTPClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("gateway exchange introspection failed: %w", err)
+	}
+	defer resp.Body.Close()
+	var payload struct {
+		Data struct {
+			Active            bool   `json:"active"`
+			Subject           string `json:"subject"`
+			CasdoorTenant     string `json:"casdoor_tenant"`
+			TenantID          uint64 `json:"tenant_id"`
+			SessionID         string `json:"session_id"`
+			MembershipVersion string `json:"membership_version"`
+			JTI               string `json:"jti"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return errors.New("gateway exchange introspection returned invalid JSON")
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices || !payload.Data.Active || payload.Data.Subject != subject || payload.Data.CasdoorTenant != casdoorTenant || payload.Data.TenantID != tenantID || payload.Data.SessionID != sessionID || payload.Data.MembershipVersion != membershipVersion || payload.Data.JTI != jti {
+		return errors.New("gateway exchange token is no longer active")
+	}
+	return nil
 }
 
 func isRefreshTokenClaims(claims jwt.MapClaims) bool {

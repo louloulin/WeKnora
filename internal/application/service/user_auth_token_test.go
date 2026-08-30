@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -226,8 +228,28 @@ func TestValidateTokenRejectsExchangeWithoutActiveTenantMembership(t *testing.T)
 	}
 
 	memberService.byTenant[1].Status = types.TenantMemberStatusActive
+	introspection := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+signed {
+			t.Errorf("introspection Authorization header was not forwarded")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok","data":{"active":true,"subject":"subject","casdoor_tenant":"tenant-a","tenant_id":1,"session_id":"session-1","membership_version":"version-1","jti":"jti-1"}}`))
+	}))
+	defer introspection.Close()
+	svc.config.OIDCAuth.GatewayExchangeIntrospectionURL = introspection.URL
 	if user, tenantID, err := svc.ValidateToken(ctx, signed); err != nil || user.ID != "user-1" || tenantID != 1 {
 		t.Fatalf("ValidateToken() = user=%v tenant=%d err=%v, want active membership", user, tenantID, err)
+	}
+
+	introspection.Close()
+	failedIntrospection := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"status":"error"}`))
+	}))
+	defer failedIntrospection.Close()
+	svc.config.OIDCAuth.GatewayExchangeIntrospectionURL = failedIntrospection.URL
+	if _, _, err := svc.ValidateToken(ctx, signed); err == nil || err.Error() != "gateway exchange token is no longer active" {
+		t.Fatalf("ValidateToken() err = %v, want fail-closed introspection rejection", err)
 	}
 }
 

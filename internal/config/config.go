@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,6 +16,14 @@ import (
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 )
+
+func validateOIDCURL(label, raw string) error {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("oidc_auth.%s must be a clean HTTP(S) URL", label)
+	}
+	return nil
+}
 
 // Config 应用程序总配置
 type Config struct {
@@ -308,33 +317,34 @@ type OIDCUserInfoMapping struct {
 }
 
 type OIDCAuthConfig struct {
-	Enable                        bool                 `yaml:"enable"                 json:"enable"`
-	IssuerURL                     string               `yaml:"issuer_url"             json:"issuer_url"`
-	DiscoveryURL                  string               `yaml:"discovery_url"          json:"discovery_url"`
-	ProviderDisplayName           string               `yaml:"provider_display_name"  json:"provider_display_name"`
-	ClientID                      string               `yaml:"client_id"              json:"client_id"`
-	ClientSecret                  string               `yaml:"client_secret"          json:"-"`
-	Resource                      string               `yaml:"resource"              json:"resource"`
-	AuthorizationEndpoint         string               `yaml:"authorization_endpoint" json:"authorization_endpoint"`
-	TokenEndpoint                 string               `yaml:"token_endpoint"         json:"token_endpoint"`
-	UserInfoEndpoint              string               `yaml:"user_info_endpoint"     json:"user_info_endpoint"`
-	JWKSURI                       string               `yaml:"jwks_uri"               json:"-"`
-	RedirectURI                   string               `yaml:"redirect_uri"           json:"redirect_uri"`
-	Scopes                        []string             `yaml:"scopes"                 json:"scopes"`
-	UserInfoMapping               *OIDCUserInfoMapping `yaml:"user_info_mapping"      json:"user_info_mapping"`
-	AllowEmailLinking             bool                 `yaml:"allow_email_linking"    json:"allow_email_linking"`
-	SyncRoles                     bool                 `yaml:"sync_roles"              json:"sync_roles"`
-	OrganizationClaim             string               `yaml:"organization_claim"     json:"organization_claim"`
-	OrganizationTenantMap         map[string]uint64    `yaml:"organization_tenant_map" json:"organization_tenant_map"`
-	PlatformAdminPermission       string               `yaml:"platform_admin_permission" json:"platform_admin_permission"`
-	WorkspaceReadPermission       string               `yaml:"workspace_read_permission" json:"workspace_read_permission"`
-	WorkspaceContributePermission string               `yaml:"workspace_contribute_permission" json:"workspace_contribute_permission"`
-	WorkspaceAdminPermission      string               `yaml:"workspace_admin_permission" json:"workspace_admin_permission"`
-	WorkspaceOwnerPermission      string               `yaml:"workspace_owner_permission" json:"workspace_owner_permission"`
-	GatewayExchangeSecret         string               `yaml:"gateway_exchange_secret" json:"-"`
-	GatewayExchangeIssuer         string               `yaml:"gateway_exchange_issuer" json:"gateway_exchange_issuer"`
-	GatewayExchangeAudience       string               `yaml:"gateway_exchange_audience" json:"gateway_exchange_audience"`
-	GatewayTenantMap              map[string]uint64    `yaml:"gateway_tenant_map" json:"gateway_tenant_map"`
+	Enable                          bool                 `yaml:"enable"                 json:"enable"`
+	IssuerURL                       string               `yaml:"issuer_url"             json:"issuer_url"`
+	DiscoveryURL                    string               `yaml:"discovery_url"          json:"discovery_url"`
+	ProviderDisplayName             string               `yaml:"provider_display_name"  json:"provider_display_name"`
+	ClientID                        string               `yaml:"client_id"              json:"client_id"`
+	ClientSecret                    string               `yaml:"client_secret"          json:"-"`
+	Resource                        string               `yaml:"resource"              json:"resource"`
+	AuthorizationEndpoint           string               `yaml:"authorization_endpoint" json:"authorization_endpoint"`
+	TokenEndpoint                   string               `yaml:"token_endpoint"         json:"token_endpoint"`
+	UserInfoEndpoint                string               `yaml:"user_info_endpoint"     json:"user_info_endpoint"`
+	JWKSURI                         string               `yaml:"jwks_uri"               json:"-"`
+	RedirectURI                     string               `yaml:"redirect_uri"           json:"redirect_uri"`
+	Scopes                          []string             `yaml:"scopes"                 json:"scopes"`
+	UserInfoMapping                 *OIDCUserInfoMapping `yaml:"user_info_mapping"      json:"user_info_mapping"`
+	AllowEmailLinking               bool                 `yaml:"allow_email_linking"    json:"allow_email_linking"`
+	SyncRoles                       bool                 `yaml:"sync_roles"              json:"sync_roles"`
+	OrganizationClaim               string               `yaml:"organization_claim"     json:"organization_claim"`
+	OrganizationTenantMap           map[string]uint64    `yaml:"organization_tenant_map" json:"organization_tenant_map"`
+	PlatformAdminPermission         string               `yaml:"platform_admin_permission" json:"platform_admin_permission"`
+	WorkspaceReadPermission         string               `yaml:"workspace_read_permission" json:"workspace_read_permission"`
+	WorkspaceContributePermission   string               `yaml:"workspace_contribute_permission" json:"workspace_contribute_permission"`
+	WorkspaceAdminPermission        string               `yaml:"workspace_admin_permission" json:"workspace_admin_permission"`
+	WorkspaceOwnerPermission        string               `yaml:"workspace_owner_permission" json:"workspace_owner_permission"`
+	GatewayExchangeSecret           string               `yaml:"gateway_exchange_secret" json:"-"`
+	GatewayExchangeIssuer           string               `yaml:"gateway_exchange_issuer" json:"gateway_exchange_issuer"`
+	GatewayExchangeAudience         string               `yaml:"gateway_exchange_audience" json:"gateway_exchange_audience"`
+	GatewayExchangeIntrospectionURL string               `yaml:"gateway_exchange_introspection_url" json:"gateway_exchange_introspection_url"`
+	GatewayTenantMap                map[string]uint64    `yaml:"gateway_tenant_map" json:"gateway_tenant_map"`
 }
 
 // PromptTemplateI18n holds localized name and description for a prompt template.
@@ -649,6 +659,29 @@ func ValidateConfig(cfg *Config) error {
 		if strings.TrimSpace(cfg.OIDCAuth.GatewayExchangeSecret) != "" && len(strings.TrimSpace(cfg.OIDCAuth.GatewayExchangeSecret)) < 32 {
 			errs = append(errs, "oidc_auth.gateway_exchange_secret must be at least 32 characters")
 		}
+		exchangeConfigured := strings.TrimSpace(cfg.OIDCAuth.GatewayExchangeSecret) != "" ||
+			strings.TrimSpace(cfg.OIDCAuth.GatewayExchangeIssuer) != "" ||
+			strings.TrimSpace(cfg.OIDCAuth.GatewayExchangeAudience) != "" ||
+			len(cfg.OIDCAuth.GatewayTenantMap) > 0
+		if exchangeConfigured {
+			if strings.TrimSpace(cfg.OIDCAuth.GatewayExchangeSecret) == "" {
+				errs = append(errs, "oidc_auth.gateway_exchange_secret is required when gateway exchange is configured")
+			}
+			if strings.TrimSpace(cfg.OIDCAuth.GatewayExchangeIssuer) == "" {
+				errs = append(errs, "oidc_auth.gateway_exchange_issuer is required when gateway exchange is configured")
+			}
+			if strings.TrimSpace(cfg.OIDCAuth.GatewayExchangeAudience) == "" {
+				errs = append(errs, "oidc_auth.gateway_exchange_audience is required when gateway exchange is configured")
+			}
+			if len(cfg.OIDCAuth.GatewayTenantMap) == 0 {
+				errs = append(errs, "oidc_auth.gateway_tenant_map is required when gateway exchange is configured")
+			}
+			if strings.TrimSpace(cfg.OIDCAuth.GatewayExchangeIntrospectionURL) == "" {
+				errs = append(errs, "oidc_auth.gateway_exchange_introspection_url is required when gateway exchange is configured")
+			} else if err := validateOIDCURL("gateway_exchange_introspection_url", cfg.OIDCAuth.GatewayExchangeIntrospectionURL); err != nil {
+				errs = append(errs, err.Error())
+			}
+		}
 		if strings.TrimSpace(cfg.OIDCAuth.DiscoveryURL) == "" &&
 			(strings.TrimSpace(cfg.OIDCAuth.AuthorizationEndpoint) == "" || strings.TrimSpace(cfg.OIDCAuth.TokenEndpoint) == "") {
 			errs = append(errs, "oidc_auth.discovery_url or both oidc_auth.authorization_endpoint and oidc_auth.token_endpoint are required when OIDC is enabled")
@@ -797,6 +830,9 @@ func applyOIDCEnvOverrides(cfg *Config) {
 	}
 	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_GATEWAY_EXCHANGE_AUDIENCE")); value != "" {
 		cfg.OIDCAuth.GatewayExchangeAudience = value
+	}
+	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_GATEWAY_EXCHANGE_INTROSPECTION_URL")); value != "" {
+		cfg.OIDCAuth.GatewayExchangeIntrospectionURL = value
 	}
 	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_GATEWAY_TENANT_MAP")); value != "" {
 		var mappings map[string]uint64

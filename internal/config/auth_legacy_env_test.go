@@ -154,3 +154,33 @@ func TestApplyAuthAndTenantDefaults_CrossTenantAccess(t *testing.T) {
 		}
 	})
 }
+
+func TestValidateConfig_GatewayExchangeRequiresCompleteConfiguration(t *testing.T) {
+	base := func() *Config {
+		return &Config{OIDCAuth: &OIDCAuthConfig{
+			Enable:           true,
+			ClientID:         "weknora-client",
+			ClientSecret:     "client-secret",
+			DiscoveryURL:     "https://casdoor.example/.well-known/openid-configuration",
+			GatewayTenantMap: map[string]uint64{"org-a": 42},
+		}}
+	}
+
+	if err := ValidateConfig(base()); err == nil {
+		t.Fatal("ValidateConfig accepted gateway tenant mapping without exchange credentials")
+	}
+
+	complete := base()
+	complete.OIDCAuth.GatewayExchangeSecret = "01234567890123456789012345678901"
+	complete.OIDCAuth.GatewayExchangeIssuer = "https://gateway.example/gateway"
+	complete.OIDCAuth.GatewayExchangeAudience = "weknora"
+	complete.OIDCAuth.GatewayExchangeIntrospectionURL = "https://gateway.example/v1/token-exchange/weknora/introspect"
+	if err := ValidateConfig(complete); err != nil {
+		t.Fatalf("ValidateConfig rejected complete gateway exchange configuration: %v", err)
+	}
+
+	complete.OIDCAuth.GatewayExchangeIntrospectionURL = "http://gateway.example/v1/token-exchange/weknora/introspect?bad=allowed"
+	if err := ValidateConfig(complete); err == nil {
+		t.Fatal("ValidateConfig accepted an unsafe gateway introspection URL")
+	}
+}

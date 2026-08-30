@@ -541,6 +541,11 @@ OIDC 配置定义位于 `internal/config/config.go`，环境变量示例见 `.en
 | `OIDC_AUTH_SCOPES` | Scope 列表，默认 `openid profile email` |
 | `OIDC_USER_INFO_MAPPING_USER_NAME` | claims 中映射到用户名的字段名 |
 | `OIDC_USER_INFO_MAPPING_EMAIL` | claims 中映射到邮箱的字段名 |
+| `OIDC_AUTH_GATEWAY_EXCHANGE_SECRET` | Gateway → WeKnora exchange token 签名密钥；生产必须使用高强度随机值 |
+| `OIDC_AUTH_GATEWAY_EXCHANGE_ISSUER` | exchange token issuer，通常为 Gateway 的 `/gateway` issuer |
+| `OIDC_AUTH_GATEWAY_EXCHANGE_AUDIENCE` | exchange token audience |
+| `OIDC_AUTH_GATEWAY_EXCHANGE_INTROSPECTION_URL` | Gateway `/v1/token-exchange/weknora/introspect` 地址；启用 exchange 时必填，用于实时撤销校验 |
+| `OIDC_AUTH_GATEWAY_TENANT_MAP` | Casdoor organization 到 WeKnora tenant ID 的明确 JSON 映射 |
 
 ### 12.2 启用时的最小要求
 
@@ -551,6 +556,7 @@ OIDC 配置定义位于 `internal/config/config.go`，环境变量示例见 `.en
 3. 必须满足以下二选一：
    - 配置 `discovery_url`
    - 或同时配置 `authorization_endpoint + token_endpoint`
+4. 若配置 Gateway exchange，则必须同时配置 exchange secret、issuer、audience、introspection URL 和租户映射。
 
 ---
 
