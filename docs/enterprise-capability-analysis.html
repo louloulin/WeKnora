@@ -16,7 +16,7 @@
     <p>面向多租户、强合规、高可用和可运营场景，审视当前分支能力，参照 Dify、RAGFlow、AnythingLLM、Open WebUI、Keycloak、OpenFGA 与 Langfuse 的公开能力，给出目标架构、优先级和可验收的开发计划。</p>
     <div class="meta"><span class="chip">评估分支：codex/lumos</span><span class="chip">基线：7776a58f</span><span class="chip">生成日期：2026-08-30</span><span class="chip">范围：代码、路由、迁移、文档、公开项目资料</span></div>
   </div></header>
-  <nav class="nav"><div class="wrap"><a href="#summary">结论</a><a href="#current">现状</a><a href="#benchmark">竞品对比</a><a href="#doc-products">文档产品</a><a href="#gaps">差距矩阵</a><a href="#architecture">目标架构</a><a href="#platform-map">整体蓝图</a><a href="#data-flow">数据流</a><a href="#security-flow">权限流</a><a href="#deployment">部署拓扑</a><a href="#plan">完整计划</a><a href="#execution">依赖门禁</a><a href="#openbuddy">Casdoor 一体化</a><a href="#roadmap">开发计划</a><a href="#acceptance">验收指标</a><a href="#sources">证据</a><a href="#delivery">交付门禁</a></div></nav>
+  <nav class="nav"><div class="wrap"><a href="#summary">结论</a><a href="#current">现状</a><a href="#benchmark">竞品对比</a><a href="#doc-products">文档产品</a><a href="#gaps">差距矩阵</a><a href="#architecture">目标架构</a><a href="#platform-map">整体蓝图</a><a href="#data-flow">数据流</a><a href="#security-flow">权限流</a><a href="#deployment">部署拓扑</a><a href="#plan">完整计划</a><a href="#execution">依赖门禁</a><a href="#openbuddy">Casdoor 一体化</a><a href="#roadmap">开发计划</a><a href="#acceptance">验收指标</a><a href="#ui-review">UI/UX 评审</a><a href="#sources">证据</a><a href="#delivery">交付门禁</a></div></nav>
 
   <main class="wrap">
     <section id="summary"><h2>一、执行摘要</h2><p class="lead">当前分支已经不是“单纯 RAG Demo”：它具备完整的知识库、Wiki 页面、中文/模糊搜索、智能体、共享空间、RBAC、审计、缓存、批处理和评测基础。要达到企业级产品，重点不是继续堆功能，而是把已有能力升级为可治理、可隔离、可恢复、可计量、可审计的产品平台。</p>
@@ -160,8 +160,150 @@
 
     <section id="acceptance"><h2>十五、企业级验收指标</h2><div class="grid grid-3"><div class="card"><h4>安全</h4><ul class="list"><li>跨租户读写负向测试覆盖所有资源类型。</li><li>高风险操作 100% 有 actor、reason、trace、before/after 审计。</li><li>密钥不落日志；轮换后旧 token 按策略失效。</li><li>插件和 Webhook 具备签名、权限声明和重放保护。</li><li>Casdoor→Gateway→WeKnora 三层拒绝结果一致。</li></ul></div><div class="card"><h4>可靠性</h4><ul class="list"><li>核心 API、异步任务、模型调用都有 trace/span。</li><li>关键 SLO 有告警、值班路由和演练记录。</li><li>任务重试幂等；DLQ 可检索、重放和审计。</li><li>备份恢复按季度演练并保留证据。</li></ul></div><div class="card"><h4>AI 质量</h4><ul class="list"><li>回答关联模型、Prompt、工具、索引和知识版本。</li><li>引用正确率、召回率、延迟、成本可按租户/应用查询。</li><li>模型或 Prompt 发布必须通过离线评测门禁。</li><li>线上用户反馈可自动进入 Badcase 数据集。</li></ul></div><div class="card"><h4>性能</h4><ul class="list"><li>明确 P50/P95/P99：登录、检索、首 token、完整回答、批任务。</li><li>百万文档、十万页面、并发租户和大文件有压测报告。</li><li>限流、配额和 noisy-neighbor 防护可观测。</li><li>索引蓝绿切换不阻断读流量。</li></ul></div><div class="card"><h4>运维</h4><ul class="list"><li>新环境配置预检能在启动前报告缺失依赖。</li><li>升级自动备份、迁移预检和失败回滚。</li><li>诊断包不泄露 PII/密钥，可复现关键问题。</li><li>Lite、单机 Compose、Kubernetes 支持矩阵明确。</li></ul></div><div class="card"><h4>产品</h4><ul class="list"><li>管理员可见用户、空间、资源、成本、质量和审计全景。</li><li>API、SDK、Webhook、插件都有版本兼容策略。</li><li>文档、教程、示例和错误信息可完成自助排障。</li><li>企业功能均有开关、授权、审计和降级策略。</li></ul></div></div></section>
 
-    <section id="sources"><h2>十六、证据与来源</h2><p class="lead">本报告只使用当前仓库、OpenBuddy 两个 Casdoor 相关工作区的可复核证据和公开项目资料；外部项目的商业版专属能力不计入开源基线。官方资料核验日期：2026-08-30。</p><div class="grid grid-2"><div class="card"><h4>WeKnora 当前仓库</h4><ul class="list"><li><a href="../README.md">README / 部署与服务入口</a></li><li><a href="../docs/ROADMAP.md">docs/ROADMAP.md / 产品待办</a></li><li><a href="../docs/RBAC说明.md">RBAC 说明 / 角色矩阵</a></li><li><a href="../docs/OIDC认证调用流程.md">OIDC 认证流程</a></li><li><a href="../docs/Langfuse集成.md">Langfuse 集成</a></li><li><a href="../internal/router/routes_knowledge.go">Wiki 路由</a>、<a href="../internal/router/routes_agent.go">Agent 路由</a>、<a href="../internal/router/routes_infra.go">基础设施路由</a></li><li><a href="../migrations/versioned/000103_eval_system.up.sql">评测系统迁移</a>、<a href="../migrations/versioned/000101_wiki_backlinks_cache_backref.up.sql">回链缓存迁移</a></li></ul></div><div class="card"><h4>OpenBuddy / Casdoor 事实</h4><ul class="list"><li><code>/Users/louloulin/appx/OpenBuddy/.worktrees/casdoor-enterprise-identity</code>：Casdoor OIDC、租户 principal、会话绑定、资源授权和管理面。</li><li><code>/Users/louloulin/.codex/worktrees/76d8/OpenBuddy</code>（<code>codex/casdoor</code>）：企业商业治理、钱包/配额、成本归因、审计、Gateway 文档。</li><li><a href="https://github.com/casdoor/casdoor">Casdoor GitHub</a> · <a href="https://casdoor.org/docs/overview">Casdoor Docs</a></li><li>关键事实：OpenBuddy renderer 不持有 token；Main 执行 PKCE、tenant-select、local AuthZ 和审计；生产资源必须由 Gateway/后端重复校验。</li><li>未发现名为 <code>cardoor</code> 的独立仓库或分支；本报告将其按 Casdoor 分支处理。</li></ul></div><div class="card"><h4>OpenBuddy 正式设计</h4><ul class="list"><li><a href="../../OpenBuddy/docs/casdoor-enterprise-auth.md">Casdoor 企业身份配置</a>（若从仓库根目录打开，请以本机路径为准）</li><li><a href="../../OpenBuddy/docs/distributed-buddy-network-architecture.md">分布式 Buddy / Room / Grant 架构</a></li><li>统一概念：Identity、Tenant、Capability、Task、Policy、Approval、Artifact、Evidence、Grant、Revoke。</li><li>明确限制：公网 Relay、跨组织生产同步、公共目录、自动付款、远程 Agent body 和无人值守副作用尚未完成。</li></ul></div><div class="card"><h4>官方平台资料</h4><ul class="list"><li><a href="https://open.feishu.cn/document/server-docs/docs/docs-overview">飞书开放平台：云文档概述</a>（文档/表格/多维表格/知识库/云空间/评论与 token 模型）</li><li><a href="https://developers.notion.com/guides/get-started/authorization">Notion Developers：授权与 API</a> · <a href="https://www.notion.so/help">Notion Help</a></li><li><a href="https://www.atlassian.com/software/confluence">Atlassian：Confluence 官方产品页</a> · <a href="https://support.atlassian.com/confluence/">Confluence 官方支持</a></li><li><a href="https://www.glean.com/platform">Glean：AI Platform for Work</a></li><li><a href="https://www.microsoft.com/microsoft-365/sharepoint/collaboration">Microsoft SharePoint：官方协作产品页</a></li><li><a href="https://support.google.com/a/topic/7552636">Google Workspace Admin：Drive 管理资料</a></li><li><a href="https://github.com/outline/outline">Outline GitHub</a> · <a href="https://js.wiki/">Wiki.js 官方站点</a> · <a href="https://github.com/toeverything/AFFiNE">AFFiNE GitHub</a></li></ul></div><div class="card"><h4>公开 AI / 权限 / 可观测性项目</h4><ul class="list"><li><a href="https://github.com/langgenius/dify">Dify GitHub</a> · <a href="https://docs.dify.ai/">Dify Docs</a></li><li><a href="https://github.com/infiniflow/ragflow">RAGFlow GitHub</a> · <a href="https://ragflow.io/docs">RAGFlow Docs</a></li><li><a href="https://github.com/Mintplex-Labs/anything-llm">AnythingLLM GitHub</a> · <a href="https://docs.anythingllm.com/">AnythingLLM Docs</a></li><li><a href="https://github.com/open-webui/open-webui">Open WebUI GitHub</a> · <a href="https://docs.openwebui.com/">Open WebUI Docs</a></li><li><a href="https://github.com/keycloak/keycloak">Keycloak GitHub</a> · <a href="https://www.keycloak.org/documentation">Keycloak Docs</a></li><li><a href="https://github.com/openfga/openfga">OpenFGA GitHub</a> · <a href="https://openfga.dev/docs">OpenFGA Docs</a></li><li><a href="https://github.com/langfuse/langfuse">Langfuse GitHub</a> · <a href="https://langfuse.com/docs">Langfuse Docs</a></li><li><a href="https://api.github.com/repos/langgenius/dify">GitHub API：项目规模快照</a></li></ul></div></div><div class="callout warn"><b>重要限制：</b>本报告不是安全认证、合规认证或容量承诺。SLO/RPO/RTO 数值是建议目标，必须在实际部署拓扑、数据规模和模型供应商确定后通过压测与演练校准。</div></section>
-    <section id="delivery"><h2>十七、企业级交付工作包与门禁</h2><p class="lead">把差距矩阵真正交付为产品，而不是停留在设计文档。每个工作包必须同时产出数据模型、后端 API、管理员 UI、运行指标、迁移/回滚方案和自动化验收；只有文档完成不能标记为完成。</p>
+    <section id="ui-review"><h2>十六、全产品 UI/UX 评审</h2><p class="lead">本节基于当前分支（codex/lumos, HEAD 17324f1d）的真实前端代码、路由表、组件结构和已抓取的登录/运行截图，对 WeKnora 整个产品 UI 做横向评审：信息架构、关键页面体验、企业控制台体验、跨切面 UX 与顶级产品的差距。每项都标注当前证据文件、问题严重度、建议修复和验收口径，避免“看了文档就当做了 UI”。</p>
+
+      <h3>16.1 UI 成熟度速览</h3>
+      <div class="grid grid-3"><div class="card"><h4>当前分支已具备</h4><p><span class="tag done">已具备</span>知识库卡片网格 + 分段头、Wiki 树/大纲/回链/图谱、Tiptap 编辑器、命令面板 ⌘K、Space 切换、Agent 列表、设置抽屉式左导航。</p><p><span class="tag done">已具备</span>TDesign 主题/语言/i18n（zh-CN/en-US/ko-KR/ru-RU）、暗色模式、Wails 拖拽区与桌面嵌入适配。</p></div><div class="card"><h4>当前体验缺口</h4><p><span class="tag partial">部分</span>空/加载/错误状态在大部分核心页存在但样式不统一；评论/通知当前仅前端契约，未联通后端。</p><p><span class="tag gap">缺失</span>统一通知中心、活动流、键盘可访问性巡检、响应式断点策略、跨页深链一致性。</p></div><div class="card"><h4>与企业级差距</h4><p><span class="tag gap">缺失</span>统一的“租户/工作区”上下文指示与受限动作的解释弹层。</p><p><span class="tag gap">缺失</span>全局搜索（命令面板）结果与 KB/Wiki/Chat/Agent 详情页的跳转一致性、面包屑、键盘导航。</p></div></div>
+
+      <h3>16.2 信息架构评估（IA）</h3>
+      <div class="table-wrap"><table class="matrix"><thead><tr><th style="width:18%">入口 / 概念</th><th style="width:24%">当前实现</th><th style="width:24%">顶级产品的成熟形态（参考公开资料）</th><th style="width:18%">差距</th><th style="width:8%">严重度</th><th style="width:8%">建议优先级</th></tr></thead><tbody>
+        <tr><td><b>工作区 / 租户上下文</b></td><td><code>TenantSelector.vue</code>、<code>App.vue</code> 中 <code>selectedTenant</code>；切换时 hard reload 并 toast 提示（<code>tenantSwitch.ts</code>）。</td><td>顶栏常驻 workspace 切换器 + 角色徽章 + 资源计数；切换前显示“即将离开 / 进入”的解释弹层（飞书多企业切换、Notion workspace 切换）。</td><td>顶栏入口存在，但未在 <code>ListSpaceSidebar</code>、KB 卡片头部显示当前 workspace 名称和角色。</td><td><span class="tag gap">P0</span></td><td>P0</td></tr>
+        <tr><td><b>资源类型划分</b></td><td>左导航：<code>knowledge-bases</code> / <code>chat</code> / <code>agents</code> / <code>organizations</code> / <code>settings</code>；<code>wiki</code> 是 KB 内子视图。</td><td>Feishu/Notion 把“知识库 / 文档 / 表格 / 多维表格 / 数据库”做成同级入口 + 形态识别图标；Glean 把回答、来源、Pin、收藏做成统一资源形态。</td><td>“Wiki”是嵌套在 KB 内的 tab，外部用户难以直接理解 KB 与 Wiki 关系；缺少“文档数据库 / 表格 / 多维表”等独立形态。</td><td><span class="tag partial">P1</span></td><td>P1</td></tr>
+        <tr><td><b>个人 / 共享 / 收藏 / 最近</b></td><td><code>ListSpaceSidebar.vue</code> 已有 all / favorites / recents / mine / per-org 五个分组；<code>KnowledgeBaseList.vue</code> 用 section header 渲染。</td><td>Notion/Feishu 把“与我共享、收藏、最近、我创建”放进左侧二级导航，并显示数量角标。</td><td>数量角标已实现，但“收藏 / 最近”目前只对 KB 启用，未覆盖 Wiki 页面、Agent、Chat Session。</td><td><span class="tag partial">P1</span></td><td>P1</td></tr>
+        <tr><td><b>全局命令面板 ⌘K</b></td><td><code>GlobalCommandPalette.vue</code>：搜索 KB / 分块 / 消息 / Agent / 操作；scope chip 支持锁定 KB；recent + quick actions。</td><td>顶级产品的命令面板支持“切换页面、跳转深链、运行命令、调用插件、最近/收藏”五大类。</td><td>KB scope 已支持，但缺少“跳转到设置/管理员页/审计/帮助文档”的命令；缺少自定义命令注册。</td><td><span class="tag partial">P1</span></td><td>P1</td></tr>
+        <tr><td><b>组织 / 空间列表</b></td><td><code>OrganizationList.vue</code>：我创建 / 我加入；可搜索加入新空间。</td><td>飞书企业后台的组织树、Notion 的 workspace、Confluence 的 space。</td><td>缺少“组织树 + 父子空间”，缺少组织级配额/用量视图。</td><td><span class="tag partial">P1</span></td><td>P2</td></tr>
+      </tbody></table></div>
+
+      <h3>16.3 知识库列表页体验</h3>
+      <p>主要文件：<code>frontend/src/views/knowledge/KnowledgeBaseList.vue</code>（3109 行）、<code>KnowledgeBase.vue</code>（4547 行）、<code>ListSpaceSidebar.vue</code>（550 行）。</p>
+      <div class="table-wrap"><table class="matrix"><thead><tr><th style="width:18%">体验维度</th><th style="width:32%">当前证据</th><th style="width:24%">差距与顶级产品的差异</th><th style="width:10%">严重度</th><th style="width:8%">建议优先级</th><th style="width:8%">验收口径</th></tr></thead><tbody>
+        <tr><td>信息密度</td><td>卡片网格 + 段头（已置顶 / 我的 / 本空间 · 仅查看 / 共享给我），右上角星标 hover 显隐。</td><td>卡片已具备但缺少“知识库类型图标 + 索引状态 + 文档数 + 最近活动”四要素合并视图。</td><td><span class="tag partial">P1</span></td><td>P1</td><td>卡片头可显示 doc 数 / wiki 数 / FAQ 数 / chunk 数 / 索引状态。</td></tr>
+        <tr><td>未初始化提示</td><td><code>warning-banner</code> 顶部条 + 卡片 <code>uninitialized</code> 透明度降级。</td><td>提示存在但缺少“点击直接进入配置”的快捷入口，且未解释为什么“摘要模型 / 嵌入模型”必须。</td><td><span class="tag partial">P1</span></td><td>P1</td><td>未初始化卡片有 CTA 按钮 + 模型说明 popover。</td></tr>
+        <tr><td>上传进度</td><td>顶部 panel 聚合每个 KB 的上传进度；按 kbId 分组、错误高亮。</td><td>面板与 KB 列表距离较远，缺少“在 KB 卡片上就地显示进度”模式（Feishu/Notion 的行内进度条）。</td><td><span class="tag partial">P2</span></td><td>P2</td><td>上传中卡片有进度条覆盖层 + 错误态独立指示。</td></tr>
+        <tr><td>空状态</td><td>KB 列表为空时 <code>t-empty</code> + CTA；但点击侧栏“收藏 / 最近”且为空时未做空状态。</td><td>顶级产品在每个 scope（all/favorites/recents/mine/shared）都有独立空状态和解释。</td><td><span class="tag gap">P1</span></td><td>P1</td><td>所有 sidebar scope 均有独立空状态文案。</td></tr>
+        <tr><td>错误状态</td><td>fetch 失败 toast 报错，列表回退空状态。</td><td>缺少“重试按钮 + 错误归因（鉴权/网络/服务端） + 最近一次成功时间”。</td><td><span class="tag gap">P1</span></td><td>P1</td><td>错误态显示归因 + 重试 + 上次同步时间。</td></tr>
+        <tr><td>危险操作</td><td><code>deleteVisible</code> dialog + 二次确认。</td><td>缺少“批量危险操作”的 undo（已删除 KB 软删除期 / 回收站）。</td><td><span class="tag gap">P1</span></td><td>P2</td><td>删除 KB 进入回收站，30 天可恢复。</td></tr>
+        <tr><td>键盘可达</td><td>未发现全局快捷键（除命令面板 ⌘K）。</td><td>顶级产品普遍支持 <kbd>g</kbd>+<kbd>k</kbd> 进 KB、<kbd>n</kbd> 新建、<kbd>j/k</kbd> 行导航。</td><td><span class="tag gap">P2</span></td><td>P2</td><td>键盘导航 spec + 单测。</td></tr>
+      </tbody></table></div>
+
+      <h3>16.4 Wiki / 文档编辑器体验</h3>
+      <p>主要文件：<code>frontend/src/views/knowledge/wiki/WikiBrowser.vue</code>（7723 行）、<code>components/wiki/</code> 下的 Tiptap/Comment/ACL/Share/Audit/Backlinks/Search/Bulk 组件。</p>
+      <div class="table-wrap"><table class="matrix"><thead><tr><th style="width:18%">体验维度</th><th style="width:30%">当前证据</th><th style="width:26%">差距与顶级产品的差异</th><th style="width:10%">严重度</th><th style="width:8%">建议优先级</th><th style="width:8%">验收口径</th></tr></thead><tbody>
+        <tr><td>页面树与面包屑</td><td>左侧树 + 当前页 H1 标题；URL 用 slug。</td><td>顶级产品（Notion/Feishu/Confluence）支持多面包屑层级 + “当前位置可复制链接 + 折叠同级”。</td><td><span class="tag partial">P1</span></td><td>P1</td><td>面包屑可点击 + 显示每层 slug + “复制深链”。</td></tr>
+        <tr><td>页面大纲</td><td>本分支新增 H1/H2/H3 大纲侧栏 + 安全锚点 + 平滑滚动（见 WikiBrowser.vue outline 段）。</td><td>已对齐 Confluence 大纲模式。</td><td><span class="tag done">已对齐</span></td><td>—</td><td>大纲可用 + 锚点 URL 同步浏览器历史。</td></tr>
+        <tr><td>评论 / 讨论</td><td><code>WikiCommentDrawer.vue</code> 存在；前端 store/API 已写。</td><td>后端未提供 comment 路由与存储；落地评论前不能宣称该能力。</td><td><span class="tag gap">P0</span></td><td>P0</td><td>comment 表 + 路由 + 流式通知上线。</td></tr>
+        <tr><td>通知 / 提及</td><td><code>@</code> 提及已支持个人；尚未联通全局通知中心。</td><td>飞书/Notion/Confluence 都把 @ 提及落到统一通知中心 + 邮件 + 移动推送。</td><td><span class="tag gap">P0</span></td><td>P1</td><td>提及生成通知事件；中心聚合。</td></tr>
+        <tr><td>页面属性 / 数据库视图</td><td>页面 metadata 已有（type、tag、acl、version），但 UI 上未暴露“可编辑属性面板”。</td><td>Notion 的 page properties、Feishu 的字段是核心能力；当前缺失“属性 → 视图 → 筛选”链。</td><td><span class="tag gap">P1</span></td><td>P2</td><td>属性可编辑、可作为数据库视图维度。</td></tr>
+        <tr><td>模板</td><td>已有模板机制（见 <code>WikiTemplate*</code>）。</td><td>缺少模板浏览/搜索/版本/共享。</td><td><span class="tag partial">P1</span></td><td>P2</td><td>模板市场 + 版本 + 跨 KB 共享。</td></tr>
+        <tr><td>版本历史 / diff / 回滚</td><td>已具备：<code>WikiVersionDrawer</code> + diff + 回滚。</td><td>已对齐 Confluence 的版本对比能力。</td><td><span class="tag done">已对齐</span></td><td>—</td><td>版本差异可视化清晰。</td></tr>
+        <tr><td>分享链接 / 水印</td><td><code>WikiShareDialog</code> 已具备 token + 水印 + 时效。</td><td>已具备基本形态；缺少“访客行为审计”。</td><td><span class="tag partial">P1</span></td><td>P1</td><td>访客查看记录进审计。</td></tr>
+        <tr><td>回链 / 图谱</td><td><code>WikiBacklinksPanel</code> + 图谱视图（4 类节点 + 过滤）。</td><td>已具备差异化能力；可补“节点类型统计 + 修复死链”。</td><td><span class="tag done">优势</span></td><td>—</td><td>回链面板在所有页面可见。</td></tr>
+        <tr><td>搜索结果体验</td><td><code>WikiSearchResultsV2</code> + 中文/模糊/全文；命中高亮。</td><td>已具备中文分词优势；缺少“命中位置 + 上下文摘要 + 跳转锚点”。</td><td><span class="tag partial">P1</span></td><td>P1</td><td>搜索结果可锚点跳转到命中段落。</td></tr>
+        <tr><td>批量操作</td><td><code>WikiBulkActionBar</code> 已具备移动/标签/删除/状态。</td><td>缺少“批量修改 ACL / 模板 / 跨 KB 移动”。</td><td><span class="tag partial">P1</span></td><td>P2</td><td>批量 ACL 修改可用。</td></tr>
+        <tr><td>键盘快捷键</td><td>未发现 slash command / <kbd>cmd</kbd>+<kbd>enter</kbd> 提交评论 / <kbd>cmd</kbd>+<kbd>s</kbd> 保存提示。</td><td>顶级产品几乎都有 slash command 和键位提示。</td><td><span class="tag gap">P2</span></td><td>P2</td><td>slash command 至少支持 10 个块。</td></tr>
+        <tr><td>移动 / 响应式</td><td><code>@media</code> 断点零散、未统一。</td><td>顶级产品在 768px / 1024px 有清晰断点策略。</td><td><span class="tag gap">P1</span></td><td>P2</td><td>响应式设计 token + 断点统一。</td></tr>
+      </tbody></table></div>
+
+      <h3>16.5 Chat / Agent 体验</h3>
+      <p>主要文件：<code>frontend/src/views/chat/index.vue</code>（1379 行）、<code>views/agent/AgentList.vue</code>（2655 行）、<code>views/agent/AgentEditorModal.vue</code>（250K）、<code>views/creatChat/creatChat.vue</code>。</p>
+      <div class="table-wrap"><table class="matrix"><thead><tr><th style="width:18%">体验维度</th><th style="width:30%">当前证据</th><th style="width:26%">差距与顶级产品的差异</th><th style="width:10%">严重度</th><th style="width:8%">建议优先级</th><th style="width:8%">验收口径</th></tr></thead><tbody>
+        <tr><td>引用证据</td><td><code>ChatReferencesDrawer</code> + Citation Float 已具备；点击 chunk 可跳转来源。</td><td>已具备差异化能力；可补“引用证据预览侧栏常驻”。</td><td><span class="tag done">优势</span></td><td>—</td><td>每条回答可见证据。</td></tr>
+        <tr><td>Agent 工具调用展示</td><td>botmsg 已渲染工具调用流；ToolResults 抽屉已具备 WebFetch/Grep 等专用视图。</td><td>可补“调用耗时 / 重试 / 失败原因”明细。</td><td><span class="tag partial">P1</span></td><td>P1</td><td>工具调用表格化指标。</td></tr>
+        <tr><td>Agent 配置入口</td><td><code>AgentEditorModal</code> 250K 行超大文件（代码组织已接近重构阈值）。</td><td>“知识库 / 工具 / 技能 / 模型 / 提示词 / 沙箱 / 渠道 / 嵌入” 八区可读性差；缺少向导模式。</td><td><span class="tag gap">P1</span></td><td>P1</td><td>拆分为子组件 + 向导模式。</td></tr>
+        <tr><td>后台任务中心</td><td>“会话内”有运行指示；缺统一活动中心。</td><td>飞书/Notion 都提供“任务中心”：批量任务、Agent 长时间任务、嵌入分发等的统一视图。</td><td><span class="tag gap">P0</span></td><td>P0</td><td>活动中心聚合后台任务。</td></tr>
+        <tr><td>Agent 模板 / 市场</td><td>暂无。</td><td>Dify / Coze / 飞书智能体都有模板市场。</td><td><span class="tag gap">P2</span></td><td>P2</td><td>Agent 模板浏览 + 一键应用。</td></tr>
+        <tr><td>Chat / Agent 区分</td><td>左导航用 chat 和 agents 区分；但 Chat 详情页和 Agent 调用页视觉差异弱。</td><td>“回答型”与“执行型”需在入口 / 详情 / 输出格式上有更明显区别。</td><td><span class="tag partial">P1</span></td><td>P1</td><td>Chat 强调“答案”，Agent 强调“步骤 / 副作用”。</td></tr>
+        <tr><td>会话列表</td><td><code>SessionGroupByDropdown</code> + <code>sessionGrouping</code>。</td><td>可补“按时间 / 按 KB / 按 Agent / 按主题”四维分组。</td><td><span class="tag partial">P2</span></td><td>P2</td><td>四种分组模式可切换。</td></tr>
+        <tr><td>建议问题</td><td>已具备 FAQ 推荐 + 刷新按钮。</td><td>已具备差异化能力。</td><td><span class="tag done">已具备</span></td><td>—</td><td>—</td></tr>
+        <tr><td>上下文管理</td><td><code>KnowledgeBaseSelector</code> + <code>SourceSwitcherDropdown</code>。</td><td>缺少“当前会话用到了哪些知识库 / 记忆 / 工具”的可见摘要。</td><td><span class="tag partial">P1</span></td><td>P2</td><td>会话页显示上下文来源。</td></tr>
+      </tbody></table></div>
+
+      <h3>16.6 企业 / 管理员体验</h3>
+      <p>主要文件：<code>frontend/src/views/settings/Settings.vue</code>（34K 抽屉式左导航，~16 个 section）、<code>views/system/SystemSettings.vue</code>、<code>SystemAuditLog.vue</code>、<code>RuntimeQueues.vue</code>、<code>PlatformAPIKeys.vue</code>、<code>views/organization/OrganizationSettingsModal.vue</code>。</p>
+      <div class="table-wrap"><table class="matrix"><thead><tr><th style="width:18%">体验维度</th><th style="width:30%">当前证据</th><th style="width:26%">差距与顶级产品的差异</th><th style="width:10%">严重度</th><th style="width:8%">建议优先级</th><th style="width:8%">验收口径</th></tr></thead><tbody>
+        <tr><td>导航分组</td><td>设置抽屉式左导航，已有 “通用 / 模型 / 知识库 / 协作 / 安全 / 集成 / 系统”分组。</td><td>顶级产品把“组织 / 计费 / 安全 / 合规 / 集成 / 开发者”独立成后台一级菜单，不混在用户抽屉里。</td><td><span class="tag partial">P1</span></td><td>P1</td><td>独立后台路由 <code>/admin/*</code> 与用户设置分离。</td></tr>
+        <tr><td>成员 / 角色管理</td><td><code>TenantMembers.vue</code>（82K）+ <code>OrganizationSettingsModal.vue</code>。</td><td>可补“批量导入 / 角色模板 / 自定义角色 / SSO 同步状态”。</td><td><span class="tag partial">P1</span></td><td>P1</td><td>SCIM 同步 + 自定义角色。</td></tr>
+        <tr><td>审计日志</td><td><code>SystemAuditLog.vue</code>（24K）；保留策略可配。</td><td>缺少“审计搜索 + 导出 + 告警规则 + 实时面板”。</td><td><span class="tag partial">P1</span></td><td>P1</td><td>审计可全文搜索、可导出 CSV。</td></tr>
+        <tr><td>运行队列 / 后台任务</td><td><code>RuntimeQueues.vue</code>（56K）已有 DLQ、worker 健康。</td><td>可补“任务时间线 / 重放 / 失败归因图”。</td><td><span class="tag partial">P1</span></td><td>P1</td><td>任务详情 + 重放按钮。</td></tr>
+        <tr><td>API Key / 平台密钥</td><td><code>PlatformAPIKeys.vue</code>（18K）。</td><td>可补“作用域可视化 + 失效回滚 + 滥用告警”。</td><td><span class="tag partial">P1</span></td><td>P1</td><td>Key 作用域可下钻。</td></tr>
+        <tr><td>OIDC / SSO / SCIM</td><td>OIDC 流程已有；SCIM 未实现。</td><td>Confluence/Glean 的 SCIM 配置 UI 是标配。</td><td><span class="tag gap">P0</span></td><td>P0</td><td>SCIM 端点 + 同步状态可视化。</td></tr>
+        <tr><td>计费 / 配额</td><td>设置里有 “使用情况” 但仍较薄。</td><td>缺租户预算告警 / 配额硬限 / 模型路由成本归因。</td><td><span class="tag gap">P0</span></td><td>P0</td><td>预算告警 + 模型成本归因图表。</td></tr>
+        <tr><td>合规 / 数据保留</td><td>设置里有审计保留。</td><td>缺 DLP、保留策略模板、法律保留（legal hold）。</td><td><span class="tag gap">P1</span></td><td>P1</td><td>保留策略 + 法律保留开关。</td></tr>
+        <tr><td>备份 / 恢复</td><td>未在 UI 中暴露。</td><td>Glean/Confluence 在管理员控制台有备份视图。</td><td><span class="tag gap">P0</span></td><td>P1</td><td>管理员可见备份状态 + 恢复演练入口。</td></tr>
+        <tr><td>特性开关 / 灰度</td><td>未发现特性开关 UI。</td><td>企业版普遍提供 per-tenant 功能开关。</td><td><span class="tag gap">P1</span></td><td>P2</td><td>管理员可独立开关企业功能。</td></tr>
+        <tr><td>支持 / 诊断包</td><td>无。</td><td>顶级产品提供 “下载脱敏诊断包” 按钮。</td><td><span class="tag gap">P2</span></td><td>P2</td><td>一键下载脱敏 bundle。</td></tr>
+      </tbody></table></div>
+
+      <h3>16.7 跨切面 UX 质量</h3>
+      <div class="table-wrap"><table class="matrix"><thead><tr><th style="width:14%">维度</th><th style="width:30%">当前证据</th><th style="width:28%">差距与顶级产品的差异</th><th style="width:10%">严重度</th><th style="width:10%">建议优先级</th><th style="width:8%">验收口径</th></tr></thead><tbody>
+        <tr><td>设计系统</td><td>TDesign Vue Next；自定义 less 多；<code>--td-*</code> token 大量使用。</td><td>自定义 less 与 TDesign 主题并存，存在“影子 token”；缺少统一品牌 token。</td><td><span class="tag partial">P1</span></td><td>P1</td><td>品牌 token 文档化。</td></tr>
+        <tr><td>i18n 完整性</td><td>zh-CN / en-US / ko-KR / ru-RU 四个 locale，体量均在 300K+。</td><td>运行时缺翻译检测；硬编码中文字符串仍有。</td><td><span class="tag partial">P1</span></td><td>P1</td><td>CI 扫描硬编码中文字符串。</td></tr>
+        <tr><td>可访问性 (A11y)</td><td>命令面板已有 ARIA / role。</td><td>未做全站 a11y 巡检；快捷键缺 tab order 检查；颜色对比未做对比度检测。</td><td><span class="tag gap">P1</span></td><td>P1</td><td>axe 巡检报告 + 键盘 tab 通过率。</td></tr>
+        <tr><td>响应式断点</td><td>无统一断点；多数面板写死 1024。</td><td>移动体验破碎。</td><td><span class="tag gap">P1</span></td><td>P2</td><td>移动断点可读 + 可操作。</td></tr>
+        <tr><td>加载 / 骨架屏</td><td>KB List / Chat / Wiki / FAQ / KbFolder 已有 <code>t-skeleton</code>。</td><td>Agent List、System Audit、Runtime Queues 偶有空白。</td><td><span class="tag partial">P2</span></td><td>P2</td><td>所有数据列表有 skeleton。</td></tr>
+        <tr><td>错误归因</td><td>多以 toast 报错。</td><td>缺少错误归因 + 文档深链 + 一键上报。</td><td><span class="tag partial">P1</span></td><td>P2</td><td>错误信息带 docs 深链。</td></tr>
+        <tr><td>URL 深链</td><td>路由基本都有 slug / id。</td><td>KB / Wiki / Agent 详情 URL 与命令面板跳转不完全一致。</td><td><span class="tag partial">P1</span></td><td>P2</td><td>所有搜索/命令结果 URL 可分享且一致。</td></tr>
+        <tr><td>浏览器前进 / 后退</td><td>正常。</td><td>drawer/modal 打开关闭历史栈不一致。</td><td><span class="tag partial">P2</span></td><td>P2</td><td>modal/drawer 与 history 同步。</td></tr>
+        <tr><td>性能 / 代码分割</td><td>路由级 lazy 加载。</td><td>AgentEditorModal 250K 单文件过大。</td><td><span class="tag gap">P1</span></td><td>P1</td><td>单文件 ≤ 80K，路由级 + 区块级 split。</td></tr>
+        <tr><td>暗色 / 主题</td><td>有 light / dark / system。</td><td>部分自定义 less 未覆盖 dark 变量。</td><td><span class="tag partial">P2</span></td><td>P2</td><td>暗色模式无明显对比问题。</td></tr>
+      </tbody></table></div>
+
+      <h3>16.8 截图与浏览器验证记录</h3>
+      <p>本次评审对当前 dev 实例做了浏览器抓取（<code>http://127.0.0.1:5173</code>），重点确认登录页与运行态页面可渲染。</p>
+      <ul class="list">
+        <li>登录页 <code>/login</code>：左侧品牌区 + 右侧表单 + 国旗语言切换；表单字段“邮箱 / 密码”布局正确；按钮“登录 / 创建账户”可见。  <a href="file:///tmp/weknora-ui-audit/01-login.png">本地截图 01-login.png</a>（需手工附在交付包）。</li>
+        <li>本地注册端点 <code>POST /api/v1/auth/register</code> 当前返回 <code>failed to create workspace</code>（后端约束），需先打 tenant provisioning 才能进入 KB List 抓图——已记录为本次抓图局限，不影响本次 UI 评审结论。</li>
+        <li>前端无 console error；DOM 主结构稳定（<code>document.querySelectorAll('h1,h2,h3')</code> 仅返回 1 个 h1 “登录”，符合 SPA 重定向到 /login 后的结构）。</li>
+      </ul>
+
+      <h3>16.9 分阶段 UI 改进计划</h3>
+      <div class="phase"><div class="period">0–30 天 · UI P0（与控制平面 P0 同步）</div><h3>可访问性与一致性收口</h3>
+        <ul class="list">
+          <li>全局 Workspace 上下文条：当前租户 / 角色 / 资源数；放在 <code>App.vue</code> 顶栏，影响所有页面。</li>
+          <li>所有空 / 加载 / 错误状态组件化（<code>KbEmptyState.vue</code>、<code>WikiEmptyState.vue</code>、<code>AgentEmptyState.vue</code>），统一 CTA。</li>
+          <li>全局通知中心 + 评论路由 + 提及事件：补齐 <code>backend/internal/handler/wiki_comment*</code> + <code>frontend/src/api/wiki/comment*</code>。</li>
+          <li>危险操作撤销（KB 删除软删除 + 30 天回收站 UI）。</li>
+          <li>关键页 axe 巡检与键盘 tab 通过率 ≥ 95%。</li>
+        </ul>
+      </div>
+      <div class="phase"><div class="period">31–90 天 · UI P1（与文档协作 MVP 同步）</div><h3>企业控制台与 IA 重构</h3>
+        <ul class="list">
+          <li>独立后台路由 <code>/admin/*</code>：组织 / 成员 / 计费 / 审计 / 合规 / 备份 / 集成 / 开发者。</li>
+          <li>设置抽屉收敛为“个人偏好”，避免与管理员功能混在一起。</li>
+          <li>页面属性 + 数据库视图（Notion-like properties）作为 Wiki 增强。</li>
+          <li>AgentEditorModal 拆分为 6 个子组件 + 向导模式；单文件 ≤ 80K。</li>
+          <li>评论 / 通知 / 提及 / 任务中心联通。</li>
+        </ul>
+      </div>
+      <div class="phase"><div class="period">91–180 天 · UI P1/P2</div><h3>知识工程 + 跨产品一致性</h3>
+        <ul class="list">
+          <li>统一 IA：把 KB / Wiki / Sheet / Database / Folder 作为同级资源形态。</li>
+          <li>深链 / 命令面板 / 面包屑三向同步，URL 可分享且无重定向链。</li>
+          <li>Agent / Workflow 模板市场。</li>
+          <li>移动断点策略 + 桌面 WebView 适配加固。</li>
+        </ul>
+      </div>
+      <div class="phase"><div class="period">181–365 天 · UI P2</div><h3>AI 产品化与平台化</h3>
+        <ul class="list">
+          <li>多模态阅读（图片 / 表格 / 音视频）+ 阅读模式 + 沉浸写作。</li>
+          <li>剪藏 / 浏览器扩展 / SDK / 插件管理 UI。</li>
+          <li>行业模板与合规包。</li>
+          <li>支持一键下载脱敏诊断包 + 自助排查。</li>
+        </ul>
+      </div>
+
+      <h3>16.10 本节不宣称完成的部分</h3>
+      <ul class="list">
+        <li>评论 / 通知 / 任务中心：前端组件已存在，但后端路由与事件未联通；需 backend 配套 PR 才能标为完成。</li>
+        <li>SCIM / SAML / DLP / 法律保留：当前 UI 与协议均未提供。</li>
+        <li>KB / Wiki 详情页截图：因注册端点返回 workspace 创建失败，未能在浏览器内完整截到登录后的列表与编辑页；下一轮需先用一次性 tenant provisioning 或 SQLite lite 模式抓图补齐。</li>
+      </ul>
+
+      <div class="callout warn"><b>结论：</b>WeKnora 当前的 UI 已具备知识工作台 + Wiki-RAG 的差异化形态，与顶级产品的核心差距集中在“企业控制台 IA、评论 / 通知联通、IA 一致性、可访问性 / 响应式 / 错误归因”。这些差距与控制平面、数据平面一样都是“企业级准入条件”，不是“nice-to-have”；建议与 WP-01 ~ WP-08 同步排期，避免后端先行后 UI 拖垮上线。</div>
+    </section>
+
+    <section id="sources"><h2>十七、证据与来源</h2><p class="lead">本报告只使用当前仓库、OpenBuddy 两个 Casdoor 相关工作区的可复核证据和公开项目资料；外部项目的商业版专属能力不计入开源基线。官方资料核验日期：2026-08-30。</p><div class="grid grid-2"><div class="card"><h4>WeKnora 当前仓库</h4><ul class="list"><li><a href="../README.md">README / 部署与服务入口</a></li><li><a href="../docs/ROADMAP.md">docs/ROADMAP.md / 产品待办</a></li><li><a href="../docs/RBAC说明.md">RBAC 说明 / 角色矩阵</a></li><li><a href="../docs/OIDC认证调用流程.md">OIDC 认证流程</a></li><li><a href="../docs/Langfuse集成.md">Langfuse 集成</a></li><li><a href="../internal/router/routes_knowledge.go">Wiki 路由</a>、<a href="../internal/router/routes_agent.go">Agent 路由</a>、<a href="../internal/router/routes_infra.go">基础设施路由</a></li><li><a href="../migrations/versioned/000103_eval_system.up.sql">评测系统迁移</a>、<a href="../migrations/versioned/000101_wiki_backlinks_cache_backref.up.sql">回链缓存迁移</a></li></ul></div><div class="card"><h4>OpenBuddy / Casdoor 事实</h4><ul class="list"><li><code>/Users/louloulin/appx/OpenBuddy/.worktrees/casdoor-enterprise-identity</code>：Casdoor OIDC、租户 principal、会话绑定、资源授权和管理面。</li><li><code>/Users/louloulin/.codex/worktrees/76d8/OpenBuddy</code>（<code>codex/casdoor</code>）：企业商业治理、钱包/配额、成本归因、审计、Gateway 文档。</li><li><a href="https://github.com/casdoor/casdoor">Casdoor GitHub</a> · <a href="https://casdoor.org/docs/overview">Casdoor Docs</a></li><li>关键事实：OpenBuddy renderer 不持有 token；Main 执行 PKCE、tenant-select、local AuthZ 和审计；生产资源必须由 Gateway/后端重复校验。</li><li>未发现名为 <code>cardoor</code> 的独立仓库或分支；本报告将其按 Casdoor 分支处理。</li></ul></div><div class="card"><h4>OpenBuddy 正式设计</h4><ul class="list"><li><a href="../../OpenBuddy/docs/casdoor-enterprise-auth.md">Casdoor 企业身份配置</a>（若从仓库根目录打开，请以本机路径为准）</li><li><a href="../../OpenBuddy/docs/distributed-buddy-network-architecture.md">分布式 Buddy / Room / Grant 架构</a></li><li>统一概念：Identity、Tenant、Capability、Task、Policy、Approval、Artifact、Evidence、Grant、Revoke。</li><li>明确限制：公网 Relay、跨组织生产同步、公共目录、自动付款、远程 Agent body 和无人值守副作用尚未完成。</li></ul></div><div class="card"><h4>官方平台资料</h4><ul class="list"><li><a href="https://open.feishu.cn/document/server-docs/docs/docs-overview">飞书开放平台：云文档概述</a>（文档/表格/多维表格/知识库/云空间/评论与 token 模型）</li><li><a href="https://developers.notion.com/guides/get-started/authorization">Notion Developers：授权与 API</a> · <a href="https://www.notion.so/help">Notion Help</a></li><li><a href="https://www.atlassian.com/software/confluence">Atlassian：Confluence 官方产品页</a> · <a href="https://support.atlassian.com/confluence/">Confluence 官方支持</a></li><li><a href="https://www.glean.com/platform">Glean：AI Platform for Work</a></li><li><a href="https://www.microsoft.com/microsoft-365/sharepoint/collaboration">Microsoft SharePoint：官方协作产品页</a></li><li><a href="https://support.google.com/a/topic/7552636">Google Workspace Admin：Drive 管理资料</a></li><li><a href="https://github.com/outline/outline">Outline GitHub</a> · <a href="https://js.wiki/">Wiki.js 官方站点</a> · <a href="https://github.com/toeverything/AFFiNE">AFFiNE GitHub</a></li></ul></div><div class="card"><h4>公开 AI / 权限 / 可观测性项目</h4><ul class="list"><li><a href="https://github.com/langgenius/dify">Dify GitHub</a> · <a href="https://docs.dify.ai/">Dify Docs</a></li><li><a href="https://github.com/infiniflow/ragflow">RAGFlow GitHub</a> · <a href="https://ragflow.io/docs">RAGFlow Docs</a></li><li><a href="https://github.com/Mintplex-Labs/anything-llm">AnythingLLM GitHub</a> · <a href="https://docs.anythingllm.com/">AnythingLLM Docs</a></li><li><a href="https://github.com/open-webui/open-webui">Open WebUI GitHub</a> · <a href="https://docs.openwebui.com/">Open WebUI Docs</a></li><li><a href="https://github.com/keycloak/keycloak">Keycloak GitHub</a> · <a href="https://www.keycloak.org/documentation">Keycloak Docs</a></li><li><a href="https://github.com/openfga/openfga">OpenFGA GitHub</a> · <a href="https://openfga.dev/docs">OpenFGA Docs</a></li><li><a href="https://github.com/langfuse/langfuse">Langfuse GitHub</a> · <a href="https://langfuse.com/docs">Langfuse Docs</a></li><li><a href="https://api.github.com/repos/langgenius/dify">GitHub API：项目规模快照</a></li></ul></div></div><div class="callout warn"><b>重要限制：</b>本报告不是安全认证、合规认证或容量承诺。SLO/RPO/RTO 数值是建议目标，必须在实际部署拓扑、数据规模和模型供应商确定后通过压测与演练校准。</div></section>
+    <section id="delivery"><h2>十八、企业级交付工作包与门禁</h2><p class="lead">把差距矩阵真正交付为产品，而不是停留在设计文档。每个工作包必须同时产出数据模型、后端 API、管理员 UI、运行指标、迁移/回滚方案和自动化验收；只有文档完成不能标记为完成。</p>
       <div class="table-wrap" style="margin-top:20px"><table class="matrix"><thead><tr><th>工作包</th><th>依赖</th><th>必须交付</th><th>完成门禁</th><th>优先级</th></tr></thead><tbody>
         <tr><td><b>WP-01 Identity Bridge</b><br>Casdoor→WeKnora</td><td>OIDC discovery/JWKS、组织映射</td><td><code>issuer+sub</code> identity 表；组织→tenant 映射；组/权限同步；session/jti 撤销；SCIM/SAML 适配契约。</td><td>新用户、改邮箱、改组织、撤权、禁用和 key rotation 均有集成测试；token 不进 Renderer。</td><td>P0</td></tr>
         <tr><td><b>WP-02 Unified AuthZ</b><br>策略与资源执行</td><td>WP-01、现有 tenant_members/ACL</td><td>统一 <code>authorize()</code> 接口；RBAC+ReBAC/ABAC；策略版本、解释、模拟；Gateway 和 WeKnora 双重 PEP。</td><td>跨租户读写负向矩阵全绿；Casdoor/Gateway/WeKnora deny reason 和 <code>decision_id</code> 可关联。</td><td>P0</td></tr>
