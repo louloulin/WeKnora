@@ -16,6 +16,9 @@ const (
 	UserContextKey ContextKey = "User"
 	// UserIDContextKey is the context key for user ID
 	UserIDContextKey ContextKey = "UserID"
+	// OIDCNonceContextKey carries the nonce bound to the browser callback into
+	// the service that validates the returned ID token.
+	OIDCNonceContextKey ContextKey = "OIDCNonce"
 	// PrincipalContextKey is the context key for the terminal caller principal.
 	PrincipalContextKey ContextKey = "Principal"
 	// TenantAPIKeyScopeContextKey carries per-API-key operation and KB scopes.

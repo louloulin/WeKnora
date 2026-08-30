@@ -128,6 +128,13 @@ type UserRepository interface {
 	SearchUsers(ctx context.Context, query string, limit int) ([]*types.User, error)
 }
 
+// OIDCIdentityRepository persists stable external identity bindings.
+type OIDCIdentityRepository interface {
+	GetByIssuerSubject(ctx context.Context, issuer, subject string) (*types.OIDCIdentity, error)
+	Create(ctx context.Context, identity *types.OIDCIdentity) error
+	Touch(ctx context.Context, id, email string) error
+}
+
 // AuthTokenRepository defines the auth token repository interface
 type AuthTokenRepository interface {
 	// CreateToken creates an auth token

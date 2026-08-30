@@ -3,11 +3,13 @@ package service
 import (
 	"context"
 	"crypto/rand"
+	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/url"
 	"os"
@@ -113,11 +115,15 @@ func getJwtSecret() string {
 
 // userService implements the UserService interface
 type userService struct {
-	userRepo      interfaces.UserRepository
-	tokenRepo     interfaces.AuthTokenRepository
-	tenantService interfaces.TenantService
-	memberService interfaces.TenantMemberService
-	config        *config.Config
+	userRepo         interfaces.UserRepository
+	oidcIdentityRepo interfaces.OIDCIdentityRepository
+	tokenRepo        interfaces.AuthTokenRepository
+	tenantService    interfaces.TenantService
+	memberService    interfaces.TenantMemberService
+	config           *config.Config
+	oidcJWKSCache    map[string]*rsa.PublicKey
+	oidcJWKSAt       time.Time
+	oidcJWKSLock     sync.Mutex
 }
 
 // NewUserService creates a new user service instance
@@ -127,13 +133,15 @@ func NewUserService(
 	tokenRepo interfaces.AuthTokenRepository,
 	tenantService interfaces.TenantService,
 	memberService interfaces.TenantMemberService,
+	oidcIdentityRepo interfaces.OIDCIdentityRepository,
 ) interfaces.UserService {
 	return &userService{
-		userRepo:      userRepo,
-		tokenRepo:     tokenRepo,
-		tenantService: tenantService,
-		memberService: memberService,
-		config:        configInfo,
+		userRepo:         userRepo,
+		oidcIdentityRepo: oidcIdentityRepo,
+		tokenRepo:        tokenRepo,
+		tenantService:    tenantService,
+		memberService:    memberService,
+		config:           configInfo,
 	}
 }
 
@@ -512,7 +520,11 @@ func (s *userService) LoginWithOIDC(
 		return nil, err
 	}
 
-	userInfo, err := s.resolveOIDCUserInfo(ctx, cfg, tokenResp)
+	verifiedClaims, err := s.verifyOIDCIDToken(ctx, cfg, tokenResp.IDToken, oidcNonceFromContext(ctx))
+	if err != nil {
+		return nil, err
+	}
+	userInfo, err := s.resolveOIDCUserInfo(ctx, cfg, tokenResp, verifiedClaims)
 	if err != nil {
 		return nil, err
 	}
@@ -520,17 +532,50 @@ func (s *userService) LoginWithOIDC(
 		return nil, errors.New("OIDC provider did not return email")
 	}
 
-	user, err := s.userRepo.GetUserByEmail(ctx, userInfo.Email)
-	if err != nil && !isUserLookupNotFound(err) {
-		return nil, fmt.Errorf("failed to query user by email: %w", err)
-	}
 	isNewUser := false
-	if isUserLookupNotFound(err) || user == nil {
-		user, err = s.provisionOIDCUser(ctx, userInfo, provisioning)
+	var user *types.User
+	if s.oidcIdentityRepo == nil {
+		return nil, errors.New("OIDC identity repository is not configured")
+	}
+	identity, identityErr := s.oidcIdentityRepo.GetByIssuerSubject(ctx, userInfo.Issuer, userInfo.Subject)
+	if identityErr == nil {
+		user, err = s.userRepo.GetUserByID(ctx, identity.UserID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to load OIDC-bound user: %w", err)
 		}
-		isNewUser = true
+		if err := s.oidcIdentityRepo.Touch(ctx, identity.ID, userInfo.Email); err != nil {
+			return nil, fmt.Errorf("failed to update OIDC identity: %w", err)
+		}
+	} else if !errors.Is(identityErr, apprepo.ErrOIDCIdentityNotFound) {
+		return nil, fmt.Errorf("failed to query OIDC identity: %w", identityErr)
+	} else {
+		if !s.config.OIDCAuth.AllowEmailLinking {
+			if existing, lookupErr := s.userRepo.GetUserByEmail(ctx, userInfo.Email); lookupErr == nil && existing != nil {
+				return nil, errors.New("OIDC identity is not linked; administrator linking is required")
+			} else if lookupErr != nil && !isUserLookupNotFound(lookupErr) {
+				return nil, fmt.Errorf("failed to query user by email: %w", lookupErr)
+			}
+		} else {
+			user, err = s.userRepo.GetUserByEmail(ctx, userInfo.Email)
+			if err != nil && !isUserLookupNotFound(err) {
+				return nil, fmt.Errorf("failed to query user by email: %w", err)
+			}
+			if user != nil {
+				if err := s.oidcIdentityRepo.Create(ctx, &types.OIDCIdentity{UserID: user.ID, Issuer: userInfo.Issuer, Subject: userInfo.Subject, Provider: "oidc", EmailAtLastLogin: userInfo.Email, LastLoginAt: time.Now()}); err != nil {
+					return nil, fmt.Errorf("failed to link OIDC identity: %w", err)
+				}
+			}
+		}
+		if user == nil {
+			user, err = s.provisionOIDCUser(ctx, userInfo, provisioning)
+			if err != nil {
+				return nil, err
+			}
+			if err := s.oidcIdentityRepo.Create(ctx, &types.OIDCIdentity{UserID: user.ID, Issuer: userInfo.Issuer, Subject: userInfo.Subject, Provider: "oidc", EmailAtLastLogin: userInfo.Email, LastLoginAt: time.Now()}); err != nil {
+				return nil, fmt.Errorf("failed to persist OIDC identity: %w", err)
+			}
+			isNewUser = true
+		}
 	}
 
 	if !user.IsActive {
@@ -1380,15 +1425,28 @@ func (s *userService) SearchUsers(ctx context.Context, query string, limit int) 
 }
 
 type oidcDiscoveryDocument struct {
+	Issuer                string `json:"issuer"`
 	AuthorizationEndpoint string `json:"authorization_endpoint"`
 	TokenEndpoint         string `json:"token_endpoint"`
 	UserInfoEndpoint      string `json:"userinfo_endpoint"`
+	JWKSURI               string `json:"jwks_uri"`
 }
 
 type oidcTokenResponse struct {
 	AccessToken string `json:"access_token"`
 	IDToken     string `json:"id_token"`
 	TokenType   string `json:"token_type"`
+}
+
+type oidcJWKSResponse struct {
+	Keys []struct {
+		Kid string `json:"kid"`
+		Kty string `json:"kty"`
+		Alg string `json:"alg"`
+		Use string `json:"use"`
+		N   string `json:"n"`
+		E   string `json:"e"`
+	} `json:"keys"`
 }
 
 func newOIDCHTTPClient() *http.Client {
@@ -1477,10 +1535,121 @@ func (s *userService) populateOIDCEndpoints(ctx context.Context, cfg *config.OID
 	if cfg.UserInfoEndpoint == "" {
 		cfg.UserInfoEndpoint = doc.UserInfoEndpoint
 	}
+	if cfg.JWKSURI == "" {
+		cfg.JWKSURI = doc.JWKSURI
+	}
+	if strings.TrimSpace(cfg.IssuerURL) == "" {
+		cfg.IssuerURL = strings.TrimRight(doc.Issuer, "/")
+	}
+	if strings.TrimSpace(cfg.IssuerURL) == "" {
+		return errors.New("OIDC discovery document missing issuer")
+	}
 	if cfg.AuthorizationEndpoint == "" || cfg.TokenEndpoint == "" {
 		return errors.New("OIDC discovery document missing required endpoints")
 	}
 	return validateOIDCEndpoints(cfg)
+}
+
+func oidcNonceFromContext(ctx context.Context) string {
+	nonce, _ := ctx.Value(types.OIDCNonceContextKey).(string)
+	return strings.TrimSpace(nonce)
+}
+
+func (s *userService) verifyOIDCIDToken(ctx context.Context, cfg *config.OIDCAuthConfig, rawToken, expectedNonce string) (map[string]interface{}, error) {
+	rawToken = strings.TrimSpace(rawToken)
+	if rawToken == "" {
+		return nil, errors.New("OIDC provider did not return a signed id_token")
+	}
+	if strings.TrimSpace(cfg.IssuerURL) == "" || strings.TrimSpace(cfg.JWKSURI) == "" {
+		return nil, errors.New("OIDC issuer and jwks_uri are required")
+	}
+	keys, err := s.loadOIDCJWKS(ctx, cfg.JWKSURI)
+	if err != nil {
+		return nil, err
+	}
+	parser := jwt.NewParser(jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg()}), jwt.WithIssuer(strings.TrimRight(cfg.IssuerURL, "/")), jwt.WithAudience(cfg.ClientID), jwt.WithExpirationRequired())
+	claims := jwt.MapClaims{}
+	token, err := parser.ParseWithClaims(rawToken, claims, func(token *jwt.Token) (interface{}, error) {
+		if token.Method != jwt.SigningMethodRS256 {
+			return nil, errors.New("OIDC id_token uses an unsupported signing method")
+		}
+		kid, _ := token.Header["kid"].(string)
+		key := keys[kid]
+		if key == nil {
+			return nil, errors.New("OIDC id_token signing key not found")
+		}
+		return key, nil
+	})
+	if err != nil || token == nil || !token.Valid {
+		if err == nil {
+			err = errors.New("invalid OIDC id_token")
+		}
+		return nil, err
+	}
+	if issuedAt, ok := claims["iat"]; !ok || issuedAt == nil {
+		return nil, errors.New("OIDC id_token is missing iat")
+	}
+	if expectedNonce == "" {
+		return nil, errors.New("OIDC callback nonce is missing")
+	}
+	if nonce, _ := claims["nonce"].(string); nonce == "" || nonce != expectedNonce {
+		return nil, errors.New("OIDC id_token nonce mismatch")
+	}
+	return map[string]interface{}(claims), nil
+}
+
+func (s *userService) loadOIDCJWKS(ctx context.Context, endpoint string) (map[string]*rsa.PublicKey, error) {
+	endpoint = strings.TrimSpace(endpoint)
+	if err := validateOIDCEndpoint("jwks", endpoint, true); err != nil {
+		return nil, err
+	}
+	s.oidcJWKSLock.Lock()
+	defer s.oidcJWKSLock.Unlock()
+	if len(s.oidcJWKSCache) > 0 && time.Since(s.oidcJWKSAt) < 10*time.Minute {
+		return s.oidcJWKSCache, nil
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create OIDC jwks request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := newOIDCHTTPClient().Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load OIDC jwks: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("OIDC jwks request failed: status=%d", resp.StatusCode)
+	}
+	var document oidcJWKSResponse
+	if err := json.NewDecoder(resp.Body).Decode(&document); err != nil {
+		return nil, fmt.Errorf("failed to decode OIDC jwks: %w", err)
+	}
+	keys := make(map[string]*rsa.PublicKey, len(document.Keys))
+	for _, jwk := range document.Keys {
+		if jwk.Kty != "RSA" || jwk.Alg != "RS256" || jwk.Use != "sig" || jwk.Kid == "" || jwk.N == "" || jwk.E == "" {
+			continue
+		}
+		nBytes, nErr := base64.RawURLEncoding.DecodeString(jwk.N)
+		eBytes, eErr := base64.RawURLEncoding.DecodeString(jwk.E)
+		if nErr != nil || eErr != nil || len(eBytes) == 0 {
+			continue
+		}
+		e := 0
+		for _, b := range eBytes {
+			e = e<<8 | int(b)
+		}
+		if e <= 0 || e > int(^uint(0)>>1) {
+			continue
+		}
+		keys[jwk.Kid] = &rsa.PublicKey{N: new(big.Int).SetBytes(nBytes), E: e}
+	}
+	if len(keys) == 0 {
+		return nil, errors.New("OIDC jwks did not contain an RS256 signing key")
+	}
+	s.oidcJWKSCache = keys
+	s.oidcJWKSAt = time.Now()
+	return keys, nil
 }
 
 func (s *userService) exchangeOIDCCode(ctx context.Context, cfg *config.OIDCAuthConfig, code, redirectURI string) (*oidcTokenResponse, error) {
@@ -1522,18 +1691,10 @@ func (s *userService) exchangeOIDCCode(ctx context.Context, cfg *config.OIDCAuth
 	return &tokenResp, nil
 }
 
-func (s *userService) resolveOIDCUserInfo(ctx context.Context, cfg *config.OIDCAuthConfig, tokenResp *oidcTokenResponse) (*types.OIDCUserInfo, error) {
+func (s *userService) resolveOIDCUserInfo(ctx context.Context, cfg *config.OIDCAuthConfig, tokenResp *oidcTokenResponse, verifiedClaims map[string]interface{}) (*types.OIDCUserInfo, error) {
 	claims := map[string]interface{}{}
-
-	if strings.TrimSpace(tokenResp.IDToken) != "" {
-		idTokenClaims, err := decodeJWTClaims(tokenResp.IDToken)
-		if err != nil {
-			logger.Warnf(ctx, "Failed to decode OIDC id_token claims: %v", err)
-		} else {
-			for k, v := range idTokenClaims {
-				claims[k] = v
-			}
-		}
+	for k, v := range verifiedClaims {
+		claims[k] = v
 	}
 
 	if strings.TrimSpace(cfg.UserInfoEndpoint) != "" && strings.TrimSpace(tokenResp.AccessToken) != "" {
@@ -1548,6 +1709,7 @@ func (s *userService) resolveOIDCUserInfo(ctx context.Context, cfg *config.OIDCA
 	}
 
 	info := &types.OIDCUserInfo{Claims: claims}
+	info.Issuer, _ = claims["iss"].(string)
 	if sub, _ := claims["sub"].(string); sub != "" {
 		info.Subject = sub
 	}

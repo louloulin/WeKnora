@@ -60,3 +60,8 @@ miniprogram/project.private.config.json
 
 # Staging dir for the Docker sandbox self-check probe (removed after each run)
 .weknora-sandbox-check-*
+# >>> Comet managed project state >>>
+!/.comet/
+/.comet/*
+!/.comet/config.yaml
+# <<< Comet managed project state <<<

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -307,17 +308,27 @@ type OIDCUserInfoMapping struct {
 }
 
 type OIDCAuthConfig struct {
-	Enable                bool                 `yaml:"enable"                 json:"enable"`
-	IssuerURL             string               `yaml:"issuer_url"             json:"issuer_url"`
-	DiscoveryURL          string               `yaml:"discovery_url"          json:"discovery_url"`
-	ProviderDisplayName   string               `yaml:"provider_display_name"  json:"provider_display_name"`
-	ClientID              string               `yaml:"client_id"              json:"client_id"`
-	ClientSecret          string               `yaml:"client_secret"          json:"-"`
-	AuthorizationEndpoint string               `yaml:"authorization_endpoint" json:"authorization_endpoint"`
-	TokenEndpoint         string               `yaml:"token_endpoint"         json:"token_endpoint"`
-	UserInfoEndpoint      string               `yaml:"user_info_endpoint"     json:"user_info_endpoint"`
-	Scopes                []string             `yaml:"scopes"                 json:"scopes"`
-	UserInfoMapping       *OIDCUserInfoMapping `yaml:"user_info_mapping"      json:"user_info_mapping"`
+	Enable                        bool                 `yaml:"enable"                 json:"enable"`
+	IssuerURL                     string               `yaml:"issuer_url"             json:"issuer_url"`
+	DiscoveryURL                  string               `yaml:"discovery_url"          json:"discovery_url"`
+	ProviderDisplayName           string               `yaml:"provider_display_name"  json:"provider_display_name"`
+	ClientID                      string               `yaml:"client_id"              json:"client_id"`
+	ClientSecret                  string               `yaml:"client_secret"          json:"-"`
+	AuthorizationEndpoint         string               `yaml:"authorization_endpoint" json:"authorization_endpoint"`
+	TokenEndpoint                 string               `yaml:"token_endpoint"         json:"token_endpoint"`
+	UserInfoEndpoint              string               `yaml:"user_info_endpoint"     json:"user_info_endpoint"`
+	JWKSURI                       string               `yaml:"jwks_uri"               json:"-"`
+	Scopes                        []string             `yaml:"scopes"                 json:"scopes"`
+	UserInfoMapping               *OIDCUserInfoMapping `yaml:"user_info_mapping"      json:"user_info_mapping"`
+	AllowEmailLinking             bool                 `yaml:"allow_email_linking"    json:"allow_email_linking"`
+	SyncRoles                     bool                 `yaml:"sync_roles"              json:"sync_roles"`
+	OrganizationClaim             string               `yaml:"organization_claim"     json:"organization_claim"`
+	OrganizationTenantMap         map[string]uint64    `yaml:"organization_tenant_map" json:"organization_tenant_map"`
+	PlatformAdminPermission       string               `yaml:"platform_admin_permission" json:"platform_admin_permission"`
+	WorkspaceReadPermission       string               `yaml:"workspace_read_permission" json:"workspace_read_permission"`
+	WorkspaceContributePermission string               `yaml:"workspace_contribute_permission" json:"workspace_contribute_permission"`
+	WorkspaceAdminPermission      string               `yaml:"workspace_admin_permission" json:"workspace_admin_permission"`
+	WorkspaceOwnerPermission      string               `yaml:"workspace_owner_permission" json:"workspace_owner_permission"`
 }
 
 // PromptTemplateI18n holds localized name and description for a prompt template.
@@ -727,8 +738,41 @@ func applyOIDCEnvOverrides(cfg *Config) {
 	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_USER_INFO_ENDPOINT")); value != "" {
 		cfg.OIDCAuth.UserInfoEndpoint = value
 	}
+	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_JWKS_URI")); value != "" {
+		cfg.OIDCAuth.JWKSURI = value
+	}
 	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_SCOPES")); value != "" {
 		cfg.OIDCAuth.Scopes = strings.Fields(strings.ReplaceAll(value, ",", " "))
+	}
+	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_ALLOW_EMAIL_LINKING")); value != "" {
+		cfg.OIDCAuth.AllowEmailLinking = strings.EqualFold(value, "true")
+	}
+	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_SYNC_ROLES")); value != "" {
+		cfg.OIDCAuth.SyncRoles = strings.EqualFold(value, "true")
+	}
+	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_ORGANIZATION_CLAIM")); value != "" {
+		cfg.OIDCAuth.OrganizationClaim = value
+	}
+	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_ORGANIZATION_TENANT_MAP")); value != "" {
+		var mappings map[string]uint64
+		if err := json.Unmarshal([]byte(value), &mappings); err == nil {
+			cfg.OIDCAuth.OrganizationTenantMap = mappings
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_PLATFORM_ADMIN_PERMISSION")); value != "" {
+		cfg.OIDCAuth.PlatformAdminPermission = value
+	}
+	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_WORKSPACE_READ_PERMISSION")); value != "" {
+		cfg.OIDCAuth.WorkspaceReadPermission = value
+	}
+	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_WORKSPACE_CONTRIBUTE_PERMISSION")); value != "" {
+		cfg.OIDCAuth.WorkspaceContributePermission = value
+	}
+	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_WORKSPACE_ADMIN_PERMISSION")); value != "" {
+		cfg.OIDCAuth.WorkspaceAdminPermission = value
+	}
+	if value := strings.TrimSpace(os.Getenv("OIDC_AUTH_WORKSPACE_OWNER_PERMISSION")); value != "" {
+		cfg.OIDCAuth.WorkspaceOwnerPermission = value
 	}
 	if value := strings.TrimSpace(os.Getenv("OIDC_USER_INFO_MAPPING_USER_NAME")); value != "" {
 		cfg.OIDCAuth.UserInfoMapping.Username = value
@@ -748,6 +792,24 @@ func applyOIDCEnvOverrides(cfg *Config) {
 	}
 	if cfg.OIDCAuth.UserInfoMapping.Email == "" {
 		cfg.OIDCAuth.UserInfoMapping.Email = "email"
+	}
+	if cfg.OIDCAuth.OrganizationClaim == "" {
+		cfg.OIDCAuth.OrganizationClaim = "organizations"
+	}
+	if cfg.OIDCAuth.PlatformAdminPermission == "" {
+		cfg.OIDCAuth.PlatformAdminPermission = "weknora.platform.admin"
+	}
+	if cfg.OIDCAuth.WorkspaceReadPermission == "" {
+		cfg.OIDCAuth.WorkspaceReadPermission = "weknora.workspace.read"
+	}
+	if cfg.OIDCAuth.WorkspaceContributePermission == "" {
+		cfg.OIDCAuth.WorkspaceContributePermission = "weknora.workspace.contribute"
+	}
+	if cfg.OIDCAuth.WorkspaceAdminPermission == "" {
+		cfg.OIDCAuth.WorkspaceAdminPermission = "weknora.workspace.admin"
+	}
+	if cfg.OIDCAuth.WorkspaceOwnerPermission == "" {
+		cfg.OIDCAuth.WorkspaceOwnerPermission = "weknora.workspace.owner"
 	}
 	if cfg.OIDCAuth.DiscoveryURL == "" && cfg.OIDCAuth.IssuerURL != "" {
 		cfg.OIDCAuth.DiscoveryURL = strings.TrimRight(cfg.OIDCAuth.IssuerURL, "/") + "/.well-known/openid-configuration"

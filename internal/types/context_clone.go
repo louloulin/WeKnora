@@ -111,6 +111,9 @@ var contextCloneAcrossDetach = map[ContextKey]bool{
 	// request context inside the embed handler that authenticated it; nothing
 	// downstream of a detach reads it.
 	EmbedChannelContextKey: false,
+	// The OIDC nonce belongs to one browser callback and must not be reused by
+	// detached work after that callback has completed.
+	OIDCNonceContextKey: false,
 }
 
 // ContextKeysClonedAcrossDetach returns the keys logger.CloneContext carries

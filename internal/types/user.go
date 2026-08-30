@@ -175,11 +175,30 @@ type OIDCCallbackResponse struct {
 }
 
 type OIDCUserInfo struct {
+	Issuer   string                 `json:"issuer,omitempty"`
 	Subject  string                 `json:"subject,omitempty"`
 	Username string                 `json:"username,omitempty"`
 	Email    string                 `json:"email,omitempty"`
 	Claims   map[string]interface{} `json:"claims,omitempty"`
 }
+
+// OIDCIdentity binds an external OIDC subject to a local user. The pair of
+// issuer and subject is the stable identity key; email is only a snapshot for
+// display and migration diagnostics.
+type OIDCIdentity struct {
+	ID               string     `json:"id" gorm:"type:varchar(36);primaryKey"`
+	UserID           string     `json:"user_id" gorm:"type:varchar(36);not null;index"`
+	Issuer           string     `json:"issuer" gorm:"type:varchar(512);not null"`
+	Subject          string     `json:"subject" gorm:"type:varchar(512);not null"`
+	Provider         string     `json:"provider" gorm:"type:varchar(64);not null;default:'oidc'"`
+	EmailAtLastLogin string     `json:"email_at_last_login" gorm:"type:varchar(255);not null;default:''"`
+	LastLoginAt      time.Time  `json:"last_login_at"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	RevokedAt        *time.Time `json:"revoked_at,omitempty"`
+}
+
+func (OIDCIdentity) TableName() string { return "user_oidc_identities" }
 
 // RegisterRequest represents a registration request
 type RegisterRequest struct {
