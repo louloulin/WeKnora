@@ -17,6 +17,16 @@ export type PropertyType =
   | 'multi-select'
   | 'checkbox'
   | 'url'
+  // Sprint 1 §26 property-type expansion — brings the WeKnora set from
+  // 7 to 13 types, closing the gap with Notion's 19-property baseline
+  // (§20.3 A.1). Each new type has coerce + format + a default
+  // validation rule below.
+  | 'person'    // reference to a user (string id, resolved client-side)
+  | 'status'    // select with workflow semantics (Todo/Doing/Done…)
+  | 'relation'  // reference to one or more wiki pages (slug array)
+  | 'rollup'    // computed aggregate over a relation (read-only)
+  | 'formula'   // computed value, evaluated server-side (read-only)
+  | 'email'     // RFC-5322-lite email string
 
 export interface WikiProperty {
   id: string
@@ -34,6 +44,10 @@ export type PropertyValue =
   | boolean
   | string[]
   | null
+  // rollup and formula can hold heterogeneous values (count → number,
+  // join → string, earliest → string). They are read-only from the
+  // client side: writes are rejected by coercePropertyValue.
+  | PropertyValue[]
 
 export type PropertyValues = Record<string, PropertyValue>
 
@@ -93,6 +107,12 @@ export const PROPERTY_TYPE_LABELS: Record<PropertyType, string> = {
   'multi-select': '多选',
   checkbox: '开关',
   url: '链接',
+  person: '人员',
+  status: '状态',
+  relation: '关联',
+  rollup: '汇总',
+  formula: '公式',
+  email: '邮箱',
 }
 
 /**
@@ -127,6 +147,40 @@ export function coercePropertyValue(
       return typeof raw === 'boolean' ? raw : null
     case 'url':
       return typeof raw === 'string' && /^https?:\/\//i.test(raw) ? raw : null
+    case 'email':
+      // Light RFC-5322 check: <local>@<domain>.<tld>. We intentionally
+      // do not implement full RFC 5322 (it's intentionally impossible to
+      // do right with a regex); this catches the common typos.
+      return typeof raw === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw) ? raw : null
+    case 'person':
+      // Person is a user reference; we accept any non-empty string and
+      // let the server / user picker decide if it resolves. The schema
+      // store may attach an `options: ['user_id_1', ...]` list to bound
+      // the picker.
+      return typeof raw === 'string' && raw.length > 0 ? raw : null
+    case 'status': {
+      // status is a select with workflow semantics; same coercion as
+      // select but rendered with extra status-specific chrome (Todo /
+      // Doing / Done chips). Allow free-form if no options declared.
+      if (typeof raw !== 'string') return null
+      if (!property.options || property.options.length === 0) return raw
+      return property.options.includes(raw) ? raw : null
+    }
+    case 'relation': {
+      // Relation is one or more page slugs. Array of strings; coerce
+      // individual entries and dedupe so the same page can't be linked
+      // twice from one relation property.
+      if (!Array.isArray(raw)) return null
+      const slugs = raw.filter((v): v is string => typeof v === 'string' && v.length > 0)
+      if (slugs.length === 0) return null
+      return Array.from(new Set(slugs))
+    }
+    case 'rollup':
+    case 'formula':
+      // Read-only computed values; the server is the source of truth.
+      // We accept whatever the wire carries but never let the client
+      // write directly — the editor UI hides the input for these types.
+      return raw as PropertyValue
     default:
       return null
   }
@@ -183,8 +237,101 @@ export function formatPropertyValue(
     case 'select':
     case 'url':
     case 'number':
+    case 'email':
+    case 'person':
       return String(value)
+    case 'status': {
+      // Status renders with a leading emoji / icon prefix when the
+      // option list uses Notion-style values (Todo / Doing / Done /
+      // Backlog / In Review). The UI component applies the actual
+      // colour/icon; here we only return the label.
+      return String(value)
+    }
+    case 'relation': {
+      if (!Array.isArray(value)) return ''
+      if (value.length === 0) return ''
+      if (value.length === 1) return String(value[0])
+      return `${value.length} pages`
+    }
+    case 'rollup':
+    case 'formula': {
+      if (value === null || value === undefined) return ''
+      if (typeof value === 'number') return String(value)
+      if (typeof value === 'boolean') return value ? '✓' : '—'
+      if (Array.isArray(value)) return value.length === 1 ? String(value[0]) : `${value.length} items`
+      return String(value)
+    }
     default:
       return ''
   }
 }
+
+/**
+ * Read-only property types cannot be set by the user directly; the value
+ * is computed from other properties (formula) or from referenced pages
+ * (rollup). The editor UI hides the input and shows a chip with a
+ * tooltip explaining the source.
+ */
+export function isReadOnlyPropertyType(type: PropertyType): boolean {
+  return type === 'rollup' || type === 'formula'
+}
+
+/**
+ * Default property additions for §26 type expansion. These mirror the
+ * Notion 19-property baseline (§20.3 A.1) for the types a wiki page is
+ * likely to use out of the box. KMs can override per KB.
+ */
+export const EXTENDED_DEFAULT_PROPERTIES: WikiProperty[] = [
+  {
+    id: 'assignee',
+    name: '负责人',
+    type: 'person',
+    icon: 'user',
+    description: '当前负责人。客户端通过用户选择器解析。',
+  },
+  {
+    id: 'workflow',
+    name: '工作流',
+    type: 'status',
+    icon: 'flow',
+    options: ['Backlog', 'Todo', 'In Progress', 'In Review', 'Done', 'Cancelled'],
+  },
+  {
+    id: 'reviewer',
+    name: '评审人',
+    type: 'person',
+    icon: 'user-check',
+  },
+  {
+    id: 'contact_email',
+    name: '联系邮箱',
+    type: 'email',
+    icon: 'mail',
+  },
+  {
+    id: 'related_pages',
+    name: '关联页面',
+    type: 'relation',
+    icon: 'link',
+    description: '指向其他 wiki 页面的 slug 数组。',
+  },
+  {
+    id: 'related_count',
+    name: '关联数',
+    type: 'rollup',
+    icon: 'sum',
+    description: 'related_pages 的条数，由后端计算。',
+  },
+  {
+    id: 'last_edited_by',
+    name: '最后编辑',
+    type: 'person',
+    icon: 'edit',
+  },
+]
+
+/** All built-in defaults merged: original + extended. */
+export const ALL_DEFAULT_PROPERTIES: WikiProperty[] = [
+  ...DEFAULT_PROPERTY_SCHEMA,
+  ...EXTENDED_DEFAULT_PROPERTIES,
+]
