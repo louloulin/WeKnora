@@ -826,3 +826,144 @@ export async function saveDocxBytesWithImages(
   // 3) Add the binary parts + rels + content-type overrides
   return embedImagesInDocx(baseBytes, assets)
 }
+
+// ----------------------------------------------------------------------------
+// v0.7.32 — DOC math equations (OMML)
+//
+// Wire the docx-engine math helpers up so the editor can ingest a LaTeX
+// string (e.g. "E=mc^2") and store the equivalent OMML fragment inside a
+// paragraph. The round-trip preserves the formula through PowerPoint's
+// equation editor and Word's math ribbon.
+// ----------------------------------------------------------------------------
+
+import {
+  ommlFragmentsOf as engineOmmlFragmentsOf,
+  mathTokensOf as engineMathTokensOf,
+  ommlToMathML as engineOmmlToMathML,
+  ommlToLatex as engineOmmlToLatex,
+  latexToOmml as engineLatexToOmml,
+  mathParagraphXml as engineMathParagraphXml,
+} from '../engines/docx-engine/index'
+
+/** Convert a LaTeX formula string into an OMML fragment ready to embed in
+ *  a `<w:p>` paragraph. */
+export function latexToDocxMath(latex: string): string | null {
+  if (!latex.trim()) return null
+  try {
+    const omml = engineLatexToOmml(latex)
+    return omml ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Build a complete `<w:p>...</w:p>` XML wrapping a single OMML fragment,
+ *  formatted as a display-style formula block. */
+export function mathDisplayParagraph(
+  latex: string,
+  align: 'left' | 'center' | 'right' = 'center',
+): string | null {
+  const omml = latexToDocxMath(latex)
+  if (!omml) return null
+  return engineMathParagraphXml(omml, align)
+}
+
+/** Read the OMML fragments inside a paragraph's XML. Returns an empty array
+ *  for paragraphs without math content. */
+export function readMathFragmentsInParagraph(paragraphXml: string): string[] {
+  try {
+    return engineOmmlFragmentsOf(paragraphXml) as string[]
+  } catch {
+    return []
+  }
+}
+
+/** Extract plain-text math tokens (the visible content of each <m:t>) from
+ *  a paragraph XML — handy for search / AI polish. */
+export function readMathTokensInParagraph(paragraphXml: string): string[] {
+  try {
+    return engineMathTokensOf(paragraphXml) as string[]
+  } catch {
+    return []
+  }
+}
+
+/** Convert OMML → LaTeX (lossy in edge cases; returns null on parse
+ *  failure). */
+export function docxMathToLatex(ommlXml: string): string | null {
+  try {
+    return engineOmmlToLatex(ommlXml) as string | null
+  } catch {
+    return null
+  }
+}
+
+/** Convert OMML → MathML (presentation form; useful for HTML preview). */
+export function docxMathToMathML(ommlXml: string): string | null {
+  try {
+    return engineOmmlToMathML(ommlXml) as string | null
+  } catch {
+    return null
+  }
+}
+
+// ----------------------------------------------------------------------------
+// v0.7.32 — DOC charts (in-document chart parts)
+//
+// Wrappers around docx-engine/chart.ts so the editor can construct an
+// OOXML chart part (word/charts/chartN.xml) for a new embedded chart, then
+// patch an existing one to keep cached texts/numbers in sync with edits.
+// ----------------------------------------------------------------------------
+
+import {
+  buildChartPartXml as engineBuildChartPartXml,
+  patchChartPartXml as enginePatchChartPartXml,
+  parseChartPartXml as engineParseChartPartXml,
+  type NewChart as EngineNewChart,
+  type ChartPatch as EngineChartPatch,
+} from '../engines/docx-engine/index'
+
+export type DocChartKind = 'bar' | 'line' | 'pie'
+
+export interface NewDocChart {
+  kind: DocChartKind
+  title?: string
+  categories: string[]
+  series: Array<{ name: string; values: (number | null)[] }>
+}
+
+/** Build the XML for a new chart part (word/charts/chartN.xml). The caller
+ *  is responsible for adding it to the .docx archive and creating the
+ *  relationship from word/document.xml. */
+export function buildDocChartPart(chart: NewDocChart): string {
+  return engineBuildChartPartXml(chart as EngineNewChart) as string
+}
+
+/** Patch the cached texts/numbers of an existing chart part while keeping
+ *  styling, layout, and the embedded workbook untouched. Returns the new
+ *  XML; throws on parse failure. */
+export function patchDocChartPart(xml: string, patch: EngineChartPatch): string {
+  return enginePatchChartPartXml(xml, patch) as string
+}
+
+/** Re-parse a chart part into its displayable model (kind, categories,
+ *  series values). Returns null if the XML is unparseable. */
+export function parseDocChartPart(xml: string): {
+  kind: DocChartKind | 'other'
+  title?: string
+  categories: string[]
+  series: Array<{ name?: string; values: (number | null)[] }>
+} | null {
+  try {
+    const out = engineParseChartPartXml(xml, "<inline>") as any
+    if (!out) return null
+    return {
+      kind: out.kind,
+      title: out.title,
+      categories: out.categories ?? [],
+      series: out.series ?? [],
+    }
+  } catch {
+    return null
+  }
+}

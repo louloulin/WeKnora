@@ -181,3 +181,73 @@ export async function deleteCollabDocComment(
 ): Promise<void> {
   return del(`/collaborative-docs/${id}/comments/${commentID}`)
 }
+
+// ── v0.7.30 — audit log ────────────────────────────────────────────────
+
+export type CollabAuditAction =
+  | 'create' | 'rename' | 'upload' | 'save'
+  | 'share.enable' | 'share.disable' | 'share.access'
+  | 'archive' | 'restore' | 'delete'
+  | 'comment.add' | 'comment.reply' | 'comment.solve' | 'comment.delete'
+  | 'polish' | 'sync_to_kb' | 'export'
+
+export interface CollabDocAuditEntry {
+  id: number
+  tenant_id: number
+  doc_id: string
+  actor_user_id: number
+  actor_name: string
+  actor_color: string
+  action: CollabAuditAction
+  target: string
+  payload: string
+  ip: string
+  user_agent: string
+  created_at: string
+}
+
+export interface CollabDocAuditSummary {
+  total_entries: number
+  by_action: Partial<Record<CollabAuditAction, number>>
+  by_day: Array<{ day: string; count: number }>
+}
+
+export interface ListCollabDocAuditFilter {
+  actor?: number
+  action?: CollabAuditAction
+  /** RFC3339 lower bound */
+  since?: string
+  /** RFC3339 upper bound */
+  until?: string
+  limit?: number
+  offset?: number
+}
+
+/** Fetch every audit entry for a single doc (newest first). */
+export async function listCollabDocAudit(
+  id: string,
+  filter: ListCollabDocAuditFilter = {},
+): Promise<{ entries: CollabDocAuditEntry[] }> {
+  const qs = new URLSearchParams()
+  if (filter.actor != null) qs.set('actor', String(filter.actor))
+  if (filter.action) qs.set('action', filter.action)
+  if (filter.since) qs.set('since', filter.since)
+  if (filter.until) qs.set('until', filter.until)
+  if (filter.limit != null) qs.set('limit', String(filter.limit))
+  if (filter.offset != null) qs.set('offset', String(filter.offset))
+  const u = `/collaborative-docs/${id}/audit${qs.toString() ? `?${qs.toString()}` : ''}`
+  return get(u)
+}
+
+/** Rolled-up audit counts by action + day (powers the activity chart). */
+export async function collabDocAuditSummary(
+  filter: ListCollabDocAuditFilter & { doc?: string } = {},
+): Promise<CollabDocAuditSummary> {
+  const qs = new URLSearchParams()
+  if (filter.doc) qs.set('doc', filter.doc)
+  if (filter.action) qs.set('action', filter.action)
+  if (filter.since) qs.set('since', filter.since)
+  if (filter.until) qs.set('until', filter.until)
+  const u = `/collaborative-docs/audit/summary${qs.toString() ? `?${qs.toString()}` : ''}`
+  return get(u)
+}

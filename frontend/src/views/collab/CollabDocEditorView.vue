@@ -16,6 +16,17 @@
         <button class="collab-editor-view__sync-kb" @click="onSyncToKB" :disabled="syncing">
           {{ syncing ? '同步中...' : '同步到知识库' }}
         </button>
+        <button
+          type="button"
+          class="collab-editor-view__audit-toggle"
+          @click="auditVisible = !auditVisible"
+          data-testid="audit-toggle"
+        >
+          {{ auditVisible ? '隐藏历史' : '查看历史' }}
+        </button>
+        <div v-if="auditVisible" class="collab-editor-view__audit-wrap">
+          <CollabAuditTimeline :doc-id="doc.id" />
+        </div>
       </div>
       <div class="collab-editor-view__main">
         <CollabDocProEditor v-if="doc.doc_kind === 'doc'" :doc-id="doc.id" :title="doc.title" :token="token" :display-name="displayName" />
@@ -41,12 +52,14 @@ import { getCollabDoc, type CollabDoc } from '@/api/collabDoc'
 import CollabDocProEditor from '@/components/collab/CollabDocProEditor.vue'
 import CollabSheetEditor from '@/components/collab/CollabSheetEditor.vue'
 import CollabSlideKonvaEditor from '@/components/collab/CollabSlideKonvaEditor.vue'
+import CollabAuditTimeline from '@/components/collab/CollabAuditTimeline.vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
 const doc = ref<CollabDoc | null>(null)
 const loading = ref(true)
+const auditVisible = ref(false)
 const error = ref<string | null>(null)
 const syncing = ref(false)
 const authStore = useAuthStore()
@@ -107,4 +120,20 @@ onMounted(load)
 .collab-editor-view__main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .collab-editor-view__loading, .collab-editor-view__error { padding: 24px; }
 .collab-editor-view__error { color: var(--td-error-color-7); }
+.collab-editor-view__audit-toggle {
+  margin-top: 8px;
+  padding: 6px 12px;
+  background: transparent;
+  color: var(--td-brand-color-7);
+  border: 1px solid var(--td-brand-color-7);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.collab-editor-view__audit-toggle:hover { background: var(--td-brand-color-1); }
+.collab-editor-view__audit-wrap {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--td-component-stroke);
+}
 </style>

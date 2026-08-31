@@ -17,11 +17,31 @@ import {
   addTable as engineAddTable,
   getSlideNotes as engineGetSlideNotes,
   setSlideNotes as engineSetSlideNotes,
+  getSlideComments as engineGetSlideComments,
+  addSlideComment as engineAddSlideComment,
+  deleteSlideComment as engineDeleteSlideComment,
+  addChart as engineAddChart,
+  getSlideAnimations as engineGetSlideAnimations,
+  setSlideAnimations as engineSetSlideAnimations,
+  listMasterParts as engineListMasterParts,
+  parseMasterPart as engineParseMasterPart,
+  applyThemeToArchive as engineApplyThemeToArchive,
+  remapDeckColors as engineRemapDeckColors,
+  shouldOfferBuiltinLayouts as engineShouldOfferBuiltinLayouts,
+  builtinLayoutInfos as engineBuiltinLayoutInfos,
+  ensureBuiltinLayout as engineEnsureBuiltinLayout,
+  BUILTIN_LAYOUTS,
   type OpenedPptx,
   type Slide,
   type TextElement,
   type PictureElement,
   type TableElement,
+  type NewChartKind,
+  type ThemeSpec as EngineThemeSpec,
+  type SlideLayoutInfo as EngineSlideLayoutInfo,
+  type SlideSize as EngineSlideSize,
+  type MasterPartInfo as EngineMasterPartInfo,
+  type BuiltinLayoutDef,
 } from '../engines/pptx-engine/index'
 
 export interface PptxShape {
@@ -403,4 +423,328 @@ export function setSlideNotesOnDeck(
   } catch {
     return false
   }
+}
+
+// ----------------------------------------------------------------------------
+// v0.7.32 — Slide comments (OOXML <p:cmLst>) — file-level review comments
+// that survive a round-trip through PowerPoint.
+// ----------------------------------------------------------------------------
+
+export interface SlideCommentRecord {
+  /** OOXML author id (per ppt/commentAuthors.xml). */
+  authorId: number
+  /** Display name shown in PowerPoint. */
+  author: string
+  initials: string
+  /** 1-based per-author comment number. */
+  idx: number
+  /** Comment body text. */
+  text: string
+  /** ISO timestamp (PowerPoint stores it as the dt attribute). */
+  date: string
+}
+
+/** Return the file-level comments for a slide (OOXML <p:cmLst>). */
+export function getSlideCommentsOnDeck(
+  deck: PptxShapeDeck,
+  slideIndex: number,
+): SlideCommentRecord[] {
+  if (!deck.opened) return []
+  const slide = deck.opened.deck.slides[slideIndex]
+  if (!slide) return []
+  const raw = engineGetSlideComments(deck.opened.archive, slide.path)
+  return raw.map((c) => ({
+    authorId: c.authorId,
+    author: c.author,
+    initials: c.initials,
+    idx: c.idx,
+    text: c.text,
+    date: c.dt,
+  }))
+}
+
+/** Add a new file-level comment to a slide. Returns the new comment, or
+ *  null on failure / engine-handle-missing. */
+export function addSlideCommentOnDeck(
+  deck: PptxShapeDeck,
+  slideIndex: number,
+  opts: { author: string; initials?: string; text: string },
+): SlideCommentRecord | null {
+  if (!deck.opened) return null
+  if (!opts.text.trim()) return null
+  const slide = deck.opened.deck.slides[slideIndex]
+  if (!slide) return null
+  try {
+    const added = engineAddSlideComment(deck.opened, slideIndex, opts)
+    if (!added) return null
+    return {
+      authorId: added.authorId,
+      author: added.author,
+      initials: added.initials,
+      idx: added.idx,
+      text: added.text,
+      date: added.dt,
+    }
+  } catch {
+    return null
+  }
+}
+
+/** Delete a file-level comment by (authorId, idx). Returns true on success. */
+export function deleteSlideCommentOnDeck(
+  deck: PptxShapeDeck,
+  slideIndex: number,
+  ref: { authorId: number; idx: number },
+): boolean {
+  if (!deck.opened) return false
+  const slide = deck.opened.deck.slides[slideIndex]
+  if (!slide) return false
+  try {
+    return engineDeleteSlideComment(deck.opened, slideIndex, ref)
+  } catch {
+    return false
+  }
+}
+
+// ----------------------------------------------------------------------------
+// v0.7.32 — PPT charts (engine.addChart). The engine handles part writes,
+// content-type overrides, slide rels, and graphicFrame emission.
+// ----------------------------------------------------------------------------
+
+export interface NewChartOptions {
+  kind: NewChartKind
+  title?: string
+  categories: string[]
+  series: Array<{ name: string; values: number[] }>
+  /** Top-left + size in EMU. */
+  offset: { x: number; y: number; cx: number; cy: number }
+  legendPos?: 'b' | 't' | 'r' | 'l' | 'none'
+  dataLabels?: boolean
+  gridlines?: boolean
+  catAxisTitle?: string
+  valAxisTitle?: string
+}
+
+/** Insert a chart into the given slide. Returns the new shape id (matches
+ *  the engine's elementId) so the caller can track selection. */
+export function addChartToSlide(
+  deck: PptxShapeDeck,
+  slideIndex: number,
+  opts: NewChartOptions,
+): string | null {
+  if (!deck.opened) return null
+  if (!opts.categories.length || !opts.series.length) return null
+  const out = engineAddChart(deck.opened, slideIndex, opts)
+  if (!out) return null
+  const slide = deck.opened.deck.slides[slideIndex]
+  if (!slide) return null
+  if (deck.slides[slideIndex]) {
+    deck.slides[slideIndex].shapes.push({
+      id: out.elementId,
+      type: 'rect',
+      x: opts.offset.x,
+      y: opts.offset.y,
+      w: opts.offset.cx,
+      h: opts.offset.cy,
+      fill: '#ffffff',
+      stroke: '#7d8590',
+      text: opts.title || `${opts.kind} chart`,
+      spIndex: slide.elements.length - 1,
+      sourceType: 'graphicFrame',
+      preset: 'chart',
+    })
+  }
+  return out.elementId
+}
+
+// ----------------------------------------------------------------------------
+// v0.7.32 — PPT slide animations (entrance / emphasis / exit effects).
+// ----------------------------------------------------------------------------
+
+export type AnimEffectKind =
+  | 'fade' | 'flyIn' | 'zoom' | 'spin' | 'bounce' | 'appear'
+  | 'disappear' | 'pulse' | 'colorPulse' | 'teeter' | 'growShrink'
+
+export type AnimTrigger = 'onClick' | 'withPrevious' | 'afterPrevious'
+
+export interface SlideAnimationRecord {
+  spId: number
+  effect: AnimEffectKind
+  trigger: AnimTrigger
+  durationMs: number
+  delayMs: number
+}
+
+const EFFECT_TO_ENGINE: Record<string, string> = {
+  fade: 'fade',
+  flyIn: 'flyIn',
+  zoom: 'zoom',
+  spin: 'spin',
+  bounce: 'bounce',
+  appear: 'appear',
+  disappear: 'disappear',
+  pulse: 'pulse',
+  colorPulse: 'colorPulse',
+  teeter: 'teeter',
+  growShrink: 'growShrink',
+}
+
+/** Read the animations currently set on a slide. */
+export function getSlideAnimationsOnDeck(
+  deck: PptxShapeDeck,
+  slideIndex: number,
+): SlideAnimationRecord[] {
+  if (!deck.opened) return []
+  const slide = deck.opened.deck.slides[slideIndex]
+  if (!slide) return []
+  const raw = engineGetSlideAnimations(slide)
+  return raw
+    .filter((a) => typeof (a as any).spid === 'number')
+    .map((a) => {
+      const effectRaw = ((a as any).effect ?? 'appear') as string
+      const triggerRaw = ((a as any).trigger ?? 'onClick') as string
+      return {
+        spId: (a as any).spid as number,
+        effect: (EFFECT_TO_ENGINE[effectRaw] ?? effectRaw) as AnimEffectKind,
+        trigger: (triggerRaw === 'withPrev' ? 'withPrevious'
+                : triggerRaw === 'afterPrev' ? 'afterPrevious'
+                : 'onClick') as AnimTrigger,
+        durationMs: (a as any).durationMs ?? 1000,
+        delayMs: (a as any).delayMs ?? 0,
+      }
+    })
+}
+
+/** Replace the animation list on a slide. Returns true on success. */
+export function setSlideAnimationsOnDeck(
+  deck: PptxShapeDeck,
+  slideIndex: number,
+  anims: SlideAnimationRecord[],
+): boolean {
+  if (!deck.opened) return false
+  const slide = deck.opened.deck.slides[slideIndex]
+  if (!slide) return false
+  const engineAnims = anims.map((a) => ({
+    spid: a.spId,
+    effect: a.effect,
+    trigger: a.trigger === 'withPrevious' ? 'withPrev'
+            : a.trigger === 'afterPrevious' ? 'afterPrev'
+            : 'onClick',
+    durationMs: a.durationMs,
+    delayMs: a.delayMs,
+    paragraph: undefined as number | undefined,
+    autoRev: undefined as boolean | undefined,
+    nodeIdx: 0,
+  }))
+  try {
+    engineSetSlideAnimations(slide, engineAnims as unknown as any)
+    return true
+  } catch {
+    return false
+  }
+}
+
+// ----------------------------------------------------------------------------
+// v0.7.32 — PPT master / theme / layouts
+// ----------------------------------------------------------------------------
+
+export interface MasterPartInfo {
+  partPath: string
+  name: string
+  kind: 'master' | 'layout'
+}
+
+/** List the slide masters + layouts visible in the deck (name + part path). */
+export function listMasterPartsOnDeck(deck: PptxShapeDeck): MasterPartInfo[] {
+  if (!deck.opened) return []
+  const raw = engineListMasterParts(deck.opened.archive) as EngineMasterPartInfo[]
+  return raw.map((m) => ({
+    partPath: m.partPath,
+    name: m.name,
+    kind: m.kind,
+  }))
+}
+
+/** Parse one master part into a Slide model. */
+export function parseMasterOnDeck(
+  deck: PptxShapeDeck,
+  partPath: string,
+): { partPath: string; layoutNames: string[] } | null {
+  if (!deck.opened) return null
+  const slide = engineParseMasterPart(deck.opened.archive, partPath)
+  if (!slide) return null
+  return { partPath, layoutNames: (slide as any).layoutNames ?? [] }
+}
+
+/** Replace theme colors + fonts in every theme part. */
+export function applyThemeToDeck(deck: PptxShapeDeck, spec: EngineThemeSpec): number {
+  if (!deck.opened) return 0
+  try {
+    return engineApplyThemeToArchive(deck.opened, spec) as number
+  } catch {
+    return 0
+  }
+}
+
+/** Remap explicit srgbClr values across the deck based on a ThemeSpec. */
+export function recolorDeck(deck: PptxShapeDeck, spec: EngineThemeSpec): number {
+  if (!deck.opened) return 0
+  try {
+    return engineRemapDeckColors(deck.opened, spec) as number
+  } catch {
+    return 0
+  }
+}
+
+/** Show the list of available built-in layouts (filtered by slide size +
+ *  existing layout names so the user doesn't see dupes). */
+export function listBuiltinLayouts(
+  sizeW: number,
+  sizeH: number,
+  existingNames: string[],
+): Array<{ name: string; layoutType: string; key: string }> {
+  const set = new Set(existingNames)
+  const infos = engineBuiltinLayoutInfos(
+    { cx: sizeW, cy: sizeH } as EngineSlideSize,
+    set,
+  )
+  return infos.map((i: EngineSlideLayoutInfo) => ({
+    name: i.name,
+    layoutType: i.layoutType,
+    key: (i.path ?? '').replace(/^builtin:/, ''),
+  }))
+}
+
+/** Try to materialize one of the built-in layouts onto the deck. Returns
+ *  the layout name on success, null on failure. */
+export function ensureBuiltinLayout(
+  deck: PptxShapeDeck,
+  sizeW: number,
+  sizeH: number,
+  key: string,
+): string | null {
+  if (!deck.opened) return null
+  try {
+    return engineEnsureBuiltinLayout(
+      deck.opened.archive,
+      { cx: sizeW, cy: sizeH } as EngineSlideSize,
+      key,
+    ) as string | null
+  } catch {
+    return null
+  }
+}
+
+/** The static catalog of built-in layouts shipped with the engine. */
+export function getBuiltinLayoutCatalog(): BuiltinLayoutDef[] {
+  return BUILTIN_LAYOUTS
+}
+
+/** Convenience: should the layout gallery show built-in layouts at all?
+ *  Caller passes the deck's existing layouts (those without functional
+ *  placeholders are candidates for being replaced by a built-in). */
+export function shouldOfferBuiltinLayoutsOnDeck(
+  existingLayouts: Array<{ name: string; placeholders: unknown[] }>,
+): boolean {
+  return engineShouldOfferBuiltinLayouts(existingLayouts)
 }
