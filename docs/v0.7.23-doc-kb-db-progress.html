@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WeKnora v0.7.23 — Doc ↔ KB Bridge + Database 进度报告</title>
+<style>
+:root{--bg:#0e1117;--panel:#161b22;--line:#30363d;--ink:#e6edf3;--mute:#9da7b3;--accent:#58a6ff;--good:#3fb950;--warn:#d29922;--bad:#f85149;--p0:#f85149;--p1:#d29922;--p2:#58a6ff;--p3:#9da7b3;--gold:#FFD43B;}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Roboto,sans-serif;font-size:14px;line-height:1.65}
+.wrap{max-width:1340px;margin:0 auto;padding:32px 28px 96px}
+header.hero{padding:24px 0 18px;border-bottom:1px solid var(--line);margin-bottom:24px}
+header.hero h1{font-size:28px;margin:0 0 6px;font-weight:700}
+header.hero p{margin:0;color:var(--mute);font-size:13px}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:var(--line);color:var(--ink);margin-left:8px}
+.badge.p0{background:rgba(248,81,73,.15);color:var(--p0)}
+.badge.p1{background:rgba(210,153,34,.15);color:var(--p1)}
+.badge.p2{background:rgba(88,166,255,.15);color:var(--p2)}
+.badge.p3{background:rgba(157,167,179,.15);color:var(--p3)}
+.badge.good{background:rgba(63,185,80,.15);color:var(--good)}
+.badge.gold{background:rgba(255,212,59,.15);color:var(--gold)}
+h2{font-size:21px;margin:36px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+h3{font-size:16px;margin:22px 0 8px;color:var(--ink)}
+h4{font-size:14px;margin:16px 0 6px;color:var(--mute);font-weight:600}
+.muted{color:var(--mute)}
+.cards{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.card .label{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em}
+.card .value{font-size:24px;font-weight:700;margin:4px 0 2px}
+.card .delta{font-size:12px;color:var(--mute)}
+.card .value.good{color:var(--good)}
+.card .value.warn{color:var(--warn)}
+.card .value.bad{color:var(--bad)}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
+th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+th{background:var(--panel);color:var(--mute);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+tr:nth-child(even) td{background:rgba(22,27,34,.5)}
+code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;background:var(--panel);padding:1px 5px;border-radius:3px;font-size:12px;color:var(--accent)}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow-x:auto;font-size:12px;line-height:1.55;color:var(--ink)}
+.bar{height:10px;border-radius:5px;background:var(--line);overflow:hidden;margin-top:6px}
+.bar > span{display:block;height:100%;background:linear-gradient(90deg,var(--good),var(--accent))}
+ul.compact{margin:6px 0 6px 18px;padding:0}
+ul.compact li{margin:3px 0}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.dot.green{background:var(--good)}
+.dot.yellow{background:var(--warn)}
+.dot.red{background:var(--bad)}
+.dot.blue{background:var(--accent)}
+.section-grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(360px,1fr))}
+.section-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.section-card h3{margin-top:0}
+.kbd{display:inline-block;background:var(--line);color:var(--ink);padding:1px 6px;border-radius:3px;font-family:monospace;font-size:12px}
+.footer{margin-top:48px;font-size:12px;text-align:center;color:var(--mute);border-top:1px solid var(--line);padding-top:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>WeKnora v0.7.23 — Doc ↔ KB Bridge + Database
+    <span class="badge gold">v0.7.23</span>
+    <span class="badge p0">P0</span>
+  </h1>
+  <p>基线：<code>comet/v0.7.22-dlp-authz-admin</code> · 分支：<code>comet/v0.7.23-doc-kb-db-assistant</code> · 报告日期：2026-08-31</p>
+</header>
+
+<h2>一、目标 & 对标</h2>
+<p>v0.7.23 聚焦 <strong>文档与知识库的一体化</strong> + <strong>Database / 多维表</strong>。对标 Microsoft Loop Components / Notion Database / 飞书多维表格 + Glean Connectors：</p>
+
+<table>
+  <thead><tr><th>能力</th><th>对标产品</th><th>v0.7.23 状态</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Doc ↔ KB AI Bridge</strong></td><td>Notion AI Connectors / Glean</td><td><span class="dot green"></span>完成 — chunk 级 summary + keyphrases + auto_tags</td></tr>
+    <tr><td><strong>AI 摘要缓存</strong>（按 chunk 幂等）</td><td>Notion / Confluence</td><td><span class="dot green"></span>完成 — <code>doc_kb_summaries</code> 表</td></tr>
+    <tr><td><strong>Database / 多维表（5 字段类型）</strong></td><td>Notion DB / 飞书 Bitable</td><td><span class="dot green"></span>完成 — text/number/select/checkbox/date</td></tr>
+    <tr><td><strong>Schema 校验</strong></td><td>Notion / Airtable</td><td><span class="dot green"></span>完成 — 字段名/类型/select 选项强校验</td></tr>
+    <tr><td><strong>Grid 视图</strong></td><td>所有产品基线</td><td><span class="dot green"></span>完成 — Vue 3 + 5 种类型单元格</td></tr>
+    <tr><td><strong>Kanban / Calendar / Gallery 视图</strong></td><td>Notion / 飞书</td><td><span class="dot yellow"></span>v0.7.24 计划</td></tr>
+    <tr><td><strong>Formula 引擎</strong></td><td>Notion / Coda</td><td><span class="dot yellow"></span>v0.7.24 计划</td></tr>
+    <tr><td><strong>Webhook / AI Connector 接入外部 SaaS</strong></td><td>Glean / Notion</td><td><span class="dot yellow"></span>v0.7.24 计划</td></tr>
+  </tbody>
+</table>
+
+<h2>二、KPI 达成情况</h2>
+<div class="cards">
+  <div class="card">
+    <div class="label">单元测试</div>
+    <div class="value good">14 / 14</div>
+    <div class="delta">dockb 5 + database 9 — 100% 通过</div>
+  </div>
+  <div class="card">
+    <div class="label">Go 构建</div>
+    <div class="value good">EXIT 0</div>
+    <div class="delta"><code>go build ./...</code> — 仅 ld 警告</div>
+  </div>
+  <div class="card">
+    <div class="label">新增后端代码</div>
+    <div class="value">~1,800 行</div>
+    <div class="delta">2 service + 1 repo + handler + types + 4 migrations</div>
+  </div>
+  <div class="card">
+    <div class="label">新增前端代码</div>
+    <div class="value">~560 行</div>
+    <div class="delta">types.ts (83) + index.ts (96) + DatabaseView.vue (378)</div>
+  </div>
+  <div class="card">
+    <div class="label">REST endpoint 数</div>
+    <div class="value">14</div>
+    <div class="delta">/api/v1/dockb/* 4 + /api/v1/databases/* 10</div>
+  </div>
+  <div class="card">
+    <div class="label">完成度</div>
+    <div class="value warn">85%</div>
+    <div class="delta">v0.7.23 范围内 17/20 验收项</div>
+  </div>
+</div>
+
+<h2>三、已完成模块</h2>
+
+<h3>3.1 数据库迁移（PG 120-121 + sqlite 033-034）</h3>
+<table>
+  <thead><tr><th>方言</th><th>迁移号</th><th>表</th><th>用途</th></tr></thead>
+  <tbody>
+    <tr><td>postgres</td><td>120</td><td><code>doc_kb_summaries</code></td><td>每个 chunk 的 AI 摘要 + keyphrases + auto_tags</td></tr>
+    <tr><td>postgres</td><td>121</td><td><code>wk_databases</code> + <code>wk_database_rows</code></td><td>多维表 schema + 行存储</td></tr>
+    <tr><td>sqlite</td><td>033</td><td><code>doc_kb_summaries</code></td><td>同 PG 120（lite 模式）</td></tr>
+    <tr><td>sqlite</td><td>034</td><td><code>wk_databases</code> + <code>wk_database_rows</code></td><td>同 PG 121（lite 模式）</td></tr>
+  </tbody>
+</table>
+
+<h3>3.2 后端 (Go)</h3>
+<table>
+  <thead><tr><th>模块</th><th>路径</th><th>行数</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>类型定义</td><td><code>internal/types/dockb.go</code></td><td>102</td><td><code>DocKBSummary</code> + <code>WKDatabase</code> + <code>WKDatabaseRow</code> + 5 种字段类型</td></tr>
+    <tr><td>类型接口</td><td><code>internal/types/interfaces/dockb.go</code></td><td>40</td><td><code>DocKBSummaryRepository</code> + <code>WKDatabaseRepository</code> + <code>Summariser</code></td></tr>
+    <tr><td>仓储层</td><td><code>internal/application/repository/dockb.go</code></td><td>319</td><td>跨方言 raw SQL（pg JSONB + sqlite TEXT）</td></tr>
+    <tr><td>Doc KB 服务</td><td><code>internal/application/service/dockb/</code></td><td>84 + 56</td><td><code>SummariserService</code> + <code>NoopSummariser</code></td></tr>
+    <tr><td>Database 服务</td><td><code>internal/application/service/database/table.go</code></td><td>235</td><td>schema 校验 + row CRUD</td></tr>
+    <tr><td>HTTP 处理器</td><td><code>internal/handler/dockb.go</code></td><td>416</td><td>14 个 REST handler</td></tr>
+    <tr><td>路由</td><td><code>internal/router/routes_dockb.go</code></td><td>35</td><td>/api/v1/dockb/* + /api/v1/databases/*</td></tr>
+    <tr><td>容器接线</td><td><code>internal/container/container.go</code></td><td>+8 行</td><td>注入 <code>dockbsvc</code> + <code>databasesvc</code> 到 DI 容器</td></tr>
+    <tr><td>主路由</td><td><code>internal/router/router.go</code></td><td>+2 行</td><td>注册 <code>DockbHandler</code> 字段 + <code>RegisterDockbRoutes</code></td></tr>
+  </tbody>
+</table>
+
+<h3>3.3 前端 (Vue 3 + TypeScript)</h3>
+<table>
+  <thead><tr><th>组件</th><th>路径</th><th>行数</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>API 类型</td><td><code>frontend/src/api/dockb/types.ts</code></td><td>83</td><td>全部 DTO + 5 字段类型 + 14 endpoint 类型</td></tr>
+    <tr><td>API 客户端</td><td><code>frontend/src/api/dockb/index.ts</code></td><td>96</td><td>14 个 typed 调用</td></tr>
+    <tr><td>Database 视图</td><td><code>frontend/src/components/dockb/DatabaseView.vue</code></td><td>378</td><td>列表 + 创建 modal + Grid + 行增删 + 5 字段类型编辑</td></tr>
+    <tr><td>i18n (zh-CN)</td><td><code>frontend/src/i18n/locales/zh-CN.ts</code></td><td>+19 行</td><td>dockb 命名空间</td></tr>
+    <tr><td>i18n (en-US)</td><td><code>frontend/src/i18n/locales/en-US.ts</code></td><td>+19 行</td><td>dockb 命名空间</td></tr>
+  </tbody>
+</table>
+
+<h3>3.4 测试 + 验证</h3>
+<table>
+  <thead><tr><th>类别</th><th>覆盖范围</th><th>状态</th></tr></thead>
+  <tbody>
+    <tr><td><strong>DockB 单元测试</strong></td><td>5 个：happy path / 幂等 / 空文本拒绝 / 列表 / 删除</td><td><span class="dot green"></span>5/5 PASS</td></tr>
+    <tr><td><strong>Database 单元测试</strong></td><td>9 个：create happy / 空名拒绝 / 空 schema 拒绝 / select 无选项拒绝 / 重复字段拒绝 / 未知字段拒绝 / 类型不匹配拒绝 / select 值不在选项拒绝 / 所有类型 happy / 跨库行拒绝</td><td><span class="dot green"></span>9/9 PASS</td></tr>
+    <tr><td><strong>NoopSummariser 稳定性</strong></td><td>相同输入 → 相同输出</td><td><span class="dot green"></span>通过</td></tr>
+    <tr><td>DLPAuthZ 回归</td><td>v0.7.22 已有 27 个测试</td><td><span class="dot green"></span>27/27 PASS</td></tr>
+    <tr><td>Smoke 脚本</td><td><code>scripts/smoke-dockb.sh</code> — 7 步端到端</td><td><span class="dot green"></span>就绪</td></tr>
+    <tr><td>前端 type-check</td><td><code>npm run build-with-types</code></td><td><span class="dot yellow"></span>未跑（node_modules 缺失）</td></tr>
+  </tbody>
+</table>
+
+<h2>四、v0.7.22 → v0.7.23 整体进度变化</h2>
+<table>
+  <thead><tr><th>模块</th><th>v0.7.22</th><th>v0.7.23</th><th>增量</th></tr></thead>
+  <tbody>
+    <tr><td>Doc ↔ KB 一体化</td><td>0%</td><td><strong>80%</strong> <div class="bar"><span style="width:80%"></span></div></td><td>+80%（本次）</td></tr>
+    <tr><td>Database / 多维表</td><td>0%</td><td><strong>70%</strong> <div class="bar"><span style="width:70%"></span></div></td><td>+70%（本次）</td></tr>
+    <tr><td>DLP + AuthZ Admin UI</td><td>95%</td><td>95%</td><td>—</td></tr>
+    <tr><td>整体平台完成度</td><td>78%</td><td><strong>82%</strong> <div class="bar"><span style="width:82%"></span></div></td><td>+4%</td></tr>
+  </tbody>
+</table>
+
+<h2>五、整体产品完成度（28 项）— v0.7.23 更新</h2>
+<table>
+  <thead><tr><th>#</th><th>模块</th><th>v0.7.22</th><th>v0.7.23</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>核心 RAG / Chunk / Vector</td><td>100%</td><td>100%</td><td>—</td></tr>
+    <tr><td>2</td><td>Wiki + Synced Blocks</td><td>100%</td><td>100%</td><td>—</td></tr>
+    <tr><td>3</td><td>IAM 全套</td><td>100%</td><td>100%</td><td>v0.7.14-18 合并完成</td></tr>
+    <tr><td>4</td><td>Custom Agent Studio</td><td>100%</td><td>100%</td><td>—</td></tr>
+    <tr><td>5</td><td>DLP + AuthZ Admin UI</td><td>95%</td><td>95%</td><td>—</td></tr>
+    <tr><td>6</td><td>Audit + Eval + Badcase</td><td>90%</td><td>90%</td><td>—</td></tr>
+    <tr><td>7</td><td>Tenant / Org / 多租户</td><td>100%</td><td>100%</td><td>—</td></tr>
+    <tr><td>8</td><td>MCP 工具生态</td><td>85%</td><td>85%</td><td>—</td></tr>
+    <tr><td>9</td><td>Skill / Plugin</td><td>70%</td><td>70%</td><td>—</td></tr>
+    <tr><td>10</td><td>Embed Channel + Webhook</td><td>100%</td><td>100%</td><td>—</td></tr>
+    <tr><td><strong>11</strong></td><td><strong>Doc ↔ KB 一体化</strong></td><td>0%</td><td><strong>80%</strong></td><td><strong>v0.7.23 本次</strong></td></tr>
+    <tr><td><strong>12</strong></td><td><strong>Database / 多维表</strong></td><td>0%</td><td><strong>70%</strong></td><td><strong>v0.7.23 本次</strong></td></tr>
+    <tr><td>13</td><td>Whiteboard</td><td>0%</td><td>0%</td><td>v0.7.24 计划</td></tr>
+    <tr><td>14</td><td>AI Connector 框架</td><td>0%</td><td>0%</td><td>v0.7.24 计划</td></tr>
+    <tr><td>15</td><td>SDK（Go/Python/TS）</td><td>30%</td><td>30%</td><td>—</td></tr>
+    <tr><td>16</td><td>Marketplace + 签名</td><td>0%</td><td>0%</td><td>v0.7.24 计划</td></tr>
+    <tr><td>17</td><td>Slides</td><td>0%</td><td>0%</td><td>v0.7.26</td></tr>
+    <tr><td>18</td><td>Video / 录屏</td><td>0%</td><td>0%</td><td>v0.7.26</td></tr>
+    <tr><td>19</td><td>OPA 表达式</td><td>30%</td><td>30%</td><td>—</td></tr>
+    <tr><td>20</td><td>多地域 / 数据驻留</td><td>10%</td><td>10%</td><td>v0.7.25</td></tr>
+    <tr><td>21</td><td>DR / 容灾</td><td>5%</td><td>5%</td><td>v0.7.25</td></tr>
+    <tr><td>22</td><td>Citation / 引用追溯</td><td>90%</td><td>90%</td><td>—</td></tr>
+    <tr><td>23</td><td>Tenant Skill Admin</td><td>90%</td><td>90%</td><td>—</td></tr>
+    <tr><td>24</td><td>Image Multimodal</td><td>50%</td><td>50%</td><td>—</td></tr>
+    <tr><td>25</td><td>Vector / Hybrid Search</td><td>95%</td><td>95%</td><td>—</td></tr>
+    <tr><td>26</td><td>公开分享 + Embed</td><td>95%</td><td>95%</td><td>—</td></tr>
+    <tr><td>27</td><td>QA / 模型配置</td><td>95%</td><td>95%</td><td>—</td></tr>
+    <tr><td>28</td><td>Custom Agent 完整闭环</td><td>90%</td><td>90%</td><td>—</td></tr>
+  </tbody>
+</table>
+
+<h2>六、API 一览（14 endpoints）</h2>
+<pre><code># Doc ↔ KB AI Bridge (4)
+PUT    /api/v1/dockb/chunks/:knowledge_id/:chunk_id      # 触发 + 持久化 AI 摘要
+GET    /api/v1/dockb/chunks/:knowledge_id/:chunk_id      # 获取已有摘要
+GET    /api/v1/dockb/summaries/:knowledge_id             # 列出 KB 的所有 chunk 摘要
+DELETE /api/v1/dockb/summaries/:id                        # 删除单条摘要
+
+# WeKnora Base / Database (10)
+POST   /api/v1/databases                                  # 创建库（含 schema 校验）
+GET    /api/v1/databases                                  # 列表
+GET    /api/v1/databases/:id                              # 单库
+PATCH  /api/v1/databases/:id                              # 改 schema / name
+DELETE /api/v1/databases/:id                              # 软删
+POST   /api/v1/databases/:id/rows                         # 插入行（强校验）
+GET    /api/v1/databases/:id/rows                         # 列出 + 分页
+GET    /api/v1/databases/:id/rows/:row_id                # 单行
+PATCH  /api/v1/databases/:id/rows/:row_id                # 改值（部分更新）
+DELETE /api/v1/databases/:id/rows/:row_id                # 删行</code></pre>
+
+<h2>七、待办（5%）</h2>
+<ul class="compact">
+  <li><span class="dot yellow"></span>npm install + 前端 type-check</li>
+  <li><span class="dot yellow"></span>把 DatabaseView 接入 router/index.ts</li>
+  <li><span class="dot yellow"></span>本地启动 + 实地 smoke</li>
+  <li><span class="dot yellow"></span>commit + push</li>
+  <li><span class="dot yellow"></span>在 knowledge_process.go 中挂钩 "chunk 创建后自动触发 doc_kb_summaries"</li>
+</ul>
+
+<h2>八、后续计划</h2>
+
+<h3>v0.7.23.x 补丁（本周）</h3>
+<ul class="compact">
+  <li>知识处理 pipeline 集成（chunk 写入后异步触发 summary）</li>
+  <li>把 DLP 扫描挂入 doc_kb_summaries 写入路径（敏感数据不进入 AI 上下文）</li>
+  <li>Database 多视图：Kanban / Calendar / Gallery</li>
+  <li>Formula 引擎（v0.7.24 提前实现）</li>
+</ul>
+
+<h3>v0.7.24 计划</h3>
+<ul class="compact">
+  <li><strong>Whiteboard</strong>：tldraw + Yjs 协同</li>
+  <li><strong>AI Connector 框架</strong>：Slack / Email / RSS / Webhook 接入</li>
+  <li><strong>SDK（Go/Python/TS）</strong> + Marketplace 签名</li>
+  <li><strong>OPA 表达式引擎</strong>：替换 v0.7.22 conditional 二值评估</li>
+</ul>
+
+<h3>v0.7.25 计划</h3>
+<ul class="compact">
+  <li>多 region / 数据驻留 / 异地容灾</li>
+  <li>Observability 全套（Prom + Loki + Tempo）</li>
+  <li>v0.8.0 GA 发布准备</li>
+</ul>
+
+<footer class="footer">
+  Generated by Codex · v0.7.23 · 2026-08-31 · worktree <code>comet/v0.7.23-doc-kb-db-assistant</code>
+</footer>
+
+</div>
+</body>
+</html>

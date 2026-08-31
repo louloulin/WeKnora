@@ -49,6 +49,8 @@ import (
 	weaviateRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/weaviate"
 	asvc "github.com/Tencent/WeKnora/internal/application/service/agentstudio"
 	authzsvc "github.com/Tencent/WeKnora/internal/application/service/authzadmin"
+	databasesvc "github.com/Tencent/WeKnora/internal/application/service/database"
+	dockbsvc "github.com/Tencent/WeKnora/internal/application/service/dockb"
 	dlpsvc "github.com/Tencent/WeKnora/internal/application/service/dlp"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
@@ -499,6 +501,16 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(dlpsvc.NewDLPScanner))
 	must(container.Provide(authzsvc.NewAuthZAdmin))
 	must(container.Provide(handler.NewDLPAuthZHandler))
+
+	// v0.7.23 — Doc ↔ KB AI Bridge + WeKnora Base / Database.
+	must(container.Provide(repository.NewDockbRepository))
+	must(container.Provide(func(repo interfaces.DocKBSummaryRepository) *dockbsvc.SummariserService {
+		return dockbsvc.NewSummariserService(repo, dockbsvc.NoopSummariser{})
+	}))
+	must(container.Provide(func(repo interfaces.WKDatabaseRepository) *databasesvc.Service {
+		return databasesvc.NewService(repo)
+	}))
+	must(container.Provide(handler.NewDockbHandler))
 
 	must(container.Provide(repository.NewWikiSyncBlockRepository))
 	must(container.Provide(repository.NewWikiSyncBlockRefRepository))
