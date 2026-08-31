@@ -452,6 +452,20 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(func(svc *service.WikiRealtimeService) *handler.WikiRealtimeWSHandler {
 		return handler.NewWikiRealtimeWSHandler(svc)
 	}))
+	// v0.7.20 — wiki sync blocks wiring (Notion Synced Blocks / 飞书同步块 parity).
+	must(container.Provide(repository.NewWikiSyncBlockRepository))
+	must(container.Provide(repository.NewWikiSyncBlockRefRepository))
+	must(container.Provide(func(
+		repo interfaces.WikiSyncBlockRepository,
+		refs interfaces.WikiSyncBlockRefRepository,
+		checker *authz.CompositeChecker,
+	) *service.WikiSyncBlockService {
+		return service.NewWikiSyncBlockService(repo, refs, service.NewWikiSyncBlockAuthzAdapter(checker))
+	}))
+	must(container.Provide(func(svc *service.WikiSyncBlockService) *handler.WikiSyncBlockHandler {
+		return handler.NewWikiSyncBlockHandler(svc)
+	}))
+
 
 	must(container.Provide(repository.NewWikiBatchJobRepository))
 	must(container.Provide(repository.NewWikiBatchAuditRepository))
