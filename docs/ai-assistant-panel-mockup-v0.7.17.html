@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>WeKnora AI Assistant Panel · v0.7.17 设计原型 · 2026-08-31</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root {
+  --bg: #f7f9fc; --panel: #ffffff; --panel-2: #f0f4fa; --text: #1a2438; --muted: #6e7a91;
+  --line: #dfe6f0; --primary: #2d6bf7; --primary-2: #1e4fcc; --accent: #10c2a8;
+  --kb: #6c5ce7; --wiki: #00b894; --amber: #f39c12; --shadow: 0 8px 32px #1a243810;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Inter, sans-serif;
+}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.6 var(--font)}
+a{color:var(--primary);text-decoration:none}
+.layout{display:grid;grid-template-columns:260px 1fr 420px;height:100vh;overflow:hidden}
+.left{background:var(--panel);border-right:1px solid var(--line);padding:20px 18px;overflow-y:auto}
+.left h3{font-size:13px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin:18px 0 8px;font-weight:700}
+.left .nav-item{padding:9px 11px;border-radius:8px;cursor:pointer;color:var(--text);margin-bottom:2px;font-size:14px}
+.left .nav-item:hover{background:var(--panel-2)}
+.left .nav-item.active{background:var(--primary);color:#fff}
+.center{display:flex;flex-direction:column;overflow:hidden}
+.center .topbar{height:56px;border-bottom:1px solid var(--line);background:var(--panel);display:flex;align-items:center;padding:0 24px;gap:14px}
+.center .topbar .crumbs{color:var(--muted);font-size:13px}
+.center .topbar .crumbs a{color:var(--text)}
+.center .topbar .spacer{flex:1}
+.center .topbar button{padding:7px 13px;border-radius:8px;border:1px solid var(--line);background:var(--panel);cursor:pointer;font-size:13px}
+.center .topbar button.primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+.center .editor{flex:1;padding:32px 56px;overflow-y:auto}
+.center .editor h1{font-size:30px;margin:0 0 12px}
+.center .editor .meta{color:var(--muted);font-size:13px;margin-bottom:24px}
+.center .editor p{margin:0 0 16px;font-size:15px;line-height:1.8}
+.right{background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;overflow:hidden}
+.right .assistant-header{padding:18px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.right .assistant-header .logo{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--primary),var(--accent));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700}
+.right .assistant-header .title{font-weight:700;font-size:15px}
+.right .assistant-header .subtitle{font-size:12px;color:var(--muted)}
+.right .assistant-header .spacer{flex:1}
+.right .assistant-header button{padding:6px 12px;border:1px solid var(--line);border-radius:7px;background:transparent;color:var(--muted);cursor:pointer;font-size:12px}
+.right .messages{flex:1;overflow-y:auto;padding:18px 20px;display:flex;flex-direction:column;gap:14px}
+.right .msg{border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.6;max-width:100%;border:1px solid var(--line);background:var(--panel-2)}
+.right .msg.user{background:#fff;border-color:var(--primary);align-self:flex-end;max-width:85%}
+.right .msg.assistant{background:var(--panel-2)}
+.right .msg.assistant .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;font-weight:700}
+.right .msg .citations{margin-top:12px;display:flex;flex-direction:column;gap:6px}
+.right .msg .citation{padding:8px 11px;background:#fff;border-radius:8px;border:1px solid var(--line);cursor:pointer;font-size:13px;display:flex;gap:10px;align-items:start}
+.right .msg .citation:hover{border-color:var(--primary);background:#eef4ff}
+.right .msg .citation .kind{flex-shrink:0;padding:2px 8px;border-radius:5px;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.right .msg .citation .kind.kb{background:#e5e0fb;color:var(--kb)}
+.right .msg .citation .kind.wiki{background:#d6f4eb;color:var(--wiki)}
+.right .msg .citation .body{flex:1}
+.right .msg .citation .body .title{font-weight:600;margin-bottom:2px}
+.right .msg .citation .body .snippet{color:var(--muted);font-size:12px;line-height:1.5}
+.right .composer{padding:14px 18px;border-top:1px solid var(--line);background:var(--panel)}
+.right .composer .input{display:flex;align-items:flex-end;border:1px solid var(--line);border-radius:10px;padding:8px;background:#fff;gap:8px}
+.right .composer textarea{flex:1;border:none;outline:none;resize:none;font:inherit;min-height:36px;max-height:140px;background:transparent;color:var(--text)}
+.right .composer button{padding:8px 14px;border-radius:8px;border:none;background:var(--primary);color:#fff;font-weight:600;cursor:pointer;font-size:13px}
+.right .composer .hints{font-size:11px;color:var(--muted);margin-top:8px;display:flex;gap:14px;flex-wrap:wrap}
+.right .composer .hint{padding:3px 9px;background:var(--panel-2);border-radius:99px;cursor:pointer}
+.context-strip{padding:10px 18px;border-top:1px solid var(--line);background:var(--panel-2);display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted);overflow-x:auto}
+.context-strip .pill{padding:3px 10px;background:#fff;border:1px solid var(--line);border-radius:99px;color:var(--text);font-size:12px;white-space:nowrap}
+.tag{display:inline-block;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:700;margin-right:6px}
+.tag.scope{background:#fff7e6;color:var(--amber)}
+.tag.fresh{background:#e6fff7;color:var(--accent)}
+.notice{padding:10px 14px;background:#eef4ff;border:1px solid #cdd9f5;border-radius:8px;margin:0 18px 14px;font-size:12px;color:var(--primary-2)}
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- 左：导航 -->
+  <div class="left">
+    <h3>知识库</h3>
+    <div class="nav-item">📚 产品文档库</div>
+    <div class="nav-item">📚 工程标准库</div>
+    <div class="nav-item active">📚 Wiki 知识库</div>
+
+    <h3>当前知识库</h3>
+    <div class="nav-item">📄 首页</div>
+    <div class="nav-item">📁 产品手册</div>
+    <div class="nav-item">📁 部署运维</div>
+    <div class="nav-item">📁 安全合规</div>
+    <div class="nav-item">📁 API 参考</div>
+
+    <h3>工具</h3>
+    <div class="nav-item">🕘 最近访问</div>
+    <div class="nav-item">⭐ 收藏</div>
+    <div class="nav-item">🗑 回收站</div>
+
+    <h3>v0.7.17 设计说明</h3>
+    <div class="nav-item" style="font-size:13px;color:var(--muted);cursor:default">
+      AI Assistant 面板位于右侧栏，可手动收起。面板固定查询"当前 Wiki 知识库"，可手动切到其他 KB。
+    </div>
+  </div>
+
+  <!-- 中：Wiki 编辑器 -->
+  <div class="center">
+    <div class="topbar">
+      <div class="crumbs"><a>Wiki 知识库</a> / <a>部署运维</a> / <span>Kubernetes 部署指南</span></div>
+      <div class="spacer"></div>
+      <button>历史</button>
+      <button>分享</button>
+      <button>导出</button>
+      <button class="primary">保存</button>
+    </div>
+    <div class="editor">
+      <h1>Kubernetes 部署指南</h1>
+      <div class="meta">最近更新 2026-08-29 by <b>王晓</b> · 关联 KB：工程标准库 / Helm Chart 参考</div>
+
+      <p>本文档描述 WeKnora 在生产环境的 Kubernetes 部署流程，包含 Helm Chart 参数说明、持久化存储配置、HPA 扩缩容策略以及升级回滚步骤。</p>
+
+      <h2>1. 前提条件</h2>
+      <p>部署前需要准备：</p>
+      <ul>
+        <li>Kubernetes 1.28+ 集群（支持 PDB 与 PodDisruptionBudget v1）</li>
+        <li>Helm 3.13+ 与 kubectl 1.28+</li>
+        <li>已配置的 PostgreSQL 15 / Redis 7 / Qdrant 向量库</li>
+        <li>对象存储（MinIO 或 S3 兼容）</li>
+      </ul>
+
+      <h2>2. Helm 安装</h2>
+      <p>标准部署使用 Helm Chart <code>weknora-stack-1.2.0</code>。其中数据库、缓存、向量库均通过外部依赖提供，避免 StatefulSet 重建时的数据风险。</p>
+
+      <h2>3. 持久化存储</h2>
+      <p>上传的原始文档和解析后的 chunk 通过 <code>weknora-uploads</code> PVC 持久化，容量建议 ≥ 500 GiB（生产环境 ≤ 100 万文档）。</p>
+    </div>
+  </div>
+
+  <!-- 右：AI Assistant 面板 -->
+  <div class="right">
+    <div class="assistant-header">
+      <div class="logo">A</div>
+      <div>
+        <div class="title">AI 助手 · Beta</div>
+        <div class="subtitle">基于当前 Wiki 知识库 + 工程标准库</div>
+      </div>
+      <div class="spacer"></div>
+      <button>⤓ 历史</button>
+      <button>⌫ 清空</button>
+    </div>
+
+    <div class="context-strip">
+      <span>检索范围：</span>
+      <span class="pill">Wiki · 部署运维</span>
+      <span class="pill">KB · 工程标准库</span>
+      <span class="pill">+ 切换</span>
+    </div>
+
+    <div class="notice">
+      <span class="tag scope">范围</span>
+      <span class="tag fresh">实时</span>
+      所有回答引用的文档片段均可点击展开验证。流式输出（v0.7.17 SSE）将在打字过程中逐步渲染引文。
+    </div>
+
+    <div class="messages">
+
+      <div class="msg user">
+        WeKnora 在 K8s 里跑的时候，文档上传到 PVC 还是对象存储更好？
+      </div>
+
+      <div class="msg assistant">
+        <div class="label">AI 助手 · 引用 3 篇</div>
+        根据知识库内容，<b>混合方案</b>是推荐做法：
+        <ul>
+          <li>原始上传文件 → 对象存储（MinIO / S3），便于跨节点访问 + 生命周期管理</li>
+          <li>解析后的 chunk + 向量 → PostgreSQL + Qdrant，向量化后无状态</li>
+          <li>运行期临时文件 → emptyDir 即可</li>
+        </ul>
+
+        <div class="citations">
+          <div class="citation">
+            <span class="kind kb">KB</span>
+            <div class="body">
+              <div class="title">Helm Chart 存储配置 · 工程标准库</div>
+              <div class="snippet">weknora-uploads PVC 容量 ≥ 500 GiB；解析后 chunk 持久化到 PostgreSQL 的 <code>knowledge_chunks</code> 表，原始文件上传到 MinIO 桶…</div>
+            </div>
+          </div>
+          <div class="citation">
+            <span class="kind wiki">WIKI</span>
+            <div class="body">
+              <div class="title">持久化存储 · Kubernetes 部署指南</div>
+              <div class="snippet">上传的原始文档和解析后的 chunk 通过 <code>weknora-uploads</code> PVC 持久化…</div>
+            </div>
+          </div>
+          <div class="citation">
+            <span class="kind kb">KB</span>
+            <div class="body">
+              <div class="title">存储选型对比 · 工程标准库</div>
+              <div class="snippet">PVC 适用单 Pod 重启保留数据；对象存储适用多副本共享上传文件。WeKnora 采用 hybrid：uploads PVC + 解析后向量入 Qdrant…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="msg user">
+        HPA 怎么配？
+      </div>
+
+      <div class="msg assistant">
+        <div class="label">AI 助手 · 引用 2 篇</div>
+        WeKnora API 服务的 HPA 建议：
+        <ul>
+          <li><code>minReplicas=3</code>，<code>maxReplicas=20</code></li>
+          <li>CPU 利用率阈值 65%</li>
+          <li>内存阈值 75%</li>
+          <li>扩缩容冷却窗口：扩容 60s，缩容 300s</li>
+        </ul>
+        <div class="citations">
+          <div class="citation">
+            <span class="kind wiki">WIKI</span>
+            <div class="body">
+              <div class="title">HPA 配置 · 部署运维</div>
+              <div class="snippet">HPA 最小副本 3，最大 20，CPU 利用率 65%…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="composer">
+      <div class="input">
+        <textarea placeholder="向 AI 助手提问（Shift+Enter 换行，Enter 发送）"></textarea>
+        <button>发送</button>
+      </div>
+      <div class="hints">
+        <span class="hint">📚 引用了 5 篇</span>
+        <span class="hint">⏱ 1.4s</span>
+        <span class="hint">🤖 weknora-retrieval-v0.7.17</span>
+        <span class="hint" style="margin-left:auto">@ 提及 · / 命令</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
