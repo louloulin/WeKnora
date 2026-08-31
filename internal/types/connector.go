@@ -13,6 +13,8 @@ const (
 	ConnectorWebhook    ConnectorKind = "webhook"
 	ConnectorRSS        ConnectorKind = "rss"
 	ConnectorConfluence ConnectorKind = "confluence"
+	ConnectorM365       ConnectorKind = "m365"
+	ConnectorGoogle     ConnectorKind = "google_workspace"
 	ConnectorNotion     ConnectorKind = "notion"
 	ConnectorJira       ConnectorKind = "jira"
 )
@@ -27,6 +29,8 @@ var AllConnectorKinds = []ConnectorKind{
 	ConnectorConfluence,
 	ConnectorNotion,
 	ConnectorJira,
+	ConnectorM365,
+	ConnectorGoogle,
 }
 
 // IngestConnector is a tenant-scoped registration of one external

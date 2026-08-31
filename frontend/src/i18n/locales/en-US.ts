@@ -2896,6 +2896,8 @@ export default {
         confluence: 'Confluence',
         notion: 'Notion',
         jira: 'Jira'
+        m365: 'Microsoft 365',
+        google_workspace: 'Google Workspace'
       }
     },
     dlp: {
@@ -6723,6 +6725,8 @@ export default {
         confluence: 'Confluence',
         notion: 'Notion',
         jira: 'Jira'
+        m365: 'Microsoft 365',
+        google_workspace: 'Google Workspace'
       },
       feishu: 'Feishu',
       lark: 'Lark',

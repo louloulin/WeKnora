@@ -745,6 +745,8 @@ export default {
         confluence: 'Confluence',
         notion: 'Notion',
         jira: 'Jira'
+        m365: 'Microsoft 365',
+        google_workspace: 'Google Workspace'
       },
       feishu: '飞书',
       lark: 'Lark（飞书国际版）',
@@ -4475,6 +4477,8 @@ export default {
         confluence: 'Confluence',
         notion: 'Notion',
         jira: 'Jira'
+        m365: 'Microsoft 365',
+        google_workspace: 'Google Workspace'
       }
     },
     dlp: {

@@ -343,3 +343,271 @@ func TestKnowledgeIngester_RejectsNilKnowledgeService(t *testing.T) {
 		t.Errorf("err = %v, want %v", err, ErrNoIngester)
 	}
 }
+
+// --- M365 (Build #30 G10) ---
+
+func TestM365Connector_KindAndErrorOnEmptyConfig(t *testing.T) {
+	m := NewM365Connector()
+	if m.Kind() != types.ConnectorM365 {
+		t.Fatalf("kind = %v, want m365", m.Kind())
+	}
+	if _, err := m.Fetch(context.Background(), interfaces.ConnectorRuntimeConfig{}); err == nil {
+		t.Fatal("expected error on empty config (no token)")
+	}
+}
+
+func TestM365Connector_FetchesMail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if !strings.HasPrefix(req.Header.Get("Authorization"), "Bearer ") {
+			t.Errorf("missing bearer token")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"value":[
+			{"id":"msg-1","subject":"Hello","bodyPreview":"Hi there","receivedDateTime":"2026-08-30T12:00:00Z","from":{"emailAddress":{"name":"Alice","address":"alice@contoso.com"}}},
+			{"id":"msg-2","subject":"World","bodyPreview":"Bye","receivedDateTime":"2026-08-30T13:00:00Z","sender":{"emailAddress":{"address":"bob@contoso.com"}}}
+		]}`)
+	}))
+	defer srv.Close()
+	m := &M365Connector{
+		HTTPClient: srv.Client(),
+		GraphBase:  srv.URL,
+	}
+	cfg := interfaces.ConnectorRuntimeConfig{
+		ConfigJSON: `{"access_token":"t-1","resource_kind":"m365_email","user_principal":"alice@contoso.com","top":10}`,
+	}
+	msgs, err := m.Fetch(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("got %d messages, want 2", len(msgs))
+	}
+	if msgs[0].Author != "Alice <alice@contoso.com>" {
+		t.Errorf("msg0 author = %q", msgs[0].Author)
+	}
+	if msgs[1].Author != "bob@contoso.com" {
+		t.Errorf("msg1 author = %q", msgs[1].Author)
+	}
+	if msgs[0].Metadata["source"] != "m365_email" {
+		t.Errorf("msg0 source = %q", msgs[0].Metadata["source"])
+	}
+	if msgs[0].Timestamp.IsZero() {
+		t.Errorf("msg0 timestamp not parsed")
+	}
+}
+
+func TestM365Connector_AuthExpired(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"error":"invalid_token"}`)
+	}))
+	defer srv.Close()
+	m := &M365Connector{HTTPClient: srv.Client(), GraphBase: srv.URL}
+	cfg := interfaces.ConnectorRuntimeConfig{
+		ConfigJSON: `{"access_token":"stale","resource_kind":"m365_email","user_principal":"alice@contoso.com"}`,
+	}
+	_, err := m.Fetch(context.Background(), cfg)
+	if err != ErrM365AuthExpired {
+		t.Fatalf("err = %v, want ErrM365AuthExpired", err)
+	}
+}
+
+func TestM365Connector_UnsupportedResourceKind(t *testing.T) {
+	m := NewM365Connector()
+	cfg := interfaces.ConnectorRuntimeConfig{
+		ConfigJSON: `{"access_token":"t-1","resource_kind":"m365_unknown"}`,
+	}
+	if _, err := m.Fetch(context.Background(), cfg); err == nil {
+		t.Fatal("expected error on unsupported kind")
+	}
+}
+
+// --- Google Workspace (Build #30 G10) ---
+
+func TestGoogleWorkspaceConnector_KindAndErrorOnEmptyConfig(t *testing.T) {
+	g := NewGoogleWorkspaceConnector()
+	if g.Kind() != types.ConnectorGoogle {
+		t.Fatalf("kind = %v, want google_workspace", g.Kind())
+	}
+	if _, err := g.Fetch(context.Background(), interfaces.ConnectorRuntimeConfig{}); err == nil {
+		t.Fatal("expected error on empty config (no token)")
+	}
+}
+
+func TestGoogleWorkspaceConnector_FetchesGmail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if !strings.HasPrefix(req.Header.Get("Authorization"), "Bearer ") {
+			t.Errorf("missing bearer token")
+		}
+		switch {
+		case strings.HasSuffix(req.URL.Path, "/messages"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"messages":[{"id":"m-1"},{"id":"m-2"}]}`)
+		case strings.Contains(req.URL.Path, "/messages/m-1"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{
+				"id":"m-1",
+				"snippet":"Hello world snippet",
+				"internalDate":"1700000000000",
+				"payload":{"headers":[
+					{"name":"Subject","value":"Subject 1"},
+					{"name":"From","value":"alice@example.com"},
+					{"name":"Date","value":"Mon, 30 Aug 2026 12:00:00 GMT"}
+				]}
+			}`)
+		case strings.Contains(req.URL.Path, "/messages/m-2"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, `{"id":"m-2","snippet":"snip 2","payload":{"headers":[]}}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	g := &GoogleWorkspaceConnector{
+		HTTPClient: srv.Client(),
+		GmailBase:  srv.URL,
+	}
+	cfg := interfaces.ConnectorRuntimeConfig{
+		ConfigJSON: `{"resource_kind":"google_email","user_id":"alice@example.com","max_results":10}`,
+	}
+	msgs, err := g.Fetch(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("got %d messages, want 2", len(msgs))
+	}
+	if msgs[0].Title != "Subject 1" {
+		t.Errorf("msg0 title = %q", msgs[0].Title)
+	}
+	if msgs[0].Author != "alice@example.com" {
+		t.Errorf("msg0 author = %q", msgs[0].Author)
+	}
+	if msgs[0].Metadata["source"] != "google_email" {
+		t.Errorf("msg0 source = %q", msgs[0].Metadata["source"])
+	}
+}
+
+func TestGoogleWorkspaceConnector_FetchesCalendar(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"items":[
+			{"id":"e-1","summary":"Standup","description":"Daily sync","htmlLink":"https://cal/e-1","start":{"dateTime":"2026-08-30T09:00:00Z"},"organizer":{"email":"alice@example.com"}}
+		]}`)
+	}))
+	defer srv.Close()
+	g := &GoogleWorkspaceConnector{
+		HTTPClient: srv.Client(),
+		CalBase:    srv.URL,
+	}
+	cfg := interfaces.ConnectorRuntimeConfig{
+		ConfigJSON: `{"resource_kind":"google_meeting","user_id":"primary","max_results":5}`,
+	}
+	msgs, err := g.Fetch(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("got %d events, want 1", len(msgs))
+	}
+	if msgs[0].Title != "Standup" {
+		t.Errorf("event title = %q", msgs[0].Title)
+	}
+	if msgs[0].URL != "https://cal/e-1" {
+		t.Errorf("event url = %q", msgs[0].URL)
+	}
+	if msgs[0].Metadata["source"] != "google_meeting" {
+		t.Errorf("event source = %q", msgs[0].Metadata["source"])
+	}
+}
+
+func TestGoogleWorkspaceConnector_FetchesDrive(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"files":[
+			{"id":"f-1","name":"report.pdf","mimeType":"application/pdf","modifiedTime":"2026-08-30T10:00:00Z","webViewLink":"https://drive/f-1"}
+		]}`)
+	}))
+	defer srv.Close()
+	g := &GoogleWorkspaceConnector{
+		HTTPClient: srv.Client(),
+		DriveBase:  srv.URL,
+	}
+	cfg := interfaces.ConnectorRuntimeConfig{
+		ConfigJSON: `{"resource_kind":"google_drive","max_results":5}`,
+	}
+	msgs, err := g.Fetch(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("fetch: %v", err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("got %d files, want 1", len(msgs))
+	}
+	if msgs[0].Title != "report.pdf" {
+		t.Errorf("file name = %q", msgs[0].Title)
+	}
+	if msgs[0].URL != "https://drive/f-1" {
+		t.Errorf("file url = %q", msgs[0].URL)
+	}
+	if msgs[0].Metadata["source"] != "google_drive" {
+		t.Errorf("file source = %q", msgs[0].Metadata["source"])
+	}
+}
+
+func TestGoogleWorkspaceConnector_AuthExpired(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = io.WriteString(w, `{"error":{"message":"forbidden"}}`)
+	}))
+	defer srv.Close()
+	g := &GoogleWorkspaceConnector{
+		HTTPClient: srv.Client(),
+		GmailBase:  srv.URL,
+	}
+	cfg := interfaces.ConnectorRuntimeConfig{
+		ConfigJSON: `{"resource_kind":"google_email","user_id":"alice@example.com"}`,
+	}
+	_, err := g.Fetch(context.Background(), cfg)
+	if err != ErrGoogleAuthExpired {
+		t.Fatalf("err = %v, want ErrGoogleAuthExpired", err)
+	}
+}
+
+func TestGoogleWorkspaceConnector_RequiresUserIDForGmail(t *testing.T) {
+	g := NewGoogleWorkspaceConnector()
+	cfg := interfaces.ConnectorRuntimeConfig{
+		ConfigJSON: `{"resource_kind":"google_email"}`,
+	}
+	if _, err := g.Fetch(context.Background(), cfg); err == nil {
+		t.Fatal("expected error when user_id missing")
+	}
+}
+
+func TestGoogleWorkspaceConnector_UnsupportedResourceKind(t *testing.T) {
+	g := NewGoogleWorkspaceConnector()
+	cfg := interfaces.ConnectorRuntimeConfig{
+		ConfigJSON: `{"resource_kind":"google_unknown"}`,
+	}
+	if _, err := g.Fetch(context.Background(), cfg); err == nil {
+		t.Fatal("expected error on unsupported kind")
+	}
+}
+
+func TestParseGoogleDate(t *testing.T) {
+	cases := map[string]bool{
+		"2026-08-30T12:00:00Z":       true,
+		"2026-08-30T12:00:00.123Z":   true,
+		"Mon, 30 Aug 2026 12:00:00 GMT": true,
+		"not a date":                 false,
+		"":                           false,
+	}
+	for s, expectValid := range cases {
+		tm := parseGoogleDate(s)
+		if expectValid && tm.IsZero() {
+			t.Errorf("parseGoogleDate(%q) returned zero time, want non-zero", s)
+		}
+		if !expectValid && !tm.IsZero() {
+			t.Errorf("parseGoogleDate(%q) = %v, want zero time", s, tm)
+		}
+	}
+}

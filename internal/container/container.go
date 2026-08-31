@@ -505,6 +505,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		svc.Register(connsvc.NewWebhookConnector())
 		svc.Register(connsvc.NewRSSConnector())
 		svc.Register(connsvc.NewConfluenceConnector())
+		// v0.7.25 Build #30 (G10) — M365 + Google Workspace connectors.
+		svc.Register(connsvc.NewM365Connector())
+		svc.Register(connsvc.NewGoogleWorkspaceConnector())
 		return svc
 	}))
 	must(container.Provide(handler.NewConnectorHandler))
