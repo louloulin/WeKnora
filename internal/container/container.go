@@ -596,10 +596,24 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// (?stream=1, SSE), list conversations, get a single conversation
 	// thread.
 	must(container.Provide(repository.NewAssistantConversationRepository))
-	// Default LLM provider — NoopProvider returns the same placeholder
-	// text v0.7.15 produced. Replace with a real OpenAI / Anthropic /
-	// Doubao provider once those land in v0.7.17.x.
+	// LLM provider — NoopProvider when OPENAI_API_KEY is unset
+	// (dev / test / offline). When the env var is present we spin up
+	// the real OpenAI provider; the API key is loaded lazily here so
+	// tests that override the env mid-run still pick up the change.
 	must(container.Provide(func() llmstream.Provider {
+		if apiKey := os.Getenv("OPENAI_API_KEY"); apiKey != "" {
+			baseURL := os.Getenv("OPENAI_BASE_URL")
+			model := os.Getenv("OPENAI_MODEL")
+			if p, err := llmstream.NewOpenAIProvider(llmstream.OpenAIProviderOptions{
+				APIKey:       apiKey,
+				BaseURL:      baseURL,
+				DefaultModel: model,
+			}); err == nil {
+				return p
+			}
+			// fall through to noop on bad config so the server still
+			// boots and the admin can fix the env without a code change
+		}
 		return llmstream.NoopProvider{}
 	}))
 	must(container.Provide(service.NewAssistantService))
