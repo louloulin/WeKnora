@@ -125,6 +125,7 @@ type RouterParams struct {
 	AuditExportHandler  *handler.AuditExportHandler
 	DatabaseHandler     *handler.DatabaseHandler
 	AutomationHandler   *handler.AutomationHandler
+	KGHandler           *handler.KGHandler
 }
 
 // NewRouter 创建新的路由
@@ -369,6 +370,9 @@ func NewRouter(params RouterParams) *gin.Engine {
 			RegisterDatabaseRoutes(v1, params.DatabaseHandler, rbacGuards)
 		if params.AutomationHandler != nil {
 			params.AutomationHandler.Register(v1)
+		}
+		if params.KGHandler != nil {
+			params.KGHandler.Mount(v1)
 		}
 		}
 
