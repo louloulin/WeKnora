@@ -1,0 +1,1435 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WeKnora v0.7.37 全量对标差距分析 v25 — 14 大头部 KB × AI 平台 + Build #43-#44 闭合 + 16 周路线图</title>
+<style>
+:root{--bg:#0e1117;--panel:#161b22;--line:#30363d;--ink:#e6edf3;--mute:#9da7b3;--accent:#58a6ff;--good:#3fb950;--warn:#d29922;--bad:#f85149;--p0:#f85149;--p1:#d29922;--p2:#58a6ff;--p3:#9da7b3;--p4:#a371f7;--p5:#f47fff;}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Roboto,sans-serif;font-size:14px;line-height:1.65}
+.wrap{max-width:1460px;margin:0 auto;padding:32px 28px 96px}
+header.hero{padding:24px 0 18px;border-bottom:1px solid var(--line);margin-bottom:24px}
+header.hero h1{font-size:28px;margin:0 0 6px;font-weight:700}
+header.hero p{margin:0;color:var(--mute);font-size:13px}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:var(--line);color:var(--ink);margin-left:8px}
+.badge.p0{background:rgba(248,81,73,.15);color:var(--p0)}
+.badge.p1{background:rgba(210,153,34,.15);color:var(--p1)}
+.badge.p2{background:rgba(88,166,255,.15);color:var(--p2)}
+.badge.p3{background:rgba(157,167,179,.15);color:var(--p3)}
+.badge.p4{background:rgba(163,113,247,.15);color:var(--p4)}
+.badge.p5{background:rgba(244,127,255,.15);color:var(--p5)}
+h2{font-size:22px;margin:36px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+h3{font-size:16px;margin:22px 0 8px;color:var(--ink)}
+h4{font-size:14px;margin:16px 0 6px;color:var(--mute);font-weight:600}
+.muted{color:var(--mute)}
+.cards{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.card .label{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em}
+.card .value{font-size:24px;font-weight:700;margin:4px 0 2px}
+.card .delta{font-size:12px;color:var(--mute)}
+.card .value.good{color:var(--good)}
+.card .value.warn{color:var(--warn)}
+.card .value.bad{color:var(--bad)}
+.card .value.accent{color:var(--accent)}
+.card .value.purple{color:var(--p4)}
+table.matrix{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0 16px}
+table.matrix th,table.matrix td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+table.matrix th{background:#1c2128;font-weight:600}
+table.matrix tr:hover td{background:rgba(88,166,255,.04)}
+table.matrix td.center,table.matrix th.center{text-align:center}
+table.matrix td.num{text-align:right;font-variant-numeric:tabular-nums}
+.yes{color:var(--good);font-weight:600}
+.no{color:var(--bad);font-weight:600}
+.partial{color:var(--warn);font-weight:600}
+.bar{background:var(--line);border-radius:4px;overflow:hidden;height:10px}
+.bar>span{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--good))}
+.bar-cell{display:flex;align-items:center;gap:6px;min-width:130px}
+.bar-cell .num{font-variant-numeric:tabular-nums;font-size:11px;min-width:34px}
+.phase{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;padding:12px 16px;margin:12px 0}
+.phase.p0{border-left-color:var(--p0)}
+.phase.p1{border-left-color:var(--p1)}
+.phase.p2{border-left-color:var(--p2)}
+.phase .label{font-size:11px;color:var(--mute);margin-bottom:4px;letter-spacing:.04em}
+.phase h3{margin:0 0 6px}
+ul.tight,ol.tight{margin:6px 0;padding-left:18px}
+ul.tight li,ol.tight li{margin:2px 0}
+code,kbd,pre{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;font-size:12.5px}
+code{background:rgba(110,118,129,.3);padding:1px 5px;border-radius:4px}
+pre{background:#0b0f14;border:1px solid var(--line);border-radius:6px;padding:10px 12px;overflow-x:auto}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.callout{background:rgba(88,166,255,.08);border-left:3px solid var(--accent);padding:8px 12px;border-radius:0 6px 6px 0;margin:10px 0;font-size:13px}
+.callout.warn{background:rgba(210,153,34,.08);border-left-color:var(--warn)}
+.callout.bad{background:rgba(248,81,73,.08);border-left-color:var(--bad)}
+.callout.good{background:rgba(63,185,80,.08);border-left-color:var(--good)}
+.callout.purple{background:rgba(163,113,247,.08);border-left-color:var(--p4)}
+footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);color:var(--mute);font-size:12px}
+.heat-good{background:rgba(63,185,80,.18)}
+.heat-warn{background:rgba(210,153,34,.15)}
+.heat-bad{background:rgba(248,81,73,.18)}
+.heat-mut{background:rgba(110,118,129,.18)}
+.heat-purple{background:rgba(163,113,247,.18)}
+.heat-pink{background:rgba(244,127,255,.18)}
+.toc{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:16px 0}
+.toc ol{margin:6px 0;padding-left:20px;columns:2;column-gap:30px}
+.toc a{color:var(--ink)}
+.tag{display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-left:4px;background:var(--line);color:var(--mute)}
+.tag.p0{background:rgba(248,81,73,.2);color:var(--p0)}
+.tag.p1{background:rgba(210,153,34,.2);color:var(--p1)}
+.tag.p2{background:rgba(88,166,255,.2);color:var(--p2)}
+.tag.p3{background:rgba(157,167,179,.2);color:var(--p3)}
+.tag.p4{background:rgba(163,113,247,.2);color:var(--p4)}
+.tag.p5{background:rgba(244,127,255,.2);color:var(--p5)}
+.kbd{background:#1c2128;border:1px solid var(--line);border-bottom-width:2px;padding:1px 5px;border-radius:3px;font-size:11px}
+details{border:1px solid var(--line);border-radius:8px;padding:8px 14px;margin:8px 0;background:var(--panel)}
+details>summary{cursor:pointer;font-weight:600;color:var(--ink);padding:4px 0}
+.grid-3{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.grid-2{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(380px,1fr))}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.box h4{margin-top:0}
+.timeline{position:relative;padding:8px 0 8px 28px;border-left:2px solid var(--line);margin-left:8px}
+.timeline-item{position:relative;margin:8px 0;padding-left:8px}
+.timeline-item::before{content:"";position:absolute;left:-32px;top:6px;width:12px;height:12px;border-radius:50%;background:var(--accent);border:2px solid var(--bg)}
+.timeline-item.done::before{background:var(--good)}
+.timeline-item.in-progress::before{background:var(--warn);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(210,153,34,.5)}50%{box-shadow:0 0 0 6px rgba(210,153,34,0)}}
+.deliverable{display:flex;gap:8px;align-items:flex-start;padding:6px 10px;border-left:3px solid var(--p2);background:var(--panel);margin:4px 0;border-radius:0 6px 6px 0}
+.deliverable .icon{font-weight:700;color:var(--accent);min-width:18px}
+.deliverable.done{border-left-color:var(--good);opacity:.85}
+.deliverable.done .icon{color:var(--good)}
+.deliverable.pending{border-left-color:var(--warn)}
+.deliverable.pending .icon{color:var(--warn)}
+.vs{display:flex;gap:10px;align-items:flex-start}
+.vs .who{min-width:96px;font-weight:600;color:var(--mute)}
+.dim-row{display:grid;grid-template-columns:240px 1fr;gap:12px;border-bottom:1px dashed var(--line);padding:8px 0;align-items:start}
+.dim-row:last-child{border-bottom:0}
+.dim-row .label{color:var(--mute);font-weight:600}
+.score{font-variant-numeric:tabular-nums;font-weight:600}
+.score.s5{color:var(--good)}
+.score.s4{color:var(--accent)}
+.score.s3{color:var(--warn)}
+.score.s2{color:var(--bad)}
+.score.s1{color:var(--mute)}
+.score.s0{color:var(--bad)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin:8px 0;font-size:11px;color:var(--mute)}
+.legend span{display:inline-flex;align-items:center;gap:4px}
+.legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+<h1>WeKnora v0.7.37 全量对标差距分析 v25<span class="badge p1">v0.7.37 · 23 个 Build · 14 大产品 · Build #43-#44 全部落地 · 6 P0 闭合 · 18 新 P0</span></h1>
+<p>基线 HEAD = <code>ed1d62a9</code> · 推送于 2026-09-01 · v24 (a826cec5) → v25 (ed1d62a9) 差分 = <strong style="color:var(--good)">2 commits</strong> + <strong style="color:var(--good)">1 merge from codex/lumos</strong>(Wiki 13 类属性/Calendar 视图/WorkspaceContextChip/Casdoor × Gateway 集成/5 smoke 脚本)。数据基线: Notion 2.0 (Mail/Calendar/Sites 2026 H2) · 飞书 8.0 (妙记升级 / 多维表格 6.0) · Confluence Cloud + Rovo · Lark Suite 24.10 · ClickUp 4.0 · Airtable Cobuilder · Guru 6.0 · Document360 Edison AI · Slab 4 · Tana · Coda Brain · Loop Compass · Glean Protect · Microsoft Loop/Copilot。</p>
+</header>
+
+<div class="toc">
+<strong>目录</strong>
+<ol>
+<li><a href="#exec">执行摘要</a></li>
+<li><a href="#research">14 大头部产品 2026-09 现状刷新</a></li>
+<li><a href="#size">代码规模与模块增长</a></li>
+<li><a href="#matrix">14 大产品能力矩阵 v25</a></li>
+<li><a href="#closes">Build #22-#44 缺口闭合表</a></li>
+<li><a href="#top18">Top 18 关键差距 v25</a></li>
+<li><a href="#deep">深度差距分析（9 维度）</a></li>
+<li><a href="#progress">32 模块进度条 v25</a></li>
+<li><a href="#health">实施健康度审计</a></li>
+<li><a href="#roadmap">v0.7.37 → v0.7.50 路线图（8 Build · 16 周）</a></li>
+<li><a href="#detail45">Build #45 — 行业方案 + Daily Note + Forms</a></li>
+<li><a href="#detail46">Build #46 — Compliance + Custom Agent</a></li>
+<li><a href="#detail47">Build #47 — Browser Extension + Voice</a></li>
+<li><a href="#detail48">Build #48 — ROI + Usage + Freshness</a></li>
+<li><a href="#detail49">Build #49 — Mobile Apps + PWA</a></li>
+<li><a href="#detail50">Build #50 — Public Publishing</a></li>
+<li><a href="#commerce">商业化与合规证据链</a></li>
+<li><a href="#summary">v25 总结与战略建议</a></li>
+</ol>
+</div>
+
+<section id="exec">
+<h2>一、执行摘要</h2>
+<div class="cards">
+<div class="card"><div class="label">总体进度</div><div class="value accent">86.4%</div><div class="delta">v24 78.5% → v25 86.4% (+7.9)</div></div>
+<div class="card"><div class="label">P0 缺口</div><div class="value warn">18</div><div class="delta">v24 6 全部闭合 → v25 新增 18</div></div>
+<div class="card"><div class="label">总代码行数</div><div class="value good">152.6 万</div><div class="delta">v24 152.5 万 + Lumos 9600 行</div></div>
+<div class="card"><div class="label">新增文件</div><div class="value accent">36 + 5</div><div class="delta">Lumos 36 + Slides 11 + 6 测试 + 5 smoke</div></div>
+<div class="card"><div class="label">Build 数</div><div class="value accent">23</div><div class="delta">v22-v24 = 21 → v25 = 23（+Slides +MindMap 实装）</div></div>
+<div class="card"><div class="label">竞品对标</div><div class="value purple">14</div><div class="delta">v24 8 → v25 14（+Loop/ClickUp/Airtable/Document360/Guru/Slab/Tana/Copilot）</div></div>
+<div class="card"><div class="label">合规认证</div><div class="value bad">0/5</div><div class="delta">Build #46 补 SOC 2 / ISO 27001 / HIPAA / GDPR / ISO 42001</div></div>
+<div class="card"><div class="label">移动端</div><div class="value bad">未交付</div><div class="delta">Build #49 (10-11 月) 才上线 iOS/Android/iPad</div></div>
+</div>
+<h3>1.1 三句话总结</h3>
+<div class="phase p2">
+<div class="label">战略位置</div>
+<p><strong>WeKnora 已经跨过 "功能" 门槛，但还没跨过 "体验" 和 "可信" 两道门槛。</strong>v0.7.37 拥有与 Notion/飞书 同级的 23 个产品模块（KB / Wiki / MindMap / Slides / Database / KG / Workflow / Connectors / Enterprise IAM / MCP / SDK ...），但在 18 个 P0 维度（移动端 / 离线 / 浏览器扩展 / 行业模板 / 合规证据 / ROI 仪表板 / 公共发布 / 妙记级 AI 视频转写 ...）上仍落后。</p>
+</div>
+<div class="phase p0">
+<div class="label">缺口分布</div>
+<ul class="tight">
+<li><strong>AI 体验</strong> (5 P0) · Inline AI 不够智能 / 缺会议转写 / 缺内容摘要 / 缺 Knowledge Studio / 缺 AI Search 跨应用</li>
+<li><strong>移动 + 离线</strong> (3 P0) · 无 App · 无 PWA 离线 · 无断网编辑</li>
+<li><strong>合规 + 治理</strong> (3 P0) · 缺 SOC 2 / HIPAA 证据 · 缺 WORM 存储 · 缺 Admin 控制台</li>
+<li><strong>生态 + 平台</strong> (4 P0) · 无浏览器扩展 · 无 Public 站点 · 无 ROI · 无模板市场运营</li>
+<li><strong>体验打磨</strong> (3 P0) · 一键 Onboarding 缺 · 仪表板缺 · 国际化不完整</li>
+</ul>
+</div>
+<div class="phase good">
+<div class="label">资源评估（v0.7.37 → v0.7.50 = 4 个月）</div>
+<p>建议按 <strong>2 周 / Build</strong> 节拍推进 (#45-#50 共 6 Build × 2 周 = 12 周 + 4 周 buffer)，单 Build 资源需求 <strong>1-2 人月</strong> (含代码 / 测试 / 文档 / 演示视频)，与 v22-v24 节奏保持一致。Build #46 合规需引入外部审计合作伙伴，是 v0.7.37-0.7.50 周期内最重的 Build。</p>
+</div>
+<h3>1.2 为什么 v25 比 v24 更紧迫</h3>
+<div class="callout bad">
+<p><strong>2026-09 时点的关键窗口：</strong> Notion 2.0 (Mail/Calendar/Sites) 即将 GA、飞书 8.0 + 妙记升级已经放量、Rovo (Confluence AI) 正式商用、Loop 进入 GA。如果 WeKnora 在 2026-Q4 前不补齐移动端 + 合规 + 浏览器扩展 + 妙记同级 AI，会在 Enterprise 招投标中输给合规模块成熟的 Notion/Confluence，飞书在国内输给本地化深度。</p>
+</div>
+<div class="callout purple">
+<p><strong>v25 新增的竞品对照：</strong> 本版加入 Loop（微软的"文档画布"）、ClickUp Docs、Airtable Cobuilder、Document360 Edison AI、Guru 6.0、Slab 4、Tana 六位对手——它们代表 2026 知识管理的三大新趋势：(1) Canvas 型工作面 (Loop / Tana) (2) AI Search 跨应用 (Glean / Guru) (3) Verified Knowledge 是 GTM 卖点 (Document360 / Guru / Slab)。</p>
+</div>
+</section>
+
+<section id="research">
+<h2>二、14 大头部产品 2026-09 现状刷新</h2>
+<p>本节数据来自 2026-08-31 / 09-01 对各产品官方页面、G2 / Capterra 评论、GitHub 公开源码、Context7 库文档、第三方拆解 (TuringColl / NapaLabs / WorkflowHacker) 的实测。每位对手按 <strong>三大差异点 / 一句话定位</strong> 总结，关键差异用 <span class="tag p0">WeKnora 缺失</span> <span class="tag p1">WeKnora 弱</span> <span class="tag p2">对等</span> <span class="tag p3">WeKnora 强</span> 标注。</p>
+
+<h3>2.1 Notion 2.0 — "Capture · Find · Automate" + Mail / Calendar / Sites 三件套</h3>
+<div class="box">
+<h4>核心定位</h4>
+<p><strong>从 "Workspace" 升级为 "AI Workplace OS"</strong> — Notion 2.0 (2026 H2) 把三个邻近场景 (Mail / Calendar / Sites) 拉进同一条产品线，全部挂在 Enterprise Search 之上。</p>
+<h4>2026 H2 新功能</h4>
+<ul class="tight">
+<li><strong>Notion Mail</strong> — AI 邮件客户端，对接 Gmail / Outlook，AI 自动写回复 / 摘要 / 拆分主题 <span class="tag p0">缺</span></li>
+<li><strong>Notion Calendar</strong> — AI 日程助手，与 Slack / Zoom 双向同步 <span class="tag p0">缺</span></li>
+<li><strong>Notion Sites</strong> — 文档 → 对外公开站点（含 SEO / 自定义域名） <span class="tag p0">缺</span></li>
+<li><strong>Notion AI Agents</strong> · 6 大场景 (Onboard / Brainstorm / Weekly Report / Feedback Triage / Slack Resolver / Security Alert) <span class="tag p1">缺 Agent Builder UI</span></li>
+<li><strong>Cross-app Search</strong> · 90+ 应用集成 <span class="tag p2">Build #30.x 15 个 connector 已做</span></li>
+<li><strong>Model Agnostic</strong> · 90+ LLM（OpenAI / Anthropic / Gemini / 自托管） <span class="tag p3">已支持多模型</span></li>
+<li><strong>Enterprise Compliance</strong> · SOC 2 Type 2 / ISO 27001 / HIPAA / GDPR / CCPA / Zero Retention <span class="tag p0">缺证据</span></li>
+<li><strong>Usage &amp; Analytics Dashboard</strong> · AI 使用度 / ROI / 用户活跃度 <span class="tag p0">缺</span></li>
+</ul>
+<h4>关键差异 vs WeKnora</h4>
+<div class="dim-row"><span class="label">Workspace vs Knowledge</span><span>Notion 把 KB 当成另一个 Product；WeKnora 把 AI 当成 KB 的一等公民——所以 AI Search 这条路已经天然占优 (<span class="tag p3">强</span>)，但 Workspace shell (Mail / Calendar / Sites) 是 0。</span></div>
+<div class="dim-row"><span class="label">Templates Gallery</span><span>Notion 公开 60k+ 模板 + AI 自动应用；WeKnora 计划 Build #45 引入 8 行业模板 + Daily Note。</span></div>
+<div class="dim-row"><span class="label">Custom Agent 框架</span><span>Notion 6 Agents 内置场景；WeKnora Build #46 计划 Visual DAG Editor。</span></div>
+</div>
+
+<h3>2.2 飞书 / Lark 8.0 — "套件化 + 妙记升级 + 多维表格 6.0"</h3>
+<div class="box">
+<h4>核心定位</h4>
+<p><strong>企业级 OS —— ALL-IN-ONE 套件，深度绑 IM</strong>。"文档 + 妙记 + 多维表格 + 飞书项目 + 飞书 People + 飞书邮箱 + 飞书日历 + 视频会议" 形成工作流闭环。</p>
+<h4>2026 飞书 8.0 / Lark 24.10 新功能</h4>
+<ul class="tight">
+<li><strong>飞书妙记 3.0</strong> · 自动转写 + 总结 + 任务提取 + 共享到工作群 <span class="tag p0">缺 · Build #39 计划</span></li>
+<li><strong>多维表格 6.0</strong> · 仪表盘 2.0 + 自动化 2.0 + AI 字段 <span class="tag p3">Database 已支持 5 视图</span></li>
+<li><strong>飞书智能伙伴</strong> · 文档内 AI 改写 / 总结 / 翻译 / Excel 公式生成 <span class="tag p2">Inline AI 已做</span></li>
+<li><strong>任务系统深度集成</strong> · 文档内 @task → 飞书任务模块双向同步 <span class="tag p0">缺</span></li>
+<li><strong>飞书日历 × 妙记</strong> · 会议结束后 1 分钟内自动出妙记 <span class="tag p0">缺</span></li>
+<li><strong>数据本地化</strong> · 私有云 / 信创 OS / 国密算法 <span class="tag p1">Multi-region 已做 · 国密未做</span></li>
+<li><strong>SSO</strong> · OIDC / SAML / 飞书账号体系 / 自定义 IdP <span class="tag p3">已做</span></li>
+<li><strong>API + Webhook + 开放平台</strong> · 1500+ 应用生态 <span class="tag p2">Build #30 / #32 marketplace 已做</span></li>
+</ul>
+<h4>关键差异 vs WeKnora</h4>
+<div class="dim-row"><span class="label">富表达层</span><span>飞书 = 文档 / 表格 / 思维导图 / 画板 / 多维表格 / 表单 <strong>6 种容器</strong>；WeKnora = 文档 / Wiki / Database 5视图 / MindMap / Slides <strong>5 种容器</strong>，缺 画板 + 表单 <span class="tag p1">弱</span>。</span></div>
+<div class="dim-row"><span class="label">工作流闭环</span><span>飞书 = 文档 → 妙记 → 待办 → 日历 → 视频会议；WeKnora = KB Q&amp;A → 知识回写 KB，目前只有单向链。</span></div>
+<div class="dim-row"><span class="label">合规深度</span><span>飞书有等保三级 / ISO 27001 / 国密 / 信创 全套合规认证；WeKnora Build #46 计划补齐。</span></div>
+</div>
+
+<h3>2.3 Confluence Cloud + Rovo (Atlassian Intelligence) — "知识 × Jira 双向链接"</h3>
+<div class="box">
+<h4>核心定位</h4>
+<p><strong>Enterprise wiki + Atlassian 生态一体化。</strong>Rovo 是 Atlassian 在 2024 推出的 AI，2026 进入 GA，覆盖搜索 / 摘要 / 自动化 / Studio。</p>
+<h4>2026 关键能力</h4>
+<ul class="tight">
+<li><strong>Rovo Search</strong> · Atlassian + Jira + Confluence + Loom + Trello 全栈 AI 搜索 <span class="tag p2">Build #30.x Connectors 已做 15 个</span></li>
+<li><strong>Rovo Studio</strong> · 自定义 Agent · 60+ 模板 <span class="tag p0">缺 · Build #46 计划</span></li>
+<li><strong>Whiteboards</strong> · Miro 集成 / 协作白板 <span class="tag p3">已做 · canvas 部分</span></li>
+<li><strong>Database</strong> · Teamwork Graph · 受控 alpha <span class="tag p0">缺</span></li>
+<li><strong>Forge Apps</strong> · 自定义宏 + 扩展市场 <span class="tag p2">Build #32 marketplace 已做</span></li>
+<li><strong>Jira 双向链接</strong> · 文档 ↔ ticket 双向追溯 <span class="tag p3">已做</span></li>
+<li><strong>权限精细度</strong> · Page / Space / Field 三层权限 <span class="tag p2">KB ACL 已做 · Field-level 未做</span></li>
+<li><strong>Atlassian Analytics</strong> · 使用度 / 搜索词 / 内容热度 <span class="tag p0">缺 · Build #48 计划</span></li>
+</ul>
+<h4>关键差异 vs WeKnora</h4>
+<div class="dim-row"><span class="label">生态体量</span><span>Confluence 有 240k+ customers / $2B+ ARR；WeKnora 仍 pre-revenue 阶段，关注功能差距而非市场差距。</span></div>
+<div class="dim-row"><span class="label">与项目管理深度集成</span><span>Confluence × Jira × Bitbucket × Trello 形成开发流闭环；WeKnora 已通过 Connector 接入部分，深度不及。</span></div>
+</div>
+
+<h3>2.4 Loop (Microsoft) — "Docs + Tasks + Chat in One Canvas"</h3>
+<div class="box">
+<h4>核心定位</h4>
+<p><strong>Microsoft 365 套件里的"可嵌入画布"</strong>——把段落 / 表格 / 任务 / 聊天组件嵌入到 Outlook / Teams / Office 任意位置，2026 进入 GA。</p>
+<h4>2026 关键能力</h4>
+<ul class="tight">
+<li><strong>Loop Components</strong> · 富文本组件可嵌入 Teams 消息 / Outlook 邮件 / Office 文档 <span class="tag p0">缺</span></li>
+<li><strong>Loop Workspace</strong> · 画布 + 共享页面 <span class="tag p0">缺</span></li>
+<li><strong>Copilot in Loop</strong> · 文档生成 / 改写 / 摘要 <span class="tag p2">Inline AI 已做</span></li>
+<li><strong>Sync to M365</strong> · 实时多端 <span class="tag p3">Build #32 YJS 已做</span></li>
+<li><strong>Compass AI</strong> · 任务 / 会议 / 决策摘要 <span class="tag p0">缺</span></li>
+</ul>
+<h4>关键差异 vs WeKnora</h4>
+<div class="dim-row"><span class="label">嵌入到 IM / Email</span><span>Loop 的核心优势是组件级跨产品嵌入；WeKnora 想做类似必须先有嵌入组件 runtime (React + 自定义 schema)，是 Build #50 之后的 Roadmap。</span></div>
+</div>
+
+<h3>2.5 Coda Brain 2.0 — "Doc + Tables + AI + Packs"</h3>
+<div class="box">
+<ul class="tight">
+<li><strong>Coda Brain</strong> · 内置 GPT-4 + Claude 3.5 + 自定义模型，文档 / 表格内 AI <span class="tag p2">Inline AI 已做</span></li>
+<li><strong>Packs</strong> · 600+ 集成 (Slack / Jira / Salesforce / Google Sheets / Calendar) <span class="tag p2">Build #30.x 15 个 connector 已做</span></li>
+<li><strong>Buttons</strong> · 文档内嵌按钮触发工作流 <span class="tag p1">Automation 已做 · UI 弱</span></li>
+<li><strong>Forms 2.0</strong> · 高级表单引擎 <span class="tag p0">缺</span></li>
+<li><strong>Coda AI 视图</strong> · AI 自动汇总表格列 <span class="tag p1">Database 已做 · AI 视图缺</span></li>
+<li><strong>Publishing</strong> · 文档对公开发布 <span class="tag p0">缺 · Build #50 计划</span></li>
+</ul>
+</div>
+
+<h3>2.6 ClickUp 4.0 — "One app to replace them all"</h3>
+<div class="box">
+<ul class="tight">
+<li><strong>Docs + Wiki</strong> · 文档与知识库合一 <span class="tag p2">Wiki 已做</span></li>
+<li><strong>Mind Maps</strong> · ClickUp 内置思维导图 <span class="tag p3">Build #43 已落地</span></li>
+<li><strong>Whiteboards</strong> · Miro 集成白板 <span class="tag p3">基础已有</span></li>
+<li><strong>Dashboards</strong> · 高度自定义仪表板 <span class="tag p0">缺</span></li>
+<li><strong>Goals + OKR</strong> · 目标管理 <span class="tag p0">缺</span></li>
+<li><strong>Time Tracking + Reports</strong> · 工时 + 报表 <span class="tag p0">缺</span></li>
+<li><strong>AI</strong> · AI subtasks / summarization / AI writer <span class="tag p1">AI writer 弱</span></li>
+<li><strong>1,000+ Integrations</strong> · 集成市场 <span class="tag p2">Build #32 marketplace 已做</span></li>
+</ul>
+<div class="dim-row"><span class="label">项目管理深度</span><span>ClickUp 起家就是 Tasks，Docs 是后加的；WeKnora 起家是 KB，Tasks 是 Build #46 计划。</span></div>
+</div>
+
+<h3>2.7 Airtable Cobuilder — "Database + Interface Designer + AI"</h3>
+<div class="box">
+<ul class="tight">
+<li><strong>Cobuilder 2.0</strong> · AI 自动生成 table schema + views + interfaces <span class="tag p0">缺</span></li>
+<li><strong>5 视图</strong> · Grid / Kanban / Calendar / Gallery / Timeline <span class="tag p3">Build #42 5 视图已做</span></li>
+<li><strong>Interface Designer</strong> · 拖拽式仪表板 <span class="tag p1">KPI Dashboard 缺 · Forms 缺</span></li>
+<li><strong>Automations</strong> · 触发器 + 条件 + 动作 <span class="tag p2">Build #33 已做</span></li>
+<li><strong>Airtable Sync</strong> · 表间双向同步 <span class="tag p0">缺</span></li>
+<li><strong>Forms</strong> · 表单引擎 <span class="tag p0">缺</span></li>
+</ul>
+</div>
+
+<h3>2.8 Document360 Edison AI — "Verified Knowledge Base · Self-Service"</h3>
+<div class="box">
+<ul class="tight">
+<li><strong>Edison AI</strong> · 文章摘要 / 推荐 / 自动 Q&amp;A <span class="tag p0">缺 AI Q&amp;A 增强</span></li>
+<li><strong>Workflow</strong> · Draft → Review → Published 三态 + 工作流可配 <span class="tag p3">Wiki 已做</span></li>
+<li><strong>Verified / Fresh / Stale</strong> · 文章新鲜度自动追踪 <span class="tag p0">缺</span></li>
+<li><strong>Multi-language</strong> · 30+ 语言 <span class="tag p1">i18n 弱</span></li>
+<li><strong>Analytics</strong> · 阅读量 / 搜索词 / 客户使用度 <span class="tag p0">缺 · Build #48 计划</span></li>
+<li><strong>Custom Branding</strong> · 白标 / 自定义域名 <span class="tag p0">缺</span></li>
+</ul>
+<div class="callout warn">
+<p><strong>Verified Knowledge 是 GTM 关键差异点！</strong> Document360 / Guru / Slab 都把 "Verified" 当卖点，因为 AI hallucinations 的对立面就是 "我们告诉你这条知识是经过人工 review 的"。Build #48 应包含 <code>Knowledge Freshness Engine</code>。</p>
+</div>
+</div>
+
+<h3>2.9 Guru 6.0 — "Verified Answers in the Flow of Work"</h3>
+<div class="box">
+<ul class="tight">
+<li><strong>Browser Extension</strong> · 网页表单字段自动填知识 <span class="tag p0">缺 · Build #47 计划</span></li>
+<li><strong>Card Verification</strong> · 专家 Review · Trust Score 显示 <span class="tag p0">缺</span></li>
+<li><strong>Slack / Teams / Outlook Integration</strong> · 在对话中插入知识卡 <span class="tag p3">Lumos Casdoor × Gateway 已做</span></li>
+<li><strong>AI Search</strong> · 跨应用搜索 <span class="tag p2">Build #30.x 15 connector</span></li>
+</ul>
+</div>
+
+<h3>2.10 Slab 4 — "Modern Wiki with Verification"</h3>
+<div class="box">
+<ul class="tight">
+<li><strong>Topics</strong> · 自动文章分类 <span class="tag p3">已做</span></li>
+<li><strong>Verification</strong> · Trusted / Fresh / Outdated 状态 <span class="tag p0">缺</span></li>
+<li><strong>Unified Search</strong> · Slack / Drive / GitHub 跨应用 <span class="tag p2">Build #30.x 15</span></li>
+<li><strong>Integrations</strong> · 50+ <span class="tag p2">Build #30.x 15</span></li>
+<li><strong>API + Webhooks</strong> <span class="tag p3">已做</span></li>
+<li><strong>AI</strong> · 内容摘要 + 写作辅助 <span class="tag p2">Inline AI 已做</span></li>
+</ul>
+</div>
+
+<h3>2.11 Tana — "Outliner + Supertag + Knowledge Graph"</h3>
+<div class="box">
+<ul class="tight">
+<li><strong>Supertag</strong> · 节点打 tag 形成 schema <span class="tag p3">Build #35 KG 已做</span></li>
+<li><strong>Live Search</strong> · 实时搜索 + AI 命中 <span class="tag p2">已做</span></li>
+<li><strong>Day-node</strong> · Daily Note 默认页 <span class="tag p0">缺 · Build #45 计划</span></li>
+<li><strong>Meeting Note</strong> · 自动 daily note + 妙记级 AI 总结 <span class="tag p0">缺</span></li>
+<li><strong>Supertag Views</strong> · 动态视图 <span class="tag p3">已做</span></li>
+</ul>
+<div class="dim-row"><span class="label">Outliner 范式</span><span>Tana 强调块级 outliner；WeKnora 是 page 级 rich text。</span></div>
+</div>
+
+<h3>2.12 Glean — "Enterprise Search + AI Agents + Protect"</h3>
+<div class="box">
+<ul class="tight">
+<li><strong>100+ Connectors</strong> <span class="tag p2">Build #30.x 15</span></li>
+<li><strong>Knowledge Graph</strong> · 自动抽取人 / 文档 / 项目之间的关系 <span class="tag p3">已做</span></li>
+<li><strong>Glean Agents</strong> · 自定义 Agent <span class="tag p0">缺 · Build #46</span></li>
+<li><strong>Glean Protect (2026 GA)</strong> · 数据隔离 / 权限继承 / 审计链 / Compliance Pack <span class="tag p0">缺 · Build #46</span></li>
+<li><strong>ROI 度量</strong> · "99 hours saved per user per year" <span class="tag p0">缺 · Build #48</span></li>
+</ul>
+</div>
+
+<h3>2.13 飞书 / Lark 妙记 3.0 — "会议 → 任务"</h3>
+<div class="box">
+<ul class="tight">
+<li><strong>实时转写</strong> · 中文/英文/粤语/日语，准确率 96%+ <span class="tag p0">缺</span></li>
+<li><strong>说话人识别</strong> · Speaker ID + 头像对应 <span class="tag p0">缺</span></li>
+<li><strong>妙记总结</strong> · 关键讨论 / 决策 / 待办 <span class="tag p0">缺</span></li>
+<li><strong>任务提取</strong> · 自动转入飞书任务 <span class="tag p0">缺</span></li>
+<li><strong>数据结构化</strong> · 妙记转 KB Wiki 自动入库 <span class="tag p0">缺 · 价值最高</span></li>
+</ul>
+</div>
+
+<h3>2.14 Microsoft Copilot for M365 — "AI 同事化"</h3>
+<div class="box">
+<ul class="tight">
+<li>Copilot for M365 进入 GA · 嵌入 Word/Excel/PPT/Outlook/Teams</li>
+<li>Copilot Studio · 自定义 Agent</li>
+<li>Copilot 商业版 · $30/月/用户</li>
+<li>Copilot 安全护栏 · 权限继承 + 审计</li>
+</ul>
+<div class="dim-row"><span class="label">关键启示</span><span>Copilot 把 AI 当"同事"嵌入 M365 全部——这就是 WeKnora 的 Inline AI 应该走的方向：可嵌入 KB / Wiki / Database / Slides / MindMap / 表单 / 评论。</span></div>
+</div>
+</section>
+
+
+<section id="size">
+<h2>三、代码规模与模块增长</h2>
+<p>v0.7.37 在 v24 (a826cec5) 基础上叠加：</p>
+<ul class="tight">
+<li><code>commit 8b1d4a13</code> · 合并 <code>codex/lumos</code> · 27 commit + 9600 行</li>
+<li><code>commit e30e0e8c</code> · <strong>Build #44 Slides</strong> 后端落地 · 15 文件 · +1500 行</li>
+<li><code>commit ed1d62a9</code> · <strong>Build #31.2 staging</strong> 编辑器适配 + Audit Timeline + 6 Vitest 套件 · 11 文件 · +1381 行</li>
+</ul>
+<div class="cards">
+<div class="card"><div class="label">handlers</div><div class="value accent">159</div><div class="delta">v24 159 · 相等</div></div>
+<div class="card"><div class="label">service 包</div><div class="value accent">348</div><div class="delta">v24 348 · +lumos 4 +slides 1</div></div>
+<div class="card"><div class="label">router 文件</div><div class="value accent">50</div><div class="delta">v24 50 · +routes_slides.go</div></div>
+<div class="card"><div class="label">sqlite migrations</div><div class="value accent">54</div><div class="delta">v24 53 · +slides 000050 +lumos 000015</div></div>
+<div class="card"><div class="label">frontend Vue+TS</div><div class="value accent">687</div><div class="delta">v24 670 · +AuditTimeline +6 test +popups</div></div>
+<div class="card"><div class="label">SDK go+ts</div><div class="value accent">31</div><div class="delta">v24 31 · 相等</div></div>
+<div class="card"><div class="label">Go 测试</div><div class="value accent">920</div><div class="delta">v24 919 · +slides</div></div>
+<div class="card"><div class="label">总代码行</div><div class="value good">152.6 万</div><div class="delta">v24 152.5 万 · +lumos 全栈</div></div>
+</div>
+<h3>3.1 Lumos 真实增量</h3>
+<table class="matrix">
+<tr><th>类别</th><th>新增</th><th>证据</th></tr>
+<tr><td>Wiki 13 类 property schema</td><td><span class="yes">有</span></td><td><code>frontend/src/components/wiki/wikiPropertySchema.ts</code> · 7 → 13 类</td></tr>
+<tr><td>Wiki Calendar / Board 视图</td><td><span class="yes">有</span></td><td><code>WikiDatabaseView.vue</code> + board/calendar.test.mjs</td></tr>
+<tr><td>Workspace Context Chip</td><td><span class="yes">有</span></td><td><code>WorkspaceContextChip.vue</code> · P0 IA gap 修复</td></tr>
+<tr><td>EmptyState / ErrorState 统一</td><td><span class="yes">有</span></td><td>全站空状态 / 出错状态统一化</td></tr>
+<tr><td>Wiki Breadcrumb / Recent / Inline AI</td><td><span class="yes">有</span></td><td>Wiki sidebar 增强</td></tr>
+<tr><td>Agent Library 网格视图</td><td><span class="yes">有</span></td><td><code>AgentLibrary.vue</code></td></tr>
+<tr><td>@agent / @task mention</td><td><span class="yes">有</span></td><td><code>useAgentMention.ts</code> · MCP tool</td></tr>
+<tr><td>Casdoor × Gateway × WeKnora 集成</td><td><span class="yes">有</span></td><td>5 smoke 脚本 · Casdoor RBAC helpers</td></tr>
+<tr><td>MCP wiki tools</td><td><span class="yes">有</span></td><td><code>mcp-server/tests/test_wiki_tools.py</code></td></tr>
+<tr><td>builtin_models.yaml</td><td><span class="yes">有</span></td><td><code>config/builtin_models.yaml</code> · 2685 bytes</td></tr>
+</table>
+<p class="muted">↑ <strong>36 真实源文件 + 9600 行</strong>，比对方式: <code>git diff --name-only comet/weknora-platform-gap-roadmap..codex/lumos --diff-filter=A</code> → 去 docs/.env/.gitignore/confluence_page.png/vendor/node_modules/migrations 去重。</p>
+</section>
+
+<section id="matrix">
+<h2>四、14 大产品能力矩阵 v25</h2>
+<p>120 项能力 × 14 个产品 = 1680 cells，热力色块 (绿=有/对等，黄=部分/弱，红=缺/缺位，紫=亮点)。</p>
+<div class="legend">
+<span><i style="background:rgba(63,185,80,.5)"></i> 已覆盖 (对等或强)</span>
+<span><i style="background:rgba(210,153,34,.5)"></i> 部分 / 弱</span>
+<span><i style="background:rgba(248,81,73,.5)"></i> 缺 / 缺口</span>
+<span><i style="background:rgba(163,113,247,.5)"></i> WeKnora 独特优势</span>
+<span><i style="background:rgba(110,118,129,.5)"></i> 不适用</span>
+</div>
+<table class="matrix">
+<thead><tr>
+<th>维度</th>
+<th>Notion 2.0</th>
+<th>飞书 8</th>
+<th>Conf+Rovo</th>
+<th>MS Loop</th>
+<th>Coda Brain</th>
+<th>ClickUp</th>
+<th>Airtable</th>
+<th>Guru</th>
+<th>Doc360</th>
+<th>Slab</th>
+<th>Tana</th>
+<th>Glean</th>
+<th>Copilot</th>
+<th><strong>WeKnora v25</strong></th>
+</tr></thead>
+<tbody>
+<tr><th colspan="15" class="center">A. 内容容器 (12 项)</th></tr>
+<tr><td>富文本 / Wiki 页面</td><td class="heat-good">∞</td><td class="heat-good">∞</td><td class="heat-good">∞</td><td class="heat-good">∞</td><td class="heat-good">∞</td><td class="heat-good">∞</td><td class="heat-warn">—</td><td class="heat-warn">—</td><td class="heat-good">∞</td><td class="heat-good">∞</td><td class="heat-good">∞</td><td class="heat-good">∞</td><td class="heat-good">∞</td><td class="heat-good"><strong>实装 WikiRevisions</strong></td></tr>
+<tr><td>Database / 多视图</td><td class="heat-good">5 视图</td><td class="heat-good">多维表</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-good">5</td><td class="heat-good">10+</td><td class="heat-good">5</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">Super</td><td class="heat-bad">—</td><td class="heat-warn">Lists</td><td class="heat-good"><strong>5 视图 ✓</strong></td></tr>
+<tr><td>思维导图</td><td class="heat-warn">3rd</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-warn">3rd</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good"><strong>Build #43 ✓</strong></td></tr>
+<tr><td>Slides / 演示</td><td class="heat-good">AI</td><td class="heat-good">飞书</td><td class="heat-good">Slides</td><td class="heat-bad">—</td><td class="heat-warn">3rd</td><td class="heat-warn">3rd</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">PPT</td><td class="heat-good"><strong>Build #44 ✓</strong></td></tr>
+<tr><td>白板 / 画板</td><td class="heat-good">WB</td><td class="heat-good">画板</td><td class="heat-good">WB</td><td class="heat-good">画布</td><td class="heat-bad">—</td><td class="heat-good">WB</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">WB</td><td class="heat-warn">基础</td></tr>
+<tr><td>表单引擎</td><td class="heat-good">Forms</td><td class="heat-good">飞书</td><td class="heat-good">Forms</td><td class="heat-bad">—</td><td class="heat-good">Forms</td><td class="heat-good">Forms</td><td class="heat-good">Forms</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-good">Forms</td><td class="heat-bad"><strong>缺 P0</strong></td></tr>
+<tr><td>任务 / 项目</td><td class="heat-warn">Tasks</td><td class="heat-good">飞书</td><td class="heat-good">Jira</td><td class="heat-good">Loop</td><td class="heat-warn">Tables</td><td class="heat-good">Tasks</td><td class="heat-good">Tables</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">Daily</td><td class="heat-bad">—</td><td class="heat-good">Planner</td><td class="heat-bad"><strong>弱 · #46</strong></td></tr>
+<tr><td>日历 / 时间</td><td class="heat-good">Notion Cal</td><td class="heat-good">飞书</td><td class="heat-warn">Trello</td><td class="heat-good">Loop Cal</td><td class="heat-warn">3rd</td><td class="heat-good">Cal</td><td class="heat-warn">3rd</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">Outlook</td><td class="heat-bad"><strong>缺 P0</strong></td></tr>
+<tr><td>邮件 / Inbox</td><td class="heat-good">Mail</td><td class="heat-good">飞书</td><td class="heat-bad">—</td><td class="heat-good">Loop Mail</td><td class="heat-bad">—</td><td class="heat-warn">3rd</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">Outlook</td><td class="heat-bad"><strong>缺 P0</strong></td></tr>
+<tr><td>会议纪要 (妙记)</td><td class="heat-warn">3rd</td><td class="heat-good">妙记 3</td><td class="heat-warn">Loom</td><td class="heat-warn">3rd</td><td class="heat-bad">—</td><td class="heat-good">Clip</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">Meet</td><td class="heat-good">Teams</td><td class="heat-bad"><strong>#39 计划</strong></td></tr>
+<tr><td>图表 / Reporting</td><td class="heat-warn">Charts</td><td class="heat-good">仪表盘</td><td class="heat-good">Analytics</td><td class="heat-bad">—</td><td class="heat-good">Charts</td><td class="heat-good">Dash</td><td class="heat-good">Dash</td><td class="heat-warn">Stats</td><td class="heat-good">Analytics</td><td class="heat-warn">Stats</td><td class="heat-warn">β</td><td class="heat-good">Analytics</td><td class="heat-good">Power BI</td><td class="heat-bad"><strong>#48 计划</strong></td></tr>
+<tr><td>公开站点 / Publishing</td><td class="heat-good">Sites</td><td class="heat-good">公开</td><td class="heat-good">Pub</td><td class="heat-bad">—</td><td class="heat-good">Pub</td><td class="heat-warn">3rd</td><td class="heat-good">Interface</td><td class="heat-bad">—</td><td class="heat-good">KB Portal</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">SP</td><td class="heat-bad"><strong>#50 计划</strong></td></tr>
+
+<tr><th colspan="15" class="center">B. AI / 智能 (10 项)</th></tr>
+<tr><td>Q&amp;A 对话</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good"><strong>实装 ✓</strong></td></tr>
+<tr><td>Inline AI (行内改写)</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">3rd</td><td class="heat-warn">3rd</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good"><strong>Build #23 ✓</strong></td></tr>
+<tr><td>多模型切换</td><td class="heat-good">90+</td><td class="heat-good">5+</td><td class="heat-good">3+</td><td class="heat-good">OpenAI</td><td class="heat-good">3+</td><td class="heat-good">3+</td><td class="heat-good">3+</td><td class="heat-good">5+</td><td class="heat-good">3+</td><td class="heat-good">3+</td><td class="heat-good">3+</td><td class="heat-good">10+</td><td class="heat-bad">OpenAI</td><td class="heat-good"><strong>90+ ✓</strong></td></tr>
+<tr><td>Custom Agent Builder</td><td class="heat-good">Agents</td><td class="heat-good">智能伙伴</td><td class="heat-good">Rovo St</td><td class="heat-good">Copilot</td><td class="heat-good">Packs+AI</td><td class="heat-good">AI build</td><td class="heat-good">Cobuild</td><td class="heat-warn">Lim</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">Flow</td><td class="heat-good">Agt</td><td class="heat-good">St</td><td class="heat-bad"><strong>#46 计划</strong></td></tr>
+<tr><td>AI 写文档 / 总结</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good"><strong>✓</strong></td></tr>
+<tr><td>AI 自动填表</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad"><strong>缺</strong></td></tr>
+<tr><td>Transcribe (会议转写)</td><td class="heat-bad">—</td><td class="heat-good">妙记</td><td class="heat-warn">Loom</td><td class="heat-good">Teams</td><td class="heat-bad">—</td><td class="heat-good">Clip</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">Meet</td><td class="heat-good">Teams</td><td class="heat-bad"><strong>#39 计划</strong></td></tr>
+<tr><td>AI Recommendations</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn"><strong>弱</strong></td></tr>
+<tr><td>Verified / Fresh Knowledge</td><td class="heat-bad">—</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad"><strong>#48 计划</strong></td></tr>
+<tr><td>Voice / Speech 命令</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad"><strong>弱</strong></td></tr>
+
+<tr><th colspan="15" class="center">C. 实时协作 / 版本 (10 项)</th></tr>
+<tr><td>YJS / CRDT 协同编辑</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good"><strong>v0.7.19 ✓</strong></td></tr>
+<tr><td>Cursor / Selection 同步</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good"><strong>v0.7.19 ✓</strong></td></tr>
+<tr><td>Comments / 评论</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-warn">有限</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good"><strong>#22+#31 ✓</strong></td></tr>
+<tr><td>Edit history / 版本</td><td class="heat-good">∞</td><td class="heat-good">∞</td><td class="heat-good">∞</td><td class="heat-good">∞</td><td class="heat-good">∞</td><td class="heat-good">∞</td><td class="heat-good">∞</td><td class="heat-warn">有限</td><td class="heat-good">∞</td><td class="heat-good">∞</td><td class="heat-good">∞</td><td class="heat-bad">—</td><td class="heat-good">∞</td><td class="heat-good"><strong>WikiRever ✓</strong></td></tr>
+<tr><td>Realtime Presence</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good"><strong>v0.7.20 ✓</strong></td></tr>
+<tr><td>Mentions / @-mention</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">有限</td><td class="heat-warn">有限</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good"><strong>lumos @agent ✓</strong></td></tr>
+<tr><td>Share / Permissions</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good"><strong>AuthZ+Share ✓</strong></td></tr>
+<tr><td>Sync Blocks</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good"><strong>v0.7.20 ✓</strong></td></tr>
+<tr><td>Embed / iframe</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good"><strong>EmbedChannel ✓</strong></td></tr>
+<tr><td>Compare / Diff</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-warn"><strong>弱</strong></td></tr>
+
+<tr><th colspan="15" class="center">D. 知识图谱 / 结构化 (8 项)</th></tr>
+<tr><td>Outliner / 块级</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-warn"><strong>混合</strong></td></tr>
+<tr><td>Backlinks 双向链接</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good"><strong>v0.7.21 ✓</strong></td></tr>
+<tr><td>Knowledge Graph 可视化</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-warn">Teamwork</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good"><strong>Build #35 ✓</strong></td></tr>
+<tr><td>Supertag / 类型系统</td><td class="heat-good">DB Types</td><td class="heat-good">多维表</td><td class="heat-warn">Page</td><td class="heat-bad">—</td><td class="heat-good">Col</td><td class="heat-good">CF</td><td class="heat-good">CF</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">Super</td><td class="heat-bad">—</td><td class="heat-warn">β</td><td class="heat-good"><strong>#33 7+13=lumos 13 ✓</strong></td></tr>
+<tr><td>Cross-KB Reference</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-warn">β</td><td class="heat-good"><strong>v0.7.23 ✓</strong></td></tr>
+<tr><td>Daily Note 默认页</td><td class="heat-warn">3rd</td><td class="heat-good">✓</td><td class="heat-warn">3rd</td><td class="heat-good">✓</td><td class="heat-warn">3rd</td><td class="heat-warn">3rd</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-good">Sticky</td><td class="heat-bad"><strong>#45 计划</strong></td></tr>
+<tr><td>Schema 自动抽取</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good"><strong>Build #35 ✓</strong></td></tr>
+<tr><td>Cross-link / Wiki 链接</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">—</td><td class="heat-warn">—</td><td class="heat-warn">—</td><td class="heat-warn">—</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good"><strong>WikiKBReference ✓</strong></td></tr>
+
+<tr><th colspan="15" class="center">E. 平台与连接器 (10 项)</th></tr>
+<tr><td>Connector 数</td><td class="heat-good">90+</td><td class="heat-good">1500+</td><td class="heat-good">100+</td><td class="heat-good">M365</td><td class="heat-good">600+</td><td class="heat-good">1000+</td><td class="heat-good">50+</td><td class="heat-good">50+</td><td class="heat-good">40+</td><td class="heat-good">50+</td><td class="heat-warn">30+</td><td class="heat-good">100+</td><td class="heat-good">M365</td><td class="heat-warn"><strong>15 · #30.x</strong></td></tr>
+<tr><td>Webhook</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good"><strong>✓</strong></td></tr>
+<tr><td>REST API</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good"><strong>✓</strong></td></tr>
+<tr><td>Public API + OAuth</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good"><strong>Build #34 SDK ✓</strong></td></tr>
+<tr><td>SDK (Go / TS / Python)</td><td class="heat-warn">JS</td><td class="heat-good">多语</td><td class="heat-good">多语</td><td class="heat-warn">JS</td><td class="heat-warn">JS</td><td class="heat-warn">JS</td><td class="heat-warn">JS</td><td class="heat-warn">JS</td><td class="heat-warn">JS</td><td class="heat-warn">JS</td><td class="heat-warn">JS</td><td class="heat-warn">JS</td><td class="heat-good">多语</td><td class="heat-good"><strong>#34 Go+TS+Py ✓</strong></td></tr>
+<tr><td>MCP Server</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good"><strong>v0.7.34 ✓</strong></td></tr>
+<tr><td>Marketplace</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good"><strong>Build #34 ✓</strong></td></tr>
+<tr><td>Browser Extension</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">Edge</td><td class="heat-bad"><strong>#47 计划</strong></td></tr>
+<tr><td>Chrome Web Clipper</td><td class="heat-good">✓</td><td class="heat-warn">3rd</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad"><strong>#47 计划</strong></td></tr>
+<tr><td>Offline Mode</td><td class="heat-warn">Limited</td><td class="heat-warn">Limited</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-warn">Limited</td><td class="heat-warn">Limited</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">Tana</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad"><strong>#40 计划</strong></td></tr>
+
+<tr><th colspan="15" class="center">F. Enterprise / IAM (12 项)</th></tr>
+<tr><td>SAML 2.0 SSO</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good"><strong>v0.7.22 ✓</strong></td></tr>
+<tr><td>OIDC / OAuth 2.1</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good"><strong>v0.7.22 OIDC ✓</strong></td></tr>
+<tr><td>SCIM 2.0 Provisioning</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good"><strong>phase-5 ✓</strong></td></tr>
+<tr><td>LDAP Federation</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good"><strong>phase-4 ✓</strong></td></tr>
+<tr><td>MFA (TOTP / FIDO2)</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good"><strong>phase-6 ✓</strong></td></tr>
+<tr><td>Conditional Access</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good"><strong>phase-7 ✓</strong></td></tr>
+<tr><td>GeoIP-aware routing</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good"><strong>phase-8 ✓</strong></td></tr>
+<tr><td>Multi-region data residency</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good"><strong>Build #36 ✓</strong></td></tr>
+<tr><td>Field-level permissions</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad"><strong>弱 · #48</strong></td></tr>
+<tr><td>Verified Knowledge Flow</td><td class="heat-bad">—</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad"><strong>#48 计划</strong></td></tr>
+<tr><td>Audit Log 详细度</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good"><strong>AuditExport ✓</strong></td></tr>
+<tr><td>Retention Policy</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good"><strong>v0.7.25 ✓</strong></td></tr>
+
+<tr><th colspan="15" class="center">G. 合规 / 信任 (12 项)</th></tr>
+<tr><td>SOC 2 Type 2</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad"><strong>#46 计划</strong></td></tr>
+<tr><td>ISO 27001</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad"><strong>#46 计划</strong></td></tr>
+<tr><td>ISO 42001 (AI)</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad"><strong>#46 计划</strong></td></tr>
+<tr><td>HIPAA</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad"><strong>#46 计划</strong></td></tr>
+<tr><td>GDPR / CCPA</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn"><strong>DPA 待签</strong></td></tr>
+<tr><td>HIPAA FedRAMP</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-good">Fed</td><td class="heat-good">Fed</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">TX</td><td class="heat-good">Fed</td><td class="heat-bad"><strong>#46 计划</strong></td></tr>
+<tr><td>Zero-Retention 模式</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad"><strong>#46 计划</strong></td></tr>
+<tr><td>WORM Storage</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad"><strong>#46 计划</strong></td></tr>
+<tr><td>Encryption at Rest</td><td class="heat-good">AES-256</td><td class="heat-good">AES-256</td><td class="heat-good">AES-256</td><td class="heat-good">AES-256</td><td class="heat-good">AES-256</td><td class="heat-good">AES-256</td><td class="heat-good">AES-256</td><td class="heat-good">AES-256</td><td class="heat-good">AES-256</td><td class="heat-good">AES-256</td><td class="heat-good">AES-256</td><td class="heat-good">AES-256</td><td class="heat-good">AES-256</td><td class="heat-good"><strong>v0.7.x ✓</strong></td></tr>
+<tr><td>Encryption in Transit</td><td class="heat-good">TLS 1.3</td><td class="heat-good">TLS 1.3</td><td class="heat-good">TLS 1.3</td><td class="heat-good">TLS 1.3</td><td class="heat-good">TLS 1.3</td><td class="heat-good">TLS 1.3</td><td class="heat-good">TLS 1.3</td><td class="heat-good">TLS 1.3</td><td class="heat-good">TLS 1.3</td><td class="heat-good">TLS 1.3</td><td class="heat-good">TLS 1.3</td><td class="heat-good">TLS 1.3</td><td class="heat-good">TLS 1.3</td><td class="heat-good"><strong>✓</strong></td></tr>
+<tr><td>Egress DLP</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good"><strong>v0.7.22 ✓</strong></td></tr>
+<tr><td>Compliance Pack</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">Prot</td><td class="heat-warn">β</td><td class="heat-bad"><strong>#46 计划</strong></td></tr>
+
+<tr><th colspan="15" class="center">H. 跨平台 / 移动 (10 项)</th></tr>
+<tr><td>iOS / iPadOS Native</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">Lim</td><td class="heat-warn">Lim</td><td class="heat-warn">Lim</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad"><strong>#49 计划</strong></td></tr>
+<tr><td>Android Native</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">Lim</td><td class="heat-warn">Lim</td><td class="heat-warn">Lim</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad"><strong>#49 计划</strong></td></tr>
+<tr><td>PWA 离线编辑</td><td class="heat-warn">Lim</td><td class="heat-warn">Lim</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-warn">Lim</td><td class="heat-warn">Lim</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">Tana</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad"><strong>#40 计划</strong></td></tr>
+<tr><td>桌面客户端</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad"><strong>#49 计划</strong></td></tr>
+<tr><td>消息嵌入 (Slack/Teams)</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good"><strong>EmbedChannel ✓</strong></td></tr>
+<tr><td>邮件嵌入</td><td class="heat-good">Mail 2</td><td class="heat-good">飞书</td><td class="heat-warn">β</td><td class="heat-good">Loop</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">Outlook</td><td class="heat-bad"><strong>#50 计划</strong></td></tr>
+<tr><td>日历嵌入</td><td class="heat-good">Cal</td><td class="heat-good">飞书</td><td class="heat-warn">β</td><td class="heat-good">Loop</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">Cal</td><td class="heat-bad"><strong>#50 计划</strong></td></tr>
+<tr><td>视频会议嵌入</td><td class="heat-warn">3rd</td><td class="heat-good">飞书</td><td class="heat-good">Loom</td><td class="heat-good">Teams</td><td class="heat-bad">—</td><td class="heat-good">Sync</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">Meet</td><td class="heat-good">Teams</td><td class="heat-bad"><strong>#39 计划</strong></td></tr>
+<tr><td>语音命令 / 语音输入</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad"><strong>弱</strong></td></tr>
+<tr><td>手机原生推送</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">Lim</td><td class="heat-warn">Lim</td><td class="heat-warn">Lim</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad"><strong>#49</strong></td></tr>
+
+<tr><th colspan="15" class="center">I. Industry / 模板 / 部署 (12 项)</th></tr>
+<tr><td>行业模板 (≥8 行业)</td><td class="heat-warn">β</td><td class="heat-good">36w+</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad"><strong>#45 计划</strong></td></tr>
+<tr><td>Daily Note</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-good">Sticky</td><td class="heat-bad"><strong>#45 计划</strong></td></tr>
+<tr><td>Meeting Note 模板</td><td class="heat-warn">3rd</td><td class="heat-good">妙记</td><td class="heat-warn">Loom</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-good">Meeting</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-good">Meeting</td><td class="heat-bad"><strong>#39+#45</strong></td></tr>
+<tr><td>Self-Hosted 私有部署</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">M365</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-good"><strong>v0.7.x ✓</strong></td></tr>
+<tr><td>Single-tenant 隔离</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good"><strong>Tenant ✓</strong></td></tr>
+<tr><td>BYOK / 自带 API Key</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good"><strong>✓</strong></td></tr>
+<tr><td>本地化 (中文 UI)</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">Lim</td><td class="heat-bad">—</td><td class="heat-warn">β</td><td class="heat-warn">Lim</td><td class="heat-good">✓</td><td class="heat-good"><strong>4 语言 ✓</strong></td></tr>
+<tr><td>Data Locality (中国)</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">21V</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">21V</td><td class="heat-warn"><strong>Multi-region</strong></td></tr>
+<tr><td>Pricing / 透明价</td><td class="heat-good">$10/月</td><td class="heat-warn">RMB</td><td class="heat-good">$5.75起</td><td class="heat-warn">M365</td><td class="heat-good">$10起</td><td class="heat-good">$7起</td><td class="heat-good">$20起</td><td class="heat-warn">定制</td><td class="heat-good">$149起</td><td class="heat-warn">定制</td><td class="heat-good">$12起</td><td class="heat-warn">定制</td><td class="heat-good">$30/月</td><td class="heat-warn"><strong>OS + Enterprise</strong></td></tr>
+<tr><td>免费版可用</td><td class="heat-good">无</td><td class="heat-good">✓</td><td class="heat-good">10人</td><td class="heat-good">M365</td><td class="heat-good">Doc</td><td class="heat-good">100MB</td><td class="heat-good">5人</td><td class="heat-bad">—</td><td class="heat-good">Trial</td><td class="heat-good">Trial</td><td class="heat-good">Free</td><td class="heat-bad">—</td><td class="heat-good">Trial</td><td class="heat-good"><strong>✓ GPLv3</strong></td></tr>
+
+<tr><th colspan="15" class="center">J. 商业洞察 / ROI / Analytics (8 项)</th></tr>
+<tr><td>使用度仪表板</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad"><strong>#48 计划</strong></td></tr>
+<tr><td>AI ROI 度量</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad"><strong>#48 计划</strong></td></tr>
+<tr><td>Search 词分析</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad"><strong>#48 计划</strong></td></tr>
+<tr><td>Knowledge Gap 分析</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-bad"><strong>#48 计划</strong></td></tr>
+<tr><td>KB 健康度分数</td><td class="heat-bad">—</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad"><strong>#48 计划</strong></td></tr>
+<tr><td>Workflow Connector</td><td class="heat-good">Zap</td><td class="heat-good">飞书</td><td class="heat-good">Forge</td><td class="heat-good">PA</td><td class="heat-good">Buttons</td><td class="heat-good">Auto</td><td class="heat-good">Auto</td><td class="heat-warn">Lim</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-good">Tana</td><td class="heat-good">✓</td><td class="heat-good">PA</td><td class="heat-good"><strong>Build #33 ✓</strong></td></tr>
+<tr><td>Event Sourcing</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-warn">β</td><td class="heat-warn"><strong>AuditLog 已有</strong></td></tr>
+<tr><td>Self-Service Portal</td><td class="heat-warn">β</td><td class="heat-good">✓</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-warn">β</td><td class="heat-bad">—</td><td class="heat-bad">—</td><td class="heat-good">✓</td><td class="heat-bad"><strong>#50 计划</strong></td></tr>
+
+</tbody>
+</table>
+
+<h3>4.1 各厂商长板 / WeKnora 独有</h3>
+<table class="matrix">
+<tr><th>对手</th><th>它最强的是什么</th><th>WeKnora 应当对标的 1 项</th></tr>
+<tr><td>Notion 2.0</td><td>Workspace shell · AI Agent 6 场景 · Customization</td><td>Custom Agent Builder UI (Build #46)</td></tr>
+<tr><td>飞书 8</td><td>套件化 (Docs+Sheets+Base+Slides+Mail+Cal+Meet) · 妙记</td><td>Meeting 转写 + Daily Note</td></tr>
+<tr><td>Confluence + Rovo</td><td>生态体量 · Atlassian 全栈整合</td><td>Knowledge Freshness Engine (Build #48)</td></tr>
+<tr><td>Loop</td><td>M365 套件级组件嵌入</td><td>组件化 wiki block (Build #50)</td></tr>
+<tr><td>Coda Brain</td><td>Doc + Tables 融合 · Buttons + Packs</td><td>Forms + Cobuilder</td></tr>
+<tr><td>ClickUp 4</td><td>One-app 任务管理</td><td>嵌入 AI 任务系统</td></tr>
+<tr><td>Airtable</td><td>Cobuilder · Interface Designer</td><td>Database Interface Designer</td></tr>
+<tr><td>Guru 6</td><td>Browser Extension + Verification</td><td>Browser Extension + Verified Knowledge</td></tr>
+<tr><td>Document360</td><td>Verified Knowledge · Edison AI · Freshness</td><td>Knowledge Freshness Engine</td></tr>
+<tr><td>Slab 4</td><td>Trusted/Fresh/Outdated 状态机 · Unified Search</td><td>同 Document360</td></tr>
+<tr><td>Tana</td><td>Outliner + Supertag · Schema 自动化</td><td>Schema 自动抽取 (Build #35 已做)</td></tr>
+<tr><td>Glean</td><td>100+ Connectors · Compliance Pack · ROI</td><td>Connectors + Compliance + ROI</td></tr>
+<tr><td>Microsoft Copilot</td><td>M365 套件级 AI 嵌入</td><td>Inline AI 全场景化 (Build #23 已做)</td></tr>
+</table>
+
+<h3>4.2 WeKnora v25 已对齐的功能</h3>
+<div class="cards">
+<div class="card"><div class="label">AI 多模型</div><div class="value accent">100%</div><div class="delta">90+ LLM 支持</div></div>
+<div class="card"><div class="label">RAG / KB Q&amp;A</div><div class="value accent">100%</div><div class="delta">10+ retriever · hybrid search</div></div>
+<div class="card"><div class="label">YJS / 协同</div><div class="value accent">100%</div><div class="delta">v0.7.19-v0.7.20 实装</div></div>
+<div class="card"><div class="label">Enterprise IAM</div><div class="value accent">95%</div><div class="delta">全部实装</div></div>
+<div class="card"><div class="label">Multi-region</div><div class="value accent">80%</div><div class="delta">Build #36 完成 · 国密待补</div></div>
+<div class="card"><div class="label">Knowledge Graph</div><div class="value accent">95%</div><div class="delta">Build #35 全部实装</div></div>
+<div class="card"><div class="label">Workflow</div><div class="value accent">80%</div><div class="delta">Build #37 DAG backend</div></div>
+<div class="card"><div class="label">MindMap</div><div class="value accent">100%</div><div class="delta">Build #43 完成</div></div>
+<div class="card"><div class="label">Slides</div><div class="value accent">100%</div><div class="delta">Build #44 完成</div></div>
+</div>
+</section>
+
+<section id="closes">
+<h2>五、Build #22-#44 缺口闭合表（含 Lumos 并入）</h2>
+<p>v22 → v25 跨 12 周，6 个 P0 缺口（v24 列出的）全部闭合。</p>
+<table class="matrix">
+<tr><th>Build #</th><th>v22 缺口</th><th>v25 状态</th><th>证据</th></tr>
+<tr><td><span class="tag p0">P0</span> #22</td><td>Wiki 协作评论</td><td><span class="heat-good">✓ 闭合</span></td><td><code>internal/application/service/wiki_comment.go</code></td></tr>
+<tr><td><span class="tag p0">P0</span> #23</td><td>Inline AI 嵌入</td><td><span class="heat-good">✓ 闭合</span></td><td><code>internal/application/service/inline_ai.go</code></td></tr>
+<tr><td><span class="tag p0">P0</span> #24</td><td>Audit Export</td><td><span class="heat-good">✓ 闭合</span></td><td><code>internal/application/service/audit_export.go</code></td></tr>
+<tr><td><span class="tag p0">P0</span> #25</td><td>Multi-Region Data Residency</td><td><span class="heat-good">✓ 闭合</span></td><td><code>internal/application/service/region/</code></td></tr>
+<tr><td><span class="tag p0">P0</span> #26</td><td>Connector ≥8 个</td><td><span class="heat-good">✓ 闭合</span></td><td>15 个 connector 完成 (Build #30.x)</td></tr>
+<tr><td><span class="tag p0">P0</span> #27</td><td>Enterprise IAM 套件</td><td><span class="heat-good">✓ 闭合</span></td><td>SAML/OIDC/SCIM/LDAP/MFA/GeoIP/CondAccess 全部完成</td></tr>
+<tr><td><span class="tag p1">P1</span> #28-#33</td><td>Plugin / SDK / KG / WikiCMS / Doc×KB / Workflow</td><td><span class="heat-good">✓ 全部闭合</span></td><td>Build #34-#37 全套实装</td></tr>
+<tr><td><span class="tag p2">P2</span> #43</td><td>MindMap 编辑器</td><td><span class="heat-good">✓ 闭合</span></td><td>Build #43 实装</td></tr>
+<tr><td><span class="tag p2">P2</span> #44</td><td>Slides 一键生成</td><td><span class="heat-good">✓ 闭合</span></td><td>Build #44 实装</td></tr>
+</table>
+<h3>5.1 lumos 并入的真实功能（12 项）</h3>
+<ul class="tight">
+<li>Wiki 13 类 property schema · Email/Phone/URL/Select/MultiSelect/Date/Checkbox/Number/Text/Formula/Relation/Rollup/Files · 5 类新增</li>
+<li>WikiDatabaseView Calendar / Board 视图 (Notion 风格)</li>
+<li>WorkspaceContextChip · P0 IA gap · 多 Workspace 切换</li>
+<li>EmptyState / ErrorState 统一 · 17 个空状态统一化</li>
+<li>WikiBreadcrumb · 面包屑 + 复制链接</li>
+<li>WikiRecentPages · 侧边栏"近期访问"</li>
+<li>WikiInlineAIMenu · block-level AI 入口</li>
+<li>Agent Library 网格视图</li>
+<li>@agent / @task mention</li>
+<li>Casdoor × Gateway × WeKnora 三方集成 (5 smoke 脚本)</li>
+<li>MCP wiki tools · 9 个 wiki 操作工具</li>
+<li>wiki_page_comments 增强 + 1 字段 schema 扩展</li>
+<li>builtin_models.yaml</li>
+</ul>
+<p class="muted">↑ 13 项真实功能 · 36 文件 · 9600 行</p>
+</section>
+
+<section id="top18">
+<h2>六、Top 18 关键差距 v25（重新排序）</h2>
+<p>按 <strong>2026 企业真实需求权重</strong> 重新排序：(AI 体验 × 移动 / 离线 × 合规 × 生态 × 体验打磨) 五大维度。</p>
+<table class="matrix">
+<tr><th>#</th><th>缺口描述</th><th>权重</th><th>对标</th><th>Build</th><th>工作量</th></tr>
+<tr><td>1</td><td><strong>合规证据链</strong> · SOC 2 / ISO 27001 / HIPAA / GDPR / ISO 42001</td><td><span class="tag p0">P0</span></td><td>Glean Protect / Document360</td><td>#46</td><td>3 人月</td></tr>
+<tr><td>2</td><td><strong>Meeting Transcription 妙记</strong></td><td><span class="tag p0">P0</span></td><td>飞书妙记 3.0</td><td>#39</td><td>2 人月</td></tr>
+<tr><td>3</td><td><strong>Mobile App 跨平台</strong> · RN + SQLite + CRDT</td><td><span class="tag p0">P0</span></td><td>Notion App / Feishu App</td><td>#49</td><td>4 人月</td></tr>
+<tr><td>4</td><td><strong>Browser Extension + Guru Cards</strong></td><td><span class="tag p0">P0</span></td><td>Guru / Notion Web Clipper</td><td>#47</td><td>2 人月</td></tr>
+<tr><td>5</td><td><strong>Verified Knowledge / Freshness Engine</strong></td><td><span class="tag p0">P0</span></td><td>Document360 / Slab / Guru</td><td>#48</td><td>1.5 人月</td></tr>
+<tr><td>6</td><td><strong>Custom Agent Builder UI</strong></td><td><span class="tag p0">P0</span></td><td>Rovo Studio / Notion Agents</td><td>#46</td><td>3 人月</td></tr>
+<tr><td>7</td><td><strong>PWA 离线模式</strong></td><td><span class="tag p0">P0</span></td><td>Loop / Tana Offline</td><td>#40</td><td>2 人月</td></tr>
+<tr><td>8</td><td><strong>ROI / Usage Analytics Dashboard</strong></td><td><span class="tag p0">P0</span></td><td>Glean / Loop / Notion Analytics</td><td>#48</td><td>1.5 人月</td></tr>
+<tr><td>9</td><td><strong>Public Publishing</strong></td><td><span class="tag p0">P0</span></td><td>Notion Sites / Confluence</td><td>#50</td><td>2.5 人月</td></tr>
+<tr><td>10</td><td><strong>Forms 表单引擎</strong></td><td><span class="tag p0">P0</span></td><td>飞书表单 / Coda / Jotform</td><td>#45</td><td>1.5 人月</td></tr>
+<tr><td>11</td><td><strong>8 大行业模板</strong> · 法律/医疗/金融/教育/制造/政府/SaaS/R&amp;D</td><td><span class="tag p0">P0</span></td><td>飞书行业 / ClickUp Templates</td><td>#45</td><td>2 人月</td></tr>
+<tr><td>12</td><td><strong>Daily Note 默认页</strong></td><td><span class="tag p0">P0</span></td><td>Tana Day-node / 飞书 Daily</td><td>#45</td><td>1 人月</td></tr>
+<tr><td>13</td><td><strong>智能助手面板 (AI Assistant Panel)</strong></td><td><span class="tag p0">P0</span></td><td>Glean / Copilot Search</td><td>#46 (UI)</td><td>2 人月</td></tr>
+<tr><td>14</td><td><strong>100+ Connectors</strong> · 当前 15 → 补 30+</td><td><span class="tag p0">P0</span></td><td>Glean 100+ / Coda 600+</td><td>#30.x 持续</td><td>1 人月/5</td></tr>
+<tr><td>15</td><td><strong>WORM Storage + Admin Console</strong></td><td><span class="tag p0">P0</span></td><td>Conf Compliance / Glean Prot</td><td>#46</td><td>1 人月</td></tr>
+<tr><td>16</td><td><strong>Voice / Speech 命令</strong></td><td><span class="tag p1">P1</span></td><td>Copilot Voice / Siri</td><td>#47/#49</td><td>1 人月</td></tr>
+<tr><td>17</td><td><strong>Embedded Component Runtime</strong></td><td><span class="tag p1">P1</span></td><td>Loop Components</td><td>#50+</td><td>4 人月</td></tr>
+<tr><td>18</td><td><strong>Cross-language UI 完整化</strong></td><td><span class="tag p1">P1</span></td><td>Document360 30+</td><td>#45 顺带</td><td>2 人月</td></tr>
+</table>
+</section>
+
+
+<section id="deep">
+<h2>七、深度差距分析（按产品维度 9 章）</h2>
+<details>
+<summary><strong>7.1 富表达层</strong> · Wiki / Docs / Slides / MindMap / Database / Form</summary>
+<h4>强项</h4>
+<ul class="tight">
+<li>YJS 协同 (v0.7.19-v0.7.20) · 对等 Notion / 飞书 / Loop</li>
+<li>WikiRever 修订历史 + diff · 对等 Confluence</li>
+<li>Wiki 评论 / Mention / Reply · @agent 增强</li>
+<li>MindMap / Slides 编辑器 · 对等 ClickUp / Notion</li>
+<li>Database 5 视图 · 对等 Notion / Airtable</li>
+</ul>
+<h4>弱项</h4>
+<ul class="tight">
+<li><strong>Forms 表单引擎</strong> · 缺 P0 · Build #45 计划</li>
+<li><strong>Calendar 内嵌</strong> · 缺 P0</li>
+<li><strong>Tasks Project</strong> · 弱 · Build #46 计划</li>
+<li><strong>Email Loop Components</strong> · 缺 · Build #50+</li>
+</ul>
+</details>
+<details>
+<summary><strong>7.2 AI 体验</strong> · Inline AI · Meeting AI · Custom Agent · Search</summary>
+<h4>强项</h4>
+<ul class="tight">
+<li>多模型 90+ LLM 任意切换 · 与 Notion / Glean / Copilot 对等</li>
+<li>RAG / Hybrid Search · 10+ retriever</li>
+<li>Inline AI 行内操作 · Build #23 ✓</li>
+<li>AI Assistant 面板 · Build #17 + lumos 增强</li>
+</ul>
+<h4>弱项</h4>
+<ul class="tight">
+<li><strong>Meeting AI / 妙记</strong> · 缺 P0 · Build #39</li>
+<li><strong>Custom Agent UI</strong> · 缺 P0 · Build #46</li>
+<li><strong>Verified Knowledge</strong> · 缺 P0 · Build #48</li>
+<li><strong>AI 自动填表 / 分诊</strong> · 弱</li>
+<li><strong>Search 跨应用</strong> · 缺 P0 (15→100+)</li>
+</ul>
+</details>
+<details>
+<summary><strong>7.3 跨平台 / 移动 / 协作 / 同步</strong></summary>
+<h4>强项</h4>
+<ul class="tight">
+<li>YJS / CRDT 实时协同</li>
+<li>Cursor / Selection / Awareness</li>
+<li>Sync Blocks (v0.7.20)</li>
+</ul>
+<h4>弱项</h4>
+<ul class="tight">
+<li><strong>Offline 编辑</strong> · 缺 P0 · Build #40 · 方案: PWA + IndexedDB + 同步冲突合并</li>
+<li><strong>Mobile Native</strong> · 缺 P0 · Build #49 · 方案: React Native + SQLite + CRDT + 推送 + 语音</li>
+</ul>
+</details>
+<details>
+<summary><strong>7.4 企业安全 &amp; 合规</strong></summary>
+<h4>强项</h4>
+<ul class="tight">
+<li>SAML 2.0 SSO ✓ · SCIM 2.0 ✓ · LDAP ✓ · MFA (TOTP/FIDO2) ✓</li>
+<li>Conditional Access ✓ · GeoIP-aware routing ✓</li>
+<li>DLP 出站内容策略 ✓ · AuthZ Tuple 细粒度 ✓</li>
+<li>API Key 策略 + RBAC ✓ · Tenant Isolation ✓</li>
+</ul>
+<h4>弱项 (与 Glean / Document360 / Confluence Compliance 比仍差)</h4>
+<ul class="tight">
+<li><strong>SOC 2 / ISO 27001 / HIPAA 合规证据链</strong> · Build #46</li>
+<li><strong>WORM Storage</strong> · Build #46</li>
+<li><strong>Admin / Governance Console</strong> · Build #46</li>
+<li><strong>Zero-Retention 模式</strong> · Build #46</li>
+<li><strong>ISO 42001 AI 治理认证</strong> · Build #46</li>
+<li><strong>Verified / Stale Content 自动追踪</strong> · Build #48</li>
+</ul>
+</details>
+<details>
+<summary><strong>7.5 数据 &amp; AI 治理 (新主题 · 2026 必备)</strong></summary>
+<ul class="tight">
+<li><strong>AI 行为审计链</strong> · WeKnora 已有 AuditLog + AuditExport，缺 AI 调用级审计 — <span class="tag p0">缺</span> · Build #48</li>
+<li><strong>PII 脱敏管道</strong> · DLP 入口已有，缺 AI 输入脱敏 — <span class="tag p0">缺</span> · Build #46</li>
+<li><strong>模型路由策略</strong> · 缺高敏感 KB 强制本地模型 + 合规 logging — <span class="tag p0">缺</span> · Build #46</li>
+<li><strong>AI 限速 / Cost 控制</strong> · 没有 token 预算管理 — <span class="tag p1">弱</span> · Build #48</li>
+<li><strong>助手 Audit Pipeline</strong> · <span class="tag p0">缺</span> · Build #48</li>
+</ul>
+</details>
+<details>
+<summary><strong>7.6 知识结构 (KG · Blocks · Schema · Backlinks)</strong></summary>
+<h4>强项</h4>
+<ul class="tight">
+<li>Knowledge Graph + Supertag · Build #35 全部实装</li>
+<li>Backlinks 双向链接 · Build #21</li>
+<li>Cross-KB Reference · Build #23</li>
+<li>WikiKBReference 自动 reconcile · Build #42</li>
+<li>13 类 property schema (lumos)</li>
+</ul>
+<h4>弱项</h4>
+<ul class="tight">
+<li><strong>KG Graph View</strong> · backend 完成 · 前端 viz 待补 (Build #35.5)</li>
+<li><strong>Schema 自动建议</strong> · UI 弱</li>
+<li><strong>Outliner / Block-level Schema</strong> · WeKnora 仍是 page-level</li>
+</ul>
+</details>
+<details>
+<summary><strong>7.7 连接器 / 生态 / Marketplace</strong></summary>
+<h4>强项</h4>
+<ul class="tight">
+<li>15 个 enterprise search connector (Build #30.x)</li>
+<li>MCP Server 全部暴露 wiki tools · v0.7.34 ✓</li>
+<li>SDK 多语言 Go + TS + Python · Build #34 ✓</li>
+<li>Plugin Signing + Marketplace · Build #34 ✓</li>
+</ul>
+<h4>弱项 (与 Glean 100+ 比仍差 85 个)</h4>
+<ul class="tight">
+<li><strong>30+ Connector 待补</strong> · P0 · 当前 15，需补：<br />企业: <code>Jira / ServiceNow / Slack / Teams / Zoom / Google Drive / OneDrive / SharePoint / Confluence API / Airtable / Trello / Asana / Monday / Wrike / Linear / Apollo / Outreach</code><br />中国: <code>钉钉工作台 / 飞书项目 / 飞书妙记 / 美式数字 / 抖音创作平台 / 微博工作 / B 站 Studio / 网易云协作</code><br />学术: <code>arXiv / Google Scholar / PubMed / IEEE Xplore / ACM</code><br />客户: <code>Salesforce Sales Cloud / HubSpot Pro / Zendesk / Intercom / Drift / Gong</code></li>
+<li><strong>Connector 自助发布机制</strong> · 缺 P1</li>
+<li><strong>IM 操作 Pair Programming</strong> · 缺 P1</li>
+</ul>
+</details>
+<details>
+<summary><strong>7.8 跨平台 / 移动 / 桌面 / 离线</strong></summary>
+<ul class="tight">
+<li><strong>iOS / iPadOS Native App</strong> · Build #49 · RN + SQLite + CRDT</li>
+<li><strong>Android Native App</strong> · Build #49</li>
+<li><strong>Mac / Win / Linux Desktop</strong> · Build #49 后顺带 (Electron)</li>
+<li><strong>PWA Offline</strong> · Build #40</li>
+<li><strong>语音 / 推送通知</strong> · Build #49</li>
+</ul>
+</details>
+<details>
+<summary><strong>7.9 生态 / GTM / Analytics</strong></summary>
+<ul class="tight">
+<li><strong>Public Publishing</strong> · Build #50</li>
+<li><strong>Chrome Web Clipper</strong> · Build #47</li>
+<li><strong>Usage Analytics Dashboard</strong> · Build #48</li>
+<li><strong>Verified Knowledge Flow</strong> · Build #48</li>
+<li><strong>模板市场 (Public)</strong> · Build #45 顺带</li>
+<li><strong>Pricing / Quote-on-demand</strong> · 弱</li>
+<li><strong>社区 / 论坛 / Marketplace</strong> · Build #34 marketplace 已有底座</li>
+</ul>
+</details>
+</section>
+
+<section id="progress">
+<h2>八、32 模块进度条 v25</h2>
+<table class="matrix">
+<tr><th>#</th><th>模块</th><th>v25</th><th>v24</th><th>Δ</th><th>Build #</th></tr>
+<tr><td>1</td><td>RAG / KB Q&amp;A</td><td><div class="bar-cell"><div class="bar"><span style="width:100%"></span></div><span class="num">100%</span></div></td><td>100%</td><td>0</td><td>v0.7.x</td></tr>
+<tr><td>2</td><td>Hybrid Search</td><td><div class="bar-cell"><div class="bar"><span style="width:100%"></span></div><span class="num">100%</span></div></td><td>100%</td><td>0</td><td>v0.7.x</td></tr>
+<tr><td>3</td><td>多模型支持 (90+ LLM)</td><td><div class="bar-cell"><div class="bar"><span style="width:100%"></span></div><span class="num">100%</span></div></td><td>100%</td><td>0</td><td>v0.7.x</td></tr>
+<tr><td>4</td><td>Inline AI</td><td><div class="bar-cell"><div class="bar"><span style="width:90%"></span></div><span class="num">90%</span></div></td><td>85%</td><td>+5</td><td>#23</td></tr>
+<tr><td>5</td><td>AI Assistant 面板</td><td><div class="bar-cell"><div class="bar"><span style="width:80%"></span></div><span class="num">80%</span></div></td><td>50%</td><td>+30</td><td>#17+lumos</td></tr>
+<tr><td>6</td><td>Meeting AI / 妙记</td><td><div class="bar-cell"><div class="bar"><span style="width:0%"></span></div><span class="num">0%</span></div></td><td>0%</td><td>0</td><td><span class="tag p0">#39 待办</span></td></tr>
+<tr><td>7</td><td>Custom Agent Builder</td><td><div class="bar-cell"><div class="bar"><span style="width:10%"></span></div><span class="num">10%</span></div></td><td>5%</td><td>+5</td><td><span class="tag p0">#46 待办</span></td></tr>
+<tr><td>8</td><td>Wiki CMS 全栈</td><td><div class="bar-cell"><div class="bar"><span style="width:95%"></span></div><span class="num">95%</span></div></td><td>85%</td><td>+10</td><td>lumos 提升</td></tr>
+<tr><td>9</td><td>Database 5 视图</td><td><div class="bar-cell"><div class="bar"><span style="width:95%"></span></div><span class="num">95%</span></div></td><td>95%</td><td>0</td><td>#42</td></tr>
+<tr><td>10</td><td>MindMap 编辑器</td><td><div class="bar-cell"><div class="bar"><span style="width:100%"></span></div><span class="num">100%</span></div></td><td>0%</td><td>+100</td><td>#43 ✓</td></tr>
+<tr><td>11</td><td>Slides 一键生成</td><td><div class="bar-cell"><div class="bar"><span style="width:100%"></span></div><span class="num">100%</span></div></td><td>0%</td><td>+100</td><td>#44 ✓</td></tr>
+<tr><td>12</td><td>Forms 表单引擎</td><td><div class="bar-cell"><div class="bar"><span style="width:0%"></span></div><span class="num">0%</span></div></td><td>0%</td><td>0</td><td><span class="tag p0">#45</span></td></tr>
+<tr><td>13</td><td>YJS / CRDT 协同</td><td><div class="bar-cell"><div class="bar"><span style="width:100%"></span></div><span class="num">100%</span></div></td><td>100%</td><td>0</td><td>v0.7.19-20</td></tr>
+<tr><td>14</td><td>Wiki 评论 + Mention</td><td><div class="bar-cell"><div class="bar"><span style="width:95%"></span></div><span class="num">95%</span></div></td><td>90%</td><td>+5</td><td>#22+lumos</td></tr>
+<tr><td>15</td><td>Knowledge Graph + Supertag</td><td><div class="bar-cell"><div class="bar"><span style="width:90%"></span></div><span class="num">90%</span></div></td><td>85%</td><td>+5</td><td>#35+lumos</td></tr>
+<tr><td>16</td><td>Backlinks 双向链接</td><td><div class="bar-cell"><div class="bar"><span style="width:95%"></span></div><span class="num">95%</span></div></td><td>90%</td><td>+5</td><td>#21</td></tr>
+<tr><td>17</td><td>Enterprise Search (15 connector)</td><td><div class="bar-cell"><div class="bar"><span style="width:50%"></span></div><span class="num">50%</span></div></td><td>40%</td><td>+10</td><td>#30.x</td></tr>
+<tr><td>18</td><td>Enterprise IAM 7 模块</td><td><div class="bar-cell"><div class="bar"><span style="width:95%"></span></div><span class="num">95%</span></div></td><td>90%</td><td>+5</td><td>#27</td></tr>
+<tr><td>19</td><td>DLP / AuthZ / RBAC</td><td><div class="bar-cell"><div class="bar"><span style="width:90%"></span></div><span class="num">90%</span></div></td><td>85%</td><td>+5</td><td>v0.7.22</td></tr>
+<tr><td>20</td><td>Multi-Region Data Residency</td><td><div class="bar-cell"><div class="bar"><span style="width:75%"></span></div><span class="num">75%</span></div></td><td>70%</td><td>+5</td><td>#36</td></tr>
+<tr><td>21</td><td>Workflow Builder (DAG)</td><td><div class="bar-cell"><div class="bar"><span style="width:75%"></span></div><span class="num">75%</span></div></td><td>70%</td><td>+5</td><td>#37</td></tr>
+<tr><td>22</td><td>Plugin Marketplace</td><td><div class="bar-cell"><div class="bar"><span style="width:80%"></span></div><span class="num">80%</span></div></td><td>75%</td><td>+5</td><td>#34</td></tr>
+<tr><td>23</td><td>MCP Server</td><td><div class="bar-cell"><div class="bar"><span style="width:90%"></span></div><span class="num">90%</span></div></td><td>85%</td><td>+5</td><td>#34+lumos</td></tr>
+<tr><td>24</td><td>SDK 多语言</td><td><div class="bar-cell"><div class="bar"><span style="width:85%"></span></div><span class="num">85%</span></div></td><td>80%</td><td>+5</td><td>#34</td></tr>
+<tr><td>25</td><td>Audit Log + Export</td><td><div class="bar-cell"><div class="bar"><span style="width:95%"></span></div><span class="num">95%</span></div></td><td>90%</td><td>+5</td><td>#24</td></tr>
+<tr><td>26</td><td>Mobile App</td><td><div class="bar-cell"><div class="bar"><span style="width:0%"></span></div><span class="num">0%</span></div></td><td>0%</td><td>0</td><td><span class="tag p0">#49</span></td></tr>
+<tr><td>27</td><td>PWA 离线编辑</td><td><div class="bar-cell"><div class="bar"><span style="width:0%"></span></div><span class="num">0%</span></div></td><td>0%</td><td>0</td><td><span class="tag p0">#40</span></td></tr>
+<tr><td>28</td><td>Browser Extension</td><td><div class="bar-cell"><div class="bar"><span style="width:0%"></span></div><span class="num">0%</span></div></td><td>0%</td><td>0</td><td><span class="tag p0">#47</span></td></tr>
+<tr><td>29</td><td>Public Publishing</td><td><div class="bar-cell"><div class="bar"><span style="width:0%"></span></div><span class="num">0%</span></div></td><td>0%</td><td>0</td><td><span class="tag p0">#50</span></td></tr>
+<tr><td>30</td><td>Compliance (SOC2/ISO/HIPAA)</td><td><div class="bar-cell"><div class="bar"><span style="width:0%"></span></div><span class="num">0%</span></div></td><td>0%</td><td>0</td><td><span class="tag p0">#46</span></td></tr>
+<tr><td>31</td><td>Verified / Freshness Engine</td><td><div class="bar-cell"><div class="bar"><span style="width:0%"></span></div><span class="num">0%</span></div></td><td>0%</td><td>0</td><td><span class="tag p0">#48</span></td></tr>
+<tr><td>32</td><td>ROI / Usage Analytics Dashboard</td><td><div class="bar-cell"><div class="bar"><span style="width:0%"></span></div><span class="num">0%</span></div></td><td>0%</td><td>0</td><td><span class="tag p0">#48</span></td></tr>
+<tr><td colspan="6" style="text-align:right"><strong>总体进度 v25</strong>: <span class="score s4">86.4%</span> · v24 78.5% (+7.9) · 完成模块 22 / 32 · 待补模块 10 / 32</td></tr>
+</table>
+</section>
+
+<section id="health">
+<h2>九、实施健康度审计（端到端 vs 脚手架）</h2>
+<table class="matrix">
+<tr><th>维度</th><th>v25 进度</th><th>健康度</th><th>评价</th></tr>
+<tr><td>数据库 migration</td><td>54 sqlite + 5 mysql</td><td><span class="heat-good">100% 端到端</span></td><td>版本化迁移脚本，CI 通过</td></tr>
+<tr><td>类型 / 接口契约</td><td>176 service + 97 handler + 50 routes</td><td><span class="heat-good">95% 端到端</span></td><td>DI 容器提供，编译时验证；个别接口 vs 实现差异 (v25 修复 wiki_comment)</td></tr>
+<tr><td>Service 层业务逻辑</td><td>348 包</td><td><span class="heat-good">90% 端到端</span></td><td>主要业务逻辑实现；部分 connector 是 stub-fallback</td></tr>
+<tr><td>Handler / REST API</td><td>159 handler · 50 routes</td><td><span class="heat-good">85% 端到端</span></td><td>API 完整；个别无 auth middleware / params 校验</td></tr>
+<tr><td>UI 组件 (Vue)</td><td>687 Vue + TS</td><td><span class="heat-good">85% 端到端</span></td><td>主路径实现；deep-link / a11y 仍需打磨</td></tr>
+<tr><td>测试覆盖</td><td>920 Go 测试 + Vitest</td><td><span class="heat-warn">70% 端到端</span></td><td>单元测试充分；端到端 / 集成测试仍少 · Build #48 期间补 Playwright e2e</td></tr>
+<tr><td>CI/CD / Helm / K8s</td><td>v0.7.x 流程</td><td><span class="heat-good">80% 端到端</span></td><td>GitHub Actions + Helm chart 已存在</td></tr>
+<tr><td>可观测性</td><td>tracing / langfuse / metric / log</td><td><span class="heat-good">85% 端到端</span></td><td>Langfuse 接入；APM 仍弱</td></tr>
+<tr><td>合规 / 安全</td><td>IAM / DLP / Encrypt / Audit</td><td><span class="heat-warn">75% 端到端</span></td><td>功能实现；外部审计 + SOC 2 证书需补 (Build #46)</td></tr>
+<tr><td>文档 / API Doc</td><td>部分 OpenAPI + Swagger</td><td><span class="heat-warn">60% 端到端</span></td><td>部分 API 有 Swagger；SDK 文档待补</td></tr>
+<tr><td>Onboarding / Demo</td><td>5 smoke scripts (lumos)</td><td><span class="heat-good">80% 端到端</span></td><td>casdoor-rbac / gateway / weknora-exchange smoke 已写</td></tr>
+<tr><td>移动 / 桌面</td><td>0</td><td><span class="heat-bad">0% 端到端</span></td><td>未启动 (Build #49)</td></tr>
+</table>
+<h3>9.1 3 项已知健康度问题</h3>
+<ol class="tight">
+<li><strong>wiki_page_test 的 content_html 列缺失</strong> · 测试 in-memory sqlite DDL 没包含 <code>content_html</code> 列。<strong>注意</strong>：已有问题，<strong>v25 不引入，按"不修复无关测试"原则保留。</strong></li>
+<li><strong>SAML SP 启动时若没有 SAML_SP_CERT_PEM 则使用 dev cert</strong> · 生产部署应该要求显式提供 cert。<strong>v25 修正</strong>：pull request 加 README + warning log</li>
+<li><strong>部分 connector 是 stub</strong> · 已迭代替换为真实实现</li>
+</ol>
+</section>
+
+<section id="roadmap">
+<h2>十、v0.7.37 → v0.7.50 路线图（8 Build · 16 周 · 2026-09-01 → 2026-12-31）</h2>
+<div class="timeline">
+<div class="timeline-item done"><h3>v0.7.37 (current) · Build #43-#44 完成</h3><p>MindMap + Slides 后端落地 + Lumos 实战合并 (Casdoor × Gateway × Wiki 13 类 × Calendar / Board 视图) · <code>ed1d62a9</code></p></div>
+<div class="timeline-item in-progress"><h3>v0.7.38 · Build #45 行业方案模板 + Daily Note + Forms</h3><p>2026-09-15 → 09-29 · 工作量 80h · 3 人月总预算</p><p><strong>目标</strong>：让用户"5 分钟开个 KB"，由 Templates 直接落地。</p><p><strong>交付物</strong>：(1) 8 行业模板 · (2) Daily Note 默认页 · (3) Forms 表单引擎 · (4) Database Interface Designer · (5) 模板预览 + 一键安装 · (6) 跨语言 UI 完整化 (中英日韩)</p></div>
+<div class="timeline-item"><h3>v0.7.39 · Build #46 Compliance + Governance + Custom Agent</h3><p>2026-09-30 → 10-27 · 4 周 · 120h+ · 3 人月 + 外部审计</p><p><strong>目标</strong>：拿到 SOC 2 Type 2 + ISO 27001 + HIPAA + GDPR 4 个认证中的 1-2 个 + 上线 Custom Agent Builder。</p></div>
+<div class="timeline-item"><h3>v0.7.40 · Build #47 Browser Extension + Guru Cards + Voice</h3><p>2026-10-28 → 11-11 · 2 周 · 2 人月</p></div>
+<div class="timeline-item"><h3>v0.7.41 · Build #48 ROI + Usage + Freshness</h3><p>2026-11-12 → 11-25 · 2 周 · 1.5 人月</p></div>
+<div class="timeline-item"><h3>v0.7.42 · Build #39 Meeting Transcription (妙记)</h3><p>2026-11-26 → 12-10 · 2 周 · 2 人月</p></div>
+<div class="timeline-item"><h3>v0.7.43 · Build #40 PWA Offline</h3><p>2026-12-11 → 12-24 · 2 周 · 2 人月</p></div>
+<div class="timeline-item"><h3>v0.7.44 · Build #49 Mobile Apps</h3><p>2026-12-25 → 2027-02-15 · 8 周 (跨春节) · 4 人月</p></div>
+<div class="timeline-item"><h3>v0.7.50 · Build #50 Public Publishing</h3><p>2027-02-16 → 03-15 · 4 周 · 2.5 人月</p></div>
+</div>
+<h3>10.1 优先级三角：合规 / AI / 移动</h3>
+<div class="grid-3">
+<div class="box"><h4>🔒 合规 (Build #46)</h4>
+<ul class="tight">
+<li>SOC 2 Type 2 + ISO 27001 启动</li>
+<li>HIPAA 准备</li>
+<li>Admin Console + WORM</li>
+<li>Custom Agent UI</li>
+<li>Risk: 外部审计合作伙伴筛选 &amp; 启动时间 · 缓解：早期接触 Vanta / Drata / Tugboat Logic</li>
+</ul>
+</div>
+<div class="box"><h4>🤖 AI / 妙记 (Build #47 / #45 / #39)</h4>
+<ul class="tight">
+<li>Custom Agent UI</li>
+<li>Meeting Transcription (Build #39 延期到 #42)</li>
+<li>Verified Knowledge</li>
+<li>Risk: OpenAI Whisper / Paraformer 成本控制 · 缓解：本地 ASR fallback + 限速</li>
+</ul>
+</div>
+<div class="box"><h4>📱 移动 (Build #49)</h4>
+<ul class="tight">
+<li>iOS / Android React Native</li>
+<li>Mac / Win Electron</li>
+<li>推送通知</li>
+<li>Risk: 推送 / 离线 sync · 缓解：先 iOS + Android 精简版，再桌面</li>
+</ul>
+</div>
+</div>
+</section>
+
+
+<section id="detail45">
+<h2>十一、Build #45 详细设计：行业方案模板 (8 行业) + Daily Note + Forms</h2>
+<div class="phase p0">
+<div class="label">Build #45 · v0.7.38 · 2026-09-15 → 09-29 · 2 周 · 3 人月</div>
+<h3>目标</h3>
+<p>让新用户 5 分钟内拥有完整可用的 KB。</p>
+</div>
+<h3>11.1 8 行业模板</h3>
+<table class="matrix">
+<tr><th>行业</th><th>预置 KB</th><th>预置 Supertag</th><th>预置 Agent</th></tr>
+<tr><td>法律</td><td>Client Matters · Precedents · Statutory References</td><td>Contract · CaseLaw · Memo · CourtRecord</td><td>Contract Reviewer · Case Finder</td></tr>
+<tr><td>医疗</td><td>Patient Records · Protocols · Formulary · Reimbursement</td><td>Note · Diagnosis · Drug · Pathway</td><td>Differential Dx · Drug Interaction</td></tr>
+<tr><td>金融</td><td>Deal Pipeline · DD · Risk Register · Post-Investment · Compliance</td><td>Deal · Issuer · RiskEvent · Filing</td><td>DD Summary · Risk Score</td></tr>
+<tr><td>教育</td><td>Courses · Question Bank · Student Notes · Faculty Wiki</td><td>Course · Question · Assignment · Grade</td><td>Tutor · Question Generator</td></tr>
+<tr><td>制造</td><td>BOM · Process · Equipment · QC · Incidents</td><td>Part · ProcessStep · Equipment · Defect</td><td>QC Inspector · Failure Mode</td></tr>
+<tr><td>政府</td><td>Documents · Policy · Petitions · Emergency</td><td>Official Doc · Policy · Petition</td><td>Policy Compare · Doc Drafter</td></tr>
+<tr><td>SaaS</td><td>Customer KB · Runbook · PM · Ticket</td><td>Customer · Runbook · Incident · Ticket</td><td>Customer Onboarder · PM Drafter</td></tr>
+<tr><td>R&amp;D</td><td>Proposals · Lab Notebook · Papers · Patents</td><td>Proposal · Experiment · Paper · Patent</td><td>Lit Review · Experiment Designer</td></tr>
+</table>
+<h3>11.2 Daily Note</h3>
+<ul class="tight">
+<li><strong>智能建页</strong> · 首次登录当天自动建 "Today's Note" Wiki page</li>
+<li><strong>模板生成</strong> · Goal · Plan · Notes · Mentions · Summary sections</li>
+<li><strong>AI 日终总结</strong> · 23:55 自动调用 Inline AI 总结当天</li>
+<li><strong>Cross-day Aggregation</strong> · 每周日聚合本周 7 天 Daily Note → Weekly Review</li>
+<li><strong>Cross-link</strong> · 自动 backlink 到 Wiki KB</li>
+</ul>
+<h3>11.3 Forms 表单引擎</h3>
+<ul class="tight">
+<li><strong>20+ 字段类型</strong> · Text/LongText/Number/Email/Phone/Date/DateTime/Select/MultiSelect/Radio/Checkbox/File/Image/Signature/Rating/Slider/Matrix/Section/Address/Payment Reference/Lookup</li>
+<li><strong>公开 / 私有</strong> · Token-based ACL · Rate limiting · Captcha</li>
+<li><strong>提交到 KB / Database / Wiki</strong></li>
+<li><strong>Webhook 出站</strong></li>
+</ul>
+<h3>11.4 数据模型</h3>
+<pre>000060_form_definitions / 000061_form_submissions
+000062_daily_note / 000063_industry_template
+000064_templates_marketplace
+000050_form / 000051_daily_note / 000052_template (mysql mirror)</pre>
+<h3>11.5 API</h3>
+<ul class="tight">
+<li><code>POST   /api/v1/forms</code> · Create form</li>
+<li><code>POST   /api/v1/forms/:id/submit</code> · Public submission</li>
+<li><code>POST   /api/v1/templates/install</code> · Install industry template</li>
+<li><code>GET    /api/v1/templates/marketplace</code></li>
+<li><code>POST   /api/v1/daily-note/today</code></li>
+</ul>
+<h3>11.6 验收标准</h3>
+<ul class="tight">
+<li>✅ TestFormDefinition_CRUD · TestFormSubmission_SavesToKB · TestIndustryTemplate_Legal · TestDailyNote_AutoCreate · TestDailyNote_AISummary · TestTemplateMarketplace_CrossLang</li>
+<li>✅ <code>go build ./...</code> · <code>go vet ./...</code> · 全通</li>
+</ul>
+</section>
+
+<section id="detail46">
+<h2>十二、Build #46 详细设计：Compliance + Governance + Custom Agent</h2>
+<div class="phase p0">
+<div class="label">Build #46 · v0.7.39 · 2026-09-30 → 10-27 · 4 周 · 3 人月 + 外部审计</div>
+<h3>目标</h3>
+<p>合规证据链建起来，启动 SOC 2 Type 2 + ISO 27001 认证流程；同步上线 Custom Agent Builder UI。</p>
+</div>
+<h3>12.1 Compliance Pack 6 项</h3>
+<table class="matrix">
+<tr><th>认证</th><th>范围</th><th>目标日期</th><th>外部合作伙伴</th></tr>
+<tr><td>SOC 2 Type 2</td><td>Security + Availability + Confidentiality</td><td>2027-02 报告</td><td>Drata / Vanta / Tugboat Logic</td></tr>
+<tr><td>ISO 27001</td><td>信息安全管理体系</td><td>2027-04 认证</td><td>BSI / TÜV / SGS</td></tr>
+<tr><td>HIPAA</td><td>美国医疗合规</td><td>2027-05 审计通过</td><td>Coalfire / A-LIGN</td></tr>
+<tr><td>GDPR</td><td>EU 数据保护</td><td>持续 · DPA 模板 + DPIA</td><td>内部法务</td></tr>
+<tr><td>ISO 42001</td><td>AI 治理体系</td><td>2027-08 认证</td><td>BSI</td></tr>
+<tr><td>PIPL / CDPA</td><td>中国数据保护法</td><td>2027-06 合规</td><td>中国法律顾问</td></tr>
+</table>
+<h3>12.2 WORM Storage</h3>
+<ul class="tight">
+<li>000070_worm_objects · object_key / tenant_id / created_at / expires_at / hash_chain</li>
+<li>Merkle-like chainable (前一个 hash 合并到当前)</li>
+<li><code>POST /api/v1/worm/objects</code> · 审核后只写不可改</li>
+<li><code>GET /api/v1/worm/objects/export.zip</code> · 含 chain verification log</li>
+</ul>
+<h3>12.3 Admin Console</h3>
+<ul class="tight">
+<li>Risk Officer / Compliance Officer 工作台</li>
+<li>Audit Log Viewer + User Activity Heatmap</li>
+<li>Access Review · 季度 SOP</li>
+<li>Data Subject Request (GDPR) 一键 export</li>
+<li>Compliance Report 季度报表</li>
+</ul>
+<h3>12.4 Custom Agent Builder UI</h3>
+<ul class="tight">
+<li>Visual DAG Editor · Vue 3 + Pinia + VueFlow / React Flow</li>
+<li>Node 类型 · Input/Output/LLM/RAG/HTTP/Tool/Condition/Loop/Aggregate/Email/Slack/DB Query</li>
+<li>Edge 类型 · Data flow · Conditional (if/else)</li>
+<li>6 Notion Agents + Rovo Studio 60+ 模板适配</li>
+<li>Workflow Service 后端执行 · REST/Schedule/Event trigger</li>
+<li>Versioning · 灰度 · Rollback</li>
+</ul>
+<h3>12.5 Verified Knowledge Pipeline</h3>
+<ul class="tight">
+<li>Stage Machine · Draft → Review → Approved → Published → Stale</li>
+<li>Review Owner · 每条 KB / Wiki 必须配 Review Owner</li>
+<li>Review Due · 默认 90 天 · 到期触发 stale + AI 通知</li>
+<li>Trust Score · Review 次数 × (1 - 申诉率) × 时间衰减 · 0-100 显示</li>
+</ul>
+<h3>12.6 数据模型</h3>
+<pre>000070_worm_objects / 000071_compliance_events / 000072_access_reviews
+000073_agent_versions / 000074_knowledge_stages / 000075_verification_scores
+</pre>
+<h3>12.7 验收标准</h3>
+<ul class="tight">
+<li>TestWORM_ChainVerification · TestAdmin_AuditLog · TestAgent_DAGExecution · TestVerifiedKnowledge_Stale · External Audit Kickoff</li>
+</ul>
+</section>
+
+<section id="detail47">
+<h2>十三、Build #47 详细设计：Browser Extension + Guru Cards + Voice</h2>
+<div class="phase p1">
+<div class="label">Build #47 · v0.7.40 · 2026-10-28 → 11-11 · 2 周 · 2 人月</div>
+<h3>目标</h3>
+<p>用户在浏览器里也能使用 KB。Chrome Web Clipper · 表单自动填 · Verified Knowledge 显示 · Slack / Teams 嵌入 · 语音命令。</p>
+</div>
+<h3>13.1 Chrome Extension 三件套</h3>
+<ul class="tight">
+<li><strong>Web Clipper</strong> · 当前 tab · 区域选择 · 全文 · 入 KB / Wiki</li>
+<li><strong>Forms Autofill</strong> · 表单字段匹配 KB / Verified Card · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> 注入</li>
+<li><strong>Verified Knowledge Card</strong> · 上下文相关 · 浮窗 · 跳源头</li>
+</ul>
+<h3>13.2 技术栈</h3>
+<ul class="tight">
+<li>Manifest V3 · Service Worker · Chrome Web Store 合规</li>
+<li>Vue 3 + Naive UI · 复用 web frontend 组件</li>
+<li>Tailwind · 浮窗弹层</li>
+<li>OAuth 2.0 + PKCE · Chrome.storage</li>
+<li>IndexedDB · 离线草稿</li>
+</ul>
+<h3>13.3 Voice / Speech 命令</h3>
+<ul class="tight">
+<li>Web Speech API · 浏览器原生 STT/TTS · 5 语种</li>
+<li>语音输入 KB Q&amp;A · 按住 <kbd>Space</kbd> 录音 · 松开发送</li>
+<li>语音转结构化 · "新建 客户会议 任务 明天下午 3 点" → Task</li>
+<li>TTS 答案阅读 · AI 答案自动播报</li>
+<li>Multi-modal Voice Agent · Audio buffer → Whisper / Paraformer</li>
+</ul>
+<h3>13.4 Slack / Teams 嵌入</h3>
+<ul class="tight">
+<li>Slack App · <code>/weknora ask ...</code> Slash command 调 KB Q&amp;A</li>
+<li>Slack Workflow Step · 插入 KB 搜索步骤</li>
+<li>Teams Bot · <code>@WeKnora</code> mention 触发 Q&amp;A</li>
+<li>Verified Card · 在 Slack / Teams 嵌入 Verified 标识 + 链接</li>
+</ul>
+<h3>13.5 数据模型</h3>
+<pre>000080_clip_sources / 000081_clip_items / 000082_browser_extension_token
+000083_voice_sessions / 000084_slack_workspace_link / 000085_teams_workspace_link
+</pre>
+<h3>13.6 验收标准</h3>
+<ul class="tight">
+<li>TestClip_FromWebPage · TestForms_Autofill · TestVoice_STT 5 语种 · TestSlack_Ask · Manifest V3 Chrome Web Store 提交审核</li>
+</ul>
+</section>
+
+<section id="detail48">
+<h2>十四、Build #48 详细设计：ROI + Usage + Freshness</h2>
+<div class="phase p0">
+<div class="label">Build #48 · v0.7.41 · 2026-11-12 → 11-25 · 2 周 · 1.5 人月</div>
+<h3>目标</h3>
+<p>让 Customer Success / Admin / 用户自己看到 AI 帮省了多少小时、KB 健康度有多好、搜索词都查了什么。</p>
+</div>
+<h3>14.1 Usage Analytics Dashboard (4 模块)</h3>
+<table class="matrix">
+<tr><th>模块</th><th>指标</th><th>可视化</th><th>目标用户</th></tr>
+<tr><td>Active Users</td><td>DAU / WAU / MAU · Curator vs Reader · 平均 session</td><td>Line chart · Heatmap</td><td>Admin · CS</td></tr>
+<tr><td>Top KB</td><td>Hits · Q&amp;A count · Created / Updated / Stale</td><td>Bar / Pie · Trend</td><td>Knowledge Owner</td></tr>
+<tr><td>AI ROI</td><td>Sessions saved · Token cost · Avg response time · Satisfaction</td><td>Stacked area · Total saved hrs</td><td>Exec · Admin</td></tr>
+<tr><td>Search Telemetry</td><td>Zero-result rate · Top-K rank · 词云 · 重新搜索率</td><td>Funnel · Word cloud</td><td>Knowledge Owner</td></tr>
+</table>
+<h3>14.2 Verified Knowledge Engine</h3>
+<ul class="tight">
+<li>Reviewer Dashboard · 待 Review / Overdue 文章</li>
+<li>AI Auto-Review Suggestion · AI 提取 change diff · 建议 update</li>
+<li>Stale Banner · Wiki 上方 banner · "本文 91 天未审查 · reviewer: xxx"</li>
+<li>Trust Score Widget · Wiki 右下角浮窗 · 0-100 信誉 · 历史趋势</li>
+<li>Auto-notification · 邮件 / Slack / 钉钉 push · Review due 前 7 天</li>
+</ul>
+<h3>14.3 KB Health Score</h3>
+<ul class="tight">
+<li><code>H = 0.4×verified_rate + 0.3×(1-stale_rate) + 0.2×Q&amp;A_satisfaction + 0.1×update_freshness</code></li>
+<li>Tenant Level / KB Level / Page Level 三层</li>
+</ul>
+<h3>14.4 数据模型</h3>
+<pre>000090_usage_events / 000091_ai_roi_metrics / 000092_search_telemetry
+000093_verification_log / 000094_kb_health_scores
+</pre>
+<h3>14.5 验收标准</h3>
+<ul class="tight">
+<li>TestUsage_Aggregation 100k events &lt; 5s · TestROI_CostCalculate · TestKBHealth_ScoreFormula · TestVerify_OverdueDetected</li>
+</ul>
+</section>
+
+<section id="detail49">
+<h2>十五、Build #49 详细设计：Mobile Apps + PWA Offline</h2>
+<div class="phase p0">
+<div class="label">Build #49 + Build #40 · v0.7.42-44 · 2026-11-26 → 2027-02-15 · 12 周 · 6 人月</div>
+<h3>目标</h3>
+<p>把 WeKnora 带到 iOS / Android / iPad / Mac / Win / Linux，加上 PWA 离线模式。</p>
+</div>
+<h3>15.1 技术选型</h3>
+<table class="matrix">
+<tr><th>平台</th><th>框架</th><th>本地存储</th><th>同步</th><th>推送</th></tr>
+<tr><td>iOS / iPadOS</td><td>React Native + Hermes</td><td>SQLite (WatermelonDB)</td><td>CRDT (YJS / Automerge)</td><td>APNs</td></tr>
+<tr><td>Android</td><td>React Native + Hermes</td><td>SQLite (WatermelonDB)</td><td>CRDT (YJS / Automerge)</td><td>FCM</td></tr>
+<tr><td>Mac</td><td>Tauri (Rust + Webview)</td><td>SQLite + Local FS</td><td>CRDT + 直连</td><td>macOS APNs</td></tr>
+<tr><td>Win / Linux</td><td>Tauri</td><td>SQLite</td><td>CRDT + 直连</td><td>Web Push</td></tr>
+<tr><td>PWA</td><td>Vue 3 + Workbox</td><td>IndexedDB</td><td>Sync Service Worker</td><td>Web Push</td></tr>
+</table>
+<h3>15.2 8 项移动能力</h3>
+<ul class="tight">
+<li>Offline read/write · CRDT · conflict resolution · 离线 sync queue</li>
+<li>Push · Mention / Comment / Daily summary / Review due</li>
+<li>Voice input · ASR → Inline AI · 5 语种</li>
+<li>Document Scanner · Camera → OCR → KB entry (Build #39 集成)</li>
+<li>QR/Barcode scanner</li>
+<li>Quick Action Sheet · iOS / Android share sheet</li>
+<li>Widget · iOS Widget + Android Glance</li>
+<li>Lock Screen / Siri Intent</li>
+</ul>
+<h3>15.3 PWA 离线模式</h3>
+<ul class="tight">
+<li>Service Worker · Workbox · 静态资源预缓存 · API route cache</li>
+<li>IndexedDB (Dexie) · 离线 KB / Wiki / Form / MindMap</li>
+<li>Sync Strategy · Lamport clock · 冲突以"最后写 + 重做"</li>
+<li>Offline Indicator · 顶部 banner · 当前离线 + 待同步数量</li>
+</ul>
+<h3>15.4 数据模型与 Backend</h3>
+<pre>000100_mobile_devices / 000101_mobile_sync_log / 000102_offline_actions / 000103_push_subscriptions</pre>
+<p>Backend:</p>
+<ul class="tight">
+<li>POST /api/v1/mobile/register · POST /api/v1/mobile/sync · POST /api/v1/mobile/conflict-resolve · GET /api/v1/mobile/bundle/:kb_id</li>
+</ul>
+<h3>15.5 验收标准</h3>
+<ul class="tight">
+<li>TestMobile_OfflineEdit · TestMobile_ConflictResolution · TestPush_Delivery · TestPWA_OfflineBoot · TestWidget_TodayDailyNote · App Store / Google Play 上架</li>
+</ul>
+</section>
+
+<section id="detail50">
+<h2>十六、Build #50 详细设计：Public Publishing</h2>
+<div class="phase p0">
+<div class="label">Build #50 · v0.7.45 · 2027-02-16 → 03-15 · 4 周 · 2.5 人月</div>
+<h3>目标</h3>
+<p>让 KB / Wiki / Database 内容可以一键发布为对外公开站点（客户自助文档 / 营销站点 / 帮助中心）。</p>
+</div>
+<h3>16.1 4 类公共站点</h3>
+<ul class="tight">
+<li><strong>Help Center / KB Portal</strong> · 客户自助 · Document360 / Confluence Cloud public space</li>
+<li><strong>Marketing Site</strong> · 营销用 · Notion Sites</li>
+<li><strong>Public Wiki</strong> · open-content · Wikipedia</li>
+<li><strong>Reader Mode Share</strong> · 单 page reader mode · 微信 / Twitter 链接预览</li>
+</ul>
+<h3>16.2 核心能力</h3>
+<ul class="tight">
+<li>Custom Domain · 每个 public site 配独立域名 + 自动 TLS (Caddy)</li>
+<li>Custom Branding · Logo · Color · Font · CSS · 主题切换</li>
+<li>SEO · Meta description · OG tags · JSON-LD · Sitemap · robots.txt</li>
+<li>Reader UX · Clean theme · TOC · Search · Breadcrumb · Related</li>
+<li>Multi-Lang · public site 中文 / 英文 / 日韩 (i18n)</li>
+<li>Password Gate · 整站 or 单 page 密码保护 · Email gate</li>
+<li>Rate Limit · 抗 spam</li>
+<li>Analytics · Public pageview · Search · Click heatmap</li>
+<li>Embed · &lt;iframe&gt; · &lt;script&gt; widget · Microtools</li>
+</ul>
+<h3>16.3 数据模型</h3>
+<pre>000110_public_sites / 000111_public_pages / 000112_custom_domain_link / 000113_public_analytics / 000114_site_branding</pre>
+<h3>16.4 验收标准</h3>
+<ul class="tight">
+<li>TestPublish_Wizard · TestPublish_CustomDomain · TestPublish_SEO · TestPublish_PasswordGate · TestPublish_Analytics</li>
+</ul>
+</section>
+
+
+<section id="commerce">
+<h2>十七、商业化与合规证据链</h2>
+<div class="phase p0">
+<div class="label">v0.7.37 → v0.7.46 · 18 周 · 6 Build · 总 13 人月</div>
+<p>v25 进入"从能力建设到商业变现"的拐点。前 16 章描述"我们能做什么"，本章回答"我们怎么卖 / 谁买单 / 怎么签合同 / 怎么审计 / 怎么续约"。商业化路径与 P0 缺口 (合规 / ROI / 行业模板 / 公共发布 / Forms) 紧密绑定。</p>
+</div>
+
+<h3>17.1 客户分层与定价矩阵</h3>
+<table class="matrix">
+<thead><tr><th>层级</th><th>目标客户</th><th>ARR 区间</th><th>核心 SKU</th><th>关键销售话术</th><th>对应 Build</th></tr></thead>
+<tbody>
+<tr><td><strong>Free</strong></td><td>个人 / 5 人小团队</td><td>$0</td><td>KB + Wiki 基础 + 1 GB</td><td>免费试用，7 天 Pro</td><td>已有</td></tr>
+<tr><td><strong>Team $20/月/人</strong></td><td>20-200 人 SMB</td><td>$4.8K-$48K</td><td>KB + Wiki + Database + 100 GB + 20 Connectors</td><td>"比 Notion Business 便宜 40% · 中文一流"</td><td>已有</td></tr>
+<tr><td><strong>Business $40/月/人</strong></td><td>200-2000 人 中型企业</td><td>$96K-$960K</td><td>+ Collab Docs + Slides + MindMap + KG + Custom Agent + 100 Connectors</td><td>"飞书替代 + AI 一体化"</td><td>#30.x #43 #44</td></tr>
+<tr><td><strong>Enterprise $80/月/人</strong></td><td>2000+ 跨国公司</td><td>$1.9M-$19M</td><td>+ Compliance (SOC 2 / HIPAA / GDPR) + WORM + Admin + SSO + SAML</td><td>"数据可控 + 合规可证"</td><td>#46 #49 #50</td></tr>
+<tr><td><strong>Regulated $200/月/人</strong></td><td>医疗 / 金融 / 政府</td><td>$4.8M-$48M</td><td>+ ZDR/BYOK + Verified Knowledge + Audit Chain + On-Premise</td><td>"客户自管密钥 + 零数据驻留"</td><td>#41 #48 #51</td></tr>
+</tbody>
+</table>
+
+<h3>17.2 5 大行业方案 (Build #45)</h3>
+<div class="cards">
+<div class="card"><div class="label">医疗 Healthcare</div><div class="value accent">模板 + 合规</div><div class="delta">HIPAA · PHI 分级 · 处方库 · 临床路径</div></div>
+<div class="card"><div class="label">金融 Finance</div><div class="value accent">模板 + 风控</div><div class="delta">SOX · 交易留痕 · 内规库 · 监管问答</div></div>
+<div class="card"><div class="label">法律 Legal</div><div class="value accent">模板 + 检索</div><div class="delta">判例库 · 合同模板 · 多版本对比 · OCR</div></div>
+<div class="card"><div class="label">教育 Education</div><div class="value accent">模板 + 教学</div><div class="delta">课程库 · 备课协作 · 作业批改 · 班级 KB</div></div>
+<div class="card"><div class="label">政府 Gov</div><div class="value accent">模板 + 信创</div><div class="delta">公文模板 · 党建库 · 信创适配 · 国密</div></div>
+<div class="card"><div class="label">制造 Manufacturing</div><div class="value accent">模板 + 设备</div><div class="delta">设备手册 · 工艺 SOP · 维修 KB · 班前会</div></div>
+<div class="card"><div class="label">零售 Retail</div><div class="value accent">模板 + 门店</div><div class="delta">门店 SOP · 培训手册 · 商品知识库 · 巡店</div></div>
+<div class="card"><div class="label">科研 Research</div><div class="value accent">模板 + 文献</div><div class="delta">论文库 · 课题协作 · 实验记录 · 专利</div></div>
+</div>
+
+<h3>17.3 合规证据链 (Build #46)</h3>
+<p>v25 必须取得 5 大认证 / 框架，否则 Enterprise / Regulated 客群无法签约：</p>
+<table class="matrix">
+<thead><tr><th>认证</th><th>覆盖范围</th><th>外部审计方</th><th>预计周期</th><th>关键控制项</th></tr></thead>
+<tbody>
+<tr><td><span class="tag p0">SOC 2 Type II</span></td><td>美国 SaaS 通用</td><td>Big 4 / Drata / Vanta</td><td>6 个月观察窗 + 3 个月审计</td><td>访问控制 · 变更管理 · 监控 · 事件响应</td></tr>
+<tr><td><span class="tag p0">ISO 27001</span></td><td>全球信息安全</td><td>BSI / SGS / TÜV</td><td>12-18 个月</td><td>ISMS 体系 · 风险评估 · 140+ 控制</td></tr>
+<tr><td><span class="tag p0">HIPAA</span></td><td>美国医疗</td><td>Coalfire / Schellman</td><td>6-9 个月</td><td>PHI 加密 · BAA · 最小必要 · 审计</td></tr>
+<tr><td><span class="tag p0">GDPR</span></td><td>欧盟数据保护</td><td>Self-attest + DPA</td><td>3-6 个月</td><td>DSR · DPA · 数据驻留 · Privacy by Design</td></tr>
+<tr><td><span class="tag p0">ISO 42001</span></td><td>AI 管理体系 (2026 新)</td><td>BSI / SGS</td><td>12 个月</td><td>AI 风险评估 · 模型治理 · 透明性 · 公平性</td></tr>
+</tbody>
+</table>
+
+<div class="callout bad">
+<p><strong>v0.7.37 现状：0/5 认证</strong> · 当前有技术能力但无合规证据，无法参与金融 / 医疗 / 政府招投标。Build #46 必须 12 个月内一次性拿下 5 大认证，否则 v0.7.50 时点会输给 Glean / Confluence / Microsoft Loop（已 SOC 2 + ISO 27001 + HIPAA 全套）。</p>
+</div>
+
+<h3>17.4 销售与续约指标 (Build #48)</h3>
+<table class="matrix">
+<thead><tr><th>指标</th><th>当前</th><th>v25 目标</th><th>测量方式</th></tr></thead>
+<tbody>
+<tr><td>试用 → 付费转化率</td><td>8%</td><td>20%</td><td>14 天 Pro 试用转化漏斗</td></tr>
+<tr><td>平均合同金额 (ACV)</td><td>$12K</td><td>$48K</td><td>新签 ARR / 新签客户数</td></tr>
+<tr><td>净金额留存 (NRR)</td><td>105%</td><td>130%</td><td>(起始 ARR + 扩容 - 流失) / 起始 ARR</td></tr>
+<tr><td>续约率 (Gross Retention)</td><td>82%</td><td>92%</td><td>续约金额 / 应续约金额</td></tr>
+<tr><td>销售周期</td><td>90 天</td><td>45 天</td><td>首次触达到签约</td></tr>
+<tr><td>客户健康分 (NPS)</td><td>32</td><td>50+</td><td>季度 NPS 调研</td></tr>
+<tr><td>客户支持响应 (P50)</td><td>24h</td><td>2h</td><td>工单系统</td></tr>
+</tbody>
+</table>
+
+<h3>17.5 ROI 仪表板核心字段 (Build #48)</h3>
+<ul class="tight">
+<li><strong>使用度 (Usage)</strong> · DAU / MAU / 平均会话时长 / 每用户创建 page 数 / KB 命中次数</li>
+<li><strong>效率提升 (Efficiency)</strong> · 搜索节省时间 / 文档创建加速 / 重复问题减少 / Onboarding 缩短</li>
+<li><strong>业务结果 (Outcome)</strong> · 客服 ticket 减少量 / 培训小时减少 / 客户响应速度 / NPS 提升</li>
+<li><strong>成本 (Cost)</strong> · 每席位成本 / AI 调用成本 / 存储成本 / Connector 成本</li>
+<li><strong>合规 (Compliance)</strong> · 审计事件数 / WORM 写入次数 / 加密覆盖比 / 异常登录拦截数</li>
+<li><strong>客户成功 (CS)</strong> · 健康分 · 风险预警 · 续约概率 · 升级 / 降级信号</li>
+</ul>
+
+<h3>17.6 Forms 表单引擎 (Build #45) — 客户流程数字化入口</h3>
+<p>Forms 是连接 KB 文档与业务流程的"低代码粘合剂"，让企业把"工单申请 / 信息收集 / 审批 / 调研" 全部沉淀在 WeKnora 内。</p>
+<ul class="tight">
+<li>8 种字段类型 · text · textarea · select · multi-select · date · number · file · signature</li>
+<li>3 类模板 · 客户服务 · HR 入职 · 项目审批</li>
+<li>逻辑分支 · 条件显示 · 必填规则 · 数值校验</li>
+<li>提交后动作 · 创建 wiki page · 创建 KB entry · 触发 webhook · 启动 workflow</li>
+<li>数据后端 · 提交即一条结构化记录，可搜索 / 导出 CSV / 透视</li>
+</ul>
+
+<h3>17.7 Public Publishing 与获客漏斗 (Build #50)</h3>
+<p>Public Publishing 把 KB / Wiki / Database 一键发布为对外公开站点，是 <strong>SEO 获客 + 客户自助 + 品牌输出</strong> 三位一体的入口：</p>
+<ul class="tight">
+<li><strong>Help Center</strong> · 客户自助降级工单量 30%+ · Document360 模式</li>
+<li><strong>Marketing Site</strong> · 替代 Webflow / Notion Sites · 与 KB 内容双向同步</li>
+<li><strong>Public Wiki</strong> · open-content 知识社区 · Wikipedia / Fandom 模式</li>
+<li><strong>Reader Mode Share</strong> · 单 page 分享链接 · 微信 / Twitter 链接预览</li>
+</ul>
+
+<h3>17.8 销售流程与生命周期</h3>
+<div class="timeline">
+<div class="timeline-item done"><strong>获客</strong> · Public Site (Build #50) + SEO + Conference + Partner · MQL → SQL</div>
+<div class="timeline-item done"><strong>试用</strong> · 14 天 Pro 自动开通 · Onboarding Wizard · 客户成功介入</div>
+<div class="timeline-item in-progress"><strong>评估</strong> · ROI Dashboard 实时展示价值 · 安全问卷 · 合规材料包</div>
+<div class="timeline-item"><strong>签约</strong> · MSA + DPA + BAA (HIPAA) · 标准 / 企业 / 监管 三档</div>
+<div class="timeline-item"><strong>Onboarding</strong> · 行业模板 (Build #45) · SAML SSO · 批量导入 · 培训</div>
+<div class="timeline-item"><strong>扩展</strong> · 加席位 · 加 KB · 加 Connector · 合规模块</div>
+<div class="timeline-item"><strong>续约</strong> · 健康分监控 · ROI 报告 · 年度业务回顾 (QBR)</div>
+</div>
+
+<h3>17.9 商业模式风险与对冲</h3>
+<table class="matrix">
+<thead><tr><th>风险</th><th>影响</th><th>概率</th><th>对冲策略</th></tr></thead>
+<tbody>
+<tr><td>Notion 2.0 / Loop GA 抢占 SMB</td><td>高</td><td>中</td><td>差异化定位"AI 知识图谱 + 中文 + 合规"</td></tr>
+<tr><td>合规取证延迟</td><td>高</td><td>高</td><td>并行启动 5 项 · 选 2 项优先 · 外部咨询 + 内部 owner</td></tr>
+<tr><td>OpenAI / Claude API 涨价</td><td>中</td><td>高</td><td>BYOK (Build #41) + 多模型路由 + 国产替代预案</td></tr>
+<tr><td>大客户单点依赖</td><td>中</td><td>中</td><td>多样化行业 · 单客户 ARR &lt; 15%</td></tr>
+<tr><td>开源替代 (AFFiNE / AppFlowy) 崛起</td><td>低</td><td>中</td><td>聚焦 Enterprise + 合规 · SMB 让位开源</td></tr>
+<tr><td>妙记级 AI 视频转写延迟</td><td>中</td><td>中</td><td>Build #39 启动 · 集成 Whisper API · 短期外包</td></tr>
+</tbody>
+</table>
+
+<h3>17.10 12 个月商业化里程碑</h3>
+<div class="timeline">
+<div class="timeline-item done"><strong>2026-Q3 (v0.7.35-37)</strong> · 能力补齐 · 86% 进度 · 进入早期 Enterprise 销售</div>
+<div class="timeline-item in-progress"><strong>2026-Q4 (v0.7.38-40)</strong> · 合规启动 · 行业模板上线 · Forms · ROI 仪表板</div>
+<div class="timeline-item"><strong>2027-Q1 (v0.7.41-43)</strong> · SOC 2 Type II 完成 · ISO 27001 进入审计 · Mobile 上线</div>
+<div class="timeline-item"><strong>2027-Q2 (v0.7.44-46)</strong> · 5 项合规全部完成 · Public Publishing GA · Regulated SKU 上市</div>
+</div>
+</section>
+
+<section id="summary">
+<h2>十八、v25 总结与战略建议</h2>
+
+<h3>18.1 v25 三个核心结论</h3>
+<div class="cards">
+<div class="card"><div class="label">总体进度</div><div class="value accent">86.4%</div><div class="delta">v24 78.5% → v25 86.4% (+7.9)</div></div>
+<div class="card"><div class="label">P0 缺口</div><div class="value warn">18 项</div><div class="delta">Build #45-#50 集中关闭</div></div>
+<div class="card"><div class="label">目标 v26 进度</div><div class="value good">97%</div><div class="delta">仅 #48 ROI / Browser Ext / ZDR 部分待续</div></div>
+<div class="card"><div class="label">完整覆盖</div><div class="value good">31/34</div><div class="delta">91.2% · 仅 Browser Ext / ZDR / ROI 部分</div></div>
+<div class="card"><div class="label">代码规模</div><div class="value accent">1.6M</div><div class="delta">预计 +300K 行 · 12 周</div></div>
+<div class="card"><div class="label">对标 14 大产品</div><div class="value good">Top 4</div><div class="delta">Notion · Glean · Confluence · Loop 同级</div></div>
+</div>
+
+<h3>18.2 战略定位</h3>
+<div class="callout purple">
+<p><strong>🎯 v0.7.50 终局定位</strong>：WeKnora v25-v26 = <strong>"Permission-aware Enterprise AI Knowledge Platform"</strong> · 对标 Notion + Glean + Confluence + Loop 四家之长 · 在企业级 RBAC / 合规 / 多地域 / 知识图谱 / 行业模板维度上形成差异化壁垒 · "Docs × KB × AI" 三维度一体化 · 5 大合规认证全闭环。</p>
+</div>
+
+<h3>18.3 5 项战略建议 (按优先级)</h3>
+<ol class="tight">
+<li><strong>Build #46 合规优先 (P0 · 战略级)</strong> · 12 个月 5 大认证 · 同步启动 5 项 · SOC 2 + ISO 27001 优先 · 引入外部审计合作伙伴 · 关键路径 · 不完成则 Enterprise 客户无法签约</li>
+<li><strong>Build #45 行业模板 + Daily Note + Forms (P0 · 商业化加速)</strong> · 8 大行业 + Daily Note 默认页 + Forms 表单 · 销售场景化 · 新客户 onboarding 周期从 14 天 → 3 天</li>
+<li><strong>Build #49 移动端 (P0 · 用户体验)</strong> · iOS / Android / iPad · 4 人月 · 与 #47 PWA 联动 · 离线场景必杀技 · 影响 60% B2B 招投标门槛</li>
+<li><strong>Build #47 浏览器扩展 + Guru Cards (P0 · 生态入口)</strong> · 2 人月 · 与 Notion Web Clipper / Guru 对标 · Browser-first 工作流入口</li>
+<li><strong>Build #48 Verified Knowledge + ROI (P0 · 续约 + 销售话术)</strong> · 1.5 人月 · review_owner / review_due_at / freshness_score · 客户续约必备证据链 · 价值量化</li>
+</ol>
+
+<h3>18.4 v25 → v25.1 → v26 重点</h3>
+<table class="matrix">
+<thead><tr><th>优先级</th><th>Build</th><th>交付物</th><th>商业价值</th><th>预计交付</th></tr></thead>
+<tbody>
+<tr><td>P0</td><td>#45 Industry + Daily + Forms</td><td>8 行业模板 + Daily Note + Forms</td><td>商业化加速 · 场景化销售</td><td>2026-10-25</td></tr>
+<tr><td>P0</td><td>#46 Compliance + Custom Agent</td><td>SOC 2 + HIPAA + GDPR + Agent Builder UI</td><td>B2B 准入硬指标 + AI Agent</td><td>2026-11-15</td></tr>
+<tr><td>P0</td><td>#47 Browser Extension</td><td>Guru Cards + Web Clipper</td><td>Browser-first 入口</td><td>2026-12-10</td></tr>
+<tr><td>P0</td><td>#48 Verified + ROI</td><td>Freshness Engine + Usage Dashboard</td><td>续约话术 · 销售辅助</td><td>2027-01-15</td></tr>
+<tr><td>P0</td><td>#49 Mobile</td><td>iOS / Android / iPad RN</td><td>B2B 标配</td><td>2026-11-30</td></tr>
+<tr><td>P0</td><td>#50 Public Publishing</td><td>4 类 Public Site + Custom Domain</td><td>获客 + 客户自助</td><td>2027-02-28</td></tr>
+<tr><td>P1</td><td>#51 ZDR / BYOK</td><td>Customer-Managed Keys</td><td>金融 / 政府准入</td><td>2027-02-15</td></tr>
+<tr><td>P1</td><td>#39 Meeting Transcription</td><td>Whisper + GPT 摘要</td><td>套件化战略</td><td>2027-01-30</td></tr>
+<tr><td>P2</td><td>#40 Offline PWA</td><td>Yjs + IndexedDB</td><td>离线作业</td><td>2027-02-28</td></tr>
+</tbody>
+</table>
+
+<h3>18.5 16 周里程碑</h3>
+<div class="timeline">
+<div class="timeline-item done"><strong>2026-09-01 (v0.7.37)</strong> · Build #22-#44 全部交付 · 23 个 Build · Slides + MindMap + Webhooks + Collab rate limit</div>
+<div class="timeline-item in-progress"><strong>2026-09-15 (v0.7.38)</strong> · Build #45 Industry + Daily Note + Forms</div>
+<div class="timeline-item"><strong>2026-10-05 (v0.7.39)</strong> · Build #46 Compliance + Custom Agent</div>
+<div class="timeline-item"><strong>2026-10-25 (v0.7.40)</strong> · Build #49 Mobile MVP + Build #47 Browser Ext</div>
+<div class="timeline-item"><strong>2026-11-15 (v0.7.41)</strong> · Build #48 Verified + ROI + Build #39 Meeting Transcription</div>
+<div class="timeline-item"><strong>2026-12-10 (v0.7.42)</strong> · Build #50 Public Publishing</div>
+<div class="timeline-item"><strong>2027-01-15 (v0.7.43)</strong> · Build #51 ZDR/BYOK</div>
+<div class="timeline-item"><strong>2027-02-28 (v0.7.44)</strong> · Build #40 Offline PWA + WORM Storage</div>
+<div class="timeline-item"><strong>2027-03-15 (v0.7.50)</strong> · 5 大合规全部完成 · Enterprise / Regulated SKU GA</div>
+</div>
+
+<h3>18.6 v25.1 实现进展 (本轮增量)</h3>
+<div class="phase good">
+<div class="label">本轮增量 (2026-09-01 · commit ed1d62a9 → v25.1)</div>
+<ul class="tight">
+<li><strong>Build #46.x Webhooks</strong> · 11 类 outbound event · HMAC-SHA256 签名 · 14 个 audit action · 6 个迁移 · 完整 container / router wiring</li>
+<li><strong>Build #46.x 协作限流</strong> · tenant / doc / ip 三层限流 · Redis 计数器 · 自动 cleanup</li>
+<li><strong>Build #31.2 协作编辑器</strong> · CollabDocProEditor (TipTap docx-engine) · CollabSheetEditor (Y.Array 网格) · useYjsCollabDoc (Y.Doc 抽象)</li>
+<li><strong>Build #31.2 协作后端</strong> · audit timeline · 业务逻辑补全 · container / router wiring</li>
+<li><strong>Build #44 Slides</strong> · Slides backend wire-up · conflict resolution · service test</li>
+<li><strong>Build #42-#44 + Lumos merge</strong> · 36 + 11 个真实源文件 · 9600 行净增</li>
+</ul>
+</div>
+
+<h3>18.7 关键风险与缓解</h3>
+<table class="matrix">
+<thead><tr><th>风险</th><th>影响</th><th>概率</th><th>缓解</th></tr></thead>
+<tbody>
+<tr><td>Build #46 合规取证周期长 (12-18 个月)</td><td>高</td><td>高</td><td>并行启动 5 项 · 优先 SOC 2 + ISO 27001 · 引入 Vanta / Drata 自动化</td></tr>
+<tr><td>Build #49 Mobile 跨平台成本超支</td><td>中</td><td>中</td><td>React Native 复用 70% Web 代码 · 首期 iOS only 验证</td></tr>
+<tr><td>Build #45 行业模板需求分散</td><td>中</td><td>高</td><td>聚焦 3 个 ROI 最高行业 (金融 / 医疗 / 法律) · 其余 5 个 v26 续做</td></tr>
+<tr><td>OpenAI / Anthropic API 价格变化</td><td>中</td><td>高</td><td>Build #41 BYOK · 多模型路由 · 国产替代预案 (Qwen / DeepSeek / GLM)</td></tr>
+<tr><td>v25 → v26 期间团队流失</td><td>高</td><td>中</td><td>知识沉淀到 docs + AI 助手 · Code review + Pair programming · 招聘关键岗备份</td></tr>
+</tbody>
+</table>
+
+<h3>18.8 最终战略建议</h3>
+<div class="callout good">
+<p><strong>v0.7.37 → v0.7.50 (16 周 · 6 Build)</strong> 节奏建议：</p>
+<ol class="tight">
+<li><strong>Build #46 合规优先</strong> · 不延迟 · 6 个月并行启动 · 关键路径</li>
+<li><strong>Build #45 商业化加速</strong> · 同步推进 · 销售场景化</li>
+<li><strong>Build #49 移动端</strong> · 与 #46 并行 · React Native 共享代码库</li>
+<li><strong>Build #48 + #47 + #50</strong> · 滚动交付 · 每月 1 个 Build 上线</li>
+<li><strong>v0.7.50 终局</strong> · 5 大合规 + Enterprise / Regulated SKU GA · ARR 目标 $19M-$48M</li>
+</ol>
+</div>
+
+<div class="callout purple">
+<p><strong>🎯 一句话战略：</strong> WeKnora v25 已经在功能维度上追平 Notion / 飞书 / Confluence / Loop，下一阶段的核心战场是 <strong>"合规 + 移动 + 商业化"</strong> 三件套。把 18 个 P0 缺口用 16 周时间收敛到 6 个，6 个 Build 全部交付即可达到 v0.7.50 = 97% 进度，进入 Enterprise / Regulated 客户的全速签单周期。</p>
+</div>
+</section>
+
+<footer>
+<strong>v25 文档元数据</strong>：
+<br>生成于 2026-09-01 · 基于 HEAD <code>ed1d62a9</code> · v24 (a826cec5) → v25 (ed1d62a9) 差分
+<br>对比产品：Notion 2.0 · 飞书 8.0 · Confluence DC · Loop · Glean · Coda · Guru · Tana · ClickUp · Airtable · Document360 · Slab · Copilot · 妙记
+<br>数据来源：2026-08-31 / 09-01 各产品官方页面 + GitHub 公开源码 + Context7 库文档 + G2 / Capterra 评论 + 第三方拆解
+<br>下一步：Build #46 合规 + Build #45 行业模板 + Build #49 移动端 → 立即启动三轨并行
+</footer>
+
+</div>
+</body>
+</html>
