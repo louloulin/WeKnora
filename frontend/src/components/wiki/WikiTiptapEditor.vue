@@ -54,7 +54,20 @@
         @click.prevent="promptForLink" :title="$t('knowledgeEditor.wikiBrowser.editor.link')">
         <span class="wiki-tiptap-btn-label">🔗</span>
       </button>
+      <span class="wiki-tiptap-divider" aria-hidden="true" />
+      <button type="button" class="wiki-tiptap-btn"
+        @click.prevent="showSyncBlockPicker = true"
+        :title="$t('knowledgeEditor.wikiBrowser.editor.syncBlock', 'Insert synced block')">
+        <span class="wiki-tiptap-btn-label">⇆</span>
+      </button>
     </div>
+
+    <WikiSyncBlockPicker
+      v-if="showSyncBlockPicker"
+      :kb-id="kbId"
+      @insert="insertSyncBlock"
+      @close="showSyncBlockPicker = false"
+    />
 
     <EditorContent v-if="editor" :editor="editor" class="wiki-tiptap-content" />
 
@@ -76,6 +89,8 @@ import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import { Markdown } from 'tiptap-markdown'
 import { EditorContent } from '@tiptap/vue-3'
+import { SyncBlockNode } from '@/extensions/syncBlock/SyncBlockNode'
+import WikiSyncBlockPicker from './WikiSyncBlockPicker.vue'
 // sanitizeWysiwygHTML is the spec-shaped exit sanitizer (returns '' on
 // DOMPurify throw + console.warn) — distinct from utils/security.ts's
 // generic sanitizeHTML which falls back to escapeHTML.
@@ -112,8 +127,10 @@ interface WikiEditorValue {
 const props = withDefaults(defineProps<{
   modelValue: WikiEditorValue
   placeholder?: string
+  kbId?: string
 }>(), {
   placeholder: '',
+  kbId: '',
 })
 
 const emit = defineEmits<{
@@ -124,6 +141,7 @@ const headingLevels = [1, 2, 3] as const
 
 const editor = shallowRef<Editor | null>(null)
 const isEmpty = ref(true)
+const showSyncBlockPicker = ref(false)
 const fallbackMarkdown = ref<string>(props.modelValue?.markdown ?? '')
 
 watch(
@@ -217,6 +235,7 @@ try {
         breaks: true,
         linkify: false,
       }),
+      SyncBlockNode,
     ],
     editorProps: {
       attributes: {
