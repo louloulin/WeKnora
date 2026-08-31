@@ -489,6 +489,14 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewMCPToolApprovalService))
 	must(container.Provide(service.NewCustomAgentService))
 	must(container.Provide(service.NewUserResourceFavoriteService))
+	// v0.7.38 Build #45.a — Daily Note 默认页 (P0 gap #12).
+	// One row per (user, kb, calendar_date) so the home page can pin
+	// "today's note" without the user having to remember to create
+	// one. Wired after the wiki surface so future lazy-wiki-page
+	// backfill hooks can plug into the existing knowledge_service.
+	must(container.Provide(repository.NewUserDailyNoteRepository))
+	must(container.Provide(service.NewUserDailyNoteService))
+	must(container.Provide(handler.NewUserDailyNoteHandler))
 	// Register page ACL before WikiPageService: the page service consults
 	// ACLs on read paths and therefore needs this dependency at construction.
 	must(container.Provide(repository.NewWikiAclRepository))
