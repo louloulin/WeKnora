@@ -43,9 +43,9 @@ type WikiKBReferenceRepository interface {
 // Sentinel errors raised by the repository. The service translates these
 // into HTTP status codes at the handler boundary.
 var (
-	ErrWikiKBReferenceNotFound = constErr("wiki_kb_reference_not_found")
+	ErrWikiKBReferenceNotFound = wikiKBReferenceErr("wiki_kb_reference_not_found")
 )
 
-type constErr string
+type wikiKBReferenceErr string
 
-func (e constErr) Error() string { return string(e) }
+func (e wikiKBReferenceErr) Error() string { return string(e) }
