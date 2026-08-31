@@ -539,6 +539,15 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// wireWikiBacklinksCache).
 	// Wiki tag system (Build #17).
 	must(container.Provide(repository.NewWikiTagRepository))
+	// Wiki ↔ KB document bidirectional references (doc+KB integration,
+	// Build v0.7.12). The repo is a vanilla GORM store on
+	// wiki_kb_references (pg 115 / sqlite 24); the service decorates
+	// each row with the wiki title and KB title/snippet; the handler
+	// exposes 4 page-side endpoints + 1 KB-side endpoint (the
+	// "Mentioned in Wiki Pages" sidebar).
+	must(container.Provide(repository.NewWikiKBReferenceRepository))
+	must(container.Provide(service.NewKnowledgeReferenceService))
+	must(container.Provide(service.NewWikiKBReferenceBackfillService))
 	must(container.Provide(service.NewWikiTagService))
 	// Wiki page template skeleton engine (Build #18). Service is
 	// constructed un-wired; wireWikiTemplateService injects the page
@@ -806,6 +815,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	}))
 	// Wiki tag handler (Build #17 backend).
 	must(container.Provide(handler.NewWikiTagHandler))
+	// WikiKBReferenceHandler exposes the doc+KB bridge endpoints.
+	must(container.Provide(handler.NewWikiKBReferenceHandler))
 	must(container.Provide(handler.NewWikiTemplateHandler))
 	// Complete the Wiki post-construction wiring only after all providers
 	// participating in the page-service dependency graph are registered.
@@ -961,6 +972,25 @@ func wireWikiBacklinksCache(
 		SetBacklinksCacheInvalidator(interfaces.WikiBacklinksCacheInvalidator)
 	}); ok {
 		setter.SetBacklinksCacheInvalidator(cacheInvalidator)
+	}
+}
+
+// wireWikiKBReferenceBackfiller (Build v0.7.13) connects the doc+KB
+// backfill service into the wiki page service post-construction. The
+// page service exposes SetKBReferenceBackfiller so the constructor
+// signature stays untouched and the backfill hook is inert until the
+// setter runs. Mirrors the SetBacklinksCacheInvalidator pattern.
+func wireWikiKBReferenceBackfiller(
+	pageSvc interfaces.WikiPageService,
+	backfiller service.WikiKBReferenceBackfiller,
+) {
+	if backfiller == nil {
+		return
+	}
+	if setter, ok := pageSvc.(interface {
+		SetKBReferenceBackfiller(service.WikiKBReferenceBackfiller)
+	}); ok {
+		setter.SetKBReferenceBackfiller(backfiller)
 	}
 }
 
