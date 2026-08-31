@@ -42,7 +42,7 @@ const props = defineProps<{
   displayName: string
 }>()
 
-const editor = shallowRef<Editor | null>(null)
+const editor = shallowRef<Editor | undefined>(undefined)
 const connected = ref(false)
 const peers = ref<Array<{ clientId: number; displayName: string; color: string }>>([])
 const error = ref<string | null>(null)
@@ -55,9 +55,9 @@ const setup = () => {
   connected.value = handle.connected.value
   peers.value = handle.peers.value
   error.value = handle.error.value
-  watch(handle.connected, (v) => (connected.value = v))
-  watch(handle.peers, (v) => (peers.value = v))
-  watch(handle.error, (v) => (error.value = v))
+  watch(handle.connected, (v) => (connected.value = !!v))
+  watch(handle.peers, (v) => (peers.value = v ?? []))
+  watch(handle.error, (v) => (error.value = v ?? null))
   editor.value = new Editor({
     extensions: [
       StarterKit.configure({ history: false }),

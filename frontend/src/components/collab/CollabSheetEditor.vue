@@ -93,9 +93,9 @@ const setup = () => {
   connected.value = handle.connected.value
   peers.value = handle.peers.value
   error.value = handle.error.value
-  watch(handle.connected, (v) => (connected.value = v))
-  watch(handle.peers, (v) => (peers.value = v))
-  watch(handle.error, (v) => (error.value = v))
+  watch(handle.connected, (v) => (connected.value = !!v))
+  watch(handle.peers, (v) => (peers.value = v ?? []))
+  watch(handle.error, (v) => (error.value = v ?? null))
 
   ycols = handle.ydoc.getArray<string>('sheet:cols')
   ymap = handle.ydoc.getMap<Y.Map<string>>('sheet:cells')

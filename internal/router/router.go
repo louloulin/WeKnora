@@ -107,6 +107,8 @@ type RouterParams struct {
 	WikiSearchV2Handler          *handler.WikiSearchV2Handler
 	WikiCommentHandler            *handler.WikiCommentHandler
 	WikiRealtimeWSHandler        *handler.WikiRealtimeWSHandler
+	CollabDocHandler            *handler.CollabDocHandler
+	CollabDocRealtimeWSHandler   *handler.CollabDocRealtimeWSHandler
 	WikiSyncBlockHandler         *handler.WikiSyncBlockHandler
 	AgentStudioHandler           *handler.AgentStudioHandler
 	DLPAuthZHandler              *handler.DLPAuthZHandler
@@ -339,6 +341,9 @@ func NewRouter(params RouterParams) *gin.Engine {
 			RegisterVerificationRoutes(v1, params.VerificationHandler, rbacGuards)
 		}
 		RegisterWikiRealtimeRoutes(v1, params.WikiRealtimeWSHandler, rbacGuards)
+		if params.CollabDocHandler != nil {
+			RegisterCollabDocRoutes(v1, params.CollabDocHandler, params.CollabDocRealtimeWSHandler, rbacGuards)
+		}
 		RegisterWikiSyncBlockRoutes(v1, params.WikiSyncBlockHandler)
 		RegisterAgentStudioRoutes(v1, params.AgentStudioHandler)
 		RegisterDLPAuthZRoutes(v1, params.DLPAuthZHandler)

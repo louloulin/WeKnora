@@ -48,6 +48,7 @@ import (
 	tencentVectorDBRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/tencentvectordb"
 	weaviateRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/weaviate"
 	connsvc "github.com/Tencent/WeKnora/internal/application/service/connector"
+	formulasvc "github.com/Tencent/WeKnora/internal/application/service/formula"
 	asvc "github.com/Tencent/WeKnora/internal/application/service/agentstudio"
 	authzsvc "github.com/Tencent/WeKnora/internal/application/service/authzadmin"
 	dockbsvc "github.com/Tencent/WeKnora/internal/application/service/dockb"
@@ -519,6 +520,13 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewDatabaseRepository))
 	must(container.Provide(dbsvc.NewService))
 	must(container.Provide(handler.NewDatabaseHandler))
+	// v0.7.26 Build #31 — formula / rollup / linked-record engine.
+	// Adapter so the formula handler can ask the database service for a field.
+	must(container.Provide(func(svc *dbsvc.Service) handler.FieldSource {
+		return handler.NewDatabaseFieldSource(svc)
+	}))
+	must(container.Provide(formulasvc.NewService))
+	must(container.Provide(handler.NewFormulaHandler))
 	// v0.7.19 — wiki realtime (Yjs collaboration) wiring.
 	must(container.Provide(repository.NewWikiRealtimeSnapshotRepository))
 	must(container.Provide(repository.NewWikiRealtimeSessionRepository))
@@ -532,6 +540,24 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(func(svc *service.WikiRealtimeService) *handler.WikiRealtimeWSHandler {
 		return handler.NewWikiRealtimeWSHandler(svc)
 	}))
+	// v0.7.25 — collaborative_docs (Feishu/Tencent doc parity): DOC/SHEET/SLIDE
+	// multi-format realtime editing with Yjs WebSocket fan-out.
+	must(container.Provide(repository.NewCollabDocRepository))
+	must(container.Provide(repository.NewCollabDocSnapshotRepository))
+	must(container.Provide(repository.NewCollabDocSessionRepository))
+	must(container.Provide(func(docRepo interfaces.CollabDocRepository) service.CollabDocAuthorizer {
+		return service.NewCollabDocDefaultAuthorizer(docRepo)
+	}))
+	must(container.Provide(func(
+		docRepo interfaces.CollabDocRepository,
+		snapRepo interfaces.CollabDocSnapshotRepository,
+		sessRepo interfaces.CollabDocSessionRepository,
+		authz service.CollabDocAuthorizer,
+	) *service.CollabDocService {
+		return service.NewCollabDocService(docRepo, snapRepo, sessRepo, authz)
+	}))
+	must(container.Provide(handler.NewCollabDocHandler))
+	must(container.Provide(handler.NewCollabDocRealtimeWSHandler))
 	// v0.7.21 — Custom Agent Studio wiring (飞书妙搭 / Notion Custom Agents parity).
 	must(container.Provide(repository.NewAgentStudioRepository))
 	must(container.Provide(asvc.NewAgentStudioService))
