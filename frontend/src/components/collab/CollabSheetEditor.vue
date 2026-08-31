@@ -1360,7 +1360,7 @@ const buildFeaturePipeline = (): {
       const sh = sheets.value[idx]
       const hl = hyperlinksBySheet.value[idx]
       if (!hl?.length) continue
-      const wsPath = await paths.resolveWorksheetName?.(sh.name) ?? (await paths.resolveWorksheetPath(sh.name))
+      const wsPath = await paths.resolveWorksheetPath(sh.name)
       if (!wsPath) continue
       const wsXml = await pkg.readText(wsPath)
       const relsPath = wsPath.replace(/^xl\/worksheets\//, 'xl/worksheets/_rels/').replace(/\.xml$/, '.xml.rels')
