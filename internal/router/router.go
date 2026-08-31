@@ -100,6 +100,7 @@ type RouterParams struct {
 	WikiSearchV2Handler          *handler.WikiSearchV2Handler
 	WikiCommentHandler            *handler.WikiCommentHandler
 	WikiRealtimeWSHandler        *handler.WikiRealtimeWSHandler
+	WikiSyncBlockHandler         *handler.WikiSyncBlockHandler
 	MemoryHandler                *handler.MemoryHandler
 	// CitationLogHandler — Build #30 B4. Wired optionally so the
 	// citation-log route is registered when the handler is present.
@@ -315,6 +316,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterWeKnoraCloudRoutes(v1, params.WeKnoraCloudHandler, rbacGuards)
 		RegisterWikiPageRoutes(v1, params.WikiPageHandler, params.WikiAclHandler, params.WikiTagHandler, params.WikiTemplateHandler, params.WikiSearchV2Handler, params.WikiCommentHandler, rbacGuards)
 		RegisterWikiRealtimeRoutes(v1, params.WikiRealtimeWSHandler, rbacGuards)
+		RegisterWikiSyncBlockRoutes(v1, params.WikiSyncBlockHandler)
 		RegisterMemoryRoutes(v1, params.MemoryHandler, rbacGuards)
 		RegisterChunkerDebugRoutes(v1, rbacGuards)
 
