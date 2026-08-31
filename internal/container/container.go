@@ -278,6 +278,15 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// Wiki page comments (Sprint 1 §27 #4).
 	must(container.Provide(repository.NewWikiCommentRepository))
 	must(container.Provide(service.NewWikiPageCommentService))
+	// Adapter: wire WikiPageExistenceLookup to the wiki page repository.
+	// WikiPageExistenceLookup is required by NewWikiPageCommentService but
+	// was added without a matching container.Provide — the server refuses
+	// to start until this gap is closed. Wrap GetPageByID to satisfy the
+	// PageExists(ctx, kbID, pageID) contract; kbID is informational here
+	// because GetPageByID keys on the global page ID.
+	must(container.Provide(func(repo interfaces.WikiPageRepository) service.WikiPageExistenceLookup {
+		return wikiPageExistenceAdapter{repo: repo}
+	}))
 	must(container.Provide(handler.NewWikiCommentHandler))
 	// Wiki backlinks graph cache (Build #21). The repo persists the
 	// four-section payload as TEXT (json strings) for dialect
@@ -845,14 +854,17 @@ func initDatabase(cfg *config.Config) (*gorm.DB, error) {
 	switch os.Getenv("DB_DRIVER") {
 	case "postgres":
 		// DSN for GORM (key-value format)
+		// pgx v5 stdlib driver (used by gorm postgres v1.6) requires URL-form
+		// DSN — key=value pairs (e.g. dbname=) are silently ignored, causing
+		// the connection to default to the user-name database. Use a URL.
+		encodedDBPassword := url.QueryEscape(os.Getenv("DB_PASSWORD"))
 		gormDSN := fmt.Sprintf(
-			"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s TimeZone=UTC",
+			"postgres://%s:%s@%s:%s/%s?sslmode=disable&TimeZone=UTC",
+			os.Getenv("DB_USER"),
+			encodedDBPassword,
 			os.Getenv("DB_HOST"),
 			os.Getenv("DB_PORT"),
-			os.Getenv("DB_USER"),
-			os.Getenv("DB_PASSWORD"),
 			os.Getenv("DB_NAME"),
-			"disable",
 		)
 		dialector = postgres.Open(gormDSN)
 
@@ -2134,4 +2146,22 @@ func (r *kbAuditTenantResolver) ResolveTenantID(ctx context.Context, kbID string
 		return 0, nil
 	}
 	return kb.TenantID, nil
+}
+
+// wikiPageExistenceAdapter implements service.WikiPageExistenceLookup by
+// delegating to the wiki page repository's GetPageByID. It exists only
+// to close the dig wiring gap introduced when WikiPageCommentService was
+// added; a fuller implementation could enforce kbID membership.
+type wikiPageExistenceAdapter struct {
+	repo interfaces.WikiPageRepository
+}
+
+func (a wikiPageExistenceAdapter) PageExists(ctx context.Context, _, pageID string) (bool, error) {
+	if _, err := a.repo.GetByID(ctx, pageID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }

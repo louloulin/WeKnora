@@ -49,7 +49,7 @@ func commentActorIDs(c *gin.Context) (tenantID uint64, userID string, isAdmin bo
 // List handles GET /knowledgebase/:kb_id/wiki/pages/:page_id/comments
 func (h *WikiCommentHandler) List(c *gin.Context) {
 	kbID := c.Param("kb_id")
-	pageID := c.Param("page_id")
+	pageID := c.Param("slug")
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 	comments, total, err := h.svc.ListByPage(c.Request.Context(), pageID, limit, offset)
@@ -71,7 +71,7 @@ func (h *WikiCommentHandler) List(c *gin.Context) {
 // Create handles POST /knowledgebase/:kb_id/wiki/pages/:page_id/comments
 func (h *WikiCommentHandler) Create(c *gin.Context) {
 	kbID := c.Param("kb_id")
-	pageID := c.Param("page_id")
+	pageID := c.Param("slug")
 	tenantID, userID, _ := commentActorIDs(c)
 	if userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})

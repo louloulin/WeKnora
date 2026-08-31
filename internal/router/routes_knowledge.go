@@ -363,8 +363,8 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		// Wiki page comments (Sprint 1 §27 #4). Reads use Viewer+ with KB read
 		// access; writes use OwnedWikiKBOrAdmin + KB write access so the
 		// same authz envelope as the rest of the wiki write surface.
-		wikiRead.GET("/pages/:page_id/comments", g.Viewer(), g.KBAccessRead("kb_id"), wikiCommentHandler.List)
-		wiki.POST("/pages/:page_id/comments", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiCommentHandler.Create)
+		wikiRead.GET("/pages/:slug/comments", g.Viewer(), g.KBAccessRead("kb_id"), wikiCommentHandler.List)
+		wiki.POST("/pages/:slug/comments", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiCommentHandler.Create)
 		wikiRead.GET("/comments/:comment_id", g.Viewer(), g.KBAccessRead("kb_id"), wikiCommentHandler.List)
 		wiki.PATCH("/comments/:comment_id", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiCommentHandler.Update)
 		wiki.PATCH("/comments/:comment_id/resolve", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiCommentHandler.SetResolved)
