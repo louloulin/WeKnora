@@ -51,6 +51,7 @@ import (
 	formulasvc "github.com/Tencent/WeKnora/internal/application/service/formula"
 	autosvc "github.com/Tencent/WeKnora/internal/application/service/automation"
 	kg "github.com/Tencent/WeKnora/internal/application/service/kg"
+	workflowsvc "github.com/Tencent/WeKnora/internal/application/service/workflow"
 	asvc "github.com/Tencent/WeKnora/internal/application/service/agentstudio"
 	authzsvc "github.com/Tencent/WeKnora/internal/application/service/authzadmin"
 	dockbsvc "github.com/Tencent/WeKnora/internal/application/service/dockb"
@@ -540,6 +541,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(kg.NewREPipeline))
 	must(container.Provide(kg.NewKGSupertagService))
 	must(container.Provide(handler.NewKGHandler))
+	// v0.7.31 Build #37 — AI Workflow Builder foundation.
+	must(container.Provide(repository.NewWorkflowRepository))
+	must(container.Provide(workflowsvc.NewService))
+	must(container.Provide(handler.NewWorkflowHandler))
 	// v0.7.19 — wiki realtime (Yjs collaboration) wiring.
 	must(container.Provide(repository.NewWikiRealtimeSnapshotRepository))
 	must(container.Provide(repository.NewWikiRealtimeSessionRepository))
