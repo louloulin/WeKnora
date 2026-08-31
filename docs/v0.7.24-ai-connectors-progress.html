@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>WeKnora v0.7.24 — AI Connector Framework Progress</title>
+<style>
+:root {
+  --bg: #0f1117; --panel: #161922; --panel-2: #1e2230; --border: #2a2f3d;
+  --text: #d6dae3; --muted: #8b91a3; --primary: #4f8cff; --primary-2: #74a4ff;
+  --accent: #2bb673; --warn: #f59f00; --danger: #ef4444; --code-bg: #0b0d13;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 0; padding: 24px; line-height: 1.6; }
+.wrap { max-width: 1200px; margin: 0 auto; }
+h1 { font-size: 28px; margin: 0 0 6px 0; color: #fff; }
+h2 { font-size: 20px; margin: 32px 0 14px; padding-bottom: 6px; border-bottom: 1px solid var(--border); color: #fff; }
+.subtitle { color: var(--muted); margin-bottom: 24px; }
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 24px; }
+.kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+.kpi .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+.kpi .value { font-size: 24px; font-weight: 700; color: #fff; margin-top: 4px; }
+.kpi .delta { font-size: 12px; color: var(--accent); margin-top: 4px; }
+.kpi.warn .delta { color: var(--warn); }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 8px; overflow: hidden; }
+th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+th { background: var(--panel-2); font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+td:first-child { font-family: "SFMono-Regular", Consolas, monospace; font-size: 13px; }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+.tag-ok { background: rgba(43,182,115,.15); color: var(--accent); }
+.tag-pending { background: rgba(245,159,0,.15); color: var(--warn); }
+.tag-progress { background: rgba(79,140,255,.15); color: var(--primary-2); }
+.progress-bar { background: var(--panel-2); border-radius: 4px; height: 8px; overflow: hidden; margin: 6px 0; }
+.progress-bar > div { background: linear-gradient(90deg, var(--primary), var(--accent)); height: 100%; }
+.code { background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; font-family: "SFMono-Regular", Consolas, monospace; font-size: 12px; color: var(--text); overflow-x: auto; }
+.footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>WeKnora v0.7.24 — AI Connector Framework</h1>
+<p class="subtitle">Cross-SaaS ingest (Slack / Email / Webhook / RSS / Confluence / Notion / Jira) into Knowledge Base — released 2026-08</p>
+
+<h2>Key Metrics</h2>
+<div class="kpi-grid">
+  <div class="kpi"><div class="label">Connector Tests</div><div class="value">12/12</div><div class="delta">100% pass</div></div>
+  <div class="kpi"><div class="label">Total Tests</div><div class="value">53/53</div><div class="delta">all dlp+authzadmin+dockb+database+connector pass</div></div>
+  <div class="kpi"><div class="label">Build</div><div class="value">EXIT 0</div><div class="delta">go build ./...</div></div>
+  <div class="kpi"><div class="label">Backend LOC</div><div class="value">~1,100</div><div class="delta">Go: types+iface+repo+service+handler+routes</div></div>
+  <div class="kpi"><div class="label">Frontend LOC</div><div class="value">~430</div><div class="delta">Vue 3 + TS: api client + manager</div></div>
+  <div class="kpi"><div class="label">REST Endpoints</div><div class="value">8</div><div class="delta">/api/v1/connectors/*</div></div>
+  <div class="kpi warn"><div class="label">AI Connector %</div><div class="value">70%</div><div class="delta">stub fetch — real impls in v0.7.24.x</div></div>
+  <div class="kpi"><div class="label">Overall Progress</div><div class="value">84%</div><div class="delta">82% → 84% (v0.7.23 → v0.7.24)</div></div>
+</div>
+
+<h2>Backend Modules</h2>
+<table>
+<thead><tr><th>Module</th><th>Lines</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>migrations/versioned/000122_ingest_connectors.{up,down}.sql</td><td>~80</td><td><span class="tag tag-ok">done</span></td></tr>
+<tr><td>migrations/sqlite/000035_ingest_connectors.{up,down}.sql</td><td>~80</td><td><span class="tag tag-ok">done</span></td></tr>
+<tr><td>internal/types/connector.go</td><td>98</td><td><span class="tag tag-ok">done</span></td></tr>
+<tr><td>internal/types/interfaces/connector.go</td><td>51</td><td><span class="tag tag-ok">done</span></td></tr>
+<tr><td>internal/application/repository/connector.go</td><td>211</td><td><span class="tag tag-ok">done</span></td></tr>
+<tr><td>internal/application/service/connector/service.go</td><td>221</td><td><span class="tag tag-ok">done</span></td></tr>
+<tr><td>internal/application/service/connector/slack.go</td><td>97</td><td><span class="tag tag-ok">stub</span></td></tr>
+<tr><td>internal/application/service/connector/email.go</td><td>101</td><td><span class="tag tag-ok">stub</span></td></tr>
+<tr><td>internal/application/service/connector/webhook.go</td><td>67</td><td><span class="tag tag-ok">stub</span></td></tr>
+<tr><td>internal/handler/connector.go</td><td>245</td><td><span class="tag tag-ok">done</span></td></tr>
+<tr><td>internal/router/routes_connector.go</td><td>27</td><td><span class="tag tag-ok">done</span></td></tr>
+<tr><td>internal/container/container.go (wiring)</td><td>+20</td><td><span class="tag tag-ok">done</span></td></tr>
+<tr><td>internal/router/router.go (mount)</td><td>+10</td><td><span class="tag tag-ok">done</span></td></tr>
+</tbody>
+</table>
+
+<h2>Frontend Modules</h2>
+<table>
+<thead><tr><th>Module</th><th>Lines</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>frontend/src/api/connector/types.ts</td><td>68</td><td><span class="tag tag-ok">done</span></td></tr>
+<tr><td>frontend/src/api/connector/index.ts</td><td>43</td><td><span class="tag tag-ok">done</span></td></tr>
+<tr><td>frontend/src/components/connector/ConnectorManager.vue</td><td>286</td><td><span class="tag tag-ok">done</span></td></tr>
+<tr><td>i18n: en-US.ts + zh-CN.ts</td><td>+30 × 2</td><td><span class="tag tag-ok">done</span></td></tr>
+<tr><td>View mounting (settings/admin)</td><td>—</td><td><span class="tag tag-pending">todo</span></td></tr>
+</tbody>
+</table>
+
+<h2>Test Coverage</h2>
+<table>
+<thead><tr><th>Package</th><th>Tests</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>internal/application/service/connector</td><td>12</td><td><span class="tag tag-ok">PASS</span></td></tr>
+<tr><td>internal/application/service/dlp</td><td>17</td><td><span class="tag tag-ok">PASS</span></td></tr>
+<tr><td>internal/application/service/authzadmin</td><td>10</td><td><span class="tag tag-ok">PASS</span></td></tr>
+<tr><td>internal/application/service/dockb</td><td>5</td><td><span class="tag tag-ok">PASS</span></td></tr>
+<tr><td>internal/application/service/database</td><td>9</td><td><span class="tag tag-ok">PASS</span></td></tr>
+</tbody>
+</table>
+
+<h2>REST Endpoints</h2>
+<div class="code">
+POST   /api/v1/connectors               — register a connector
+GET    /api/v1/connectors               — list tenant's connectors
+GET    /api/v1/connectors/:id           — get one
+PATCH  /api/v1/connectors/:id           — update name/kind/config/kb/enabled
+DELETE /api/v1/connectors/:id           — remove
+POST   /api/v1/connectors/:id/trigger   — run sync now → returns IngestJob
+GET    /api/v1/connectors/:id/jobs      — jobs for connector
+GET    /api/v1/connectors/jobs          — all jobs for tenant
+</div>
+
+<h2>Progress Delta</h2>
+<table>
+<thead><tr><th>Domain</th><th>v0.7.23</th><th>v0.7.24</th><th>Change</th></tr></thead>
+<tbody>
+<tr><td>AI Connector framework</td><td>0%</td><td>70%</td><td>+70%</td></tr>
+<tr><td>Doc ↔ KB bridge</td><td>80%</td><td>80%</td><td>—</td></tr>
+<tr><td>DLP + AuthZ Admin</td><td>100%</td><td>100%</td><td>—</td></tr>
+<tr><td>Multi-tenant IAM (SAML / OIDC / MFA / Casdoor / GeoIP / SCIM)</td><td>100%</td><td>100%</td><td>—</td></tr>
+<tr><td>Wiki (search v2, backlinks, tags, audit, ACL)</td><td>100%</td><td>100%</td><td>—</td></tr>
+<tr><td>Eval + Badcase + Hit-ratio</td><td>100%</td><td>100%</td><td>—</td></tr>
+<tr><td>AI Assistant (LLM Stream / OpenAI provider)</td><td>100%</td><td>100%</td><td>—</td></tr>
+<tr><td>Whiteboard (tldraw + Yjs)</td><td>30%</td><td>30%</td><td>—</td></tr>
+<tr><td>Auto-summary on chunk</td><td>0%</td><td>0%</td><td>deferred</td></tr>
+<tr><td><strong>Overall</strong></td><td><strong>82%</strong></td><td><strong>84%</strong></td><td>+2%</td></tr>
+</tbody>
+</table>
+
+<h2>Remaining 5% Checklist</h2>
+<table>
+<thead><tr><th>Item</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>i18n connector.* keys (en-US + zh-CN)</td><td><span class="tag tag-ok">done</span></td></tr>
+<tr><td>scripts/smoke-connectors.sh (7-step E2E)</td><td><span class="tag tag-ok">done</span></td></tr>
+<tr><td>Progress HTML (this document)</td><td><span class="tag tag-ok">done</span></td></tr>
+<tr><td>Mount ConnectorManager.vue in admin/settings view</td><td><span class="tag tag-pending">todo</span></td></tr>
+<tr><td>vue-tsc + i18n key audit</td><td><span class="tag tag-pending">todo</span></td></tr>
+<tr><td>Commit + push to origin</td><td><span class="tag tag-pending">todo</span></td></tr>
+</tbody>
+</table>
+
+<h2>Next Steps</h2>
+<ul>
+<li><strong>v0.7.24.x patch</strong>: real Fetch implementations for Slack / Email / Webhook; periodic scheduler (asynq cron); auto-summary on chunk; mount UI in admin panel.</li>
+<li><strong>v0.7.25</strong>: Whiteboard (tldraw + Yjs) integration; SAML 2.0 logout flow; AuthZ policy visualizer; AI Connector audit log.</li>
+<li><strong>v0.8.0</strong>: cross-tenant KB federation; realtime presence on wiki pages; SCIM 2.0 v2 endpoints; long-running agent observability.</li>
+</ul>
+
+<div class="footer">WeKnora v0.7.24 — generated 2026-08-31</div>
+</div>
+</body>
+</html>

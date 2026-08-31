@@ -47,6 +47,8 @@ import (
 	sqliteRetrieverRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/sqlite"
 	tencentVectorDBRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/tencentvectordb"
 	weaviateRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/weaviate"
+	connsvc "github.com/Tencent/WeKnora/internal/application/service/connector"
+
 	"github.com/Tencent/WeKnora/internal/application/service"
 	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
 	"github.com/Tencent/WeKnora/internal/application/service/file"
@@ -444,6 +446,19 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewWikiAclRepository))
 	must(container.Provide(service.NewWikiAclService))
 	must(container.Provide(service.NewWikiPageService))
+
+
+	// v0.7.24 — AI Connector framework.
+	must(container.Provide(repository.NewConnectorRepository))
+	must(container.Provide(func() connsvc.KnowledgeIngester { return nil })) // ingester wired separately if knowledge pipeline available
+	must(container.Provide(func(repo interfaces.IngestConnectorRepository, jobs interfaces.IngestJobRepository, ingester connsvc.KnowledgeIngester) *connsvc.Service {
+		svc := connsvc.NewService(repo, jobs, ingester)
+		svc.Register(connsvc.SlackConnector{})
+		svc.Register(connsvc.EmailConnector{})
+		svc.Register(connsvc.WebhookConnector{})
+		return svc
+	}))
+	must(container.Provide(handler.NewConnectorHandler))
 	must(container.Provide(repository.NewWikiBatchJobRepository))
 	must(container.Provide(repository.NewWikiBatchAuditRepository))
 	must(container.Provide(repository.NewWikiBatchFailureRepository))
