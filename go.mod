@@ -93,6 +93,13 @@ require (
 )
 
 require (
+	github.com/beevik/etree v1.1.0 // indirect
+	github.com/crewjam/saml v0.4.14 // indirect
+	github.com/mattermost/xml-roundtrip-validator v0.1.0 // indirect
+	github.com/russellhaering/goxmldsig v1.3.0 // indirect
+)
+
+require (
 	cloud.google.com/go/auth v0.20.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
