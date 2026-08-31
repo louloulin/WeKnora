@@ -65,6 +65,11 @@ type wikiPageService struct {
 	// cache wipes (which slugs to wipe for which write op). Lives
 	// behind its own interface so tests can swap a stub.
 	cacheInvalidator interfaces.WikiBacklinksCacheInvalidator
+	// kbReferenceBackfiller (Build v0.7.13) reconciles wiki_kb_references
+	// against [[kb:id]] mentions in the page content after every save.
+	// Wired post-construction via SetKBReferenceBackfiller to mirror the
+	// cacheInvalidator pattern; nil when the backfill feature is off.
+	kbReferenceBackfiller WikiKBReferenceBackfiller
 }
 
 // SetBatchJobService wires the async batch service post-construction.
@@ -90,6 +95,13 @@ func (s *wikiPageService) SetBacklinksCacheRepo(repo interfaces.WikiBacklinksCac
 // SetBacklinksCacheRepo.
 func (s *wikiPageService) SetBacklinksCacheInvalidator(inv interfaces.WikiBacklinksCacheInvalidator) {
 	s.cacheInvalidator = inv
+}
+
+// SetKBReferenceBackfiller wires the doc+KB backfill hook. Called from
+// the DI container after both services are constructed. nil disables
+// the backfill (the wiki page save still succeeds).
+func (s *wikiPageService) SetKBReferenceBackfiller(b WikiKBReferenceBackfiller) {
+	s.kbReferenceBackfiller = b
 }
 
 // NewWikiPageService creates a new wiki page service.
@@ -281,6 +293,16 @@ func (s *wikiPageService) UpdatePage(ctx context.Context, page *types.WikiPage) 
 	// oldOutLinks == existing.OutLinks and these calls are effectively no-ops.
 	s.removeInLinks(ctx, existing.KnowledgeBaseID, existing.Slug, oldOutLinks)
 	s.updateInLinks(ctx, existing.KnowledgeBaseID, existing.Slug, existing.OutLinks)
+
+	// Doc + KB integration (Build v0.7.13): reconcile wiki_kb_references
+	// against [[kb:id]] mentions in the new content. Best-effort —
+	// a failed reconcile never blocks the save (the wiki content is the
+	// source of truth, the references row set is a derived index).
+	if s.kbReferenceBackfiller != nil {
+		actor, _ := types.UserIDFromContext(ctx)
+		s.kbReferenceBackfiller.ReconcileAfterSave(ctx,
+			strconv.FormatUint(existing.TenantID, 10), existing.ID, existing.Content, actor)
+	}
 
 	// Build #21 — invalidate the backlinks graph cache for [self] ∪
 	// out_links so the next panel read sees fresh direct + indirect
