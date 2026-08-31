@@ -84,6 +84,19 @@ const router = createRouter({
       meta: { requiresAuth: false, requiresInit: false }
     },
     {
+      // v0.7.25 — collaborative docs (Feishu / Tencent document parity).
+      path: "/collab-documents",
+      name: "collabDocList",
+      component: () => import("../views/collab/CollabDocListView.vue"),
+      meta: { requiresAuth: true, requiresInit: true }
+    },
+    {
+      path: "/collab-documents/:id",
+      name: "collabDocEditor",
+      component: () => import("../views/collab/CollabDocEditorView.vue"),
+      meta: { requiresAuth: true, requiresInit: true }
+    },
+    {
       path: "/join",
       name: "joinOrganization",
       // 重定向到组织列表页，并将 code 参数转换为 invite_code

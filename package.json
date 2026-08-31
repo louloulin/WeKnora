@@ -1,0 +1,13 @@
+{
+  "dependencies": {
+    "cfb": "^1.2.2",
+    "fast-xml-parser": "^5.11.1",
+    "jszip": "^3.10.1",
+    "opentype.js": "^2.0.0",
+    "pdfjs-dist": "^6.2.108",
+    "ppt-to-text": "^1.0.1",
+    "pptxgenjs": "^4.0.1",
+    "utif2": "^4.1.0",
+    "word-extractor": "^1.0.4"
+  }
+}
