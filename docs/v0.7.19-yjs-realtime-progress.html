@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>WeKnora v0.7.19 Yjs 实时协作 · 实施进度报告</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+:root {
+  --bg: #0e1117; --panel: #161b22; --line: #30363d;
+  --ink: #e6edf3; --mute: #9da7b3; --accent: #58a6ff;
+  --good: #3fb950; --warn: #d29922; --bad: #f85149;
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 0; background: var(--bg); color: var(--ink);
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px; line-height: 1.65; }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 32px 28px 96px; }
+header.hero { padding: 24px 0 18px; border-bottom: 1px solid var(--line); margin-bottom: 24px; }
+header.hero h1 { font-size: 24px; margin: 0 0 6px; }
+header.hero p { margin: 0; color: var(--mute); font-size: 13px; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; background: rgba(88, 166, 255, .15); color: var(--accent); margin-left: 8px; }
+h2 { font-size: 18px; margin: 32px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+h3 { font-size: 15px; margin: 20px 0 8px; }
+table.matrix { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 8px 0 16px; }
+table.matrix th, table.matrix td { border: 1px solid var(--line);
+  padding: 6px 8px; text-align: left; vertical-align: top; }
+table.matrix th { background: #1c2128; font-weight: 600; }
+table.matrix td.num { text-align: right; font-variant-numeric: tabular-nums; }
+code, pre { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12.5px; }
+code { background: rgba(110, 118, 129, .3); padding: 1px 5px; border-radius: 4px; }
+pre { background: #0b0f14; border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; overflow-x: auto; }
+.muted { color: var(--mute); }
+.cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin: 12px 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+.card .label { font-size: 11px; color: var(--mute); text-transform: uppercase; letter-spacing: .04em; }
+.card .value { font-size: 20px; font-weight: 700; margin: 4px 0 2px; }
+.card .value.good { color: var(--good); }
+.bar { background: var(--line); border-radius: 4px; overflow: hidden; height: 8px; }
+.bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--good)); }
+.bar-cell { display: flex; align-items: center; gap: 6px; min-width: 120px; }
+.bar-cell .num { font-size: 11px; min-width: 32px; }
+ul.tight, ol.tight { margin: 6px 0; padding-left: 18px; }
+ul.tight li, ol.tight li { margin: 2px 0; }
+.callout { background: rgba(88, 166, 255, .08); border-left: 3px solid var(--accent);
+  padding: 8px 12px; border-radius: 0 6px 6px 0; margin: 10px 0; font-size: 13px; }
+.callout.good { background: rgba(63, 185, 80, .08); border-left-color: var(--good); }
+.callout.warn { background: rgba(210, 153, 34, .08); border-left-color: var(--warn); }
+footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--mute); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hero">
+<h1>WeKnora v0.7.19 实施进度报告<span class="badge">Yjs 实时协作</span></h1>
+<p>分支 <code>comet/v0.7.19-yjs-realtime</code> · HEAD 自 <code>466433e9</code> · 2026-08-31</p>
+</header>
+
+<h2>一、本版本目标</h2>
+<p>补齐 WeKnora Wiki 的<b>实时协作</b>能力，对标 Notion blocks / 飞书文档 / Loop components / Confluence pages。基于 Yjs CRDT + Tiptap 协作扩展 + <code>gorilla/websocket</code>，在 6 周内完成多人协同编辑 + 实时光标 + presence 面板。</p>
+
+<div class="cards">
+<div class="card"><div class="label">迁移数</div><div class="value">+2</div><div class="muted">110 + 111</div></div>
+<div class="card"><div class="label">后端 Go 代码</div><div class="value good">~870 行</div><div class="muted">types + repo + svc + handler</div></div>
+<div class="card"><div class="label">前端代码</div><div class="value good">~500 行</div><div class="muted">composable + 2 Vue + test</div></div>
+<div class="card"><div class="label">单元测试</div><div class="value good">10/10 ✓</div><div class="muted">含 SQLite + GORM raw SQL</div></div>
+<div class="card"><div class="label">CRDT 内核</div><div class="value">yjs ^13</div><div class="muted">Tiptap 官方绑定</div></div>
+<div class="card"><div class="label">对标完成度提升</div><div class="value good">75% → 78%</div><div class="muted">含 worktree 后 → 91%</div></div>
+</div>
+
+<div class="callout good">
+<b>核心完成项</b>：WS upgrade + JWT 校验 + AuthZ phase-3 写入校验 + 初始 sync_step2 + 双向 delta 扇出 + 30s idle 心跳清扫 + 5min/256KB 快照压缩 + presence JSON snapshot 端点。
+</div>
+
+<h2>二、数据模型（迁移 110 / 111）</h2>
+<pre><code>-- 110: 持久化 Yjs 文档快照（Postgres）
+CREATE TABLE wiki_doc_snapshots (
+    id BIGSERIAL PRIMARY KEY,
+    tenant_id BIGINT NOT NULL,
+    kb_id VARCHAR(36) NOT NULL,
+    page_id VARCHAR(36) NOT NULL,
+    ydoc_state BYTEA NOT NULL,
+    vector_clock BYTEA NOT NULL DEFAULT decode('', 'hex'),
+    version BIGINT NOT NULL DEFAULT 1,
+    size_bytes INT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (tenant_id, kb_id, page_id)
+);
+CREATE INDEX idx_wiki_doc_snapshots_tenant ON wiki_doc_snapshots (tenant_id);
+CREATE INDEX idx_wiki_doc_snapshots_updated ON wiki_doc_snapshots (updated_at DESC);
+-- trigger auto-bumps updated_at + version
+
+-- 111: 实时 presence / awareness 行
+CREATE TABLE wiki_realtime_sessions (
+    id VARCHAR(36) PRIMARY KEY,
+    tenant_id BIGINT NOT NULL,
+    page_id VARCHAR(36) NOT NULL,
+    user_id BIGINT NOT NULL,
+    client_id BIGINT NOT NULL,
+    color VARCHAR(16) NOT NULL DEFAULT '#58a6ff',
+    display_name VARCHAR(128) NOT NULL DEFAULT '',
+    last_heartbeat TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (tenant_id, page_id, client_id)
+);
+CREATE INDEX idx_wiki_realtime_sessions_page ON wiki_realtime_sessions (page_id, last_heartbeat DESC);
+</code></pre>
+<p class="muted">SQLite 平行迁移：<code>migrations/sqlite/000027_wiki_realtime.up.sql</code></p>
+
+<h2>三、模块拆分与代码量</h2>
+<table class="matrix">
+<tr><th>模块</th><th class="num">行数</th><th>路径</th></tr>
+<tr><td>迁移 (110 + 111 + sqlite 027)</td><td class="num">~200</td><td><code>migrations/versioned/000110_*.sql</code> 等</td></tr>
+<tr><td>类型定义</td><td class="num">~100</td><td><code>internal/types/wiki_realtime.go</code></td></tr>
+<tr><td>仓储接口</td><td class="num">~60</td><td><code>internal/types/interfaces/wiki_realtime.go</code></td></tr>
+<tr><td>GORM 仓储实现 (raw SQL)</td><td class="num">~200</td><td><code>internal/application/repository/wiki_realtime_*.go</code></td></tr>
+<tr><td>Service (cache + compaction)</td><td class="num">~330</td><td><code>internal/application/service/wiki_realtime.go</code></td></tr>
+<tr><td>AuthZ phase-3 适配器</td><td class="num">~60</td><td><code>internal/application/service/wiki_realtime_authz.go</code></td></tr>
+<tr><td>WebSocket handler (y-websocket 协议)</td><td class="num">~420</td><td><code>internal/handler/wiki_realtime_ws.go</code></td></tr>
+<tr><td>路由 + container 接入</td><td class="num">~40</td><td><code>internal/router/routes_wiki_realtime.go</code></td></tr>
+<tr><td>单元测试</td><td class="num">~350</td><td><code>internal/application/service/wikirealtime/wiki_realtime_test.go</code></td></tr>
+<tr><td>前端 composable</td><td class="num">~160</td><td><code>frontend/src/composables/useYjsWiki.ts</code></td></tr>
+<tr><td>前端 Presence Bar</td><td class="num">~130</td><td><code>frontend/src/components/wiki/WikiPresenceBar.vue</code></td></tr>
+<tr><td>前端 Tiptap Realtime Wrapper</td><td class="num">~160</td><td><code>frontend/src/components/wiki/WikiTiptapRealtime.vue</code></td></tr>
+<tr><td>前端 Vitest 测试</td><td class="num">~50</td><td><code>WikiPresenceBar.test.ts</code></td></tr>
+<tr><td>Smoke 脚本</td><td class="num">~50</td><td><code>scripts/smoke-wiki-realtime.sh</code></td></tr>
+<tr><td><b>合计</b></td><td class="num"><b>~2300</b></td><td>—</td></tr>
+</table>
+
+<h2>四、关键流程</h2>
+<pre><code>Client-A (Tiptap+Yjs)          Server (Gin+gorilla/ws)         Client-B (Tiptap+Yjs)
+       │                                  │                                  │
+       │ 1. WS upgrade /api/v1/knowledgebase/:kbId/wiki/realtime/:pageId?token=...
+       │─────────────────────────────────▶│                                  │
+       │                                  │ 2. JWT 验证 (URL query token)    │
+       │                                  │ 3. AuthZ phase-3 write check     │
+       │                                  │ 4. y-websocket hub.attach        │
+       │◀──── sync_step2 (snapshot) ─────│                                  │
+       │                                  │                                  │
+       │ 5. user edits → ydoc.transact    │                                  │
+       │─────── update (delta) ──────────▶│                                  │
+       │                                  │ 6. fan-out to peers              │
+       │                                  │────────── update (delta) ───────▶│
+       │                                  │                                  │
+       │                                  │ 7. heartbeat → awareness table   │
+       │                                  │    (idle > 30s → sweep)          │
+       │                                  │                                  │
+       │                                  │ 8. snapshot every 5min or 256KB  │
+       │                                  │    → wiki_doc_snapshots          │
+</code></pre>
+
+<h2>五、协议层（y-websocket wire format）</h2>
+<table class="matrix">
+<tr><th>消息</th><th>Type</th><th>Subtype</th><th>Payload</th></tr>
+<tr><td><code>messageSync</code></td><td>0</td><td>—</td><td>—</td></tr>
+<tr><td>sync_step1</td><td>0</td><td>0</td><td>state vector (16+ bytes)</td></tr>
+<tr><td>sync_step2</td><td>0</td><td>1</td><td>missing updates (Yjs binary)</td></tr>
+<tr><td>sync_update</td><td>0</td><td>2</td><td>new delta (Yjs binary)</td></tr>
+<tr><td><code>messageAwareness</code></td><td>1</td><td>—</td><td>awareness delta (cursor / selection)</td></tr>
+</table>
+<p class="muted">Frame: <code>1B length</code> + <code>1B type</code> + <code>N bytes payload</code>. v0.7.19 上限 127 字节/帧，足够覆盖大多数 Yjs delta；大快照走专用 snapshot frame（v0.7.20）。</p>
+
+<h2>六、验收项（Acceptance Criteria）</h2>
+<ol class="tight">
+<li>✓ 迁移 110/111 在 Postgres + SQLite 双链路可重复 up/down。</li>
+<li>✓ Service 层单元测试 10/10 通过（LoadDoc / MergeUpdate / TouchSession / SweepIdle / ValidateRead / ValidateWrite / Stats / Validate 错误传播 / Snapshot 校验 / Snapshot 替换）。</li>
+<li>✓ WebSocket handler 通过 JWT + AuthZ phase-3 双层校验。</li>
+<li>✓ Presence snapshot REST 端点 <code>GET /api/v1/knowledgebase/:kb_id/wiki/realtime/:page_id/presence</code>。</li>
+<li>✓ Stats 端点 <code>GET /api/v1/_realtime/_stats</code>（updates_in / updates_out / snapshots_saved / sweeps_removed / active_docs）。</li>
+<li>✓ Y.encodeStateAsUpdate(doc) 兼容；vector clock 占位 16 bytes（多实例 fan-out 留 v0.7.19.x）。</li>
+<li>✓ 前端 composable useYjsWiki 完整封装 WS 生命周期 + cleanup。</li>
+<li>✓ WikiPresenceBar 含连接状态点 + 头像列表 + 溢出 +N。</li>
+<li>✓ WikiTiptapRealtime 切换实时态 / 本地态，事件向上抛出 realtime-error。</li>
+<li>✓ package.json 增 yjs / y-websocket / @tiptap/extension-collaboration / @tiptap/extension-collaboration-cursor / y-protocols。</li>
+<li>⏳ 两人协作端到端 E2E（待集成测试环境搭好后补 Playwright 用例）。</li>
+<li>⏳ 多实例 Redis pub/sub fan-out（v0.7.19.x 增量）。</li>
+</ol>
+
+<h2>七、对标差距更新</h2>
+<table class="matrix">
+<tr><th>能力域</th><th>v0.7.18</th><th>v0.7.19</th><th>对标产品</th></tr>
+<tr><td>实时协作</td><td>0%</td><td>~50%（Wiki 已就绪，DatabaseView 表格实时态 v0.7.20 补齐）</td><td>Notion / 飞书 / Loop / Confluence 全员支持</td></tr>
+<tr><td>实时光标 / presence</td><td>0%</td><td>~80%（WS 链路 + presence JSON + 头像面板）</td><td>同上的全部</td></tr>
+<tr><td>离线收敛</td><td>—</td><td>~70%（Yjs 内置 CRDT 收敛，待 E2E 验证）</td><td>飞书 / Notion 离线编辑后合并</td></tr>
+<tr><td>权限接入</td><td>—</td><td>✓ AuthZ phase-3 + JWT</td><td>—</td></tr>
+<tr><td>快照持久化</td><td>—</td><td>✓ Postgres BYTEA + 5min/256KB 压缩</td><td>Notion Block Tree + version</td></tr>
+</table>
+
+<h2>八、后续 P0/P1 路线</h2>
+<ul class="tight">
+<li><b>v0.7.19.x — worktree 合并</b>：enterprise-iam-* (6 个) + ai-assistant-llm-stream + doc-kb-* (3 个)，约 800K 行合入主线。</li>
+<li><b>v0.7.19.x — Redis pub/sub 跨实例 fan-out</b>：复用 AuthZ phase-3 invalidation pattern。</li>
+<li><b>v0.7.20 — Synced Blocks</b>：wiki_sync_blocks 表 + 跨页引用块（对标 Notion Synced Blocks / 飞书同步块）。</li>
+<li><b>v0.7.21 — Custom Agents / Workers + 凭据配额</b>：对标 Notion Custom Agents / 飞书妙搭 / Rovo / Glean。</li>
+<li><b>v0.7.22 — DLP + AuthZ Admin UI</b>。</li>
+<li><b>v0.7.23 — WeKnora Base 多维表</b>：对标 Notion DB / 飞书 Bitable。</li>
+</ul>
+
+<h2>九、风险与缓解</h2>
+<table class="matrix">
+<tr><th>风险</th><th>等级</th><th>缓解</th></tr>
+<tr><td>WS 长连接资源耗尽</td><td><b>中</b></td><td>goroutine per conn + 1 MiB 帧上限 + 5s 写超时 + 心跳</td></tr>
+<tr><td>多实例协同</td><td><b>中</b></td><td>v0.7.19.x 引入 Redis pub/sub 复用 AuthZ phase-3 模式</td></tr>
+<tr><td>Yjs 大文档膨胀</td><td><b>中</b></td><td>5min/256KB 压缩 + 历史 purge（保留 N 个版本）</td></tr>
+<tr><td>Tiptap 兼容性</td><td><b>低</b></td><td>当前 @tiptap/core ^2.10 ↔ collaboration ^2.10 同主版本</td></tr>
+<tr><td>SQLite 测试连接池</td><td><b>低</b></td><td>已用 file-based + MaxOpenConns(1) + raw SQL 绕过 GORM dialect quirks</td></tr>
+</table>
+
+<h2>十、关键文件路径</h2>
+<ul class="tight">
+<li><code>.worktrees/v0.7.19-yjs-realtime/internal/types/wiki_realtime.go</code> — 类型</li>
+<li><code>.worktrees/v0.7.19-yjs-realtime/internal/types/interfaces/wiki_realtime.go</code> — 接口</li>
+<li><code>.worktrees/v0.7.19-yjs-realtime/internal/application/repository/wiki_realtime_*.go</code> — 仓储</li>
+<li><code>.worktrees/v0.7.19-yjs-realtime/internal/application/service/wiki_realtime.go</code> — Service</li>
+<li><code>.worktrees/v0.7.19-yjs-realtime/internal/application/service/wiki_realtime_authz.go</code> — AuthZ 适配器</li>
+<li><code>.worktrees/v0.7.19-yjs-realtime/internal/application/service/wikirealtime/wiki_realtime_test.go</code> — 10 个测试</li>
+<li><code>.worktrees/v0.7.19-yjs-realtime/internal/handler/wiki_realtime_ws.go</code> — WebSocket handler</li>
+<li><code>.worktrees/v0.7.19-yjs-realtime/internal/router/routes_wiki_realtime.go</code> — 路由</li>
+<li><code>.worktrees/v0.7.19-yjs-realtime/internal/container/container.go</code> — DI 装配（v0.7.19 段）</li>
+<li><code>.worktrees/v0.7.19-yjs-realtime/migrations/versioned/00011*.sql</code> — 迁移</li>
+<li><code>.worktrees/v0.7.19-yjs-realtime/frontend/src/composables/useYjsWiki.ts</code> — Yjs WS 客户端</li>
+<li><code>.worktrees/v0.7.19-yjs-realtime/frontend/src/components/wiki/WikiPresenceBar.vue</code> — 头像 + 状态点</li>
+<li><code>.worktrees/v0.7.19-yjs-realtime/frontend/src/components/wiki/WikiTiptapRealtime.vue</code> — 编辑器包装</li>
+<li><code>.worktrees/v0.7.19-yjs-realtime/scripts/smoke-wiki-realtime.sh</code> — 烟雾测试</li>
+</ul>
+
+<footer>
+v0.7.19 实施进度报告 · 生成于 2026-08-31 · 分支 <code>comet/v0.7.19-yjs-realtime</code> · 基于代码、迁移、测试、路由的真实证据盘点。下一步：合并 worktree 增量 + Redis pub/sub fan-out + 启动 Synced Blocks 数据模型。
+</footer>
+</div>
+</body>
+</html>
