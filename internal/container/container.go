@@ -162,6 +162,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewModelRepository))
 	must(container.Provide(repository.NewUserRepository))
 	must(container.Provide(repository.NewOIDCIdentityRepository))
+	must(container.Provide(repository.NewAuthZTupleRepository))
 	must(container.Provide(repository.NewSAMLIdentityRepository))
 	must(container.Provide(repository.NewAuthTokenRepository))
 	must(container.Provide(repository.NewSystemSettingRepository))
@@ -217,6 +218,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewSAMLIdPRepository))
 	must(container.Provide(service.NewSAMLIdPService))
 	must(container.Provide(newSAMLSPConfig))
+	// AuthZ persistent tuple store — read lookup + admin CRUD service.
+	// The lookup is registered before the composite so the closure
+	// can pull it; the service is used by the admin handler.
+	must(container.Provide(service.NewAuthZTupleLookup))
 	// AuthZ composite checker — built lazily so the notification
 	// service can be a dependency. The closure pattern avoids the
 	// chicken-and-egg problem (the authz package cannot import the
@@ -228,6 +233,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		agentShareSvc interfaces.AgentShareService,
 		agentSvc interfaces.CustomAgentService,
 		wikiAclRepo interfaces.WikiAclRepository,
+		dsSvc interfaces.DataSourceService,
+		tupleLookup *service.AuthZTupleLookup,
+		rdb *redis.Client,
 	) authz.Checker {
 		// Build the lookup closures that the adapters need. The
 		// container captures the concrete services here and the
@@ -286,16 +294,64 @@ func BuildContainer(container *dig.Container) *dig.Container {
 			return agent.TenantID, agent.CreatedBy, true, nil
 		}
 		_ = agentShareSvc // wired in phase-3 once the service exposes a CheckTenantAgentPermission equivalent of KB Share
-		return authz.NewAuthZComposite(authz.WireOptions{
-			KBCreator:       kbCreator,
-			KBShare:         kbShare,
-			WikiPageResolve: wikiResolve,
-			WikiPageOwner:   wikiOwner,
-			AgentCreator:    agentCreator,
-			// AgentShare stays nil until AgentShareService exposes a
-			// tenant-share permission lookup; the adapter still
-			// serves same-tenant checks (creator + role matrix).
-		})
+
+		// DatasourceAdapter lookups — phase-3 lands.
+		dsCreator := func(ctx context.Context, dsID string) (uint64, string, string, bool, error) {
+			ds, err := dsSvc.GetDataSource(ctx, dsID)
+			if err != nil || ds == nil {
+				return 0, "", "", false, err
+			}
+			return ds.TenantID, ds.CreatorID, ds.KnowledgeBaseID, true, nil
+		}
+		dsShare := func(ctx context.Context, dsID string, callerTenantID uint64, callerTenantRole string) (string, bool, error) {
+			// Phase-3: delegate to the KB share layer because every
+			// datasource lives under a KB and inherits its tenant
+			// shares. A dedicated cross-tenant datasource share
+			// table is a phase-4 follow-up; the lookup stays
+			// symmetric with KB so the adapter does not need to
+			// change when the new table lands.
+			ds, err := dsSvc.GetDataSource(ctx, dsID)
+			if err != nil || ds == nil {
+				return "", false, err
+			}
+			role, isShared, err := kbShareSvc.CheckTenantKBPermission(ctx, ds.KnowledgeBaseID, callerTenantID, types.TenantRole(callerTenantRole))
+			if err != nil {
+				return "", false, err
+			}
+			return string(role), isShared, nil
+		}
+
+		adapters := []authz.Adapter{authz.NewTenantRoleAdapter()}
+
+		// KB + WikiPage + Agent adapters — same as before.
+		if kbCreator != nil && kbShare != nil {
+			adapters = append(adapters, authz.NewKBAdapter(kbCreator, kbShare))
+		}
+		if wikiResolve != nil && wikiOwner != nil {
+			adapters = append(adapters, authz.NewWikiPageAdapter(wikiResolve, wikiOwner))
+		}
+		if agentCreator != nil {
+			adapters = append(adapters, authz.NewAgentAdapter(agentCreator, nil))
+		}
+		// DatasourceAdapter — phase-3 lands.
+		if dsCreator != nil {
+			adapters = append(adapters, authz.NewDataSourceAdapter(dsCreator, dsShare, kbShare))
+		}
+		// TupleAdapter — phase-3 lands. Consults the persistent
+		// authz_tuples table for explicit per-object grants. The
+		// adapter always registers (it no-ops when tupleLookup is
+		// nil); composite ranks it below the in-memory adapters so
+		// a creator shortcut beats a tuple grant, which matters
+		// when an admin revokes a tuple mid-request.
+		if tupleLookup != nil {
+			adapters = append(adapters, service.NewTupleAdapter(tupleLookup))
+		}
+		checker := authz.NewCompositeChecker(adapters...)
+		// Subscribe to Redis pubsub for cross-instance invalidation
+		// (no-op when Redis is unavailable; the local cache still
+		// invalidates via Invalidate calls).
+		go subscribeAuthZInvalidations(rdb, checker)
+		return checker
 	}))
 	must(container.Provide(service.NewAuditLogService))
 	must(container.Provide(service.NewAuditLogRetentionRunner))
@@ -620,6 +676,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewAuthHandler))
 	must(container.Provide(handler.NewSAMLHandler))
 	must(container.Provide(handler.NewSystemHandler))
+	must(container.Provide(func(repo interfaces.AuthZTupleRepository, checker authz.Checker) *service.AuthZTupleService {
+		return service.NewAuthZTupleService(repo, checker)
+	}))
+	must(container.Provide(handler.NewAuthZHandler))
 	must(container.Provide(handler.NewFeaturesHandler))
 	must(container.Provide(handler.NewMCPServiceHandler))
 	must(container.Provide(handler.NewMCPCredentialsHandler))
@@ -908,6 +968,67 @@ func registerLiteModelConcurrencyLimiter(ss interfaces.SystemSettingService) {
 	}
 	logger.Infof(context.Background(),
 		"[ModelLimiter] background model concurrency governed per-model, limit=%d (in-process, lite mode)", limit)
+}
+
+// authzInvalidationChannel is the Redis pubsub channel name used
+// for cross-instance AuthZ decision-cache invalidation. The Redis
+// cache invalidation pattern is documented in
+// docs/enterprise-capability-analysis-v8.html — every node
+// subscribes, every Invalidate publishes, no-ops on Redis-less
+// deployments.
+const authzInvalidationChannel = "weknora:authz:invalidate"
+
+// subscribeAuthZInvalidations runs in a goroutine for the lifetime
+// of the process. When Redis is available it consumes the
+// invalidation channel and forwards each message to the composite
+// checker so peer instances see cache-busts immediately. When
+// Redis is nil (Lite mode) the function returns silently — local
+// Invalidate calls still update this instance's cache via the
+// AuthZTupleService path.
+func subscribeAuthZInvalidations(rdb *redis.Client, checker authz.Checker) {
+	if rdb == nil || checker == nil {
+		return
+	}
+	ctx := context.Background()
+	pubsub := rdb.Subscribe(ctx, authzInvalidationChannel)
+	defer pubsub.Close()
+	ch := pubsub.Channel()
+	for msg := range ch {
+		// Payload format: "<object_type>:<object_id>". Empty /
+		// malformed payloads are dropped silently to keep the
+		// consumer loop alive even if a peer publishes garbage.
+		payload := msg.Payload
+		idx := strings.Index(payload, ":")
+		if idx <= 0 || idx >= len(payload)-1 {
+			logger.Warnf(ctx, "[authz] invalidation payload %q ignored", payload)
+			continue
+		}
+		err := checker.Invalidate(ctx, authz.Object{
+			Type: authz.ObjectType(payload[:idx]),
+			ID:   payload[idx+1:],
+		})
+		if err != nil {
+			logger.Warnf(ctx, "[authz] failed to invalidate %q: %v", payload, err)
+		}
+	}
+}
+
+// PublishAuthZInvalidation broadcasts an invalidation event to all
+// peer instances over Redis pubsub. The function is a no-op when
+// Redis is unavailable; local invalidation still happens via the
+// composite.Invalidate call. Callers should always invoke both the
+// local Invalidate (for the originating instance) and this
+// publish (for peers).
+func PublishAuthZInvalidation(rdb *redis.Client, objectType, objectID string) {
+	if rdb == nil {
+		return
+	}
+	payload := string(objectType) + ":" + objectID
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := rdb.Publish(ctx, authzInvalidationChannel, payload).Err(); err != nil {
+		logger.Warnf(ctx, "[authz] failed to publish invalidation %q: %v", payload, err)
+	}
 }
 
 func initRedisClient() (*redis.Client, error) {

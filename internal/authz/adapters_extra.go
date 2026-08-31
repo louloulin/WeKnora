@@ -46,3 +46,15 @@ type NotificationRecipientLookup func(ctx context.Context, tenantID uint64, noti
 // ChatMessageSessionOwnerLookup resolves a chat message id to
 // (ownerID, sessionID, found).
 type ChatMessageSessionOwnerLookup func(ctx context.Context, tenantID uint64, messageID string) (ownerID string, sessionID string, found bool, err error)
+
+// DataSourceCreatorLookup returns (tenantID, creatorUserID, kbID,
+// found) for a datasource. The kbID enables KB-level inheritance
+// in the adapter (a user with role X on a KB has the same role on
+// every datasource under it).
+type DataSourceCreatorLookup func(ctx context.Context, dsID string) (tenantID uint64, creatorUserID string, kbID string, found bool, err error)
+
+// DataSourceShareLookup mirrors KBShareLookup for datasources.
+// Cross-tenant access is granted either via a direct tenant-level
+// share or via the parent KB's share — the implementation must
+// union the two layers.
+type DataSourceShareLookup func(ctx context.Context, dsID string, callerTenantID uint64, callerTenantRole string) (effectiveRole string, isShared bool, err error)

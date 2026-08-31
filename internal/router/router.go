@@ -68,6 +68,7 @@ type RouterParams struct {
 	SAMLHandler                  *handler.SAMLHandler
 	InitializationHandler        *handler.InitializationHandler
 	SystemHandler                *handler.SystemHandler
+	AuthZHandler                 *handler.AuthZHandler
 	FeaturesHandler              *handler.FeaturesHandler
 	MCPServiceHandler            *handler.MCPServiceHandler
 	MCPCredentialsHandler        *handler.MCPCredentialsHandler
@@ -100,7 +101,7 @@ type RouterParams struct {
 	MemoryHandler                *handler.MemoryHandler
 	// CitationLogHandler — Build #30 B4. Wired optionally so the
 	// citation-log route is registered when the handler is present.
-	CitationLogHandler           *handler.CitationLogHandler
+	CitationLogHandler *handler.CitationLogHandler
 }
 
 // NewRouter 创建新的路由
@@ -289,6 +290,9 @@ func NewRouter(params RouterParams) *gin.Engine {
 		params.SystemHandler.BindDeploymentCapabilities(deploymentCapabilitiesFromRouter(params))
 		RegisterSystemRoutes(v1, params.SystemHandler, params.FeaturesHandler, rbacGuards)
 		RegisterSystemAdminRoutes(v1, params.SystemHandler, params.AuditLogHandler, rbacGuards)
+		if params.AuthZHandler != nil {
+			RegisterAuthZAdminRoutes(v1.Group("/system/admin", rbacGuards.SystemAdmin()), params.AuthZHandler, rbacGuards)
+		}
 		RegisterMCPServiceRoutes(v1, params.MCPServiceHandler, params.MCPCredentialsHandler, params.MCPOAuthHandler, rbacGuards)
 		RegisterWebSearchRoutes(v1, params.WebSearchHandler, rbacGuards)
 		RegisterWebSearchProviderRoutes(v1, params.WebSearchProviderHandler, params.WebSearchCredentialsHandler, rbacGuards)

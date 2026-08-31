@@ -23,6 +23,13 @@ type WireOptions struct {
 	// AgentCreator + AgentShare together register the agent adapter.
 	AgentCreator AgentCreatorLookup
 	AgentShare   AgentShareLookup
+	// DataSourceCreator + DataSourceShare + DataSourceKBAccess together
+	// register the datasource adapter. DataSourceKBAccess reuses the
+	// KBShareLookup signature because the (effectiveRole, isShared)
+	// shape is identical.
+	DataSourceCreator  DataSourceCreatorLookup
+	DataSourceShare    DataSourceShareLookup
+	DataSourceKBAccess KBShareLookup
 }
 
 // NewAuthZComposite builds the production composite with the
@@ -45,6 +52,12 @@ func NewAuthZComposite(opts WireOptions) Checker {
 	}
 	if opts.AgentCreator != nil && opts.AgentShare != nil {
 		adapters = append(adapters, NewAgentAdapter(opts.AgentCreator, opts.AgentShare))
+	}
+	if opts.DataSourceCreator != nil {
+		// The adapter degrades gracefully when share / kbAccess are
+		// nil — single-tenant deployments without cross-tenant
+		// datasource sharing still work.
+		adapters = append(adapters, NewDataSourceAdapter(opts.DataSourceCreator, opts.DataSourceShare, opts.DataSourceKBAccess))
 	}
 	return NewCompositeChecker(adapters...)
 }

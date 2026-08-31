@@ -96,6 +96,11 @@ func (s *DataSourceService) CreateDataSource(ctx context.Context, ds *types.Data
 	}
 
 	// Create in database
+	if strings.TrimSpace(ds.CreatorID) == "" {
+		if uid, ok := types.UserIDFromContext(ctx); ok && uid != "" {
+			ds.CreatorID = uid
+		}
+	}
 	if err := s.dsRepo.Create(ctx, ds); err != nil {
 		logger.Errorf(ctx, "failed to create data source: %v", err)
 		return nil, err
