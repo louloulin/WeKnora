@@ -12,7 +12,8 @@ import (
 // the tenant_id / user_id that the auth middleware put on the gin
 // context; we never accept them from the URL or body (IDOR guard).
 //
-//	POST /api/v1/assistant/ask                — ask a question, fuse KB + Wiki
+//	POST /api/v1/assistant/ask                — ask a question (JSON)
+//	POST /api/v1/assistant/ask?stream=1       — same as above, SSE output
 //	GET  /api/v1/assistant/conversations      — paginated audit of the user's asks
 //	GET  /api/v1/assistant/conversations/:id  — all turns of one thread
 func registerAssistantRoutes(group *gin.RouterGroup, h *handler.AssistantHandler) {
