@@ -71,6 +71,7 @@ type RouterParams struct {
 	MFAHandler                   *handler.MFAHandler
 	LDAPHandler                  *handler.LDAPHandler
 	SCIMHandler                  *handler.SCIMHandler
+	ConditionalAccessHandler     *handler.ConditionalAccessHandler
 	InitializationHandler        *handler.InitializationHandler
 	SystemHandler                *handler.SystemHandler
 	AuthZHandler                 *handler.AuthZHandler
@@ -265,6 +266,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		registerLDAPRoutes(v1, v1.Group("/api/v1", rbacGuards.SystemAdmin()), params.LDAPHandler)
 		registerSCIMRoutes(v1.Group("/api/v1"), params.SCIMHandler, handler.SCIMMiddleware(params.SCIMTokenService))
 		registerMFARoutes(v1.Group("/api/v1"), params.MFAHandler)
+		registerConditionalAccessRoutes(v1.Group("/api/v1"), params.ConditionalAccessHandler)
 		RegisterTenantRoutes(v1, params.TenantHandler, params.TenantMemberHandler, params.TenantInvitationHandler, params.AuditLogHandler, rbacGuards)
 		RegisterMyInvitationRoutes(v1, params.TenantInvitationHandler)
 		RegisterKnowledgeBaseRoutes(v1, params.KBHandler, rbacGuards)
