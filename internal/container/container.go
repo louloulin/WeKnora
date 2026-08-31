@@ -211,14 +211,81 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// service can be a dependency. The closure pattern avoids the
 	// chicken-and-egg problem (the authz package cannot import the
 	// service layer directly to break the cycle).
-	must(container.Provide(func() authz.Checker {
-		// Phase-1 rollout: only the tenant-role adapter is wired.
-		// The notification / chat-message adapters are registered
-		// in a follow-up that breaks the import cycle by lifting
-		// the lookup closures into this file. The recipient
-		// fast-path in notificationService.MarkRead / MarkDismissed
-		// stays intact; AuthZ adds the admin bypass for ops.
-		return authz.NewAuthZComposite(authz.WireOptions{})
+	must(container.Provide(func(
+		kbShareSvc interfaces.KBShareService,
+		kbSvc interfaces.KnowledgeBaseService,
+		wikiAclSvc service.WikiAclService,
+		agentShareSvc interfaces.AgentShareService,
+		agentSvc interfaces.CustomAgentService,
+		wikiAclRepo interfaces.WikiAclRepository,
+	) authz.Checker {
+		// Build the lookup closures that the adapters need. The
+		// container captures the concrete services here and the
+		// authz package stays import-cycle-free (it never sees the
+		// service interfaces directly).
+		kbCreator := func(ctx context.Context, kbID string) (uint64, string, bool, error) {
+			kb, err := kbSvc.GetKnowledgeBaseByIDOnly(ctx, kbID)
+			if err != nil || kb == nil {
+				return 0, "", false, err
+			}
+			return kb.TenantID, kb.CreatorID, true, nil
+		}
+		kbShare := func(ctx context.Context, kbID string, callerTenantID uint64, callerTenantRole string) (string, bool, error) {
+			role, isShared, err := kbShareSvc.CheckTenantKBPermission(ctx, kbID, callerTenantID, types.TenantRole(callerTenantRole))
+			if err != nil {
+				return "", false, err
+			}
+			return string(role), isShared, nil
+		}
+		wikiResolve := func(ctx context.Context, kbID, slug, callerUserID string) (string, bool, error) {
+			d, err := wikiAclSvc.Resolve(ctx, kbID, slug, callerUserID)
+			if err != nil {
+				return "", false, err
+			}
+			// The adapter distinguishes 'page missing' from 'ACL deny'
+			// via the (decision, found) tuple. Resolve returns an
+			// empty decision for missing rows; we map that to found=false.
+			if d == "" {
+				return "", false, nil
+			}
+			return d, true, nil
+		}
+		wikiOwner := func(ctx context.Context, kbID, slug string) (string, uint64, bool, error) {
+			// PageOwnerAndAdmin returns (ownerID, isAdmin, err); the
+			// adapter only cares about ownerID here.
+			ownerID, _, err := wikiAclRepo.PageOwnerAndAdmin(ctx, kbID, slug, "")
+			if err != nil {
+				return "", 0, false, err
+			}
+			if ownerID == "" {
+				return "", 0, false, nil
+			}
+			// TenantID resolution needs the KB — the page itself
+			// does not carry a tenant column. Use the kb service.
+			kb, err := kbSvc.GetKnowledgeBaseByIDOnly(ctx, kbID)
+			if err != nil || kb == nil {
+				return ownerID, 0, true, nil // found=true but tenant=0; callers can resolve
+			}
+			return ownerID, kb.TenantID, true, nil
+		}
+		agentCreator := func(ctx context.Context, agentID string) (uint64, string, bool, error) {
+			agent, err := agentSvc.GetAgentByIDAndTenant(ctx, agentID, 0)
+			if err != nil || agent == nil {
+				return 0, "", false, err
+			}
+			return agent.TenantID, agent.CreatedBy, true, nil
+		}
+		_ = agentShareSvc // wired in phase-3 once the service exposes a CheckTenantAgentPermission equivalent of KB Share
+		return authz.NewAuthZComposite(authz.WireOptions{
+			KBCreator:        kbCreator,
+			KBShare:          kbShare,
+			WikiPageResolve:  wikiResolve,
+			WikiPageOwner:    wikiOwner,
+			AgentCreator:     agentCreator,
+			// AgentShare stays nil until AgentShareService exposes a
+			// tenant-share permission lookup; the adapter still
+			// serves same-tenant checks (creator + role matrix).
+		})
 	}))
 	must(container.Provide(service.NewAuditLogService))
 	must(container.Provide(service.NewAuditLogRetentionRunner))
