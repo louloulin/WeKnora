@@ -1,0 +1,29 @@
+schema: comet.native.v4
+name: weknora-multi-instance-hit-ratio
+language: zh-CN
+phase: archive
+status: done
+state_version: 1
+brief: brief.md
+spec_changes: []
+workspace:
+  isolation: current
+  change_branch: lumos0826
+  target_branch: lumos0826
+  finish: null
+loop:
+  stage: done
+  goal_cycle: 1
+  iteration: 1
+  attempt: 1
+  retry_epoch: 0
+  failed_iteration_count: 0
+  no_progress_count: 0
+  execution_failure_count: 0
+  previous_unresolved_ids: []
+  next_action: null
+acceptance: []
+verification_result: pending
+verification_report: null
+archived: true
+created_at: "2026-08-25T00:00:00.000Z"
