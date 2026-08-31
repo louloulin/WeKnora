@@ -69,6 +69,13 @@ type DataSource struct {
 	// Workspace ID for multi-workspace isolation
 	TenantID uint64 `json:"tenant_id" gorm:"index"`
 
+	// CreatorID is the user that created the data source. The authz
+	// DatasourceAdapter short-circuits on the creator so demoting a
+	// user does not silently strip them from every datasource they
+	// own. Empty for legacy rows (pre-migration 109); the adapter
+	// falls back to the KB creator in that case.
+	CreatorID string `json:"creator_id" gorm:"type:varchar(36);not null;default:'';index"`
+
 	// Target knowledge base ID
 	KnowledgeBaseID string `json:"knowledge_base_id" gorm:"index"`
 
