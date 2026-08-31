@@ -1,0 +1,1181 @@
+openapi: 3.1.0
+info:
+  title: WeKnora Enterprise Knowledge Platform API
+  version: 0.7.27
+  description: |
+    WeKnora is a top-tier enterprise knowledge platform that combines RAG,
+    collaborative documents, multi-dimensional databases, automations, and
+    an AI agent studio. This OpenAPI specification is the source of truth
+    for the TypeScript, Python, and Go SDKs.
+
+    Authentication: all endpoints accept either an `Authorization: Bearer <jwt>`
+    header (interactive sessions) or `X-API-Key: <key>` (service-to-service).
+    The SDK auto-refreshes access tokens when a refresh token is supplied.
+  contact:
+    name: WeKnora SDK Team
+    url: https://github.com/Tencent/WeKnora
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: https://api.weknora.com/v1
+    description: Production
+  - url: https://staging.api.weknora.com/v1
+    description: Staging
+  - url: http://localhost:8080/api/v1
+    description: Local development
+
+tags:
+  - name: Auth
+    description: Identity, sessions, MFA, OAuth.
+  - name: KnowledgeBase
+    description: Knowledge bases — the top-level container for documents.
+  - name: Knowledge
+    description: Document upload, chunking, indexing.
+  - name: Search
+    description: Hybrid BM25 + vector + rerank search.
+  - name: Chat
+    description: RAG chat with streaming SSE responses.
+  - name: Conversation
+    description: Conversation history, list, delete.
+  - name: Wiki
+    description: Wiki pages, ACL, backlinks, comments, synced blocks.
+  - name: Database
+    description: Multi-dimensional tables, rows, columns, views.
+  - name: Formula
+    description: Formula evaluation, rollup, linked records.
+  - name: Automation
+    description: Automation / Buttons engine.
+  - name: CollabDoc
+    description: Collaborative documents (Yjs CRDT + binary files).
+  - name: AgentStudio
+    description: Custom agent studio — agents, runs, triggers.
+  - name: Connector
+    description: AI connectors (M365, Google, Slack, ...).
+  - name: Verification
+    description: AI Verification service — trust scoring.
+  - name: DLP
+    description: DLP scanners + AuthZ admin.
+  - name: Audit
+    description: Audit log + export.
+  - name: Webhooks
+    description: Outbound webhooks for events.
+
+security:
+  - bearerAuth: []
+  - apiKey: []
+
+paths:
+  # --- Auth -----------------------------------------------------------------
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login with email + password
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login succeeded; returns access + refresh tokens.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token: { type: string }
+              required: [refresh_token]
+      responses:
+        '200':
+          description: New access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current user profile
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: User profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  # --- KnowledgeBase --------------------------------------------------------
+  /knowledge-bases:
+    get:
+      tags: [KnowledgeBase]
+      summary: List knowledge bases for the current tenant
+      operationId: listKnowledgeBases
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: Knowledge bases page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeBasePage'
+    post:
+      tags: [KnowledgeBase]
+      summary: Create a new knowledge base
+      operationId: createKnowledgeBase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KnowledgeBaseInput'
+      responses:
+        '201':
+          description: Knowledge base created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeBase'
+
+  /knowledge-bases/{kb_id}:
+    parameters:
+      - $ref: '#/components/parameters/KbId'
+    get:
+      tags: [KnowledgeBase]
+      summary: Get a knowledge base by ID
+      operationId: getKnowledgeBase
+      responses:
+        '200':
+          description: Knowledge base.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeBase'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [KnowledgeBase]
+      summary: Update a knowledge base
+      operationId: updateKnowledgeBase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KnowledgeBasePatch'
+      responses:
+        '200':
+          description: Updated knowledge base.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeBase'
+    delete:
+      tags: [KnowledgeBase]
+      summary: Delete a knowledge base
+      operationId: deleteKnowledgeBase
+      responses:
+        '204':
+          description: Deleted.
+
+  # --- Knowledge / Search --------------------------------------------------- -
+  /knowledge-bases/{kb_id}/search:
+    parameters:
+      - $ref: '#/components/parameters/KbId'
+    post:
+      tags: [Search]
+      summary: Hybrid search across a knowledge base
+      operationId: searchKnowledgeBase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+      responses:
+        '200':
+          description: Search hits.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+
+  /knowledge-bases/{kb_id}/ask:
+    parameters:
+      - $ref: '#/components/parameters/KbId'
+    post:
+      tags: [Chat]
+      summary: RAG ask — one-shot Q&A with citation traces
+      operationId: askKnowledgeBase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AskRequest'
+      responses:
+        '200':
+          description: Answer with citations.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AskResponse'
+
+  /knowledge-bases/{kb_id}/chat:
+    parameters:
+      - $ref: '#/components/parameters/KbId'
+    post:
+      tags: [Chat]
+      summary: Streaming chat (SSE) — returns NDJSON of ChatChunk events
+      operationId: streamChat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+      responses:
+        '200':
+          description: NDJSON stream of ChatChunk events.
+          content:
+            application/x-ndjson:
+              schema:
+                $ref: '#/components/schemas/ChatChunk'
+
+  /conversations:
+    get:
+      tags: [Conversation]
+      summary: List conversations
+      operationId: listConversations
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: Conversations page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversationPage'
+
+  /conversations/{conversation_id}:
+    parameters:
+      - name: conversation_id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Conversation]
+      summary: Get conversation with messages
+      operationId: getConversation
+      responses:
+        '200':
+          description: Conversation with messages.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+    delete:
+      tags: [Conversation]
+      summary: Delete a conversation
+      operationId: deleteConversation
+      responses:
+        '204':
+          description: Deleted.
+
+  # --- Database (Multi-dim Table) ------------------------------------------
+  /knowledge-bases/{kb_id}/databases:
+    parameters:
+      - $ref: '#/components/parameters/KbId'
+    get:
+      tags: [Database]
+      summary: List databases in a KB
+      operationId: listDatabases
+      responses:
+        '200':
+          description: Database list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Database' }
+    post:
+      tags: [Database]
+      summary: Create a database
+      operationId: createDatabase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DatabaseInput'
+      responses:
+        '201':
+          description: Database created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Database'
+
+  /knowledge-bases/{kb_id}/databases/{database_id}/rows:
+    parameters:
+      - $ref: '#/components/parameters/KbId'
+      - name: database_id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Database]
+      summary: Insert rows into a database
+      operationId: insertRows
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rows:
+                  type: array
+                  items: { $ref: '#/components/schemas/RowInput' }
+              required: [rows]
+      responses:
+        '201':
+          description: Inserted rows.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Row' }
+    get:
+      tags: [Database]
+      summary: Query rows with filter
+      operationId: queryRows
+      parameters:
+        - name: filter
+          in: query
+          schema: { type: string }
+          description: JSON-encoded filter expression
+      responses:
+        '200':
+          description: Matching rows.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Row' }
+
+  # --- Formula -------------------------------------------------------------
+  /knowledge-bases/{kb_id}/formula/eval:
+    parameters:
+      - $ref: '#/components/parameters/KbId'
+    post:
+      tags: [Formula]
+      summary: Evaluate a formula expression with a context
+      operationId: evalFormula
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FormulaEvalRequest'
+      responses:
+        '200':
+          description: Evaluation result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormulaEvalResponse'
+
+  # --- Automation ----------------------------------------------------------
+  /knowledge-bases/{kb_id}/databases/{database_id}/automations:
+    parameters:
+      - $ref: '#/components/parameters/KbId'
+      - name: database_id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Automation]
+      summary: List automations for a database
+      operationId: listAutomations
+      responses:
+        '200':
+          description: Automation list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Automation' }
+    post:
+      tags: [Automation]
+      summary: Create an automation
+      operationId: createAutomation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutomationInput'
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Automation'
+
+  /knowledge-bases/{kb_id}/automations/{id}/run:
+    parameters:
+      - $ref: '#/components/parameters/KbId'
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Automation]
+      summary: Manually trigger an automation run
+      operationId: runAutomation
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '202':
+          description: Run started.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomationRun'
+
+  # --- CollabDoc -----------------------------------------------------------
+  /collaborative-docs:
+    get:
+      tags: [CollabDoc]
+      summary: List collab docs
+      operationId: listCollabDocs
+      responses:
+        '200':
+          description: Collab doc list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CollabDoc' }
+    post:
+      tags: [CollabDoc]
+      summary: Create a collab doc
+      operationId: createCollabDoc
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CollabDocInput'
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CollabDoc'
+
+  /collaborative-docs/{id}/upload:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [CollabDoc]
+      summary: Upload a binary file (.docx/.pptx/.xlsx)
+      operationId: uploadCollabDocBytes
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required: [file]
+      responses:
+        '200':
+          description: Uploaded version metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CollabDocFile'
+
+  /collaborative-docs/{id}/download:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [CollabDoc]
+      summary: Download the latest binary version
+      operationId: downloadCollabDocBytes
+      responses:
+        '200':
+          description: Raw bytes.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+
+  # --- Agent Studio --------------------------------------------------------
+  /agents:
+    get:
+      tags: [AgentStudio]
+      summary: List agents
+      operationId: listAgents
+      responses:
+        '200':
+          description: Agent list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Agent' }
+    post:
+      tags: [AgentStudio]
+      summary: Create an agent
+      operationId: createAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentInput'
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Agent'
+
+  /agents/{agent_id}/runs:
+    parameters:
+      - name: agent_id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [AgentStudio]
+      summary: Run an agent
+      operationId: runAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentRunRequest'
+      responses:
+        '201':
+          description: Run created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentRun'
+
+  # --- Connector -----------------------------------------------------------
+  /connectors:
+    get:
+      tags: [Connector]
+      summary: List installed connectors
+      operationId: listConnectors
+      responses:
+        '200':
+          description: Connector list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Connector' }
+    post:
+      tags: [Connector]
+      summary: Install a connector
+      operationId: installConnector
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectorInput'
+      responses:
+        '201':
+          description: Installed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connector'
+
+  /connectors/{connector_id}/sync:
+    parameters:
+      - name: connector_id
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Connector]
+      summary: Trigger a sync run
+      operationId: syncConnector
+      responses:
+        '202':
+          description: Sync started.
+
+  # --- Verification --------------------------------------------------------
+  /knowledge-bases/{kb_id}/verify:
+    parameters:
+      - $ref: '#/components/parameters/KbId'
+    post:
+      tags: [Verification]
+      summary: Run AI Verification on a KB page or the whole KB
+      operationId: verifyKnowledgeBase
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerificationRequest'
+      responses:
+        '200':
+          description: Verification report.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationReport'
+
+  # --- Webhooks ------------------------------------------------------------
+  /webhooks/automations/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+      - name: token
+        in: query
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Webhooks]
+      summary: Public webhook receiver for automation triggers
+      operationId: automationWebhook
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '202':
+          description: Run started.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomationRun'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    PageSize:
+      name: page_size
+      in: query
+      schema: { type: integer, default: 20, maximum: 200 }
+    PageToken:
+      name: page_token
+      in: query
+      schema: { type: string }
+    KbId:
+      name: kb_id
+      in: path
+      required: true
+      schema: { type: string }
+
+  responses:
+    Unauthorized:
+      description: Unauthorized.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+      required: [error]
+
+    LoginRequest:
+      type: object
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        tenant_id: { type: string }
+      required: [email, password]
+
+    LoginResponse:
+      type: object
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        expires_in: { type: integer, description: Access-token lifetime in seconds. }
+        user: { $ref: '#/components/schemas/User' }
+      required: [access_token, refresh_token, expires_in, user]
+
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        avatar_url: { type: string, format: uri }
+        tenant_id: { type: string }
+        roles: { type: array, items: { type: string } }
+
+    KnowledgeBase:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        type: { type: string, enum: [wiki, rag, hybrid] }
+        chunk_count: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    KnowledgeBaseInput:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        type: { type: string, enum: [wiki, rag, hybrid] }
+      required: [name, type]
+
+    KnowledgeBasePatch:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+
+    KnowledgeBasePage:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/KnowledgeBase' }
+        next_page_token: { type: string }
+
+    SearchRequest:
+      type: object
+      properties:
+        query: { type: string }
+        top_k: { type: integer, default: 10, maximum: 100 }
+        rerank: { type: boolean, default: true }
+        filter:
+          type: object
+          additionalProperties: true
+      required: [query]
+
+    SearchResponse:
+      type: object
+      properties:
+        hits:
+          type: array
+          items:
+            type: object
+            properties:
+              chunk_id: { type: string }
+              score: { type: number, format: float }
+              text: { type: string }
+              document_id: { type: string }
+              document_title: { type: string }
+              highlights: { type: array, items: { type: string } }
+
+    AskRequest:
+      type: object
+      properties:
+        question: { type: string }
+        conversation_id: { type: string }
+        stream: { type: boolean, default: false }
+      required: [question]
+
+    AskResponse:
+      type: object
+      properties:
+        answer: { type: string }
+        citations:
+          type: array
+          items:
+            type: object
+            properties:
+              chunk_id: { type: string }
+              document_title: { type: string }
+              text: { type: string }
+              score: { type: number }
+        conversation_id: { type: string }
+
+    ChatRequest:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            type: object
+            properties:
+              role: { type: string, enum: [user, assistant, system] }
+              content: { type: string }
+            required: [role, content]
+        conversation_id: { type: string }
+      required: [messages]
+
+    ChatChunk:
+      type: object
+      properties:
+        type: { type: string, enum: [delta, citation, done, error] }
+        content: { type: string, description: Delta text when type=delta }
+        citation:
+          type: object
+          properties:
+            chunk_id: { type: string }
+            document_title: { type: string }
+            score: { type: number }
+        error: { type: string }
+
+    Conversation:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        kb_id: { type: string }
+        messages:
+          type: array
+          items:
+            type: object
+            properties:
+              role: { type: string }
+              content: { type: string }
+              created_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ConversationPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Conversation' }
+        next_page_token: { type: string }
+
+    Database:
+      type: object
+      properties:
+        id: { type: string }
+        kb_id: { type: string }
+        name: { type: string }
+        columns:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              type: { type: string, enum: [text, number, date, select, multi_select, user, file, formula, rollup, link] }
+              options: { type: object, additionalProperties: true }
+        views:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              type: { type: string, enum: [grid, kanban, calendar, gallery] }
+
+    DatabaseInput:
+      type: object
+      properties:
+        name: { type: string }
+        columns:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              type: { type: string }
+              options: { type: object, additionalProperties: true }
+            required: [name, type]
+      required: [name, columns]
+
+    Row:
+      type: object
+      properties:
+        id: { type: string }
+        database_id: { type: string }
+        values: { type: object, additionalProperties: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    RowInput:
+      type: object
+      properties:
+        values: { type: object, additionalProperties: true }
+      required: [values]
+
+    FormulaEvalRequest:
+      type: object
+      properties:
+        expression: { type: string, description: DSL expression, e.g. 'price * (1 + tax_rate)' }
+        context:
+          type: object
+          additionalProperties: true
+          description: |
+            Variable bindings. Supports `$row.<col>`, `steps.<id>.<key>`,
+            `$changed_column`, `$new_value` (Build #33 Automation).
+      required: [expression]
+
+    FormulaEvalResponse:
+      type: object
+      properties:
+        value: {}
+        type: { type: string, description: Inferred return type. }
+        error: { type: string, description: Populated when eval fails. }
+
+    Automation:
+      type: object
+      properties:
+        id: { type: string }
+        tenant_id: { type: string }
+        kb_id: { type: string }
+        database_id: { type: string }
+        name: { type: string }
+        trigger_type:
+          type: string
+          enum: [manual, scheduled, row_changed, webhook]
+        trigger_config:
+          type: object
+          additionalProperties: true
+        steps:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              action_type:
+                type: string
+                enum: [update_field, create_row, send_webhook, run_agent, notify]
+              config: { type: object, additionalProperties: true }
+              next_ids:
+                type: array
+                items: { type: string }
+        enabled: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    AutomationInput:
+      type: object
+      properties:
+        database_id: { type: string }
+        name: { type: string }
+        trigger_type:
+          type: string
+          enum: [manual, scheduled, row_changed, webhook]
+        trigger_config: { type: object, additionalProperties: true }
+        steps:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              action_type: { type: string }
+              config: { type: object, additionalProperties: true }
+              next_ids:
+                type: array
+                items: { type: string }
+            required: [id, action_type]
+        enabled: { type: boolean, default: true }
+      required: [database_id, name, trigger_type, steps]
+
+    AutomationRun:
+      type: object
+      properties:
+        id: { type: string }
+        automation_id: { type: string }
+        status: { type: string, enum: [queued, running, succeeded, failed, skipped] }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+        step_runs:
+          type: array
+          items:
+            type: object
+            properties:
+              step_id: { type: string }
+              status: { type: string }
+              result: { type: object, additionalProperties: true }
+              error: { type: string }
+
+    CollabDoc:
+      type: object
+      properties:
+        id: { type: string }
+        kb_id: { type: string }
+        title: { type: string }
+        kind: { type: string, enum: [doc, sheet, slide] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        current_version: { type: integer }
+
+    CollabDocInput:
+      type: object
+      properties:
+        kb_id: { type: string }
+        title: { type: string }
+        kind: { type: string, enum: [doc, sheet, slide] }
+      required: [kb_id, title, kind]
+
+    CollabDocFile:
+      type: object
+      properties:
+        doc_id: { type: string }
+        version: { type: integer }
+        sha256: { type: string }
+        size_bytes: { type: integer }
+        content_type: { type: string }
+        created_at: { type: string, format: date-time }
+
+    Agent:
+      type: object
+      properties:
+        id: { type: string }
+        tenant_id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        model: { type: string, description: e.g. gpt-4o / deepseek-chat }
+        tools:
+          type: array
+          items: { type: string }
+        memory: { type: string, enum: [none, short, long] }
+        system_prompt: { type: string }
+
+    AgentInput:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        model: { type: string }
+        tools:
+          type: array
+          items: { type: string }
+        memory: { type: string }
+        system_prompt: { type: string }
+      required: [name, model]
+
+    AgentRun:
+      type: object
+      properties:
+        id: { type: string }
+        agent_id: { type: string }
+        status: { type: string, enum: [queued, running, succeeded, failed] }
+        triggered_by: { type: string, enum: [manual, cron, event, webhook, api, automation] }
+        input: { type: object, additionalProperties: true }
+        output: { type: object, additionalProperties: true }
+        steps_count: { type: integer }
+        tokens_used: { type: integer }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+
+    AgentRunRequest:
+      type: object
+      properties:
+        input: { type: object, additionalProperties: true }
+      required: [input]
+
+    Connector:
+      type: object
+      properties:
+        id: { type: string }
+        tenant_id: { type: string }
+        kind: { type: string, description: e.g. m365, google_workspace, slack, notion }
+        name: { type: string }
+        status: { type: string, enum: [active, paused, error] }
+        last_sync_at: { type: string, format: date-time }
+        config:
+          type: object
+          additionalProperties: true
+
+    ConnectorInput:
+      type: object
+      properties:
+        kind: { type: string }
+        name: { type: string }
+        config: { type: object, additionalProperties: true }
+      required: [kind, name]
+
+    VerificationRequest:
+      type: object
+      properties:
+        page_id: { type: string, description: Optional — omit to scan the whole KB. }
+        include_kg: { type: boolean, default: true }
+      required: [include_kg]
+
+    VerificationReport:
+      type: object
+      properties:
+        kb_id: { type: string }
+        scanned_at: { type: string, format: date-time }
+        trust_score: { type: number, format: float, minimum: 0, maximum: 1 }
+        findings:
+          type: array
+          items:
+            type: object
+            properties:
+              page_id: { type: string }
+              severity: { type: string, enum: [info, warn, critical] }
+              message: { type: string }

@@ -1,0 +1,23 @@
+{
+  "name": "@weknora/sdk",
+  "version": "0.7.27",
+  "description": "Official TypeScript SDK for the WeKnora Enterprise Knowledge Platform.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "eslint src --ext .ts"
+  },
+  "keywords": ["weknora", "rag", "knowledge-base", "sdk"],
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "vitest": "^1.5.0",
+    "@types/node": "^20.0.0"
+  }
+}
