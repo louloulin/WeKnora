@@ -257,6 +257,24 @@ type WikiPage struct {
 	// LastEditorID is the user id of the caller that produced the current
 	// version (empty for background pipeline writes).
 	LastEditorID string `json:"last_editor_id,omitempty" gorm:"type:varchar(64);default:''"`
+	// ReviewOwner is the user id responsible for re-verifying this page on
+	// the next review cycle. Empty for pages that nobody has claimed.
+	// Part of Build #48 Verified Knowledge Engine; drives the "needs review"
+	// banner in the wiki reader and the assignee filter in the dashboard.
+	ReviewOwner string `json:"review_owner,omitempty" gorm:"type:varchar(64);default:'';index"`
+	// ReviewDueAt is the deadline by which the review owner should mark the
+	// page verified again. NULL means "no scheduled review". When due and
+	// not yet re-verified the page is flagged as stale in the AI
+	// verification report and the wiki reader surfaces an amber banner.
+	ReviewDueAt *time.Time `json:"review_due_at,omitempty" gorm:"index"`
+	// VerifiedAt records the last time a human (or an explicitly-trusted
+	// automated job) confirmed this page is still accurate. NULL on legacy
+	// pages that have never been verified — those collapse to a
+	// "needs_first_verification" check in the verification report.
+	VerifiedAt *time.Time `json:"verified_at,omitempty" gorm:"index"`
+	// VerifiedBy is the user id who last set VerifiedAt (empty for
+	// pipeline-set verifications).
+	VerifiedBy string `json:"verified_by,omitempty" gorm:"type:varchar(64);default:''"`
 	// Creation time
 	CreatedAt time.Time `json:"created_at"`
 	// Last update time

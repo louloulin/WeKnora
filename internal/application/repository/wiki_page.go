@@ -270,6 +270,10 @@ func (r *wikiPageRepository) UpdateMeta(ctx context.Context, page *types.WikiPag
 			"wiki_path":     page.WikiPath,
 			"depth":         page.Depth,
 			"sort_order":    page.SortOrder,
+			"review_owner":  page.ReviewOwner,
+			"review_due_at": page.ReviewDueAt,
+			"verified_at":   page.VerifiedAt,
+			"verified_by":   page.VerifiedBy,
 			"updated_at":    page.UpdatedAt,
 		})
 	if result.Error != nil {

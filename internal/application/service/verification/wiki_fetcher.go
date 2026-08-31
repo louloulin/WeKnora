@@ -93,15 +93,19 @@ func toSummary(p *types.WikiPage) *PageSummary {
 	}
 	tenantStr := strconv.FormatUint(p.TenantID, 10)
 	return &PageSummary{
-		Slug:      p.Slug,
-		Title:     p.Title,
-		KBID:      p.KnowledgeBaseID,
-		TenantID:  tenantStr,
-		PageID:    p.ID,
-		OutLinks:  []string(p.OutLinks),
-		InLinks:   []string(p.InLinks),
-		Status:    p.Status,
-		UpdatedAt: p.UpdatedAt,
-		Content:   p.Content,
+		Slug:        p.Slug,
+		Title:       p.Title,
+		KBID:        p.KnowledgeBaseID,
+		TenantID:    tenantStr,
+		PageID:      p.ID,
+		OutLinks:    []string(p.OutLinks),
+		InLinks:     []string(p.InLinks),
+		Status:      p.Status,
+		UpdatedAt:   p.UpdatedAt,
+		Content:     p.Content,
+		ReviewOwner: p.ReviewOwner,
+		ReviewDueAt: p.ReviewDueAt,
+		VerifiedAt:  p.VerifiedAt,
+		VerifiedBy:  p.VerifiedBy,
 	}
 }

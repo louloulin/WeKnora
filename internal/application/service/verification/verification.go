@@ -62,6 +62,14 @@ type PageSummary struct {
 	Status     string
 	UpdatedAt  time.Time
 	Content    string // markdown body for trigram overlap
+
+	// Verified Knowledge Engine (Build #48) fields. Surfaced from the
+	// wiki_page row so RunForPage can stamp the VerificationReport with
+	// the same shape the frontend needs to render VerifiedBadge.
+	ReviewOwner string
+	ReviewDueAt *time.Time
+	VerifiedAt  *time.Time
+	VerifiedBy  string
 }
 
 // Service is the Build #29 scanner.
@@ -102,7 +110,8 @@ func (s *Service) RunForPage(ctx context.Context, kbID, slug string) (*types.Ver
 	}
 	score := computeTrustScore(checks)
 	status := rollupStatus(checks, score)
-	return &types.VerificationReport{
+	now := time.Now()
+	report := &types.VerificationReport{
 		PageID:          page.PageID,
 		Slug:            page.Slug,
 		KnowledgeBaseID: kbID,
@@ -110,8 +119,20 @@ func (s *Service) RunForPage(ctx context.Context, kbID, slug string) (*types.Ver
 		Status:          status,
 		TrustScore:      score,
 		Checks:          checks,
-		ScannedAt:       time.Now(),
-	}, nil
+		ScannedAt:       now,
+		ReviewOwner:     page.ReviewOwner,
+		ReviewDueAt:     page.ReviewDueAt,
+		VerifiedAt:      page.VerifiedAt,
+		VerifiedBy:      page.VerifiedBy,
+	}
+	// ManualVerificationOK is the convenience flag the UI consumes:
+	// verified recently AND no overdue review. Computed here so the
+	// dashboard widget doesn't have to redo the comparison.
+	if page.VerifiedAt != nil {
+		ok := page.ReviewDueAt == nil || page.ReviewDueAt.After(now)
+		report.ManualVerificationOK = ok
+	}
+	return report, nil
 }
 
 // RunForKB scans every slug in the KB and produces per-page reports

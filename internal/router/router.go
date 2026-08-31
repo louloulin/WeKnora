@@ -101,6 +101,7 @@ type RouterParams struct {
 	WeKnoraCloudHandler          *handler.WeKnoraCloudHandler
 	WikiPageHandler              *handler.WikiPageHandler
 	VerificationHandler          *handler.VerificationHandler
+	WikiVerificationHandler      *handler.WikiVerificationHandler
 	WikiAclHandler               *handler.WikiAclHandler
 	WikiTagHandler               *handler.WikiTagHandler
 	WikiCommentHandler            *handler.WikiCommentHandler
@@ -125,6 +126,7 @@ type RouterParams struct {
 	CitationLogHandler *handler.CitationLogHandler
 	// v0.7.25 Build #22-#26 handlers.
 	ConnectorHandler    *handler.ConnectorHandler
+	WebhookHandler       *handler.WebhookHandler
 	InlineAIHandler     *handler.InlineAIHandler
 	AuditExportHandler  *handler.AuditExportHandler
 	DatabaseHandler     *handler.DatabaseHandler
@@ -345,6 +347,10 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterDataSourceRoutes(v1, params.DataSourceHandler, params.DataSourceCredentialsHandler, rbacGuards)
 		RegisterWeKnoraCloudRoutes(v1, params.WeKnoraCloudHandler, rbacGuards)
 		RegisterWikiPageRoutes(v1, params.WikiPageHandler, params.WikiAclHandler, params.WikiTagHandler, params.WikiTemplateHandler, params.WikiSearchV2Handler, params.WikiCommentHandler, rbacGuards)
+		// Build #29 + Build #48 verification routes (AI scanner +
+		// Verified Knowledge Engine mutations). Both handlers are
+		// nil-tolerant so missing-wiring deployments still boot.
+		RegisterVerificationRoutes(v1, params.VerificationHandler, params.WikiVerificationHandler, rbacGuards)
 		RegisterMemoryRoutes(v1, params.MemoryHandler, rbacGuards)
 		RegisterChunkerDebugRoutes(v1, rbacGuards)
 
@@ -380,6 +386,20 @@ func NewRouter(params RouterParams) *gin.Engine {
 		}
 		if params.SlideHandler != nil {
 			params.SlideHandler.Mount(v1)
+		}
+		if params.WebhookHandler != nil {
+			RegisterWebhookRoutes(v1, params.WebhookHandler)
+		}
+		if params.CollabDocHandler != nil {
+			RegisterCollabDocRoutes(v1,
+				params.CollabDocHandler,
+				params.CollabDocBytesHandler,
+				params.CollabDocRealtimeWSHandler,
+				params.CollabDocCommentHandler,
+				params.CollabDocAuditHandler,
+				rbacGuards,
+				params.RedisClient,
+			)
 		}
 		if params.MarketplaceHandler != nil {
 			params.MarketplaceHandler.Mount(v1)

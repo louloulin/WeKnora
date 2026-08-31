@@ -56,6 +56,18 @@ type VerificationReport struct {
 	TrustScore      float64            `json:"trust_score"`
 	Checks          []VerificationCheck `json:"checks"`
 	ScannedAt       time.Time           `json:"scanned_at"`
+	// Verified Knowledge Engine fields (Build #48). Surfaced on the
+	// existing GET so the wiki reader can render the VerifiedBadge in
+	// a single round-trip without a follow-up GET /pages/:slug call.
+	// All four are omitempty so AI-only scanner responses (no manual
+	// review) stay byte-compatible with the v0.7.37 contract.
+	ReviewOwner    string     `json:"review_owner,omitempty"`
+	ReviewDueAt    *time.Time `json:"review_due_at,omitempty"`
+	VerifiedAt     *time.Time `json:"verified_at,omitempty"`
+	VerifiedBy     string     `json:"verified_by,omitempty"`
+	// ManualVerificationOK is true when VerifiedAt != nil and either
+	// ReviewDueAt is nil or in the future. Convenience flag for the UI.
+	ManualVerificationOK bool `json:"manual_verification_ok,omitempty"`
 }
 
 // VerificationSummary is the per-KB rollup. Status counts are emitted
