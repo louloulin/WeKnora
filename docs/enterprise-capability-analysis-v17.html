@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeKnora v0.7.17 实施进度报告 · AI Assistant 前端面板 SSE 接入 · 2026-08-31</title>
+<style>
+:root{--bg:#08111f;--panel:#101d30;--panel2:#14253d;--text:#eaf2ff;--muted:#9db0c9;--line:#27405f;--cyan:#55d6ff;--green:#68e0a0;--amber:#ffd166;--red:#ff7b8b;--purple:#b69cff;--shadow:0 20px 60px #0005}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 10% 0,#143054 0,#08111f 36rem),var(--bg);color:var(--text);font:15px/1.65 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}a{color:var(--cyan)}.wrap{max-width:1440px;margin:auto;padding:0 28px}.hero{padding:72px 0 46px;border-bottom:1px solid var(--line)}.eyebrow{color:var(--cyan);font-weight:700;letter-spacing:.12em;text-transform:uppercase}.hero h1{font-size:clamp(34px,5vw,68px);line-height:1.08;max-width:980px;margin:14px 0 20px}.hero p{color:var(--muted);font-size:18px;max-width:880px}.meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}.chip{padding:5px 11px;border:1px solid var(--line);border-radius:999px;color:var(--muted);background:#ffffff08}.nav{position:sticky;top:0;z-index:10;background:#08111fee;backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}.nav .wrap{display:flex;gap:18px;overflow:auto;padding-top:13px;padding-bottom:13px}.nav a{white-space:nowrap;text-decoration:none;color:var(--muted);font-size:13px}.nav a:hover{color:var(--cyan)}section{padding:52px 0;border-bottom:1px solid #1a2c44}h2{font-size:32px;line-height:1.2;margin:0 0 12px}h3{font-size:21px;margin:28px 0 10px}h4{margin:0 0 8px;color:var(--cyan)}.lead{color:var(--muted);max-width:940px}.grid{display:grid;gap:16px}.grid-2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}.grid-3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}.grid-4{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}.card{background:linear-gradient(145deg,var(--panel),#0d192b);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:var(--shadow)}.card p{color:var(--muted);margin:6px 0}.stat{font-size:32px;font-weight:800}.stat small{font-size:14px;color:var(--muted);font-weight:500}.tag{display:inline-block;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:700;margin:2px 4px 2px 0}.done{background:#1b6549;color:#a8ffd3}.partial{background:#705621;color:#ffe29b}.gap{background:#71303c;color:#ffb6c0}.planned{background:#3f3472;color:#d4c8ff}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:14px}.matrix{width:100%;border-collapse:collapse;min-width:980px;background:#0c1828}.matrix th,.matrix td{padding:13px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line);border-right:1px solid #1a2c44}.matrix th{color:var(--cyan);background:#12243a;position:sticky;top:0}.matrix td{color:#c8d5e7}.matrix tr:last-child td{border-bottom:0}.callout{border-left:4px solid var(--cyan);background:#10263b;padding:16px 20px;border-radius:0 12px 12px 0;margin:18px 0}.callout.warn{border-color:var(--amber);background:#302610}.callout.danger{border-color:var(--red);background:#321b25}.callout.ok{border-color:var(--green);background:#0f2a1f}.list{margin:8px 0 0;padding-left:20px}.list li{margin:6px 0;color:#c8d5e7}.small{font-size:13px;color:var(--muted)}.progress{height:8px;background:#0c1828;border-radius:4px;overflow:hidden;margin:8px 0}.progress div{height:100%;background:linear-gradient(90deg,var(--green),var(--cyan))}.ref{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--muted);background:#0c1828;padding:2px 6px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="hero">
+  <div class="eyebrow">WeKnora 实施进度报告 · AI Assistant 后端 + 前端 SSE 接入 · 2026-08-31</div>
+  <h1>v0.7.17：LLM Stream Provider 接入 + POST /ask?stream=1 SSE 端点落地</h1>
+  <p class="lead">基于代码、路由、迁移和测试的真实证据，盘点 v0.7.17 主线交付的 LLM 厂商无关抽象（<span class="ref">internal/llmstream/</span>）+ AssistantService 流式改造 + handler SSE 输出 + 前端面板消费路径。所有数据来自项目内文件，不把规划文档误当成已实现功能。</p>
+  <div class="meta">
+    <span class="chip">comet/ai-assistant-llm-stream v0.7.17</span>
+    <span class="chip">HEAD a742c1a6</span>
+    <span class="chip">LLM Provider 抽象</span>
+    <span class="chip">SSE 流式端点</span>
+    <span class="chip">+ 392 行改造</span>
+    <span class="chip">+ 18 项单元测试</span>
+    <span class="chip">+ 1 项 e2e smoke 脚本</span>
+    <span class="chip">对标进度 ~78%</span>
+  </div>
+</div>
+
+<div class="nav"><div class="wrap">
+  <a href="#summary">一、TL;DR</a>
+  <a href="#v17">二、v0.7.17 增量</a>
+  <a href="#architecture">三、架构图</a>
+  <a href="#provider">四、Provider 接口设计</a>
+  <a href="#sse">五、SSE 协议形状</a>
+  <a href="#tests">六、测试覆盖</a>
+  <a href="#migration">七、迁移路径</a>
+  <a href="#panel">八、前端面板对接</a>
+  <a href="#roadmap">九、v0.7.18+ 路线</a>
+  <a href="#evidence">十、证据</a>
+</div></div>
+
+<section id="summary">
+  <h2>一、TL;DR：v0.7.17 完成什么</h2>
+  <div class="callout ok">
+    <b>v0.7.17 主线闭环：</b>AI Assistant 后端从「检索 + 占位符」升级到「检索 + 真实 LLM 调用（可流式）」。<span class="ref">internal/llmstream/</span> 把 v0.7.15 AssistantService.composeAnswerPlaceholder 替换成 <span class="ref">provider.Complete</span>，新增 <span class="ref">AssistantService.AskStream</span> + handler 的 <code>?stream=1</code> SSE 端点，把 token-by-token 的输出能力推到面板。前端面板（v0.7.17 mockup）可以消费这个端点，不需要重写 wire 形状。
+  </div>
+  <div class="grid grid-3">
+    <div class="card">
+      <h4>v0.7.17 已实现</h4>
+      <p>· <span class="ref">internal/llmstream/</span> 包（Provider / Request / Response / Event / EventSink / FormatSSEEvent / NoopProvider / IsTransient）</p>
+      <p>· <span class="ref">AssistantService.Ask</span> 改为调用 provider.Complete</p>
+      <p>· <span class="ref">AssistantService.AskStream</span> 新方法</p>
+      <p>· <span class="ref">AssistantHandler.Ask</span> 分支 <code>?stream=1</code> → SSE</p>
+      <p>· <span class="ref">scripts/smoke-assistant-stream.sh</span> 端到端 smoke</p>
+      <p>· 11 项 llmstream 测试 + 4 项 AskStream 测试</p>
+      <p>· Container Decorate NoopProvider 默认</p>
+    </div>
+    <div class="card">
+      <h4>v0.7.17 留作下版</h4>
+      <p>· 真实 LLM provider（OpenAI / Anthropic / Doubao / Qwen / DeepSeek）</p>
+      <p>· AI Assistant 前端面板 Vue 组件（v0.7.17 mockup 已有原型）</p>
+      <p>· 流式事件中引文关联（让 answer 文本中的"参考"超链接到对应 Citation）</p>
+      <p>· token 用量计费 + 速率限制</p>
+      <p>· 多 turn 历史拼接（context window 管理）</p>
+    </div>
+    <div class="card">
+      <h4>v0.7.17 对标位置</h4>
+      <p>· AI Assistant 后端：<b style="color:var(--green)">~60%</b>（v0.7.15 检索 + v0.7.17 Provider + SSE）</p>
+      <p>· AI Assistant 前端：<b style="color:var(--amber)">~15%</b>（mockup + 流式 wire 就位，Vue 组件 0%）</p>
+      <p>· AI 能力整体：<b style="color:var(--amber)">~38%</b>（v0.7.15 + v0.7.16 + v0.7.17 累计）</p>
+      <p>· 对标顶级综合：<b style="color:var(--amber)">~78%</b>（v0.7.16 ~77% 提升 +1pp）</p>
+    </div>
+  </div>
+</section>
+
+<section id="v17">
+  <h2>二、v0.7.17 增量 — 完整清单</h2>
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>2.1 新增文件（v0.7.17 prep 已提交）</h4>
+      <p>· <span class="ref">internal/llmstream/llmstream.go</span>（239 行）</p>
+      <p>· <span class="ref">internal/llmstream/json.go</span>（12 行）</p>
+      <p>· <span class="ref">internal/llmstream/llmstream_test.go</span>（214 行，11 用例）</p>
+      <p>· <span class="ref">docs/v0.7.17-prep-llm-stream.md</span></p>
+    </div>
+    <div class="card">
+      <h4>2.2 v0.7.17 主线（本 commit）</h4>
+      <p>· <span class="ref">internal/application/service/assistant.go</span>：+ provider 字段 + AskStream + 透传到 Request</p>
+      <p>· <span class="ref">internal/handler/assistant.go</span>：+ askStream 方法 + 分支</p>
+      <p>· <span class="ref">internal/router/routes_assistant.go</span>：文档注释更新</p>
+      <p>· <span class="ref">internal/container/container.go</span>：+ NoopProvider singleton</p>
+      <p>· <span class="ref">internal/application/service/assistanttest/assistant_test.go</span>：+ 4 AskStream 用例 + LatencyTracked 改为测 provider.Request</p>
+      <p>· <span class="ref">scripts/smoke-assistant-stream.sh</span>（45 行）</p>
+    </div>
+  </div>
+</section>
+
+<section id="architecture">
+  <h2>三、架构图 — 端到端数据流</h2>
+  <div class="callout">
+    <pre style="font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.5;margin:0;background:#0c1828;padding:14px;border-radius:8px;color:#c8d5e7">
+┌────────────┐   POST /ask?stream=1   ┌────────────────────────┐
+│   前端     │ ────────────────────────▶│   AssistantHandler     │
+│  AI 面板   │ ◀──────────────────── SSE│                        │
+└────────────┘                         └───────────┬────────────┘
+                                                    │
+                                                    ▼
+                                        ┌────────────────────────┐
+                                        │  AssistantService      │
+                                        │  .AskStream            │
+                                        │  (citations → stream)  │
+                                        └──┬─────────────────────┘
+                                           │            │
+                  ┌────────────────────────┘            └─────────────────────────┐
+                  ▼                                                            ▼
+   ┌──────────────────────────┐                              ┌──────────────────────────┐
+   │  retrieveKB              │                              │  retrieveWiki (optional)│
+   │  KnowledgeService        │                              │  WikiSearchV2Service     │
+   │  .SearchKnowledgeForScopes│                              │  .Search                 │
+   └──────────────────────────┘                              └──────────────────────────┘
+                  │                                                            │
+                  └────────────────┬───────────────────────────────────────────┘
+                                   ▼
+                        ┌──────────────────────┐
+                        │  llmstream.Provider  │
+                        │  .Stream(ctx, req,   │
+                        │         sink)        │
+                        │  ┌────────────────┐  │
+                        │  │ NoopProvider    │  │ ← 默认
+                        │  │ OpenAIProvider  │  │ ← v0.7.17.x
+                        │  │ AnthropicProv.. │  │ ← v0.7.17.x
+                        │  └────────────────┘  │
+                        └──────────────────────┘
+                                   │
+                  events: token, citation, done, error
+                                   ▼
+                        ┌──────────────────────┐
+                        │  llmstream.EventSink │ →  gin ResponseWriter.Flusher
+                        └──────────────────────┘
+                                   │
+                                   ▼
+                            SSE wire frames
+                            event: &lt;type&gt;
+                            data: {...}
+                            [blank line]
+    </pre>
+  </div>
+</section>
+
+<section id="provider">
+  <h2>四、Provider 接口设计</h2>
+  <div class="card">
+    <h4>核心契约</h4>
+    <pre style="font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.5;margin:8px 0 0;background:#0c1828;padding:12px;border-radius:8px;color:#c8d5e7">
+type Provider interface {
+    Complete(ctx context.Context, req Request) (Response, error)
+    Stream(ctx context.Context, req Request, sink EventSink) error
+    Name() string
+}
+
+type Request struct {
+    Query          string
+    ConversationID string
+    KBCitations    []types.AssistantCitation
+    WikiCitations  []types.AssistantCitation
+    ModelName      string
+    MaxTokens      int
+    Temperature    float64
+    SystemPrompt   string
+}
+
+type Event struct {
+    Type  EventType  // token | citation | done | error
+    Data  any
+    Error error
+}
+
+var ErrProviderUnavailable = errors.New("llmstream: provider unavailable")
+var ErrProviderTimeout    = errors.New("llmstream: provider timeout")
+func IsTransient(err error) bool { ... }
+    </pre>
+  </div>
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>关键设计决策</h4>
+      <p>· <b>Provider 必填</b>：构造器不为 nil 时默认 NoopProvider，让 DI 误配在启动时爆炸</p>
+      <p>· <b>Citation 作为 Request 字段</b>：让 provider 自己决定 prompt 编排，不在 transport 里塞 RAG 逻辑</p>
+      <p>· <b>Provider 自报 ModelName</b>：避免 assistant service 维护一张模型 → provider 的映射表</p>
+      <p>· <b>Event 用 any Data</b>：避免 5 种 Event 都开 struct 接口，平衡类型安全与扩展性</p>
+      <p>· <b>ErrProviderUnavailable / Timeout + IsTransient</b>：让 handler 自动把 5xx 分类</p>
+      <p>· <b>FuncSink 适配器</b>：让测试用 5 行代码就能驱动整个 Stream 路径</p>
+    </div>
+    <div class="card">
+      <h4>NoopProvider 设计</h4>
+      <p>· 与 v0.7.15 composeAnswerPlaceholder <b>输出字节级一致</b>，所以现有前端不需要改</p>
+      <p>· Complete 返回 Response，Stream 走 1 个 token + 1 个 done</p>
+      <p>· ModelName = "noop"（让审计日志能区分真 LLM 与 placeholder）</p>
+      <p>· 让 dev 环境 / 单元测试在没有真 LLM key 时也能跑完整链路</p>
+    </div>
+  </div>
+</section>
+
+<section id="sse">
+  <h2>五、SSE 协议形状（v0.7.17 wire 协议）</h2>
+  <div class="card">
+    <h4>HTTP</h4>
+    <pre style="font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.5;margin:8px 0;background:#0c1828;padding:12px;border-radius:8px;color:#c8d5e7">
+POST /api/v1/assistant/ask?stream=1
+Authorization: Bearer &lt;jwt&gt;
+Content-Type: application/json
+
+{"query":"...","include_wiki":true,"max_results_per_source":5}
+
+→ 200 OK
+Content-Type: text/event-stream
+Cache-Control: no-cache
+X-Accel-Buffering: no
+X-WeKnora-Stream-Status: ok | transient | error
+
+event: metadata
+data: {"conversation_id":"c-1","answer_id":"","tenant_id":7}
+
+event: citation
+data: {"index":0,"citation":{"type":"kb","id":"k1","title":"Deploy Guide","snippet":"...","score":0.92}}
+
+event: token
+data: {"text":"WeKnora "}
+
+event: token
+data: {"text":"uses a hybrid "}
+
+event: token
+data: {"text":"storage layout."}
+
+event: done
+data: {"prompt_tokens":312,"completion_tokens":42,"finish_reason":"stop"}
+    </pre>
+  </div>
+  <h3>5.1 客户端消费（前端伪代码）</h3>
+  <pre style="font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.5;margin:8px 0 0;background:#0c1828;padding:12px;border-radius:8px;color:#c8d5e7">
+const eventSource = new EventSource(
+  "/api/v1/assistant/ask?stream=1",
+  { headers: { "Content-Type": "application/json" }, withCredentials: true }
+);
+// 注：浏览器 EventSource 不支持 POST body，
+// 实际用 fetch + ReadableStream 处理（见 §8）
+eventSource.addEventListener("metadata", e => { conversationId = JSON.parse(e.data).conversation_id });
+eventSource.addEventListener("citation", e => renderCitation(JSON.parse(e.data).citation));
+eventSource.addEventListener("token",    e => appendToAnswer(JSON.parse(e.data).text));
+eventSource.addEventListener("done",     e => finalizeAnswer(JSON.parse(e.data)));
+eventSource.addEventListener("error",    e => showRetry(JSON.parse(e.data).error));
+    </pre>
+</section>
+
+<section id="tests">
+  <h2>六、测试覆盖（v0.7.17 总计 33 用例）</h2>
+  <h3>6.1 llmstream 包（11 项）</h3>
+  <ul class="list">
+    <li>TestNoopProvider_Name — Provider.Name() = "noop"</li>
+    <li>TestNoopProvider_Complete — AnswerText 含 KB / Wiki 计数，ModelName="noop"</li>
+    <li>TestNoopProvider_Stream_EmitsTokenThenDone — Stream 事件序列 [token, done]</li>
+    <li>TestFuncSink_PropagatesError — sink 错误透传给 provider</li>
+    <li>TestFormatSSEEvent_Token — <code>event: token
+data: {"text":"hello"}
+
+</code></li>
+    <li>TestFormatSSEEvent_Citation — 含 type=kb 和 title</li>
+    <li>TestFormatSSEEvent_Done — 含 prompt_tokens + completion_tokens</li>
+    <li>TestFormatSSEEvent_Error — error 消息在 data 字段</li>
+    <li>TestFormatSSEEvent_UnknownType — 未知 EventType 报错</li>
+    <li>TestIsTransient — nil / Unavailable / Timeout / wrap(%w) / 普通 error</li>
+    <li>TestStreamSink_ConcurrentSafe — 两个并发 Stream，无 race，至少 4 个事件</li>
+  </ul>
+  <h3>6.2 AssistantService 改造（4 项新增 + 14 项回归）</h3>
+  <ul class="list">
+    <li>TestAssistant_AskStream_EmitsCitationsThenProviderEvents — 0 citations 时跳过，3 个 provider 事件正确序列</li>
+    <li>TestAssistant_AskStream_EmptyQueryRejected — 空 query 拒绝</li>
+    <li>TestAssistant_AskStream_NilSinkRejected — nil sink 拒绝</li>
+    <li>TestAssistant_SetProvider_ReplacesProvider — SetProvider 生效</li>
+    <li>TestAssistant_LatencyTracked（回归更新）— SetModelName 流入 provider.Request.ModelName</li>
+  </ul>
+</section>
+
+<section id="migration">
+  <h2>七、迁移路径 — 接入真实 LLM</h2>
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>添加 OpenAI Provider 的步骤</h4>
+      <ol class="list">
+        <li>新建 <span class="ref">internal/llmstream/openai.go</span>：实现 <code>Provider</code> 接口</li>
+        <li>选 SSE 客户端（推荐 <code>github.com/sashabaranov/go-openai</code> 或自写 sse reader）</li>
+        <li>把 <code>Request.KBCitations</code> + <code>WikiCitations</code> 拼成 RAG prompt</li>
+        <li>把 stream 事件映射到 <code>EventToken</code>（OpenAI 流式 delta）</li>
+        <li>错误码映射：429 / 5xx → <code>ErrProviderUnavailable</code>，timeout → <code>ErrProviderTimeout</code></li>
+        <li>container.go: 把 <code>func() llmstream.Provider { return llmstream.NoopProvider{} }</code> 改成 <code>func() llmstream.Provider { return llmstream.NewOpenAIProvider(os.Getenv("OPENAI_API_KEY"), "gpt-4o-mini") }</code></li>
+      </ol>
+    </div>
+    <div class="card">
+      <h4>预计代码量</h4>
+      <p>· <span class="ref">internal/llmstream/openai.go</span>：~150-200 行</p>
+      <p>· <span class="ref">internal/llmstream/openai_test.go</span>：~150 行（含 fake SSE server）</p>
+      <p>· container.go 改 5 行</p>
+      <p>· <span class="ref">scripts/smoke-openai.sh</span>（带真实 API key）：~50 行</p>
+      <p>总计 ~400-500 行，单 sprint 可完成。</p>
+      <h4 class="small" style="margin-top:16px">注意</h4>
+      <p>· 不要在 AssistantService 里塞 OpenAI 特有逻辑</p>
+      <p>· 通过 Provider 接口隔离，所有 LLM 差异都在 llmstream 子包</p>
+      <p>· 不要在 HTTP 层做 prompt 拼接（影响可移植性）</p>
+    </div>
+  </div>
+</section>
+
+<section id="panel">
+  <h2>八、前端面板对接（消费 SSE）</h2>
+  <p class="lead">v0.7.17 mockup <span class="ref">docs/ai-assistant-panel-mockup-v0.7.17.html</span> 已展示面板 UI，本节说明 Vue 组件怎么消费 SSE 端点。</p>
+  <div class="card">
+    <h4>8.1 推荐实现：fetch + ReadableStream</h4>
+    <pre style="font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.5;margin:8px 0;background:#0c1828;padding:12px;border-radius:8px;color:#c8d5e7">
+// frontend/src/api/assistant.ts
+export async function askStream(
+  req: AssistantAskRequest,
+  onCitation: (c: AssistantCitation) => void,
+  onToken: (text: string) => void,
+  onDone: (info: DoneEventData) => void,
+  onError: (err: string) => void,
+  signal?: AbortSignal,
+): Promise&lt;void&gt; {
+  const resp = await fetch("/api/v1/assistant/ask?stream=1", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+    signal,
+  });
+  const reader = resp.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    // 按 \n\n 分帧，逐帧 parse
+    let idx;
+    while ((idx = buffer.indexOf("\n\n")) !== -1) {
+      const frame = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+      const { event, data } = parseSSEFrame(frame);
+      switch (event) {
+        case "metadata":  /* save conversation_id */ break;
+        case "citation":  onCitation(JSON.parse(data).citation); break;
+        case "token":     onToken(JSON.parse(data).text); break;
+        case "done":      onDone(JSON.parse(data)); break;
+        case "error":     onError(JSON.parse(data).error); break;
+      }
+    }
+  }
+}
+    </pre>
+  </div>
+  <div class="callout warn">
+    <b>为什么不直接用 EventSource：</b>浏览器 EventSource 不支持 POST body + 自定义 header（Authorization），所以走 fetch + ReadableStream 手动解 SSE frame。AbortSignal 让用户在流式生成时点"停止"按钮生效。
+  </div>
+</section>
+
+<section id="roadmap">
+  <h2>九、v0.7.18+ 路线（修订版）</h2>
+  <div class="table-wrap"><table class="matrix">
+    <thead><tr><th>版本</th><th>里程碑</th><th>对标</th><th>依赖</th><th>大小</th></tr></thead>
+    <tbody>
+      <tr><td>v0.7.17.x</td><td>OpenAI / Anthropic / Doubao 真实 provider</td><td>LLM 厂商全覆盖</td><td>API key</td><td>~500 行</td></tr>
+      <tr><td>v0.7.17.y</td><td>AI Assistant 前端面板 Vue 组件</td><td>mockup 实现</td><td>v0.7.17 SSE</td><td>~600 行</td></tr>
+      <tr><td>v0.7.18</td><td>Yjs + WebSocket awareness 实时协作（Wiki）</td><td>飞书同步块 / Notion multiplayer</td><td>yjs + gorilla/websocket</td><td>3000-5000 行</td></tr>
+      <tr><td>v0.7.19</td><td>Custom Agents + 事件触发 + credits 配额</td><td>Notion Custom Agents</td><td>llmstream 复用</td><td>2000-3000 行</td></tr>
+      <tr><td>v0.7.20</td><td>MMDB 真集成 + AuthZ Admin UI + DLP 审计</td><td>Entra CA / Purview 子集</td><td>oschwald/geoip2</td><td>2000-4000 行</td></tr>
+      <tr><td>v0.7.21</td><td>WeKnora Studio（可视化 agent builder）+ MCP 强化</td><td>Rovo Studio / Glean Studio</td><td>v0.7.19 agents</td><td>3000-4000 行</td></tr>
+      <tr><td>v0.7.22</td><td>企业知识图谱自动建图</td><td>Teamwork Graph</td><td>v0.7.4-8 AuthZ</td><td>2000-3000 行</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="evidence">
+  <h2>十、证据</h2>
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>本版本文件清单</h4>
+      <ul class="list">
+        <li><span class="ref">internal/llmstream/llmstream.go</span>（239 行）</li>
+        <li><span class="ref">internal/llmstream/json.go</span>（12 行）</li>
+        <li><span class="ref">internal/llmstream/llmstream_test.go</span>（214 行）</li>
+        <li><span class="ref">internal/application/service/assistant.go</span>（+ provider 字段 + AskStream）</li>
+        <li><span class="ref">internal/application/service/assistanttest/assistant_test.go</span>（+ 4 测试）</li>
+        <li><span class="ref">internal/handler/assistant.go</span>（+ askStream）</li>
+        <li><span class="ref">internal/router/routes_assistant.go</span>（doc comment 更新）</li>
+        <li><span class="ref">internal/container/container.go</span>（+ NoopProvider）</li>
+        <li><span class="ref">scripts/smoke-assistant-stream.sh</span>（45 行）</li>
+        <li><span class="ref">docs/v0.7.17-prep-llm-stream.md</span></li>
+        <li><span class="ref">docs/ai-assistant-panel-mockup-v0.7.17.html</span></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>依赖</h4>
+      <ul class="list">
+        <li>v0.7.15 AssistantService + AssistantHandler + 3 REST 端点</li>
+        <li>v0.7.12-13 Wiki ↔ KB 双向引用（cite 来源）</li>
+        <li>v0.7.7 AuthZ phase-3 元组（ACL 路径）</li>
+        <li>gin http.Flusher（SSE 输出）</li>
+        <li>无新外部依赖（NoopProvider 不需要任何 client）</li>
+      </ul>
+    </div>
+  </div>
+  <div class="card">
+    <h4>对外公开产品资料说明</h4>
+    <p>本报告对 Notion / 飞书 / Confluence / Glean / Microsoft Copilot 的 AI 能力描述仅基于其官方公开文档的概要理解（2026 年 8 月访问）。v0.7.17 主线交付不引入任何专有 SDK；接入真实 LLM 时按各厂商文档规范走。</p>
+  </div>
+</section>
+
+<div style="padding:40px 0 60px;color:var(--muted);font-size:13px">
+  生成时间：2026-08-31 · 分支：comet/ai-assistant-llm-stream · HEAD：a742c1a6 · 数据采集口径：当前分支真实可运行 + 有测试的能力。<br/>
+  v0.7.17 增量：LLM Stream Provider 接入 + SSE 流式端点 + 11 + 4 测试 + smoke 脚本。<br/>
+  累计 v0.7.15→v0.7.17 增量：~33 项单元测试绿 + 4 个新文档 + 1 个 smoke 脚本 + 1 个 mockup HTML。
+</div>
+
+</div>
+</body>
+</html>

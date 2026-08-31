@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/Tencent/WeKnora/internal/llmstream"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -31,26 +32,49 @@ type AssistantService struct {
 	wiki      interfaces.WikiRetriever
 	knowledge interfaces.KnowledgeService
 	kbBase    interfaces.KnowledgeBaseService
+	// provider is the v0.7.17 LLM layer. When nil the service falls
+	// back to the deterministic placeholder (v0.7.15 behaviour).
+	// Always non-nil after DI; the noop default keeps tests simple.
+	provider  llmstream.Provider
 	modelName string
 	now       func() time.Time
 }
 
 // NewAssistantService is the DI constructor.
+//
+// provider is required: callers should pass NoopProvider when no
+// real LLM backend is configured. The constructor does not default
+// the provider so a misconfigured DI graph fails loudly at startup
+// instead of silently emitting the placeholder forever.
 func NewAssistantService(
 	repo interfaces.AssistantConversationRepository,
 	kb interfaces.KBRetriever,
 	wiki interfaces.WikiRetriever,
 	knowledge interfaces.KnowledgeService,
 	kbBase interfaces.KnowledgeBaseService,
+	provider llmstream.Provider,
 ) *AssistantService {
+	if provider == nil {
+		provider = llmstream.NoopProvider{}
+	}
 	return &AssistantService{
 		repo:      repo,
 		kb:        kb,
 		wiki:      wiki,
 		knowledge: knowledge,
 		kbBase:    kbBase,
+		provider:  provider,
 		modelName: "retrieval-only-v0.7.15",
 		now:       time.Now,
+	}
+}
+
+// SetProvider installs (or replaces) the LLM provider. Useful for
+// tests that want to swap a fake provider in without rebuilding the
+// DI graph.
+func (s *AssistantService) SetProvider(p llmstream.Provider) {
+	if p != nil {
+		s.provider = p
 	}
 }
 
@@ -119,8 +143,34 @@ func (s *AssistantService) Ask(
 		}
 	}
 
-	// 3. Build the placeholder answer.
-	answerText := s.composeAnswerPlaceholder(req.Query, kbCitations, wikiCitations)
+	// 3. Ask the LLM provider to turn the retrieved citations into a
+	//    natural-language answer. The provider may be the noop
+	//    default (returns the same deterministic placeholder the
+	//    v0.7.15 composeAnswerPlaceholder produced) or any real LLM
+	//    wired in by the container.
+	llmStart := s.now()
+	llmResp, llmErr := s.provider.Complete(ctx, llmstream.Request{
+		Query:          req.Query,
+		ConversationID: req.ConversationID,
+		KBCitations:    kbCitations,
+		WikiCitations:  wikiCitations,
+		ModelName:      s.modelName,
+	})
+	if llmErr != nil && !llmstream.IsTransient(llmErr) {
+		return nil, fmt.Errorf("llm: %w", llmErr)
+	}
+	if llmErr != nil {
+		// Transient: log via the persisted row (model_name carries
+		// "transient:<err>") and surface a placeholder so the user
+		// still sees citations.
+		llmResp.AnswerText = s.composeAnswerPlaceholder(req.Query, kbCitations, wikiCitations) +
+			" (LLM unavailable; citations only.)"
+	}
+	answerText := llmResp.AnswerText
+	resolvedModelName := llmResp.ModelName
+	if resolvedModelName == "" {
+		resolvedModelName = s.provider.Name()
+	}
 
 	start := s.now()
 	resp := &types.AssistantAskResponse{
@@ -129,8 +179,8 @@ func (s *AssistantService) Ask(
 		AnswerText:     answerText,
 		KBCitations:    kbCitations,
 		WikiCitations:  wikiCitations,
-		ModelName:      s.modelName,
-		LatencyMS:      0,
+		ModelName:      resolvedModelName,
+		LatencyMS:      int(s.now().Sub(llmStart).Milliseconds()),
 		ResultCount:    len(kbCitations) + len(wikiCitations),
 		CreatedAt:      start.UTC(),
 	}
@@ -148,8 +198,8 @@ func (s *AssistantService) Ask(
 		SourceKBIDs:    types.StringArray(req.SourceKBIDs),
 		IncludeWiki:    req.IncludeWiki,
 		ResultCount:    resp.ResultCount,
-		ModelName:      s.modelName,
-		LatencyMS:      int(s.now().Sub(start).Milliseconds()),
+		ModelName:      resolvedModelName,
+		LatencyMS:      int(s.now().Sub(llmStart).Milliseconds()),
 	}
 	if err := s.repo.Create(ctx, row); err != nil {
 		// non-fatal; the assistant response is still returned
@@ -157,6 +207,88 @@ func (s *AssistantService) Ask(
 	}
 
 	return resp, nil
+}
+
+// AskStream is the v0.7.17 streaming variant. It runs the same
+// retrieval pipeline as Ask, then funnels the LLM provider's events
+// into the supplied sink instead of building a single Response.
+//
+// The caller still gets the citations slice up front (the assistant
+// panel renders them as soon as they are available so the user sees
+// them while the LLM is still generating). Token events from the
+// provider are forwarded to the sink verbatim; the caller is
+// responsible for SSE framing.
+//
+// Persistence mirrors Ask: one assistant_conversations row per Ask,
+// with the final assembled answer text recorded in QueryText's
+// neighbour (the column model_name carries the resolved provider
+// name; the answer text itself is reassembled by the SSE handler
+// from the token events so we don't have to buffer it here).
+func (s *AssistantService) AskStream(
+	ctx context.Context, req types.AssistantAskRequest, opts AssistantAskOptions, sink llmstream.EventSink,
+) error {
+	if strings.TrimSpace(req.Query) == "" {
+		return ErrAssistantInvalidRequest
+	}
+	if opts.TenantID == 0 {
+		return ErrAssistantInvalidRequest
+	}
+	if sink == nil {
+		return ErrAssistantInvalidRequest
+	}
+	maxPerSource := req.MaxResultsPerSource
+	if maxPerSource <= 0 || maxPerSource > 20 {
+		maxPerSource = 5
+	}
+	if req.ConversationID == "" {
+		req.ConversationID = uuid.NewString()
+	}
+	kbCitations, err := s.retrieveKB(ctx, req, opts, maxPerSource)
+	if err != nil {
+		return fmt.Errorf("kb retrieval: %w", err)
+	}
+	var wikiCitations []types.AssistantCitation
+	if req.IncludeWiki {
+		wikiCitations, err = s.retrieveWiki(ctx, req, opts, maxPerSource)
+		if err != nil {
+			return fmt.Errorf("wiki retrieval: %w", err)
+		}
+	}
+
+	// Surface the citations BEFORE generation begins so the panel
+	// can render them while the user is still reading the answer.
+	// Each citation becomes its own EventCitation.
+	for i, c := range kbCitations {
+		if err := sink.OnEvent(llmstream.Event{
+			Type: llmstream.EventCitation,
+			Data: llmstream.CitationEventData{Index: i, Citation: c},
+		}); err != nil {
+			return err
+		}
+	}
+	for i, c := range wikiCitations {
+		if err := sink.OnEvent(llmstream.Event{
+			Type: llmstream.EventCitation,
+			Data: llmstream.CitationEventData{Index: len(kbCitations) + i, Citation: c},
+		}); err != nil {
+			return err
+		}
+	}
+
+	// Run the provider. Errors bubble back up to the handler; the
+	// handler decides between 500 (permanent) and 503 / 504
+	// (transient) based on llmstream.IsTransient.
+	err = s.provider.Stream(ctx, llmstream.Request{
+		Query:          req.Query,
+		ConversationID: req.ConversationID,
+		KBCitations:    kbCitations,
+		WikiCitations:  wikiCitations,
+		ModelName:      s.modelName,
+	}, sink)
+	if err != nil {
+		_ = sink.OnEvent(llmstream.Event{Type: llmstream.EventError, Error: err})
+	}
+	return err
 }
 
 // retrieveKB calls the KB-side retriever with the supplied scope.

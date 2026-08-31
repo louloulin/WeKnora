@@ -7247,5 +7247,22 @@ export default {
         'system.alert': 'System alert'
       }
     },
-  }
+  },
+  assistant: {
+    title: 'AI Assistant',
+    assistantLabel: 'AI Assistant',
+    placeholder: 'Ask the AI Assistant (Enter to send, Shift+Enter for newline)',
+    send: 'Send',
+    stop: 'Stop',
+    history: 'History',
+    clear: 'Clear chat',
+    collapse: 'Collapse',
+    expand: 'Expand',
+    citationsCount: 'citations',
+    generating: 'Generating…',
+    retry: 'Retry',
+    scopeAll: 'All visible KBs',
+    scopeKbOnly: 'KB: {ids}',
+    scopeWithWiki: 'Wiki + KB: {ids}',
+  },
 }

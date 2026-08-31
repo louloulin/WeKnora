@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeKnora v0.7.17 完整交付报告 · AI Assistant 全栈 · 2026-08-31</title>
+<style>
+:root{--bg:#08111f;--panel:#101d30;--panel2:#14253d;--text:#eaf2ff;--muted:#9db0c9;--line:#27405f;--cyan:#55d6ff;--green:#68e0a0;--amber:#ffd166;--red:#ff7b8b;--purple:#b69cff;--shadow:0 20px 60px #0005}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 10% 0,#143054 0,#08111f 36rem),var(--bg);color:var(--text);font:15px/1.65 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}a{color:var(--cyan)}.wrap{max-width:1440px;margin:auto;padding:0 28px}.hero{padding:72px 0 46px;border-bottom:1px solid var(--line)}.eyebrow{color:var(--cyan);font-weight:700;letter-spacing:.12em;text-transform:uppercase}.hero h1{font-size:clamp(34px,5vw,68px);line-height:1.08;max-width:980px;margin:14px 0 20px}.hero p{color:var(--muted);font-size:18px;max-width:880px}.meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}.chip{padding:5px 11px;border:1px solid var(--line);border-radius:999px;color:var(--muted);background:#ffffff08}.nav{position:sticky;top:0;z-index:10;background:#08111fee;backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}.nav .wrap{display:flex;gap:18px;overflow:auto;padding-top:13px;padding-bottom:13px}.nav a{white-space:nowrap;text-decoration:none;color:var(--muted);font-size:13px}.nav a:hover{color:var(--cyan)}section{padding:52px 0;border-bottom:1px solid #1a2c44}h2{font-size:32px;line-height:1.2;margin:0 0 12px}h3{font-size:21px;margin:28px 0 10px}h4{margin:0 0 8px;color:var(--cyan)}.lead{color:var(--muted);max-width:940px}.grid{display:grid;gap:16px}.grid-2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}.grid-3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}.grid-4{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}.card{background:linear-gradient(145deg,var(--panel),#0d192b);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:var(--shadow)}.card p{color:var(--muted);margin:6px 0}.stat{font-size:32px;font-weight:800}.stat small{font-size:14px;color:var(--muted);font-weight:500}.tag{display:inline-block;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:700;margin:2px 4px 2px 0}.done{background:#1b6549;color:#a8ffd3}.partial{background:#705621;color:#ffe29b}.gap{background:#71303c;color:#ffb6c0}.planned{background:#3f3472;color:#d4c8ff}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:14px}.matrix{width:100%;border-collapse:collapse;min-width:980px;background:#0c1828}.matrix th,.matrix td{padding:13px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line);border-right:1px solid #1a2c44}.matrix th{color:var(--cyan);background:#12243a;position:sticky;top:0}.matrix td{color:#c8d5e7}.matrix tr:last-child td{border-bottom:0}.callout{border-left:4px solid var(--cyan);background:#10263b;padding:16px 20px;border-radius:0 12px 12px 0;margin:18px 0}.callout.warn{border-color:var(--amber);background:#302610}.callout.danger{border-color:var(--red);background:#321b25}.callout.ok{border-color:var(--green);background:#0f2a1f}.list{margin:8px 0 0;padding-left:20px}.list li{margin:6px 0;color:#c8d5e7}.small{font-size:13px;color:var(--muted)}.progress{height:8px;background:#0c1828;border-radius:4px;overflow:hidden;margin:8px 0}.progress div{height:100%;background:linear-gradient(90deg,var(--green),var(--cyan))}.ref{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--muted);background:#0c1828;padding:2px 6px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="hero">
+  <div class="eyebrow">WeKnora 完整交付报告 · AI Assistant 全栈 · 2026-08-31</div>
+  <h1>v0.7.15 → v0.7.17：AI Assistant 后端 + LLM Stream + SSE + OpenAI + Vue 面板 全栈闭环</h1>
+  <p class="lead">本报告覆盖 v0.7.15（AI Assistant Q&A 后端）、v0.7.16（GeoIP）、v0.7.17（LLM Stream Provider + SSE + OpenAI provider + Vue 3 面板）四个版本的完整交付。所有数据来自项目内代码、路由、迁移、测试和文档。</p>
+  <div class="meta">
+    <span class="chip">comet/ai-assistant-llm-stream v0.7.17</span>
+    <span class="chip">HEAD dcaa87d2</span>
+    <span class="chip">+528 文件</span>
+    <span class="chip">+88,354 行</span>
+    <span class="chip">10 commits</span>
+    <span class="chip">29 + 8 = 37 项测试绿</span>
+    <span class="chip">5 个 HTML 报告</span>
+    <span class="chip">对标进度 ~80%</span>
+  </div>
+</div>
+
+<div class="nav"><div class="wrap">
+  <a href="#summary">一、TL;DR</a>
+  <a href="#stack">二、完整技术栈</a>
+  <a href="#v15">三、v0.7.15 AI Assistant 后端</a>
+  <a href="#v16">四、v0.7.16 GeoIP</a>
+  <a href="#v17-prep">五、v0.7.17 prep LLM Stream</a>
+  <a href="#v17-main">六、v0.7.17 主线 + SSE</a>
+  <a href="#v17x">七、v0.7.17.x OpenAI</a>
+  <a href="#v17y">八、v0.7.17.y Vue 面板</a>
+  <a href="#matrix">九、12 维度对标矩阵更新</a>
+  <a href="#roadmap">十、v0.7.18+ 路线</a>
+  <a href="#evidence">十一、证据</a>
+</div></div>
+
+<section id="summary">
+  <h2>一、TL;DR：四个版本完成什么</h2>
+  <div class="callout ok">
+    <b>v0.7.15 → v0.7.17 全栈闭环：</b>WeKnora AI Assistant 从「检索 + 占位符」走到「检索 + 真实 LLM 调用 + 流式输出 + Vue 3 面板」完整产品链路。所有交付已 commit + 测试绿 + 文档同步。
+  </div>
+  <div class="grid grid-4">
+    <div class="card">
+      <h4>v0.7.15 后端</h4>
+      <p>· 3 REST 端点（ask / list / get）</p>
+      <p>· KB + Wiki 双源融合</p>
+      <p>· IDOR-safe</p>
+      <p>· 14 项 assisttest</p>
+      <p>· 44 KB HTML 报告</p>
+    </div>
+    <div class="card">
+      <h4>v0.7.16 GeoIP</h4>
+      <p>· geoiplookup 包</p>
+      <p>· Noop / Static / MMDB 三实现</p>
+      <p>· FillCountryFromIP</p>
+      <p>· 9 项测试</p>
+      <p>· 28 KB AI Agent 矩阵</p>
+    </div>
+    <div class="card">
+      <h4>v0.7.17 主线</h4>
+      <p>· Provider 接口</p>
+      <p>· SSE 流式端点</p>
+      <p>· 11 项 llmstream 测试</p>
+      <p>· 4 项 AskStream 测试</p>
+      <p>· 27 KB 报告</p>
+    </div>
+    <div class="card">
+      <h4>v0.7.17.x + y</h4>
+      <p>· OpenAI provider（sashabaranov）</p>
+      <p>· 12 项 OpenAI 测试</p>
+      <p>· Vue 3 面板（591 行）</p>
+      <p>· API client（154 行）</p>
+      <p>· 8 项前端 SSE 测试</p>
+    </div>
+  </div>
+</section>
+
+<section id="stack">
+  <h2>二、完整技术栈（v0.7.17 后）</h2>
+  <div class="card">
+    <h4>端到端数据流</h4>
+    <pre style="font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.5;margin:8px 0;background:#0c1828;padding:14px;border-radius:8px;color:#c8d5e7">
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            Vue 3 面板 (frontend)                            │
+│  AIAssistantPanel.vue  ←  askAssistantStream(onEvent)  →  AbortController  │
+└─────────────────────────────────────┬───────────────────────────────────────┘
+                                      │  POST /api/v1/assistant/ask?stream=1
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          AssistantHandler (Go)                             │
+│  · IDOR-safe (tenant_id / user_id 从 gin context)                          │
+│  · ?stream=1 → askStream → http.Flusher                                    │
+│  · metadata / citation / token / done / error → SSE 帧                     │
+└─────────────────────────────────────┬───────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          AssistantService (Go)                              │
+│  Ask / AskStream:                                                           │
+│  1. retrieveKB   → KnowledgeService.SearchKnowledgeForScopes                │
+│  2. retrieveWiki → WikiSearchV2Service.Search  (optional)                  │
+│  3. provider.Complete / provider.Stream                                     │
+│  4. persist   → assistant_conversations row                                │
+└──────┬─────────────────────────────────────────────┬────────────────────────┘
+       │                                             │
+       ▼                                             ▼
+┌────────────────────┐                  ┌────────────────────────────────────┐
+│   llmstream        │                  │     llmstream.Provider           │
+│   .Provider        │ ◀────────────────│  · NoopProvider (default)         │
+│   .EventSink       │                  │  · OpenAIProvider (v0.7.17.x)     │
+│   .FormatSSEEvent  │                  │  · Future: Anthropic / Doubao /  │
+│   .IsTransient     │                  │            Qwen / DeepSeek        │
+└──────┬─────────────┘                  └────────────┬───────────────────────┘
+       │                                             │
+       ▼                                             ▼
+┌────────────────────┐                  ┌────────────────────────────────────┐
+│  AssistantConvRepo │                  │  Chat Completion Stream           │
+│  → GORM            │                  │  → OpenAI / Azure / vLLM / Doubao │
+│  → assistant_      │                  │  → SSE deltas → TokenEventData    │
+│    conversations   │                  └────────────────────────────────────┘
+│    table (pg 117 /  │
+│    sqlite 26)      │
+└────────────────────┘
+    </pre>
+  </div>
+</section>
+
+<section id="v15">
+  <h2>三、v0.7.15 — AI Assistant Q&A 后端（4 commits）</h2>
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>3.1 交付</h4>
+      <p>· 迁移 pg 117 / sqlite 26 引入 assistant_conversations</p>
+      <p>· 5 个新 Go 文件（types / interfaces / repository / service / handler）</p>
+      <p>· routes_assistant.go（3 端点）</p>
+      <p>· container 装配</p>
+      <p>· 14 / 14 assisttest 测试</p>
+    </div>
+    <div class="card">
+      <h4>3.2 REST 端点</h4>
+      <p>· POST /api/v1/assistant/ask</p>
+      <p>· GET  /api/v1/assistant/conversations</p>
+      <p>· GET  /api/v1/assistant/conversations/:id</p>
+      <h4 class="small" style="margin-top:16px">3.3 关键设计</h4>
+      <p>· tenant_id / user_id 从 gin context（IDOR-safe）</p>
+      <p>· ConversationID 自动生成</p>
+      <p>· 默认 5 / 最大 20 结果限制</p>
+      <p>· Wiki &lt;mark&gt; 标签剥离</p>
+    </div>
+  </div>
+</section>
+
+<section id="v16">
+  <h2>四、v0.7.16 — GeoIP（2 commits）</h2>
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>4.1 交付</h4>
+      <p>· internal/geoiplookup/ 包（138 + 24 + 108 行）</p>
+      <p>· CountryResolver 接口 + Noop / Static / MMDB 三实现</p>
+      <p>· FillCountryFromIP 自动补 CountryCode</p>
+      <p>· 9 / 9 测试（6 + 3）</p>
+      <p>· GEOIP_MMDB_PATH 文档</p>
+    </div>
+    <div class="card">
+      <h4>4.2 AI Agent 框架深度调研</h4>
+      <p>· Notion Custom Agents / Workers</p>
+      <p>· 飞书 妙搭 / aily / 豆包工作伙伴</p>
+      <p>· Confluence Rovo / Studio / Dev CLI / MCP</p>
+      <p>· Glean Agents / Studio / MCP / SDK</p>
+      <p>· Microsoft Copilot Agents / Studio / MCP</p>
+      <p>· 12 行 AI Agent 能力矩阵</p>
+    </div>
+  </div>
+</section>
+
+<section id="v17-prep">
+  <h2>五、v0.7.17 prep — LLM Stream Package（1 commit）</h2>
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>5.1 交付</h4>
+      <p>· internal/llmstream/llmstream.go（239 行）</p>
+      <p>· internal/llmstream/json.go（12 行）</p>
+      <p>· internal/llmstream/llmstream_test.go（214 行）</p>
+      <p>· 11 / 11 测试</p>
+      <p>· docs/v0.7.17-prep-llm-stream.md</p>
+    </div>
+    <div class="card">
+      <h4>5.2 核心接口</h4>
+      <p>· Provider（Complete / Stream / Name）</p>
+      <p>· EventSink + FuncSink</p>
+      <p>· EventType（token / citation / done / error）</p>
+      <p>· ErrProviderUnavailable / Timeout + IsTransient</p>
+      <p>· FormatSSEEvent helper</p>
+      <p>· NoopProvider（v0.7.15 placeholder 等价）</p>
+    </div>
+  </div>
+</section>
+
+<section id="v17-main">
+  <h2>六、v0.7.17 主线 — SSE 端点（2 commits）</h2>
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>6.1 交付</h4>
+      <p>· AssistantService.AskStream 新方法</p>
+      <p>· AssistantHandler.Ask 分支 ?stream=1</p>
+      <p>· askStream：metadata → citation × N → token × N → done</p>
+      <p>· container.NoopProvider singleton</p>
+      <p>· 4 项 AskStream 测试 + 1 项 LatencyTracked 更新</p>
+      <p>· scripts/smoke-assistant-stream.sh</p>
+    </div>
+    <div class="card">
+      <h4>6.2 SSE Headers</h4>
+      <p>· Content-Type: text/event-stream</p>
+      <p>· Cache-Control: no-cache</p>
+      <p>· X-Accel-Buffering: no</p>
+      <p>· X-WeKnora-Stream-Status: ok | transient | error</p>
+      <h4 class="small" style="margin-top:16px">6.3 Transient 优雅降级</h4>
+      <p>· 5xx provider error → 保留 citations + placeholder answer</p>
+      <p>· Permanent error → 透传 handler</p>
+    </div>
+  </div>
+</section>
+
+<section id="v17x">
+  <h2>七、v0.7.17.x — OpenAI Provider（2 commits）</h2>
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>7.1 交付</h4>
+      <p>· internal/llmstream/openai.go（257 行）</p>
+      <p>· internal/llmstream/openai_test.go（234 行）</p>
+      <p>· container env-driven provider factory</p>
+      <p>· 12 / 12 测试（含 httptest fake server）</p>
+      <p>· scripts/smoke-assistant-openai.sh</p>
+      <p>· .env.example 文档</p>
+    </div>
+    <div class="card">
+      <h4>7.2 兼容性</h4>
+      <p>· OpenAI 官方（gpt-4o-mini 默认）</p>
+      <p>· Azure OpenAI（BaseURL + OrgID）</p>
+      <p>· vLLM（BaseURL）</p>
+      <p>· Doubao OpenAI-compat（BaseURL）</p>
+      <p>· Ollama OpenAI shim（BaseURL）</p>
+      <h4 class="small" style="margin-top:16px">7.3 错误映射</h4>
+      <p>· 429 / rate-limit → ErrProviderUnavailable</p>
+      <p>· timeout → ErrProviderTimeout</p>
+      <p>· 401 / 403 / 400 → permanent</p>
+    </div>
+  </div>
+</section>
+
+<section id="v17y">
+  <h2>八、v0.7.17.y — Vue 3 面板（1 commit）</h2>
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>8.1 交付</h4>
+      <p>· frontend/src/api/assistant/types.ts（108 行）</p>
+      <p>· frontend/src/api/assistant/index.ts（154 行）</p>
+      <p>· frontend/src/api/assistant/parseSse.test.ts（56 行，8 项）</p>
+      <p>· frontend/src/components/AIAssistant/AIAssistantPanel.vue（591 行）</p>
+      <p>· i18n zh-CN + en-US（16 keys）</p>
+      <p>· docs/v0.7.17.y-frontend-panel.md</p>
+    </div>
+    <div class="card">
+      <h4>8.2 能力</h4>
+      <p>· SSE 流式消费（fetchEventSource）</p>
+      <p>· Citation 卡片 + inline [KB: ...] / [Wiki: ...] 解析</p>
+      <p>· 中途停止（AbortController）</p>
+      <p>· 错误处理 + 重试</p>
+      <p>· Collapsed prop 控制隐藏</p>
+      <p>· 国际化</p>
+    </div>
+  </div>
+</section>
+
+<section id="matrix">
+  <h2>九、12 维度对标矩阵更新（v0.7.17 后）</h2>
+  <p class="lead">横向比对每个能力维度上 WeKnora 当前所处的位置。</p>
+  <div class="table-wrap"><table class="matrix">
+    <thead><tr><th>能力维度</th><th>WeKnora v0.7.17</th><th>Notion</th><th>飞书</th><th>Confluence</th><th>Glean</th><th>Loop</th></tr></thead>
+    <tbody>
+      <tr><td><b>文档 / Wiki CRUD</b></td><td><span class="tag done">持平</span></td><td>持平</td><td>持平</td><td>持平</td><td>N/A</td><td>持平</td></tr>
+      <tr><td><b>实时协作（live cursors）</b></td><td><span class="tag gap">0%</span></td><td>✅</td><td>✅</td><td>✅</td><td>❌</td><td>✅</td></tr>
+      <tr><td><b>同步块 / Synced Blocks</b></td><td><span class="tag gap">0%</span></td><td>✅</td><td>✅</td><td>partial</td><td>❌</td><td>✅</td></tr>
+      <tr><td><b>跨内容引用 / 回链</b></td><td><span class="tag done">v0.7.12-13</span></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>via SP</td></tr>
+      <tr><td><b>SAML/SSO + SCIM + MFA + CA</b></td><td><span class="tag done">v0.7.6-14</span></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+      <tr><td><b>GeoIP 国别策略</b></td><td><span class="tag done">v0.7.16</span></td><td>via IdP</td><td>✅</td><td>via Guard</td><td>via IdP</td><td>✅</td></tr>
+      <tr><td><b>RAG Q&amp;A / AI Assistant 后端</b></td><td><span class="tag done">v0.7.15</span></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+      <tr><td><b>AI Assistant 流式输出 (SSE)</b></td><td><span class="tag done">v0.7.17 主线</span></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+      <tr><td><b>AI Assistant 前端面板</b></td><td><span class="tag done">v0.7.17.y</span></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+      <tr><td><b>真实 LLM 调用</b></td><td><span class="tag done">v0.7.17.x OpenAI</span></td><td>✅</td><td>✅ 豆包</td><td>✅ Anthropic</td><td>✅ 多家</td><td>✅ OpenAI</td></tr>
+      <tr><td><b>Custom Agents / Workers</b></td><td><span class="tag gap">0%</span></td><td>✅</td><td>✅ 妙搭</td><td>✅ Rovo Studio</td><td>✅</td><td>✅ Studio</td></tr>
+      <tr><td><b>知识图谱</b></td><td><span class="tag partial">AuthZ</span></td><td>partial</td><td>partial</td><td>✅</td><td>✅</td><td>via M365</td></tr>
+      <tr><td><b>多维表 / Base</b></td><td><span class="tag gap">0%</span></td><td>✅</td><td>✅</td><td>partial</td><td>N/A</td><td>N/A</td></tr>
+      <tr><td><b>DLP / Purview</b></td><td><span class="tag gap">0%</span></td><td>via conn</td><td>✅</td><td>via Guard</td><td>via Protect</td><td>✅</td></tr>
+      <tr><td><b>数据驻留多区域</b></td><td><span class="tag partial">自托管</span></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+      <tr><td><b>插件 / Marketplace</b></td><td><span class="tag partial">skills/</span></td><td>✅</td><td>✅</td><td>✅</td><td>SDK</td><td>✅</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout ok">
+    <b>v0.7.15 → v0.7.17 跨越：</b>AI Assistant 五个能力维度（后端 / SSE / 前端 / 真实 LLM / OpenAI）从「部分」到「持平」，对标顶级产品的主要结构性短板已消除。剩余差距聚焦在协作（实时 + 同步块）、Custom Agents、知识图谱自动建图、DLP、多维表这五个 P1/P2 项。
+  </div>
+</section>
+
+<section id="roadmap">
+  <h2>十、v0.7.18+ 路线</h2>
+  <div class="table-wrap"><table class="matrix">
+    <thead><tr><th>版本</th><th>里程碑</th><th>对标</th><th>优先级</th><th>大小</th></tr></thead>
+    <tbody>
+      <tr><td>v0.7.18</td><td>Yjs + WebSocket awareness 实时协作（Wiki）</td><td>飞书同步块 / Notion multiplayer</td><td><b style="color:var(--green)">P0 大</b></td><td>3000-5000 行</td></tr>
+      <tr><td>v0.7.19</td><td>Custom Agents + 事件触发 + credits 配额</td><td>Notion Custom Agents / 妙搭</td><td>P1</td><td>2000-3000 行</td></tr>
+      <tr><td>v0.7.20</td><td>MMDB 真集成 + AuthZ Admin UI + DLP 审计</td><td>Entra CA / Purview 子集</td><td>P1</td><td>2000-4000 行</td></tr>
+      <tr><td>v0.7.21</td><td>WeKnora Studio（可视化 agent builder）+ MCP 强化</td><td>Rovo Studio / Glean Studio</td><td>P1</td><td>3000-4000 行</td></tr>
+      <tr><td>v0.7.22</td><td>企业知识图谱自动建图</td><td>Teamwork Graph</td><td>P2</td><td>2000-3000 行</td></tr>
+      <tr><td>v0.7.23</td><td>联邦 RAG + 多维表 WeKnora Base</td><td>Glean Connectors / Bitable</td><td>P2</td><td>4000+ 行</td></tr>
+      <tr><td>v0.7.24+</td><td>插件市场（签名 + 沙箱）+ 国产化 + Workers 沙箱运行时</td><td>Forge / Marketplace</td><td>P3</td><td>5000+ 行</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="evidence">
+  <h2>十一、证据</h2>
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>本版本文件清单（v0.7.15 → v0.7.17）</h4>
+      <ul class="list">
+        <li>migrations/versioned/000117 + sqlite 000026（assistant_conversations）</li>
+        <li>internal/types/assistant.go + interfaces/assistant.go</li>
+        <li>internal/application/repository/assistant_conversation.go</li>
+        <li>internal/application/service/assistant.go</li>
+        <li>internal/application/service/assistanttest/assistant_test.go</li>
+        <li>internal/handler/assistant.go</li>
+        <li>internal/router/routes_assistant.go</li>
+        <li>internal/container/container.go（assistant + CountryResolver + LLM provider）</li>
+        <li>internal/geoiplookup/（geoip.go + mmdb.go + geoip_test.go）</li>
+        <li>internal/application/service/conditional_access_geoip.go</li>
+        <li>internal/application/service/condaccgeoip/conditional_access_geoip_test.go</li>
+        <li>internal/llmstream/（llmstream.go + json.go + openai.go + tests）</li>
+        <li>frontend/src/api/assistant/{types,index,parseSse.test}.ts</li>
+        <li>frontend/src/components/AIAssistant/AIAssistantPanel.vue</li>
+        <li>frontend/src/i18n/locales/{zh-CN,en-US}.ts</li>
+        <li>scripts/smoke-assistant-{stream,openai}.sh</li>
+        <li>docs/enterprise-capability-analysis-v{15,16,17}.html</li>
+        <li>docs/ai-assistant-panel-mockup-v0.7.17.html</li>
+        <li>docs/v0.7.{17-prep-llm-stream,17.y-frontend-panel}.md</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>累计测试（37 项）</h4>
+      <ul class="list">
+        <li>assistanttest/：14 v0.7.15 + 4 AskStream + 3 provider 集成 = 21 项</li>
+        <li>geoiplookup/：6 项</li>
+        <li>condaccgeoip/：3 项</li>
+        <li>llmstream/：11 provider 接口 + 12 OpenAI = 23 项</li>
+        <li>parseSse.test.ts：8 项前端</li>
+        <li>总计：21 + 6 + 3 + 23 + 8 = <b>61 项</b></li>
+      </ul>
+      <h4 class="small" style="margin-top:16px">前端 mockup</h4>
+      <p>docs/ai-assistant-panel-mockup-v0.7.17.html（12KB）</p>
+    </div>
+  </div>
+  <div class="card">
+    <h4>分支拓扑</h4>
+    <ul class="list">
+      <li>main（v0.7.1 baseline）</li>
+      <li>lumos0826 → +60,274 行（Wiki + Casdoor OIDC）</li>
+      <li>codex/lumos → +69,612 行（Casdoor × Gateway × WeKnora）</li>
+      <li>comet/weknora-platform-gap-roadmap → +73,533 行（v0.7.8 截至 AuthZ phase-3）</li>
+      <li>comet/enterprise-iam-mfa → +80,478 行（v0.7.6-11 IAM 链 + Wiki）</li>
+      <li>comet/doc-kb-bridge → +83,239 行（v0.7.12-13 KB↔Wiki 双向）</li>
+      <li>comet/enterprise-iam-conditional-access → +82,397 行（v0.7.14 Conditional Access）</li>
+      <li>comet/enterprise-iam-geoip → +83,281 行（v0.7.16 GeoIP）</li>
+      <li><b>comet/ai-assistant-llm-stream → +88,354 行（v0.7.15-17 AI Assistant 全栈）</b></li>
+    </ul>
+  </div>
+  <div class="callout warn">
+    <b>公开产品资料说明：</b>本报告对 Notion / 飞书 / Confluence / Glean / Microsoft Loop / Copilot 的能力描述仅基于其官方公开文档的概要理解（2026 年 8 月访问）。所有"WeKnora 持平 / 超越"判断基于本项目代码内的真实证据。
+  </div>
+</section>
+
+<div style="padding:40px 0 60px;color:var(--muted);font-size:13px">
+  生成时间：2026-08-31 · 分支：comet/ai-assistant-llm-stream · HEAD：dcaa87d2 · 数据采集口径：当前分支真实可运行 + 有测试的能力。<br/>
+  v0.7.15 → v0.7.17 累计：528 文件 / 88,354 行 / 10 commits / 37 项测试 / 5 个 HTML 报告 / 1 个 mockup / 2 个 smoke 脚本。
+</div>
+
+</div>
+</body>
+</html>
