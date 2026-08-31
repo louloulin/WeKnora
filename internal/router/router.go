@@ -103,6 +103,7 @@ type RouterParams struct {
 	WikiSyncBlockHandler         *handler.WikiSyncBlockHandler
 	AgentStudioHandler           *handler.AgentStudioHandler
 	DLPAuthZHandler              *handler.DLPAuthZHandler
+	DockbHandler                 *handler.DockbHandler
 	MemoryHandler                *handler.MemoryHandler
 	// CitationLogHandler — Build #30 B4. Wired optionally so the
 	// citation-log route is registered when the handler is present.
@@ -253,6 +254,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		v1.Use(rbacGuards.apiKeyAuthorizer.Middleware())
 
 		RegisterAuthRoutes(v1, params.AuthHandler, rbacGuards, params.SAMLHandler)
+		RegisterDockbRoutes(v1.Group("/api/v1"), params.DockbHandler)
 		RegisterTenantRoutes(v1, params.TenantHandler, params.TenantMemberHandler, params.TenantInvitationHandler, params.AuditLogHandler, rbacGuards)
 		RegisterMyInvitationRoutes(v1, params.TenantInvitationHandler)
 		RegisterKnowledgeBaseRoutes(v1, params.KBHandler, rbacGuards)
