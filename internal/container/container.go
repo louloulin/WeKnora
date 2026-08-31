@@ -172,6 +172,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewSCIMTokenRepository))
 	must(container.Provide(repository.NewSCIMSyncLogRepository))
 	must(container.Provide(repository.NewMFACredentialRepository))
+	// Conditional access policy engine (Build v0.7.14). Tenant-scoped
+	// store on conditional_access_policies (pg 116 / sqlite 25); the
+	// evaluator runs as part of the login flow (hot read), the admin
+	// handler exposes the CRUD surface.
+	must(container.Provide(repository.NewConditionalAccessRepository))
 	must(container.Provide(repository.NewAuthTokenRepository))
 	must(container.Provide(repository.NewSystemSettingRepository))
 	must(container.Provide(neo4jRepo.NewNeo4jRepository))
@@ -230,6 +235,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewSCIMSyncLogService))
 	must(container.Provide(service.NewSCIMUserService))
 	must(container.Provide(service.NewMFAService))
+	// ConditionalAccessService evaluates the policy engine.
+	must(container.Provide(service.NewConditionalAccessService))
 	must(container.Provide(newSAMLSPConfig))
 	// AuthZ persistent tuple store — read lookup + admin CRUD service.
 	// The lookup is registered before the composite so the closure
@@ -731,6 +738,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewLDAPHandler))
 	must(container.Provide(handler.NewSCIMHandler))
 	must(container.Provide(handler.NewMFAHandler))
+	// ConditionalAccessHandler exposes the admin CRUD surface.
+	must(container.Provide(handler.NewConditionalAccessHandler))
 	must(container.Provide(handler.NewSystemHandler))
 	must(container.Provide(func(repo interfaces.AuthZTupleRepository, checker authz.Checker) *service.AuthZTupleService {
 		return service.NewAuthZTupleService(repo, checker)
