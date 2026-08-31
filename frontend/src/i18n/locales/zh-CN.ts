@@ -757,7 +757,62 @@ export default {
       gitlab: 'GitLab'
     },
 
-    logDetail: {
+    db: {
+    cancel: '取消',
+    submit: '保存',
+    delete: '删除',
+    actions: '操作',
+    empty: '暂无数据，点击 + 添加一行。',
+    row: {
+      add: '添加行',
+      confirmDelete: '确定删除该行？此操作不可撤销。',
+    },
+    view: {
+      add: '添加视图',
+      table: '表格',
+      board: '看板',
+      gallery: '画廊',
+      calendar: '日历',
+      timeline: '时间线',
+      list: '列表',
+    },
+    field: {
+      add: '添加字段',
+      name: '名称',
+      type: '类型',
+      'type.text': '文本',
+      'type.number': '数字',
+      'type.select': '单选',
+      'type.multi_select': '多选',
+      'type.date': '日期',
+      'type.person': '人员',
+      'type.checkbox': '复选框',
+      'type.url': 'URL',
+      'type.email': '邮箱',
+      'type.phone': '电话',
+      'type.formula': '公式',
+      'type.relation': '关联',
+      'type.rollup': '汇总',
+    },
+    cell: {
+      empty: '空',
+    },
+    board: {
+      ungrouped: '未分组',
+    },
+    card: {
+      untitled: '未命名',
+    },
+    timeline: {
+      title: '时间线',
+      events: '事件',
+    },
+  },
+  databaseView: {
+    title: '多维表 Database',
+    desc: '六种视图（表格 / 看板 / 画廊 / 日历 / 时间线 / 列表），对标 Notion / 飞书 Base / Tana。',
+  },
+  logDetail: {
       startTime: '开始时间',
       endTime: '结束时间',
       failedItems: '失败文档',

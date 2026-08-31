@@ -6513,7 +6513,62 @@ export default {
       failed: 'Failed',
       items: 'Items'
     },
-    logDetail: {
+    db: {
+    cancel: 'Cancel',
+    submit: 'Save',
+    delete: 'Delete',
+    actions: 'Actions',
+    empty: 'No rows yet — click + to add one.',
+    row: {
+      add: 'Add row',
+      confirmDelete: 'Delete this row? This cannot be undone.',
+    },
+    view: {
+      add: 'Add view',
+      table: 'Table',
+      board: 'Board',
+      gallery: 'Gallery',
+      calendar: 'Calendar',
+      timeline: 'Timeline',
+      list: 'List',
+    },
+    field: {
+      add: 'Add field',
+      name: 'Name',
+      type: 'Type',
+      'type.text': 'Text',
+      'type.number': 'Number',
+      'type.select': 'Select',
+      'type.multi_select': 'Multi-select',
+      'type.date': 'Date',
+      'type.person': 'Person',
+      'type.checkbox': 'Checkbox',
+      'type.url': 'URL',
+      'type.email': 'Email',
+      'type.phone': 'Phone',
+      'type.formula': 'Formula',
+      'type.relation': 'Relation',
+      'type.rollup': 'Rollup',
+    },
+    cell: {
+      empty: 'Empty',
+    },
+    board: {
+      ungrouped: 'Ungrouped',
+    },
+    card: {
+      untitled: 'Untitled',
+    },
+    timeline: {
+      title: 'Timeline',
+      events: 'events',
+    },
+  },
+  databaseView: {
+    title: 'Multi-view Database',
+    desc: 'Six view types (Table, Board, Gallery, Calendar, Timeline, List) over typed columns. Notion / Feishu Base / Tana parity.',
+  },
+  logDetail: {
       startTime: 'Started',
       endTime: 'Finished',
       failedItems: 'Failed documents',

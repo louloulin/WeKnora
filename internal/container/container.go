@@ -51,6 +51,7 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/application/service"
 	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
+	dbsvc "github.com/Tencent/WeKnora/internal/application/service/database"
 	"github.com/Tencent/WeKnora/internal/application/service/file"
 	"github.com/Tencent/WeKnora/internal/application/service/memory"
 	"github.com/Tencent/WeKnora/internal/application/service/retriever"
@@ -470,6 +471,14 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		return svc
 	}))
 	must(container.Provide(handler.NewConnectorHandler))
+
+	// v0.7.25 Build #26 (G06) — Multi-view Database.
+	// 6 view types (table/board/gallery/calendar/timeline/list) over a
+	// typed-column schema, with per-view filters/sorts/groups/hidden
+	// field config. Repository is cross-dialect; handler is REST only.
+	must(container.Provide(repository.NewDatabaseRepository))
+	must(container.Provide(dbsvc.NewService))
+	must(container.Provide(handler.NewDatabaseHandler))
 	must(container.Provide(repository.NewWikiBatchJobRepository))
 	must(container.Provide(repository.NewWikiBatchAuditRepository))
 	must(container.Provide(repository.NewWikiBatchFailureRepository))

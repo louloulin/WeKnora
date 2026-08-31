@@ -103,6 +103,11 @@ type RouterParams struct {
 	// CitationLogHandler — Build #30 B4. Wired optionally so the
 	// citation-log route is registered when the handler is present.
 	CitationLogHandler *handler.CitationLogHandler
+	// v0.7.25 Build #22-#26 handlers.
+	ConnectorHandler    *handler.ConnectorHandler
+	InlineAIHandler     *handler.InlineAIHandler
+	AuditExportHandler  *handler.AuditExportHandler
+	DatabaseHandler     *handler.DatabaseHandler
 }
 
 // NewRouter 创建新的路由
@@ -310,6 +315,23 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterWikiPageRoutes(v1, params.WikiPageHandler, params.WikiAclHandler, params.WikiTagHandler, params.WikiTemplateHandler, params.WikiSearchV2Handler, params.WikiCommentHandler, rbacGuards)
 		RegisterMemoryRoutes(v1, params.MemoryHandler, rbacGuards)
 		RegisterChunkerDebugRoutes(v1, rbacGuards)
+
+		// v0.7.25 Build #22-#26 routes. These were defined in the
+		// routes_connector.go / routes_inline_ai.go / routes_audit_export.go
+		// files but never called — wire them here so the handlers are
+		// reachable via REST.
+		if params.ConnectorHandler != nil {
+			RegisterConnectorRoutes(v1, params.ConnectorHandler)
+		}
+		if params.InlineAIHandler != nil {
+			RegisterInlineAIRoutes(v1, params.InlineAIHandler)
+		}
+		if params.AuditExportHandler != nil {
+			RegisterAuditExportRoutes(v1, params.AuditExportHandler, rbacGuards)
+		}
+		if params.DatabaseHandler != nil {
+			RegisterDatabaseRoutes(v1, params.DatabaseHandler, rbacGuards)
+		}
 
 		// Fail fast if any declared API-key policy points at a route
 		// template that does not actually exist (typo / path drift). A

@@ -754,7 +754,62 @@ export default {
         jira: 'Jira',
       },
     },
-    logDetail: {
+    db: {
+    cancel: '취소',
+    submit: '저장',
+    delete: '삭제',
+    actions: '작업',
+    empty: '데이터가 없습니다. +를 클릭해 추가하세요.',
+    row: {
+      add: '행 추가',
+      confirmDelete: '이 행을 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.',
+    },
+    view: {
+      add: '뷰 추가',
+      table: '표',
+      board: '보드',
+      gallery: '갤러리',
+      calendar: '달력',
+      timeline: '타임라인',
+      list: '목록',
+    },
+    field: {
+      add: '필드 추가',
+      name: '이름',
+      type: '유형',
+      'type.text': '텍스트',
+      'type.number': '숫자',
+      'type.select': '단일 선택',
+      'type.multi_select': '다중 선택',
+      'type.date': '날짜',
+      'type.person': '사용자',
+      'type.checkbox': '체크박스',
+      'type.url': 'URL',
+      'type.email': '이메일',
+      'type.phone': '전화',
+      'type.formula': '수식',
+      'type.relation': '관계',
+      'type.rollup': '롤업',
+    },
+    cell: {
+      empty: '비어 있음',
+    },
+    board: {
+      ungrouped: '미분류',
+    },
+    card: {
+      untitled: '제목 없음',
+    },
+    timeline: {
+      title: '타임라인',
+      events: '이벤트',
+    },
+  },
+  databaseView: {
+    title: '다중 뷰 데이터베이스',
+    desc: '타입별 컬럼 위 6가지 뷰(표 / 보드 / 갤러리 / 달력 / 타임라인 / 목록). Notion / Feishu Base / Tana 패리티.',
+  },
+  logDetail: {
       startTime: '시작 시간',
       endTime: '종료 시간',
       failedItems: '실패한 문서',

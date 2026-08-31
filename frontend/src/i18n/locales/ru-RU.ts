@@ -754,7 +754,62 @@ export default {
         jira: 'Jira',
       },
     },
-    logDetail: {
+    db: {
+    cancel: 'Отмена',
+    submit: 'Сохранить',
+    delete: 'Удалить',
+    actions: 'Действия',
+    empty: 'Нет строк — нажмите +, чтобы добавить.',
+    row: {
+      add: 'Добавить строку',
+      confirmDelete: 'Удалить эту строку? Это действие необратимо.',
+    },
+    view: {
+      add: 'Добавить представление',
+      table: 'Таблица',
+      board: 'Доска',
+      gallery: 'Галерея',
+      calendar: 'Календарь',
+      timeline: 'Хронология',
+      list: 'Список',
+    },
+    field: {
+      add: 'Добавить поле',
+      name: 'Название',
+      type: 'Тип',
+      'type.text': 'Текст',
+      'type.number': 'Число',
+      'type.select': 'Выбор',
+      'type.multi_select': 'Множ. выбор',
+      'type.date': 'Дата',
+      'type.person': 'Пользователь',
+      'type.checkbox': 'Флажок',
+      'type.url': 'URL',
+      'type.email': 'Email',
+      'type.phone': 'Телефон',
+      'type.formula': 'Формула',
+      'type.relation': 'Связь',
+      'type.rollup': 'Сводка',
+    },
+    cell: {
+      empty: 'Пусто',
+    },
+    board: {
+      ungrouped: 'Без группы',
+    },
+    card: {
+      untitled: 'Без названия',
+    },
+    timeline: {
+      title: 'Хронология',
+      events: 'событий',
+    },
+  },
+  databaseView: {
+    title: 'Много-представление База данных',
+    desc: 'Шесть типов представлений (Таблица, Доска, Галерея, Календарь, Хронология, Список). Паритет Notion / Feishu Base / Tana.',
+  },
+  logDetail: {
       startTime: 'Время начала',
       endTime: 'Время окончания',
       failedItems: 'Документы с ошибкой',
