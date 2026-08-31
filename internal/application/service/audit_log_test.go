@@ -55,15 +55,15 @@ func (s *stubAuditRepo) CountSinceForDedup(
 	return n, nil
 }
 
-// fakeClock returns a controllable time source so the dedup-window
+// auditLogFakeClock returns a controllable time source so the dedup-window
 // tests can simulate "1 minute later" without sleeping.
-type fakeClock struct{ t time.Time }
+type auditLogFakeClock struct{ t time.Time }
 
-func (f *fakeClock) Now() time.Time           { return f.t }
-func (f *fakeClock) Advance(by time.Duration) { f.t = f.t.Add(by) }
+func (f *auditLogFakeClock) Now() time.Time           { return f.t }
+func (f *auditLogFakeClock) Advance(by time.Duration) { f.t = f.t.Add(by) }
 
-func newSvcForTest() (*auditLogService, *stubAuditRepo, *fakeClock) {
-	clock := &fakeClock{t: time.Date(2026, 5, 14, 10, 0, 0, 0, time.UTC)}
+func newSvcForTest() (*auditLogService, *stubAuditRepo, *auditLogFakeClock) {
+	clock := &auditLogFakeClock{t: time.Date(2026, 5, 14, 10, 0, 0, 0, time.UTC)}
 	repo := &stubAuditRepo{}
 	svc := &auditLogService{repo: repo, now: clock.Now}
 	return svc, repo, clock

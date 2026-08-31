@@ -1,6 +1,7 @@
 package service
 
 import (
+	"time"
 	"context"
 	"errors"
 	"testing"
@@ -296,3 +297,64 @@ func TestGetAcl_NullRow(t *testing.T) {
 		t.Fatalf("GetAcl(NULL) = %+v, want inherit/rev=0", got)
 	}
 }
+
+// ListAudit satisfies the new interfaces.WikiAclRepository method.
+// Returns an empty list — these ACL tests do not exercise audit listing.
+func (s *stubWikiAclRepo) ListAudit(_ context.Context, _ string, _ time.Time, _, _ int) ([]*types.WikiAclAuditEntry, int64, error) {
+	return nil, 0, nil
+}
+
+// AdminCreateUser satisfies the new interfaces.UserService method.
+// Returns nil — these ACL tests do not exercise admin user creation.
+func (s *stubUserService) AdminCreateUser(_ context.Context, _ *types.AdminCreateUserRequest, _ types.TenantProvisioningMode) (*types.User, string, error) {
+	return nil, "", nil
+}
+
+// ---------------------------------------------------------------------------
+// UserService no-op stubs.
+//
+// The wiki ACL tests under this file only exercise a handful of UserService
+// methods (SearchUsers, GetUserByID, etc.). The interfaces.UserService
+// surface has grown over time and now includes admin / SAML / LDAP /
+// preferences methods that these tests never call. We add the minimum
+// set needed for the type to satisfy the interface; each returns the
+// documented zero value so the contract is honoured at compile time.
+// ---------------------------------------------------------------------------
+
+func (s *stubUserService) GetUserByID(_ context.Context, id string) (*types.User, error) {
+	for _, u := range s.users {
+		if u.ID == id {
+			return u, nil
+		}
+	}
+	return nil, nil
+}
+func (s *stubUserService) GetUsersByIDs(_ context.Context, _ []string) (map[string]*types.User, error) {
+	return map[string]*types.User{}, nil
+}
+func (s *stubUserService) GetUserByEmail(_ context.Context, _ string) (*types.User, error) { return nil, nil }
+func (s *stubUserService) GetUserByUsername(_ context.Context, _ string) (*types.User, error) { return nil, nil }
+func (s *stubUserService) GetUserByTenantID(_ context.Context, _ uint64) (*types.User, error) { return nil, nil }
+func (s *stubUserService) UpdateUser(_ context.Context, _ *types.User) error { return nil }
+func (s *stubUserService) DeleteUser(_ context.Context, _ string) error { return nil }
+func (s *stubUserService) ChangePassword(_ context.Context, _, _, _ string) error { return nil }
+func (s *stubUserService) AdminResetPassword(_ context.Context, _, _ string) error { return nil }
+func (s *stubUserService) ValidatePassword(_ context.Context, _, _ string) error { return nil }
+func (s *stubUserService) GenerateTokens(_ context.Context, _ *types.User) (string, string, error) { return "", "", nil }
+func (s *stubUserService) Register(_ context.Context, _ *types.RegisterRequest) (*types.User, error) { return nil, nil }
+func (s *stubUserService) Login(_ context.Context, _ *types.LoginRequest) (*types.LoginResponse, error) { return nil, nil }
+func (s *stubUserService) GetOIDCAuthorizationURL(_ context.Context, _ string) (*types.OIDCAuthURLResponse, error) { return nil, nil }
+func (s *stubUserService) LoginWithOIDC(_ context.Context, _, _ string, _ types.TenantProvisioningMode) (*types.OIDCCallbackResponse, error) { return nil, nil }
+func (s *stubUserService) LoginWithSAMLAssertion(_ context.Context, _ uint64, _ types.SAMLIdentityInfo, _ types.TenantProvisioningMode) (*types.LoginResponse, error) { return nil, nil }
+func (s *stubUserService) LoginWithLDAPCredentials(_ context.Context, _ uint64, _, _ string, _ types.TenantProvisioningMode) (*types.LoginResponse, error) { return nil, nil }
+func (s *stubUserService) BuildLoginMemberships(_ context.Context, _ *types.User, _ *types.Tenant) []types.Membership { return nil }
+func (s *stubUserService) SwitchTenant(_ context.Context, _ *types.User, _ uint64, _ string) (*types.LoginResponse, error) { return nil, nil }
+func (s *stubUserService) ValidateToken(_ context.Context, _ string) (*types.User, uint64, error) { return nil, 0, nil }
+func (s *stubUserService) GetCurrentUser(_ context.Context) (*types.User, error) { return nil, nil }
+func (s *stubUserService) ListSystemAdmins(_ context.Context, _, _ int) ([]*types.User, int64, error) { return nil, 0, nil }
+func (s *stubUserService) RevokeSystemAdmin(_ context.Context, _, _ string) (*types.User, error) { return nil, nil }
+func (s *stubUserService) UpdateUserPreferences(_ context.Context, _ string, _ types.UserPreferences) (types.UserPreferences, error) { return types.UserPreferences{}, nil }
+
+func (s *stubUserService) Logout(_ context.Context, _ string) error { return nil }
+func (s *stubUserService) RefreshToken(_ context.Context, _ string) (string, string, error) { return "", "", nil }
+func (s *stubUserService) RevokeToken(_ context.Context, _ string) error { return nil }

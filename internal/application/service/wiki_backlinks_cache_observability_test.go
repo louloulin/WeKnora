@@ -113,7 +113,7 @@ func (f *obsFakeRepo) ListByKB(_ context.Context, kbID string, _, _ int) ([]*typ
 				KbID:          row.KbID,
 				ComputedAt:    row.ComputedAt,
 				UpdatedAt:     row.UpdatedAt,
-				SourceEventID: row.SourceEventID,
+				CorrelationID: row.CorrelationID,
 			})
 		}
 	}
@@ -324,7 +324,7 @@ func TestInvalidateCache_EmptySlugsSkipsAudit(t *testing.T) {
 
 // TestInvalidateCache_XRequestIDPassthrough: when the request context
 // carries an X-Request-ID (via types.RequestIDContextKey, set by the
-// global middleware.RequestID), the audit row's SourceEventID echoes
+// global middleware.RequestID), the audit row's CorrelationID echoes
 // that id. This is the operator-correlation invariant.
 func TestInvalidateCache_XRequestIDPassthrough(t *testing.T) {
 	repo := newObsFakeRepo()
@@ -342,8 +342,8 @@ func TestInvalidateCache_XRequestIDPassthrough(t *testing.T) {
 	if len(repo.logEntries) != 1 {
 		t.Fatalf("expected 1 audit entry, got %d", len(repo.logEntries))
 	}
-	if repo.logEntries[0].SourceEventID != rid {
-		t.Errorf("audit source_event_id = %q, want %q", repo.logEntries[0].SourceEventID, rid)
+	if repo.logEntries[0].CorrelationID != rid {
+		t.Errorf("audit source_event_id = %q, want %q", repo.logEntries[0].CorrelationID, rid)
 	}
 }
 
@@ -416,8 +416,8 @@ func TestSweeper_LogsCleanupSweepAuditRow(t *testing.T) {
 	if got.AffectedCount != 4 {
 		t.Errorf("affected_count = %d, want 4", got.AffectedCount)
 	}
-	if got.SourceEventID != "" {
-		t.Errorf("sweeper source_event_id = %q, want \"\" (cron has no request id)", got.SourceEventID)
+	if got.CorrelationID != "" {
+		t.Errorf("sweeper source_event_id = %q, want \"\" (cron has no request id)", got.CorrelationID)
 	}
 	if got.ActorUserID != nil {
 		t.Errorf("sweeper actor_user_id = %v, want nil", got.ActorUserID)

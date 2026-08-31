@@ -75,10 +75,12 @@ type CollaborativeDoc struct {
 	SchemaVersion int                  `json:"schema_version"`
 	OwnerUserID   uint64               `json:"owner_user_id"`
 	Visibility    string               `json:"visibility" gorm:"type:varchar(16)"`
-	ShareToken    string               `json:"share_token" gorm:"type:varchar(64)"`
-	CreatedAt     time.Time            `json:"created_at"`
-	UpdatedAt     time.Time            `json:"updated_at"`
-	ArchivedAt    *time.Time           `json:"archived_at,omitempty"`
+	ShareToken         string     `json:"share_token" gorm:"type:varchar(64)"`
+	SharePasswordHash string     `json:"-" gorm:"type:varchar(128);default:''"`
+	ShareExpiresAt    *time.Time `json:"share_expires_at,omitempty" gorm:""`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	ArchivedAt        *time.Time `json:"archived_at,omitempty"`
 }
 
 // CollabDocSnapshotUpsert is the shape used by the snapshot service when

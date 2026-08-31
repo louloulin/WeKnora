@@ -65,3 +65,4 @@ miniprogram/project.private.config.json
 /.comet/*
 !/.comet/config.yaml
 # <<< Comet managed project state <<<
+desktop

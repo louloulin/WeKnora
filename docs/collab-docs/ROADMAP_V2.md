@@ -201,3 +201,73 @@ cd /Users/louloulin/appx/WeKnora && \
 - 后端 `go test` ~ 1 秒
 - 全部增量打补丁（apply_patch 风格），每个 commit 影响 1-2 个文件
 
+
+---
+
+## 七、v0.7.37 完结后增量计划（v0.7.38 → v0.7.40）
+
+> 承接 `ANALYSE_V2.md` 的能力矩阵与差距表。共 3 个版本号 / 6 周 / 1 人月。
+
+### v0.7.38 — 飞书级最小可用（2 周）
+
+| # | 任务 | 文件 | 验收 |
+| --- | --- | --- | --- |
+| 0.7.38.1 | PPT 格式面板（字体 / 颜色 / 对齐 / 边框） | `CollabSlideKonvaEditor.vue` + 新 `CollabFormatToolbar.vue` | 选中 shape 后可改 fill/stroke/font |
+| 0.7.38.2 | DOC 文档级批注（mark + panel 接入） | `CollabDocProEditor.vue` + `CollabCommentsPanel.vue` | 选段 → 「批注」→ 显示在右侧 |
+| 0.7.38.3 | SHEET 评论接入 | `CollabSheetEditor.vue` + `CollabCommentsPanel.vue` | 单元格右键 → 批注 |
+| 0.7.38.4 | PPT 动画播放面板 | `CollabSlideKonvaEditor.vue` | 选中动画 → 预览 |
+| 0.7.38.5 | DOC 选区 range awareness | `CollabDocProEditor.vue` + `useYjsCollabDoc.ts` | 远端选区高亮 |
+| 0.7.38.6 | SHEET 公式栏 UI | `CollabSheetEditor.vue` | `=A1+B2` 输入 + 结果 |
+| 0.7.38.7 | 后端 Slides audit hook 接通 governance | `container.go` + `service/slides/service.go` | 操作落 `audit_log` |
+| 0.7.38.8 | 修 `desktop/` 329MB 二进制 .gitignore | `.gitignore` | git status 干净 |
+| 0.7.38.9 | 适配层测试加 pptxFormatBrush / pptxThemesPanel 各 2 个 | `__tests__/` | pass |
+
+### v0.7.39 — 高级渲染 + 飞书级特性（2 周）
+
+| # | 任务 | 文件 | 验收 |
+| --- | --- | --- | --- |
+| 0.7.39.1 | SHEET 条件格式（cellRules JSON in Y.Map） | `CollabSheetEditor.vue` + `xlsxAdapter.ts` | 选中区段 → 规则 → 实时渲染 |
+| 0.7.39.2 | SHEET 数据验证（dropdown / number range） | 同上 | — |
+| 0.7.39.3 | SHEET 冻结窗格 | 同上 | — |
+| 0.7.39.4 | SHEET 图表（自绘 SVG，bar/line/pie） | 新 `xlsxChartAdapter.ts` | 选区 → 「插入图表」→ SVG |
+| 0.7.39.5 | DOC 公式 UI 输入 | `CollabDocProEditor.vue` | `/math` 触发 → mathDisplayParagraph |
+| 0.7.39.6 | DOC 图表扩 11 类 | `docxAdapter.ts` | surface/radar/area/doughnut/scatter/bubble |
+| 0.7.39.7 | DOC 表格 round-trip 完整 | `docxAdapter.ts` + pmDocToSavePlan | cell 颜色 / 合并保留 |
+| 0.7.39.8 | PPT SmartArt（addSmartArtToSlide + dgm-hier） | `pptxShapeAdapter.ts` | 插入组织结构图 |
+
+### v0.7.40 — 生产化（2 周）
+
+| # | 任务 | 文件 | 验收 |
+| --- | --- | --- | --- |
+| 0.7.40.1 | 限流中间件（per-tenant / per-doc / per-IP） | `internal/middleware/ratelimit.go` | 429 响应 |
+| 0.7.40.2 | WebHook（KB 同步 / 分享 / 评论） | `internal/handler/webhooks.go` + `useWebhookDelivery.ts` | 重试 3 次 |
+| 0.7.40.3 | Audit 查询 UI 完善（filter panel + export CSV） | `CollabAuditTimeline.vue` | — |
+| 0.7.40.4 | Slides 前端可视化编辑器（接 v0.7.37 后端） | 新 `CollabSlideDeckEditor.vue` | 创建 deck → 编辑 → 导出 |
+| 0.7.40.5 | Slides 服务端 export .pptx | `service/slides/service.go` + pptxgenjs | export 字节 |
+| 0.7.40.6 | 冲突解决策略（Yjs undo manager + auto-merge） | `useYjsCollabDoc.ts` | 双客户端冲突提示 |
+| 0.7.40.7 | 公开分享密码 + 过期 | `internal/handler/collaborative_doc_bytes.go` | — |
+| 0.7.40.8 | E2E Playwright 冒烟（doc/sheet/slide/slides） | `scripts/smoke-collab-docs.sh` | 全通过 |
+
+### 验证命令
+
+```bash
+# 后端编译
+cd /Users/louloulin/appx/WeKnora && go build ./...
+
+# 后端测试
+go test ./internal/application/repository/ -count=1 -run "TestCollabDoc|TestAuditRepo|TestSlide"
+
+# 前端 TS
+cd frontend && ./node_modules/.bin/vue-tsc --build 2>&1 | grep -E "error TS" | grep -iE "collab"
+
+# 适配层测试
+./node_modules/.bin/tsx --test src/editor/adapters/__tests__/*.test.ts
+
+# E2E
+cd .. && bash scripts/smoke-collab-docs.sh
+```
+
+### Token 经济
+
+- 单 turn TS 类型校验 ~ 12-25s；adapter 测试 ~0.5s；backend test ~0.6s；build ~ 19-21s
+- 每版本独立 commit；不要混入多个 phase 的 patch

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"time"
 	"context"
 	"testing"
 
@@ -24,7 +25,7 @@ import (
 //             written by the previous UpdateAclWithRevision.
 //   Plus  — Deterministic: same input → same hash for 1000 iterations.
 //
-// The fixture reuses stubBacklinksCacheRepo from wiki_audit_harness_test.go
+// The fixture reuses harnessStubBacklinksCache from wiki_audit_harness_test.go
 // for the cache side and aclStubRepo (below) for the ACL side. Both are
 // in-memory and do NOT exercise the real SQLite path — the goal is to
 // confirm PutAcls branches on the hash, not to re-validate the repo.
@@ -40,6 +41,10 @@ type aclStubRepo struct {
 	lastAction   string
 	lastSnapshot string
 	updatedCount int
+}
+
+func (r *aclStubRepo) ListAudit(_ context.Context, _ string, _ time.Time, _, _ int) ([]*types.WikiAclAuditEntry, int64, error) {
+	return nil, 0, nil
 }
 
 func (r *aclStubRepo) GetAclBySlug(_ context.Context, _, _ string) (*types.WikiPageAcl, error) {
@@ -78,7 +83,7 @@ func (r *aclStubRepo) GroupMembers(_ context.Context, _ uint64, _ []string) ([]s
 // newAclServiceWithCache returns a fully-wired wikiAclService backed by
 // the given ACL + cache fixtures. Tests assert against the fixtures after
 // each PutAcl call.
-func newAclServiceWithCache(aclRepo *aclStubRepo, cacheRepo *stubBacklinksCacheRepo) *wikiAclService {
+func newAclServiceWithCache(aclRepo *aclStubRepo, cacheRepo *harnessStubBacklinksCache) *wikiAclService {
 	svc := &wikiAclService{repo: aclRepo, cache: newAclCache()}
 	svc.SetCacheRepo(cacheRepo)
 	return svc
@@ -95,7 +100,7 @@ func baselineCounters(t *testing.T) (skippedHashMatch float64, invalidatedAclCha
 
 // seedStubRow pre-populates the cache fixture with one row so the small-KB
 // branch (DeleteByKB) has something to delete on a real wipe.
-func seedStubRow(repo *stubBacklinksCacheRepo, kbID, slug string) {
+func seedStubRow(repo *harnessStubBacklinksCache, kbID, slug string) {
 	repo.rows[kbID] = map[string]string{}
 	repo.rows[kbID][slug] = `{"seeded":true}`
 }
@@ -120,7 +125,7 @@ func TestPutAcl_IdenticalPayload_SkipsWipe(t *testing.T) {
 	// prior write.
 	aclRepo.acl.SnapshotHash = HashAcl(types.WikiPageAclModePrivate, []string{"u-1"}, nil, false)
 
-	cacheRepo := newStubBacklinksCacheRepo()
+	cacheRepo := newHarnessStubBacklinksCache()
 	seedStubRow(cacheRepo, "k1", "s1")
 	svc := newAclServiceWithCache(aclRepo, cacheRepo)
 
@@ -174,7 +179,7 @@ func TestPutAcl_DifferentPayload_RunsWipe(t *testing.T) {
 	}
 	aclRepo.acl.SnapshotHash = HashAcl(types.WikiPageAclModePrivate, []string{"u-1"}, nil, false)
 
-	cacheRepo := newStubBacklinksCacheRepo()
+	cacheRepo := newHarnessStubBacklinksCache()
 	seedStubRow(cacheRepo, "k1", "s1")
 	svc := newAclServiceWithCache(aclRepo, cacheRepo)
 
@@ -231,7 +236,7 @@ func TestPutAcl_ReorderedAllowList_HashMatches(t *testing.T) {
 	}
 	aclRepo.acl.SnapshotHash = a
 
-	cacheRepo := newStubBacklinksCacheRepo()
+	cacheRepo := newHarnessStubBacklinksCache()
 	svc := newAclServiceWithCache(aclRepo, cacheRepo)
 	ctx := withUserAndTenant(context.Background(), "alice", 1)
 
@@ -262,7 +267,7 @@ func TestPutAcl_LegacyRow_AlwaysWipes(t *testing.T) {
 		},
 	}
 
-	cacheRepo := newStubBacklinksCacheRepo()
+	cacheRepo := newHarnessStubBacklinksCache()
 	seedStubRow(cacheRepo, "k1", "s1")
 	svc := newAclServiceWithCache(aclRepo, cacheRepo)
 	ctx := withUserAndTenant(context.Background(), "alice", 1)
@@ -298,7 +303,7 @@ func TestPutAcl_HashPersistedAcrossReads(t *testing.T) {
 			Revision:      1,
 		},
 	}
-	cacheRepo := newStubBacklinksCacheRepo()
+	cacheRepo := newHarnessStubBacklinksCache()
 	svc := newAclServiceWithCache(aclRepo, cacheRepo)
 	ctx := withUserAndTenant(context.Background(), "alice", 1)
 

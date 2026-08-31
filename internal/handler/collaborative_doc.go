@@ -16,6 +16,7 @@ package handler
 
 import (
 	"net/http"
+	"time"
 	"strconv"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
@@ -45,6 +46,9 @@ func (h *CollabDocHandler) Mount(rg *gin.RouterGroup) {
 	rg.DELETE("/collaborative-docs/:id", h.Delete)
 	rg.GET("/collaborative-docs/:id/presence", h.Presence)
 	rg.GET("/collaborative-docs/:id/export", h.Export)
+	// v0.7.38 Build #46.x — share-link enable / disable
+	rg.POST("/collaborative-docs/:id/share", h.EnableShare)
+	rg.DELETE("/collaborative-docs/:id/share", h.DisableShare)
 }
 
 func (h *CollabDocHandler) tenantAndUser(c *gin.Context) (uint64, uint64, bool) {
@@ -257,4 +261,55 @@ func parseIntDefault(raw string, def int) int {
 		return def
 	}
 	return n
+}
+
+
+// EnableShareRequest is the body for POST /collaborative-docs/:id/share.
+type EnableShareRequest struct {
+	Password  string     `json:"password,omitempty"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+// EnableShare turns on (or refreshes) the public share link for a doc.
+// When `password` is non-empty the share handler will require
+// X-Share-Password on subsequent share-download requests.
+func (h *CollabDocHandler) EnableShare(c *gin.Context) {
+	tenantID, userID, ok := h.tenantAndUser(c)
+	if !ok {
+		return
+	}
+	var req EnableShareRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// Allow empty body — enable share without password / expiry.
+		req = EnableShareRequest{}
+	}
+	if req.Password != "" && len(req.Password) < 6 {
+		c.Error(errors.NewBadRequestError("password must be at least 6 chars"))
+		return
+	}
+	d, err := h.svc.EnableShare(c.Request.Context(), tenantID, userID, c.Param("id"), req.Password, req.ExpiresAt)
+	if err != nil {
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"id":          d.ID,
+		"share_token": d.ShareToken,
+		"expires_at":  d.ShareExpiresAt,
+		"protected":   d.SharePasswordHash != "",
+		"url":         "/collab-documents/share/" + d.ShareToken,
+	})
+}
+
+// DisableShare clears the share_token, password hash, and expiry.
+func (h *CollabDocHandler) DisableShare(c *gin.Context) {
+	tenantID, userID, ok := h.tenantAndUser(c)
+	if !ok {
+		return
+	}
+	if err := h.svc.DisableShare(c.Request.Context(), tenantID, userID, c.Param("id")); err != nil {
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
+	c.Status(http.StatusNoContent)
 }

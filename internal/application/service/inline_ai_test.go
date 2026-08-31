@@ -7,6 +7,10 @@ import (
 	"testing"
 
 	"github.com/Tencent/WeKnora/internal/models/chat"
+	"github.com/Tencent/WeKnora/internal/models/embedding"
+	"github.com/Tencent/WeKnora/internal/models/rerank"
+	"github.com/Tencent/WeKnora/internal/models/vlm"
+	"github.com/Tencent/WeKnora/internal/models/asr"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -37,6 +41,10 @@ func (f *fakeChatModel) ChatStream(ctx context.Context, messages []chat.Message,
 	return ch, nil
 }
 
+func (f *fakeChatModel) GetModelID() string { return "fake-inline-ai" }
+
+func (f *fakeChatModel) GetModelName() string { return "fake-inline-ai-name" }
+
 // fakeModelService implements only the bits the inline AI service
 // touches. Other methods panic — they should not be called from the
 // service path under test.
@@ -53,6 +61,45 @@ func (f *fakeModelService) ListModels(ctx context.Context) ([]*types.Model, erro
 func (f *fakeModelService) GetChatModel(ctx context.Context, modelID string) (chat.Chat, error) {
 	return &fakeChatModel{content: "ok"}, nil
 }
+
+func (f *fakeModelService) ClearModelCredential(_ context.Context, _, _ string) error { return nil }
+
+// No-op stubs satisfy the rest of interfaces.ModelService. These are
+// not exercised by the inline AI tests but the interface has grown
+// over time and we need to satisfy the full contract.
+func (f *fakeModelService) CreateModel(_ context.Context, _ *types.Model) error { return nil }
+func (f *fakeModelService) GetModelByID(_ context.Context, id string) (*types.Model, error) {
+	for _, m := range f.all {
+		if m.ID == id {
+			return m, nil
+		}
+	}
+	return nil, nil
+}
+func (f *fakeModelService) UpdateModel(_ context.Context, _ *types.Model) error { return nil }
+func (f *fakeModelService) DeleteModel(_ context.Context, _ string) error { return nil }
+func (f *fakeModelService) UpdateModelCredentials(_ context.Context, _ string, _, _ *string) (*types.Model, error) {
+	return nil, nil
+}
+func (f *fakeModelService) GetEmbeddingModel(_ context.Context, _ string) (embedding.Embedder, error) { return nil, nil }
+func (f *fakeModelService) GetEmbeddingModelForTenant(_ context.Context, _ string, _ uint64) (embedding.Embedder, error) { return nil, nil }
+func (f *fakeModelService) GetRerankModel(_ context.Context, _ string) (rerank.Reranker, error) { return nil, nil }
+func (f *fakeModelService) GetVLMModel(_ context.Context, _ string) (vlm.VLM, error) { return nil, nil }
+func (f *fakeModelService) GetASRModel(_ context.Context, _ string) (asr.ASR, error) { return nil, nil }
+func (f *fakeModelService) Create(_ context.Context, _ *types.Model) error { return nil }
+func (f *fakeModelService) GetByID(_ context.Context, _ uint64, id string) (*types.Model, error) {
+	for _, m := range f.all {
+		if m.ID == id {
+			return m, nil
+		}
+	}
+	return nil, nil
+}
+func (f *fakeModelService) Update(_ context.Context, _ *types.Model) error { return nil }
+func (f *fakeModelService) Delete(_ context.Context, _ uint64, _ string) error { return nil }
+func (f *fakeModelService) ClearDefaultByType(_ context.Context, _ uint64, _ types.ModelType, _ string) error { return nil }
+func (f *fakeModelService) List(_ context.Context, _, _, _ interface{}) ([]*types.Model, error) { return f.all, nil }
+
 
 func TestInlineAI_Run_HappyPath(t *testing.T) {
 	fm := &fakeChatModel{content: "Short summary"}

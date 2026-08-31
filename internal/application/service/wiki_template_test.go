@@ -380,10 +380,10 @@ func TestWikiTemplate_ApplyTemplate_RewritesParentBody(t *testing.T) {
 	}
 
 	updated := pageSvc.pages[kbID+"|parent"]
-	if !contains(updated.Content, "First") || !contains(updated.Content, "Second") {
+	if !wikiTemplateContains(updated.Content, "First") || !wikiTemplateContains(updated.Content, "Second") {
 		t.Errorf("body rewrite should embed child titles; got %q", updated.Content)
 	}
-	if !contains(updated.Content, "#agenda") || !contains(updated.Content, "#notes") {
+	if !wikiTemplateContains(updated.Content, "#agenda") || !wikiTemplateContains(updated.Content, "#notes") {
 		t.Errorf("body rewrite should embed section anchors; got %q", updated.Content)
 	}
 }
@@ -478,7 +478,7 @@ func TestWikiTemplate_ApplyTemplate_ResolvesTaggedPages(t *testing.T) {
 		t.Fatalf("ApplyTemplate: %v", err)
 	}
 	body := pageSvc.pages[kbID+"|parent"].Content
-	if !contains(body, "todo-page-1") || !contains(body, "todo-page-2") {
+	if !wikiTemplateContains(body, "todo-page-1") || !wikiTemplateContains(body, "todo-page-2") {
 		t.Errorf("tagged-pages body rewrite should embed tagged slugs; got %q", body)
 	}
 }
@@ -497,8 +497,8 @@ func TestWikiTemplate_ApplyTemplate_RejectsUnwired(t *testing.T) {
 	}
 }
 
-// contains is a tiny helper to keep test bodies readable.
-func contains(haystack, needle string) bool {
+// wikiTemplateContains is a tiny helper to keep test bodies readable.
+func wikiTemplateContains(haystack, needle string) bool {
 	return len(haystack) >= len(needle) && indexOf(haystack, needle) >= 0
 }
 

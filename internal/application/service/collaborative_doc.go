@@ -8,6 +8,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -45,6 +47,12 @@ type CollabDocService struct {
 
 	cacheMu sync.RWMutex
 	cache   map[string]*collabDocEntry
+
+	// publishHook lets the container wire an external event publisher
+	// (webhooks) without the collab service taking a hard dependency on
+	// the webhook package. Hook is non-blocking: it must not surface
+	// errors back into the calling service method.
+	publishHook func(ctx context.Context, event string, payload map[string]any)
 }
 
 // CollabDocAuthorizer is the minimal ACL seam. The full AuthZ phase-3
@@ -94,6 +102,25 @@ func NewCollabDocService(
 		fileRetentionAge:     30 * 24 * time.Hour, // 30 days
 		cache:                make(map[string]*collabDocEntry),
 	}
+}
+
+// SetEventPublisher wires a webhook publisher. Called from the
+// container after NewCollabDocService. The hook is fired on every
+// meaningful lifecycle event (Create/Archive/Delete/Upload/Share).
+func (s *CollabDocService) SetEventPublisher(hook func(ctx context.Context, event string, payload map[string]any)) {
+	s.publishHook = hook
+}
+
+func (s *CollabDocService) publishEvent(ctx context.Context, event string, payload map[string]any) {
+	if s.publishHook == nil {
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Warnf(ctx, "[CollabDoc] publishEvent panic: %v", r)
+		}
+	}()
+	s.publishHook(ctx, event, payload)
 }
 
 // newCollabDocID returns a 36-char UUIDv4 string. We avoid pulling in a
@@ -150,6 +177,13 @@ func (s *CollabDocService) CreateDoc(
 	if err := s.docRepo.Create(ctx, d); err != nil {
 		return nil, fmt.Errorf("create collab doc: %w", err)
 	}
+	s.publishEvent(ctx, "collab.doc.created", map[string]any{
+		"doc_id":     d.ID,
+		"doc_kind":   string(d.DocKind),
+		"title":      d.Title,
+		"owner_id":   d.OwnerUserID,
+		"kb_id":      d.KBID,
+	})
 	return d, nil
 }
 
@@ -545,6 +579,120 @@ func (s *CollabDocService) LoadLatestFile(
 // (nil, nil) when no doc has that token.
 func (s *CollabDocService) FindByShareToken(ctx context.Context, token string) (*types.CollaborativeDoc, error) {
 	return s.docRepo.FindByShareToken(ctx, token)
+}
+
+// hashSharePassword hashes the user-supplied password with SHA-256 + a
+// per-doc salt (the share_token). Storing the hash — not the plaintext —
+// lets the share handler verify the X-Share-Password header without ever
+// keeping the cleartext around. SHA-256 is sufficient for the share-link
+// threat model (opportunistic scraping of leaked URLs, not offline cracking
+// of a high-entropy passphrase).
+func hashSharePassword(token, password string) string {
+	h := sha256.Sum256([]byte("collab-doc-share-v1|" + token + "|" + password))
+	return hex.EncodeToString(h[:])
+}
+
+// EnableShare turns on (or refreshes) the share link for a doc. Pass an
+// empty password to keep the link open (legacy mode); pass a non-empty
+// password to require X-Share-Password on subsequent share-download
+// requests. expiresAt is optional; nil means no expiry.
+func (s *CollabDocService) EnableShare(ctx context.Context, tenantID, userID uint64, docID, password string, expiresAt *time.Time) (*types.CollaborativeDoc, error) {
+	d, err := s.docRepo.Get(ctx, tenantID, docID)
+	if err != nil {
+		return nil, err
+	}
+	if d == nil {
+		return nil, types.ErrCollabDocInvalid("doc not found")
+	}
+	ok, err := s.authz.CanWrite(ctx, tenantID, userID, docID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, types.ErrCollabDocInvalid("forbidden")
+	}
+	if d.ShareToken == "" {
+		d.ShareToken = newCollabShareToken()
+	}
+	d.Visibility = "shared"
+	if password != "" {
+		d.SharePasswordHash = hashSharePassword(d.ShareToken, password)
+	} else {
+		d.SharePasswordHash = ""
+	}
+	d.ShareExpiresAt = expiresAt
+	if err := s.docRepo.Update(ctx, d); err != nil {
+		return nil, err
+	}
+	s.RecordAudit(ctx, types.RecordAuditRequest{
+		TenantID: tenantID, DocID: docID, ActorUserID: userID,
+		Action: types.AuditActionShareEnable,
+		Target: d.ShareToken,
+		Payload: fmt.Sprintf(`{"password_protected":%v,"expires_at":%q}`, password != "", formatExpires(expiresAt)),
+	})
+	return d, nil
+}
+
+// DisableShare clears the share token, password hash, and expiry.
+func (s *CollabDocService) DisableShare(ctx context.Context, tenantID, userID uint64, docID string) error {
+	d, err := s.docRepo.Get(ctx, tenantID, docID)
+	if err != nil {
+		return err
+	}
+	if d == nil {
+		return types.ErrCollabDocInvalid("doc not found")
+	}
+	ok, err := s.authz.CanWrite(ctx, tenantID, userID, docID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return types.ErrCollabDocInvalid("forbidden")
+	}
+	d.ShareToken = ""
+	d.SharePasswordHash = ""
+	d.ShareExpiresAt = nil
+	d.Visibility = "private"
+	if err := s.docRepo.Update(ctx, d); err != nil {
+		return err
+	}
+	s.RecordAudit(ctx, types.RecordAuditRequest{
+		TenantID: tenantID, DocID: docID, ActorUserID: userID,
+		Action: types.AuditActionShareDisable,
+	})
+	return nil
+}
+
+// ShareExpired returns true when the doc carries an expiry in the past.
+// An expired link is treated as not-found by the share handler.
+func ShareExpired(d *types.CollaborativeDoc, now time.Time) bool {
+	return d.ShareExpiresAt != nil && !d.ShareExpiresAt.After(now)
+}
+
+// VerifySharePassword returns true when the supplied password matches
+// the stored hash for the doc. An empty stored hash means no password is
+// required (open link).
+func VerifySharePassword(d *types.CollaborativeDoc, password string) bool {
+	if d.SharePasswordHash == "" {
+		return true
+	}
+	return subtle.ConstantTimeCompare([]byte(d.SharePasswordHash), []byte(hashSharePassword(d.ShareToken, password))) == 1
+}
+
+// newCollabShareToken returns a 32-char hex token (128 bits of entropy).
+func newCollabShareToken() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("share-%016x", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b[:])
+}
+
+func formatExpires(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
 }
 
 // ListFiles returns every persisted version of the doc (metadata only).

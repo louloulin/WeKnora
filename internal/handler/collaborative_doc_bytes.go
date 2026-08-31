@@ -13,6 +13,7 @@ package handler
 
 import (
 	"crypto/sha256"
+	"time"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -283,6 +284,16 @@ func (h *CollabDocBytesHandler) ShareDownload(c *gin.Context) {
 	}
 	if doc.Visibility != "public" && doc.Visibility != "shared" {
 		c.Error(errors.NewForbiddenError("share link disabled"))
+		return
+	}
+	// v0.7.38 Build #46.x — enforce expiry + password protection.
+	if service.ShareExpired(doc, time.Now()) {
+		c.Error(errors.NewNotFoundError("share link expired"))
+		return
+	}
+	if !service.VerifySharePassword(doc, c.GetHeader("X-Share-Password")) {
+		c.Header("WWW-Authenticate", `Share password="X-Share-Password"`)
+		c.Error(errors.NewForbiddenError("share password required or wrong"))
 		return
 	}
 	tenantID := doc.TenantID

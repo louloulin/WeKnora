@@ -41,7 +41,7 @@ func TestAuditLog_Purge_NoOpWhenRetentionDisabled(t *testing.T) {
 	// every column < cutoff, which silently nukes every row when
 	// cutoff = now().
 	repo := &stubAuditRepoForRetention{}
-	clock := &fakeClock{t: time.Date(2026, 5, 14, 10, 0, 0, 0, time.UTC)}
+	clock := &auditLogFakeClock{t: time.Date(2026, 5, 14, 10, 0, 0, 0, time.UTC)}
 	svc := &auditLogService{repo: repo, now: clock.Now}
 
 	for _, days := range []int{0, -1, -90} {
@@ -63,7 +63,7 @@ func TestAuditLog_Purge_UsesClockMinusRetention(t *testing.T) {
 	// before the service's clock. Off-by-day errors would silently
 	// retain too much (table grows) or delete too much (data loss).
 	repo := &stubAuditRepoForRetention{deleted: 42}
-	clock := &fakeClock{t: time.Date(2026, 5, 14, 10, 0, 0, 0, time.UTC)}
+	clock := &auditLogFakeClock{t: time.Date(2026, 5, 14, 10, 0, 0, 0, time.UTC)}
 	svc := &auditLogService{repo: repo, now: clock.Now}
 
 	deleted, err := svc.Purge(context.Background(), 90)
@@ -88,7 +88,7 @@ func TestAuditLog_Purge_PropagatesRepoError(t *testing.T) {
 	// at WARN. Silently swallowing the error would mask a degraded DB
 	// for days because the next sweep is 24h away.
 	repo := &stubAuditRepoForRetention{deleteError: errors.New("connection lost")}
-	clock := &fakeClock{t: time.Date(2026, 5, 14, 10, 0, 0, 0, time.UTC)}
+	clock := &auditLogFakeClock{t: time.Date(2026, 5, 14, 10, 0, 0, 0, time.UTC)}
 	svc := &auditLogService{repo: repo, now: clock.Now}
 
 	if _, err := svc.Purge(context.Background(), 30); err == nil {
@@ -269,7 +269,7 @@ func TestAuditLogRetentionRunner_RunOnceLogsButDoesNotPanicOnError(t *testing.T)
 	// a panic up out of the goroutine and crash the app. The behaviour
 	// is "log at WARN and try again next tick".
 	repo := &stubAuditRepoForRetention{deleteError: errors.New("simulated")}
-	clock := &fakeClock{t: time.Date(2026, 5, 14, 10, 0, 0, 0, time.UTC)}
+	clock := &auditLogFakeClock{t: time.Date(2026, 5, 14, 10, 0, 0, 0, time.UTC)}
 	svc := &auditLogService{repo: repo, now: clock.Now}
 
 	r := retentionRunnerWithImmediateStartup(svc, 30)

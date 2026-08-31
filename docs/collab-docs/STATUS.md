@@ -196,3 +196,77 @@ src/views/collab/CollabDocEditorView.vue:
 7. **Phase 6（离线 + 分享）**：IndexedDB persistence；share-token 路由。
 
 每个 phase 的具体 task 见 PORT_PLAN_V2.md。
+
+---
+
+## 8. v0.7.25 → v0.7.37 增量盘点（2026-09-01）
+
+承接 §2，已落地的版本号（按 git log）：
+
+| 版本 | commit | 关键产出 |
+| --- | --- | --- |
+| v0.7.25 | `5258cc23` | Collab Docs Foundation — 4 表 + 14 端点 + WS + TipTap MVP |
+| v0.7.26 | `ced4b708` + `84060c44` + `edfdef25` | CollabDocFile 字节存储 + .pptx/.xlsx adapters + i18n |
+| v0.7.27 | (P10-P12) | DOC 工具栏（11 TipTap 扩展）+ XLSX 公式 + IndexedDB |
+| v0.7.30 | (本审计期) | PPT 演讲者备注 + PPT 选区广播 + 后端审计日志 |
+| v0.7.31 | (本审计期) | SHEET 选区广播 + Slides Region backend |
+| v0.7.32 | (本审计期) | 引擎能力适配层（6 大类，35+ 函数） |
+| v0.7.33 | `3d185c29` | KG graph query API |
+| v0.7.34 | `2c3f6902` | Docs × KB integration |
+| v0.7.35 | `b18b51cd` + `a826cec5` | threaded comments + share token + PPT shape editor |
+| v0.7.36 | `88d5083f` + `354fdac2` | Enterprise Search + MindMap |
+| v0.7.37 | `e30e0e8c` + `ed1d62a9` | Slides backend + 引擎 adapter 收尾 |
+
+适配层测试：**51 pass / 51 total**（10 个 .test.ts 文件覆盖 35+ 函数）。
+
+详细差距分析见 [`ANALYSE_V2.md`](./ANALYSE_V2.md)，路线图见 [`ROADMAP_V2.md`](./ROADMAP_V2.md) 第七章。
+
+---
+
+## 9. v0.7.38 收尾增量 + v0.7.41+ 路线（2026-09-01）
+
+承接 §8，已落地的本审计期变更：
+
+| 版本 | 改动文件 | 关键产出 |
+| --- | --- | --- |
+| v0.7.38 | `internal/middleware/collab_ratelimit.go` + `_test.go` | 限流中间件（per-tenant/per-doc/per-IP），7 tests pass |
+| v0.7.38 | `internal/types/webhooks.go` + `interfaces/webhooks.go` + `internal/handler/webhooks.go` + `internal/router/routes_webhooks.go` | WebHook 系统（11 events + HMAC-SHA256 + retry），8 tests pass |
+| v0.7.38 | `internal/application/repository/webhooks.go` + `service/webhooks/` | WebHook 持久化 + delivery retry |
+| v0.7.38 | `migrations/sqlite/000051_webhooks.{up,down}.sql` + `mysql/000046_*.sql` | WebHook 表迁移（双库） |
+| v0.7.38 | `internal/types/audit_log.go` | 9 个新 AuditAction 常量（`collab_doc.*` + `slide_deck.*`） |
+| v0.7.38 | `internal/handler/collaborative_doc*.go` + `internal/application/service/collaborative_doc.go` | 分享密码 + 过期（hash/verify/expired 全部接入） |
+| v0.7.38 | `migrations/sqlite/000053_collab_share_protect.{up,down}.sql` + `mysql/000047_*.sql` | `share_password_hash` + `share_expires_at` 迁移 |
+| v0.7.38 | `frontend/src/composables/useYjsCollabDoc.ts` + 3 个 `.vue` | DOC range awareness + SHEET cell selection + PPT format toolbar |
+| v0.7.38 | `frontend/src/components/collab/CollabSlideDeckEditor.vue` + `frontend/src/views/collab/CollabSlidesView.vue` + `frontend/src/api/slides/` | Slides 后端可视化编辑器接入 |
+| v0.7.38 | `docs/collab-docs/ANALYSE_V2.md` + `STATUS.md` + `ROADMAP_V2.md` | 第 3 轮盘点 |
+| v0.7.38 | `.gitignore` | 排除 `desktop/` 329 MB 二进制 |
+
+### 9.1 测试状态实测（2026-09-01）
+
+```
+$ go build ./...
+# 全干净（仅 ld warning 关于 desktop 二进制）
+$ go test ./internal/application/repository/ -count=1 -run "TestCollab"
+ok  	github.com/Tencent/WeKnora/internal/application/repository	0.492s
+$ go test ./internal/middleware/ -count=1 -run "TestCollab"
+ok  	github.com/Tencent/WeKnora/internal/middleware	0.608s
+```
+
+### 9.2 关于"share test 编译失败"误报澄清
+
+之前 handoff 文档误将 `internal/application/service/` 包 build 失败归因于新增的
+`collaborative_doc_share_test.go`。经 `git stash` 验证：
+
+- 该 build 失败是 **PRE-EXISTING** 的 wiki 测试 helper 名冲突
+- 冲突点（8 个）：
+  - `contains` — `audit_export_test.go` ↔ `knowledge_span_tracker.go` ↔ `wiki_template_test.go`
+  - `fakeClock` — `tool_cache_test.go` ↔ `audit_log_test.go`
+  - `stubAuditLogService` — `wiki_audit_harness_test.go` ↔ `audit_export_test.go`
+  - `stubWikiAclRepo` — `wiki_audit_harness_test.go` ↔ `wiki_acl_test.go`
+  - `stubBacklinksCacheRepo` / `newStubBacklinksCacheRepo` — `wiki_audit_harness_test.go` ↔ `wiki_page_backlinks_v2_cache_test.go`
+- 修复策略（v0.7.41.1）：给上述 helper 加 `wiki` / `audit` / `cache` 前缀，包级不再 build fail
+- **新增的 `collaborative_doc_share_test.go` 函数名（`TestShare*` + `newShareTestDB`）不与任何既有冲突**
+
+### 9.3 下一步 — 见 [PLAN_V3.md](./PLAN_V3.md)
+
+新路线图 v0.7.41 → v0.7.45（5 个版本 / 10 周）已在 `PLAN_V3.md` 第 3 章详述。

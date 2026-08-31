@@ -1,6 +1,8 @@
 package service
 
 import (
+	"github.com/gin-gonic/gin"
+	"strings"
 	"context"
 	"testing"
 	"time"
@@ -21,7 +23,7 @@ func (s *stubAuditLogService) Log(ctx context.Context, entry *types.AuditLog) er
 	return nil
 }
 
-func (s *stubAuditLogService) LogDenied(ctx context.Context, c interface{}, tenantID uint64, actorUserID, actorRole string, requiredRole types.TenantRole) error {
+func (s *stubAuditLogService) LogDenied(ctx context.Context, c *gin.Context, tenantID uint64, actorUserID, actorRole string, requiredRole types.TenantRole) error {
 	s.rows = append(s.rows, &types.AuditLog{
 		TenantID:    tenantID,
 		ActorUserID: actorUserID,
@@ -127,8 +129,7 @@ func TestAuditExport_CreateAndRun_HappyCSV(t *testing.T) {
 		t.Fatal("empty payload")
 	}
 	// CSV header sanity check.
-	s := string(s)
-	if !contains(payload, "id,tenant_id,actor_user_id") {
+	if !auditExportContains(string(payload), "id,tenant_id,actor_user_id") {
 		t.Fatalf("missing CSV header in payload")
 	}
 }
@@ -147,10 +148,10 @@ func TestAuditExport_CreateAndRun_JSON(t *testing.T) {
 		t.Fatalf("CreateAndRun: %v", err)
 	}
 	s := string(payload)
-	if !contains(s, "\"action\"") {
+	if !auditExportContains(s, "\"action\"") {
 		t.Fatalf("JSON payload missing action field")
 	}
-	if !contains(s, "u-1") {
+	if !auditExportContains(s, "u-1") {
 		t.Fatalf("JSON payload missing actor")
 	}
 }
@@ -218,27 +219,10 @@ func TestAuditExport_ComplianceSummary_Violation(t *testing.T) {
 	}
 }
 
-// contains is a tiny string contains helper. The service package has
-// its own contains() helper but we redeclare here to avoid a name
-// collision when other test files redeclare the same symbol.
-func contains(b []byte, sub string) bool {
-	if len(sub) == 0 {
-		return true
-	}
-	if len(b) < len(sub) {
-		return false
-	}
-	for i := 0; i+len(sub) <= len(b); i++ {
-		match := true
-		for j := 0; j < len(sub); j++ {
-			if b[i+j] != sub[j] {
-				match = false
-				break
-			}
-		}
-		if match {
-			return true
-		}
-	}
-	return false
+// auditExportContains is a tiny string-contains helper. We redeclare it
+// here (instead of reusing the package-level `contains`) because that
+// name collides with helpers in tool_cache_test.go / wiki_template_test.go
+// when the test binary is built as a single package.
+func auditExportContains(haystack, needle string) bool {
+	return len(haystack) >= len(needle) && strings.Contains(haystack, needle)
 }

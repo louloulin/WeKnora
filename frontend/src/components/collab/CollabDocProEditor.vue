@@ -47,8 +47,9 @@
           v-for="p in peers"
           :key="p.clientId"
           class="collab-doc-pro__peer"
+          :class="{ 'collab-doc-pro__peer--selecting': remoteSelectionFor(p.clientId) }"
           :style="{ backgroundColor: p.color }"
-          :title="p.displayName"
+          :title="peerTitle(p)"
         >{{ initialOf(p.displayName) }}</span>
       </span>
     </div>
@@ -168,7 +169,7 @@ const props = defineProps<{
 
 const editor = shallowRef<Editor | undefined>(undefined)
 const connected = ref(false)
-const peers = ref<Array<{ clientId: number; displayName: string; color: string }>>([])
+const peers = ref<Array<{ clientId: number; displayName: string; color: string; selection?: { from: number; to: number } | null }>>([])
 const error = ref<string | null>(null)
 const loading = ref(false)
 const loadError = ref<string | null>(null)
@@ -204,6 +205,24 @@ const savetagClass = computed(() => ({
 }))
 
 const initialOf = (name: string) => (name || '?').trim().slice(0, 1).toUpperCase()
+
+// v0.7.38 — remote selection broadcast
+const remoteSelections = ref<Array<{
+  clientId: number
+  displayName: string
+  color: string
+  selection?: { from: number; to: number } | null
+}>>([])
+
+const remoteSelectionFor = (clientId: number) => {
+  return remoteSelections.value.find((p) => p.clientId === clientId)?.selection || null
+}
+
+const peerTitle = (p: { displayName: string; clientId: number; color: string }) => {
+  const sel = remoteSelectionFor(p.clientId)
+  const range = sel ? ` — 选区 ${sel.from}–${sel.to}` : ''
+  return `${p.displayName}${range}`
+}
 
 const downloadAsUint8Array = async (): Promise<Uint8Array> => {
   const blob = await downloadCollabDocBytes(props.docId)
@@ -485,6 +504,11 @@ const setup = async () => {
   error.value = (handle.error.value ?? null) as string | null
   watch(handle.connected, (v) => (connected.value = Boolean(v)))
   watch(handle.peers, (v) => (peers.value = (v ?? []) as Array<{ clientId: number; displayName: string; color: string }>))
+  // v0.7.38 — remote selection range awareness (DOC per-paragraph).
+  if (handle.remoteSelections) {
+    remoteSelections.value = handle.remoteSelections.value as any
+    watch(handle.remoteSelections, (v) => (remoteSelections.value = (v ?? []) as any))
+  }
   watch(handle.error, (v) => (error.value = (v ?? null) as string | null))
 
   loading.value = true
@@ -540,6 +564,20 @@ const initEditor = (paragraphs: DocxAdapterParagraph[]) => {
       // as the vue-3 wrapper we hold in editor.value.
       void ed
       refreshAiSelection()
+      // v0.7.38 — broadcast the local selection range so other
+      // collaborators can render a highlight rectangle over the
+      // selected text. publishSelection is idempotent on identical
+      // {from,to}; the awareness layer merges via y-protocols.
+      try {
+        const sel = ed.state.selection
+        if (sel && handle) {
+          handle.publishSelection(sel.from, sel.to)
+        }
+      } catch (e) {
+        // never block the editor on a wire failure
+        // eslint-disable-next-line no-console
+        console.warn('[CollabDocProEditor] publishSelection failed', e)
+      }
     },
   })
 }
@@ -735,6 +773,23 @@ onBeforeUnmount(teardown)
 .collab-doc-pro__btn { padding: 4px 12px; font-size: 12px; border: 1px solid var(--td-component-stroke); border-radius: 4px; background: var(--td-bg-color-container); cursor: pointer; }
 .collab-doc-pro__btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .collab-doc-pro__peers { display: flex; gap: 4px; margin-left: auto; }
+.collab-doc-pro__peer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  border: 2px solid transparent;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.collab-doc-pro__peer--selecting {
+  border-color: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.18);
+}
 .collab-doc-pro__peer { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; color: white; font-size: 11px; font-weight: 600; }
 .collab-doc-pro__surface-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .collab-doc-pro__surface { flex: 1; overflow: auto; padding: 24px 32px; max-width: 880px; margin: 0 auto; }

@@ -10,24 +10,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeClock returns a deterministic time source so TTL tests don't race
+// toolCacheFakeClock returns a deterministic time source so TTL tests don't race
 // against wall-clock skew. Tests advance it via Advance().
-type fakeClock struct {
+type toolCacheFakeClock struct {
 	mu  sync.Mutex
 	now time.Time
 }
 
-func newFakeClock(start time.Time) *fakeClock {
-	return &fakeClock{now: start}
+func newFakeClock(start time.Time) *toolCacheFakeClock {
+	return &toolCacheFakeClock{now: start}
 }
 
-func (f *fakeClock) Now() time.Time {
+func (f *toolCacheFakeClock) Now() time.Time {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.now
 }
 
-func (f *fakeClock) Advance(d time.Duration) {
+func (f *toolCacheFakeClock) Advance(d time.Duration) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.now = f.now.Add(d)

@@ -432,10 +432,43 @@
       </div>
       <aside class="collab-slide-konva__inspector" v-if="selectedShape">
         <h3>形状属性</h3>
-        <label>文本 <textarea v-model="inspectorText" rows="3" @change="onInspectorTextChange" /></label>
-        <label>填充 <input v-model="inspectorFill" placeholder="3b82f6" @change="onInspectorFillChange" /></label>
-        <label>描边 <input v-model="inspectorStroke" placeholder="1e3a8a" @change="onInspectorStrokeChange" /></label>
-        <label>字号 <input v-model.number="inspectorFontSize" type="number" @change="onInspectorFontSizeChange" /></label>
+        <!-- v0.7.38 Build #46.x — 飞书级格式面板: 文本 / 填充 / 描边 / 字号 / 粗斜体 / 位置 -->
+        <label class="collab-slide-konva__inspector-text">
+          <span>文本</span>
+          <textarea v-model="inspectorText" rows="3" @change="onInspectorTextChange" />
+        </label>
+        <div class="collab-slide-konva__inspector-row">
+          <label class="collab-slide-konva__inspector-color">
+            <span>填充</span>
+            <input type="color" :value="inspectorFillColor" @input="onInspectorFillPicker(($event.target as HTMLInputElement).value)" />
+            <input v-model="inspectorFill" placeholder="3b82f6" class="collab-slide-konva__inspector-hex" @change="onInspectorFillChange" />
+          </label>
+          <label class="collab-slide-konva__inspector-color">
+            <span>描边</span>
+            <input type="color" :value="inspectorStrokeColor" @input="onInspectorStrokePicker(($event.target as HTMLInputElement).value)" />
+            <input v-model="inspectorStroke" placeholder="1e3a8a" class="collab-slide-konva__inspector-hex" @change="onInspectorStrokeChange" />
+          </label>
+        </div>
+        <div class="collab-slide-konva__inspector-row">
+          <label class="collab-slide-konva__inspector-num">
+            <span>字号</span>
+            <input v-model.number="inspectorFontSize" type="number" min="6" max="200" @change="onInspectorFontSizeChange" />
+          </label>
+          <label class="collab-slide-konva__inspector-num">
+            <span>线宽</span>
+            <input v-model.number="inspectorStrokeWidth" type="number" min="0" max="20" step="0.5" @change="onInspectorStrokeWidthChange" />
+          </label>
+        </div>
+        <div class="collab-slide-konva__inspector-row collab-slide-konva__inspector-toggles" v-if="selectedShape.kind === 'text' || selectedShape.kind === 'rect' || selectedShape.kind === 'ellipse'">
+          <button type="button" :class="{ active: inspectorBold }" @click="toggleBold" title="粗体"><b>B</b></button>
+          <button type="button" :class="{ active: inspectorItalic }" @click="toggleItalic" title="斜体"><i>I</i></button>
+        </div>
+        <div class="collab-slide-konva__inspector-pos">
+          <span>位置</span>
+          <span>x {{ Math.round(selectedShape.x) }} · y {{ Math.round(selectedShape.y) }}</span>
+          <span>尺寸</span>
+          <span>w {{ Math.round(selectedShape.w) }} × h {{ Math.round(selectedShape.h) }}</span>
+        </div>
       </aside>
     </div>
     <p v-if="error || saveError" class="collab-slide-konva__error">{{ saveError || error }}</p>
@@ -454,6 +487,60 @@
         @blur="commitNotes"
       />
       <p class="collab-slide-konva__notes-hint">备注会跟随每张幻灯片一起保存到 .pptx，并在演示者视图中显示。</p>
+    </section>
+    <!-- v0.7.38 Build #46.x — animation timeline panel (entrance / emphasis / exit effects). -->
+    <section class="collab-slide-konva__animations">
+      <header class="collab-slide-konva__animations-header">
+        <span>🎬 动画 (第 {{ activeIndex + 1 }} 页)</span>
+        <span class="collab-slide-konva__animations-status">{{ animations.length }} 个效果</span>
+      </header>
+      <div class="collab-slide-konva__animations-toolbar">
+        <select v-model="newEffect" class="collab-slide-konva__animations-select" title="效果">
+          <option value="fade">淡入</option>
+          <option value="flyIn">飞入</option>
+          <option value="zoom">缩放</option>
+          <option value="spin">旋转</option>
+          <option value="bounce">弹跳</option>
+          <option value="appear">出现</option>
+          <option value="disappear">消失</option>
+          <option value="pulse">脉冲</option>
+          <option value="colorPulse">变色脉冲</option>
+          <option value="teeter">摇摆</option>
+          <option value="growShrink">缩放</option>
+        </select>
+        <select v-model="newTrigger" class="collab-slide-konva__animations-select" title="触发">
+          <option value="onClick">点击时</option>
+          <option value="withPrevious">与上一动画同时</option>
+          <option value="afterPrevious">上一动画之后</option>
+        </select>
+        <button
+          type="button"
+          class="collab-slide-konva__animations-btn"
+          :disabled="selectedId == null"
+          @click="addAnimation"
+          title="为选中形状添加动画"
+        >+ 添加动画</button>
+        <button
+          type="button"
+          class="collab-slide-konva__animations-btn"
+          :disabled="animations.length === 0"
+          @click="clearAnimations"
+        >清除</button>
+      </div>
+      <ol v-if="animations.length" class="collab-slide-konva__animations-list">
+        <li v-for="(a, idx) in animations" :key="`${a.spId}-${idx}`" class="collab-slide-konva__animations-item">
+          <span class="collab-slide-konva__animations-num">{{ idx + 1 }}</span>
+          <span class="collab-slide-konva__animations-name">
+            {{ effectLabel(a.effect) }}
+            <small>{{ triggerLabel(a.trigger) }}</small>
+          </span>
+          <span class="collab-slide-konva__animations-target">spId {{ a.spId }}</span>
+          <button type="button" class="collab-slide-konva__animations-del" @click="removeAnimation(idx)">×</button>
+        </li>
+      </ol>
+      <p v-else class="collab-slide-konva__animations-empty">
+        选中一个形状，然后点击「+ 添加动画」为其添加入场/强调/退出效果。
+      </p>
     </section>
     <!-- v0.7.29 — comments side panel -->
     <CollabCommentsPanel
@@ -477,9 +564,14 @@ import {
   addTableToSlide,
   setSlideNotesOnDeck,
   emuToPx,
+  getSlideAnimationsOnDeck,
+  setSlideAnimationsOnDeck,
   type PptxShape,
   type PptxShapeSlide,
   type PptxShapeDeck,
+  type SlideAnimationRecord,
+  type AnimEffectKind,
+  type AnimTrigger,
 } from '@/editor/adapters/pptxShapeAdapter'
 import type { Slide } from '@/editor/engines/pptx-engine/types'
 import {
@@ -774,12 +866,99 @@ const inspectorText = ref('')
 const inspectorFill = ref('')
 const inspectorStroke = ref('')
 const inspectorFontSize = ref(18)
+// v0.7.38 — extended format panel
+const inspectorStrokeWidth = ref(1)
+const inspectorBold = ref(false)
+const inspectorItalic = ref(false)
+
+// Helpers for color picker <-> hex round-trip (picker needs 6-char #rrggbb).
+const inspectorFillColor = computed(() => (inspectorFill.value || '000000').padStart(6, '0').slice(-6).padStart(6, '0').replace(/^(.{6})$/, '#$1'))
+const inspectorStrokeColor = computed(() => (inspectorStroke.value || '000000').padStart(6, '0').slice(-6).padStart(6, '0').replace(/^(.{6})$/, '#$1'))
+
+const onInspectorFillPicker = (v: string) => {
+    inspectorFill.value = v.replace(/^#/, '')
+    onInspectorFillChange()
+}
+const onInspectorStrokePicker = (v: string) => {
+    inspectorStroke.value = v.replace(/^#/, '')
+    onInspectorStrokeChange()
+}
+const onInspectorStrokeWidthChange = () => updateShape(selectedId.value!, { strokeWidth: inspectorStrokeWidth.value })
+const toggleBold = () => { inspectorBold.value = !inspectorBold.value; updateShape(selectedId.value!, { bold: inspectorBold.value } as any) }
+const toggleItalic = () => { inspectorItalic.value = !inspectorItalic.value; updateShape(selectedId.value!, { italic: inspectorItalic.value } as any) }
+
+// v0.7.38 Build #46.x — slide animations (entrance / emphasis / exit).
+const animations = ref<SlideAnimationRecord[]>([])
+const newEffect = ref<AnimEffectKind>('fade')
+const newTrigger = ref<AnimTrigger>('onClick')
+
+const effectLabel = (e: AnimEffectKind): string => {
+  const map: Record<AnimEffectKind, string> = {
+    fade: '淡入', flyIn: '飞入', zoom: '缩放', spin: '旋转', bounce: '弹跳',
+    appear: '出现', disappear: '消失', pulse: '脉冲', colorPulse: '变色脉冲',
+    teeter: '摇摆', growShrink: '缩放',
+  }
+  return map[e] || e
+}
+
+const triggerLabel = (t: AnimTrigger): string => {
+  const map: Record<AnimTrigger, string> = {
+    onClick: '点击时', withPrevious: '同时', afterPrevious: '之后',
+  }
+  return map[t] || t
+}
+
+const refreshAnimations = () => {
+  if (!deck.value || !deck.value.opened) {
+    animations.value = []
+    return
+  }
+  animations.value = getSlideAnimationsOnDeck(deck.value, activeIndex.value)
+}
+
+watch(activeIndex, refreshAnimations)
+watch(() => deck.value?.opened, refreshAnimations, { immediate: false })
+
+const addAnimation = () => {
+  if (!deck.value || selectedId.value == null) return
+  const spId = Number(selectedId.value)
+  if (!Number.isFinite(spId)) {
+    MessagePlugin.warning('无法为所选形状添加动画:缺少 spId')
+    return
+  }
+  const next: SlideAnimationRecord[] = [
+    ...animations.value,
+    { spId, effect: newEffect.value, trigger: newTrigger.value, durationMs: 1000, delayMs: 0 },
+  ]
+  if (setSlideAnimationsOnDeck(deck.value, activeIndex.value, next)) {
+    animations.value = next
+    saveStatus.value = '动画已暂存(保存 .pptx 时落盘)'
+  }
+}
+
+const removeAnimation = (idx: number) => {
+  if (!deck.value) return
+  const next = animations.value.filter((_, i) => i !== idx)
+  if (setSlideAnimationsOnDeck(deck.value, activeIndex.value, next)) {
+    animations.value = next
+  }
+}
+
+const clearAnimations = () => {
+  if (!deck.value) return
+  if (setSlideAnimationsOnDeck(deck.value, activeIndex.value, [])) {
+    animations.value = []
+  }
+}
 watch(selectedShape, (s) => {
   if (!s) return
   inspectorText.value = s.text ?? ''
   inspectorFill.value = s.fill ?? ''
   inspectorStroke.value = s.stroke ?? ''
   inspectorFontSize.value = s.fontSize ?? 18
+  inspectorStrokeWidth.value = (s as any).strokeWidth ?? 1
+  inspectorBold.value = Boolean((s as any).bold)
+  inspectorItalic.value = Boolean((s as any).italic)
 })
 const onInspectorTextChange = () => updateShape(selectedId.value!, { text: inspectorText.value })
 const onInspectorFillChange = () => updateShape(selectedId.value!, { fill: inspectorFill.value.replace(/^#/, '') })

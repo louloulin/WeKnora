@@ -273,6 +273,8 @@ func TestInvalidatorResolve_AllOpsHaveStrategy(t *testing.T) {
 	pageRepo := newStubPageRepo()
 	cacheRepo := newObsFakeRepo()
 	inv := newWikiBacklinksCacheInvalidator(pageRepo, cacheRepo)
+	_ = inv // behavior is verified via cacheRepo side-effects
+	_ = inv // kept for symmetry with the other tests; behavior verified via cacheRepo
 
 	matrix := invalidatorExpectedMatrix()
 	if got, want := len(matrix), len(slugSetStrategies); got != want {
@@ -783,3 +785,22 @@ func isCanonicalStrategy(s types.SlugSetStrategy) bool {
 // used inside the test bodies, so the compiler surfaces any interface
 // drift between fake and real on the next build — no extra wiring
 // needed here.
+
+// FindPagesByNormalizedTitle satisfies the new interfaces.WikiPageRepository method.
+func (r *stubPageRepo) FindPagesByNormalizedTitle(_ context.Context, _, _, _ string) ([]*types.WikiPageLite, error) {
+	return nil, nil
+}
+
+// FindPagesByNormalizedTitles is the batched variant.
+func (r *stubPageRepo) FindPagesByNormalizedTitles(_ context.Context, _, _ string, _ []string) ([]*types.WikiPageLite, error) {
+	return nil, nil
+}
+
+// DeleteByKB satisfies the new interfaces.WikiBacklinksCacheRepository method.
+func (r *obsFakeRepo) DeleteByKB(_ context.Context, _ string) (int64, error) { return 0, nil }
+
+func (r *stubPageRepo) ListBacklinksAcrossKBs(_ context.Context, _ uint64, _, _ string, _ int) ([]*types.WikiPageLite, error) { return nil, nil }
+
+func (r *obsFakeRepo) FindReferencingSlugs(_ context.Context, _, _ string) ([]string, error) { return nil, nil }
+
+func (r *fakeWikiBacklinksCacheRepo) FindReferencingSlugs(_ context.Context, _, _ string) ([]string, error) { return nil, nil }

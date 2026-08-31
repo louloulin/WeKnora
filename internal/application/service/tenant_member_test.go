@@ -266,6 +266,10 @@ type cleanupUserRepo struct {
 	users map[string]*types.User
 }
 
+func (r *cleanupUserRepo) ListUsersByTenant(_ context.Context, _ uint64, _, _ int) ([]*types.User, int, error) {
+	return nil, 0, nil
+}
+
 func (r *cleanupUserRepo) CreateUser(context.Context, *types.User) error { return nil }
 func (r *cleanupUserRepo) GetUserByID(_ context.Context, id string) (*types.User, error) {
 	u, ok := r.users[id]

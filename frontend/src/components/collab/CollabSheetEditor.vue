@@ -101,7 +101,9 @@
                   'is-formula': !!cellFormula(ri, ci),
                   'is-percent': cellPercent(ri, ci),
                   'collab-sheet-editor__cell--selected': selectedRi === ri && selectedCi === ci,
+                  'collab-sheet-editor__cell--remote': remoteCellPeer(ri, ci),
                 }"
+                :style="remoteCellStyle(ri, ci)"
                 :value="cellFormula(ri, ci) || cellText(ri, ci)"
                 :title="cellFormula(ri, ci) || ''"
                 @focus="onCellSelect(ri, ci)"
@@ -114,12 +116,25 @@
       </table>
     </div>
     <p v-if="error || saveError" class="collab-sheet-editor__error">{{ saveError || error }}</p>
+  
+
+
+
+    <!-- v0.7.38 — sheet comment panel (cell-level anchor). -->
+    <CollabCommentsPanel
+      :doc-id="docId"
+      :token="token"
+      :anchor="commentAnchor"
+      anchor-label="单元格"
+      placeholder="对选中的单元格添加评论…"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import * as Y from 'yjs'
+import CollabCommentsPanel from '@/components/collab/CollabCommentsPanel.vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { useYjsCollabDoc } from '@/composables/useYjsCollabDoc'
 import {
@@ -165,12 +180,45 @@ const formulaResult = computed(() => {
     return ''
   }
 })
+// v0.7.38 — remote cell-selection highlighter (peer awareness)
+const remoteCellPeer = (ri: number, ci: number) => {
+  return remoteSelections.value.find((p) => p.cell && p.cell.ri === ri && p.cell.ci === ci) || null
+}
+const remoteCellStyle = (ri: number, ci: number) => {
+  const p = remoteCellPeer(ri, ci)
+  if (!p) return {}
+  return { outline: `2px solid ${p.color}`, outlineOffset: '-1px' }
+}
+
+// v0.7.38 — sheet comment anchor (cell-level)
+const commentAnchor = ref<{ type: 'sheet'; ref: string } | null>(null)
+
+const cellLabel = (ri: number, ci: number) => {
+  // Spreadsheet column letter (A, B, ..., Z, AA, ...)
+  let n = ci
+  let s = ''
+  do {
+    s = String.fromCharCode(65 + (n % 26)) + s
+    n = Math.floor(n / 26) - 1
+  } while (n >= 0)
+  return `${s}${ri + 1}`
+}
+
 const onCellSelect = (ri: number, ci: number) => {
   selectedRi.value = ri
   selectedCi.value = ci
   const raw = rows.value[ri]?.[ci]
   formulaValue.value = raw && raw.startsWith('=') ? raw : ''
   formulaError.value = null
+  commentAnchor.value = { type: 'sheet', ref: cellLabel(ri, ci) }
+  // v0.7.38 — broadcast cell selection on the Yjs awareness layer
+  // so collaborators see the active cell outline in real time.
+  try {
+    handle?.publishCellSelection?.(ri, ci)
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[CollabSheetEditor] publishCellSelection failed', e)
+  }
 }
 const commitFormula = () => {
   if (selectedRi.value < 0 || selectedCi.value < 0) return
@@ -285,6 +333,14 @@ const saveError = ref<string | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 
 let handle: ReturnType<typeof useYjsCollabDoc> | null = null
+
+const remoteSelections = ref<Array<{
+  clientId: number
+  displayName: string
+  color: string
+  cell?: { ri: number; ci: number } | null
+}>>([])
+
 let ymap: Y.Map<Y.Map<string>> | null = null
 let ycols: Y.Array<string> | null = null
 let wb: XlsxAdapterWorkbook = newXlsxWorkbook()
@@ -314,6 +370,11 @@ const downloadAsUint8Array = async (): Promise<Uint8Array> => {
 const setup = async () => {
   if (!props.docId || !props.token) return
   handle = useYjsCollabDoc({ docId: props.docId, token: props.token, displayName: props.displayName })
+  // v0.7.38 — remote cell-selection awareness
+  if (handle.remoteSelections) {
+    remoteSelections.value = handle.remoteSelections.value as any
+    watch(handle.remoteSelections, (v) => (remoteSelections.value = (v ?? []) as any))
+  }
   connected.value = Boolean(handle.connected.value)
   peers.value = (handle.peers.value ?? []) as Array<{ clientId: number; displayName: string; color: string }>
   error.value = (handle.error.value ?? null) as string | null

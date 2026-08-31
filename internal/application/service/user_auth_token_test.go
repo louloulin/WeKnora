@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"context"
 	"errors"
 	"net/http"
@@ -529,4 +530,11 @@ func TestUserIDFromSignedTokenAcceptsExpiredToken(t *testing.T) {
 	if userID != "user-1" {
 		t.Fatalf("userIDFromSignedToken(expired) = %q, want user-1", userID)
 	}
+}
+
+// ListUsersByTenant satisfies the new interfaces.UserRepository method.
+// Returns an empty list — these auth-token tests do not exercise
+// tenant-scoped user listing.
+func (r *stubUserRepoForAuth) ListUsersByTenant(_ context.Context, _ uint64, _, _ int) ([]*types.User, int, error) {
+	return nil, 0, nil
 }

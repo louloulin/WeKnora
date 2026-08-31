@@ -26,6 +26,7 @@ import (
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 
 	"github.com/Tencent/WeKnora/internal/types"
 )
@@ -33,13 +34,13 @@ import (
 // gatherMetricFamily fetches a *MetricFamily by name from the
 // prometheus.DefaultGatherer. Returns nil if not found — callers
 // should treat that as a test failure.
-func gatherMetricFamily(t *testing.T, name string) []*prometheus.MetricFamily {
+func gatherMetricFamily(t *testing.T, name string) []*dto.MetricFamily {
 	t.Helper()
 	families, err := prometheus.DefaultGatherer.Gather()
 	if err != nil {
 		t.Fatalf("DefaultGatherer.Gather: %v", err)
 	}
-	var out []*prometheus.MetricFamily
+	var out []*dto.MetricFamily
 	for _, fam := range families {
 		if fam.GetName() == name {
 			out = append(out, fam)
@@ -55,7 +56,7 @@ func gatherMetricFamily(t *testing.T, name string) []*prometheus.MetricFamily {
 // in the metric family — enough to assert "strategy" key presence and
 // value membership. Returns nil if the family has no metric with that
 // kb_id label.
-func metricLabels(t *testing.T, fam []*prometheus.MetricFamily, kbID string) map[string]string {
+func metricLabels(t *testing.T, fam []*dto.MetricFamily, kbID string) map[string]string {
 	t.Helper()
 	want := prometheus.Labels{"kb_id": kbID}
 	for _, f := range fam {
@@ -225,7 +226,7 @@ func TestCacheMetricsStrategy_LegacyProjectionStillWorks(t *testing.T) {
 // kb_id matches, summing across all strategy buckets. Mirrors what
 // `sum without (strategy) (...)` does at query time — guards against
 // regressions in the legacy projection.
-func countMetricWithKB(fam []*prometheus.MetricFamily, kbID string) float64 {
+func countMetricWithKB(fam []*dto.MetricFamily, kbID string) float64 {
 	var total float64
 	for _, f := range fam {
 		for _, m := range f.GetMetric() {

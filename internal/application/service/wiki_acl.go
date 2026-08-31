@@ -45,6 +45,10 @@ type WikiAclService interface {
 	PutAcl(ctx context.Context, kbID string, slug string,
 		req types.WikiPageAclSaveRequest, callerUserID string, callerRole string) (*types.WikiPageAcl, error)
 	SearchAclCandidates(ctx context.Context, tenantID uint64, query string, limit int) ([]*types.User, error)
+	// SetCacheRepo wires the Build #24 ACL→cache wipe dependency.
+	// Exposed here so the unified audit harness can install a stub
+	// cache repo in tests.
+	SetCacheRepo(cacheRepo interfaces.WikiBacklinksCacheRepository)
 }
 
 // AclResolveItem is one (kbID, slug) pair for ResolveBulk. Slug is the

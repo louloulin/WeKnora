@@ -60,10 +60,12 @@ func (r *collabDocRepository) Update(ctx context.Context, d *types.Collaborative
 	res := r.db.WithContext(ctx).
 		Where("tenant_id = ? AND id = ?", d.TenantID, d.ID).
 		Updates(map[string]interface{}{
-			"title":       d.Title,
-			"visibility":  d.Visibility,
-			"share_token": d.ShareToken,
-			"updated_at":  d.UpdatedAt,
+			"title":               d.Title,
+			"visibility":          d.Visibility,
+			"share_token":         d.ShareToken,
+			"share_password_hash": d.SharePasswordHash,
+			"share_expires_at":    d.ShareExpiresAt,
+			"updated_at":          d.UpdatedAt,
 		})
 	if res.Error != nil {
 		return res.Error

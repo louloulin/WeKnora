@@ -104,6 +104,15 @@ const router = createRouter({
       meta: { requiresAuth: false }
     },
     {
+      // v0.7.37 Build #44 / v0.7.38 Build #46.x — slide deck editor
+      // (higher-level "doc -> 演示文稿" surface, separate from the
+      // pptx-engine per-page slide editor).
+      path: "/collab-slides",
+      name: "collabSlides",
+      component: () => import("../views/collab/CollabSlidesView.vue"),
+      meta: { requiresAuth: true, requiresInit: true }
+    },
+    {
       path: "/join",
       name: "joinOrganization",
       // 重定向到组织列表页，并将 code 参数转换为 invite_code

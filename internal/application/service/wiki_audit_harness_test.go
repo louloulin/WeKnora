@@ -9,6 +9,8 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 // ---------------------------------------------------------------------------
@@ -31,17 +33,17 @@ import (
 // exercises the DI graph.
 // ---------------------------------------------------------------------------
 
-// stubAuditLogService is a minimal AuditLogService that stores rows in
+// harnessStubAuditLog is a minimal AuditLogService that stores rows in
 // a slice. We only implement Log + List — LogDenied / Purge are not
 // exercised by the unified audit service.
-type stubAuditLogService struct {
+type harnessStubAuditLog struct {
 	mu   sync.Mutex
 	rows []*types.AuditLog
 }
 
-func newStubAuditLogService() *stubAuditLogService { return &stubAuditLogService{} }
+func newHarnessStubAuditLog() *harnessStubAuditLog { return &harnessStubAuditLog{} }
 
-func (s *stubAuditLogService) Log(_ context.Context, e *types.AuditLog) error {
+func (s *harnessStubAuditLog) Log(_ context.Context, e *types.AuditLog) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if e.CreatedAt.IsZero() {
@@ -52,11 +54,11 @@ func (s *stubAuditLogService) Log(_ context.Context, e *types.AuditLog) error {
 	return nil
 }
 
-func (s *stubAuditLogService) LogDenied(_ context.Context, _ interface{}, _ uint64, _, _ string, _ types.TenantRole) error {
+func (s *harnessStubAuditLog) LogDenied(_ context.Context, _ *gin.Context, _ uint64, _, _ string, _ types.TenantRole) error {
 	return nil
 }
 
-func (s *stubAuditLogService) List(_ context.Context, tenantID uint64, q *interfaces.AuditLogQuery) ([]*types.AuditLog, error) {
+func (s *harnessStubAuditLog) List(_ context.Context, tenantID uint64, q *interfaces.AuditLogQuery) ([]*types.AuditLog, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]*types.AuditLog, 0, len(s.rows))
@@ -84,7 +86,7 @@ func (s *stubAuditLogService) List(_ context.Context, tenantID uint64, q *interf
 	return out, nil
 }
 
-func (s *stubAuditLogService) Purge(_ context.Context, _ int) (int64, error) { return 0, nil }
+func (s *harnessStubAuditLog) Purge(_ context.Context, _ int) (int64, error) { return 0, nil }
 
 // stubBatchJobRepo is a minimal WikiBatchAuditRepository (Build #14).
 // Build #25 — renamed from stubBatchJobRepo's old name; the audit
@@ -103,7 +105,7 @@ type stubBatchJobRepo struct {
 func newStubBatchJobRepo() *stubBatchJobRepo { return &stubBatchJobRepo{} }
 
 // Log is a test-helper that appends an event to the in-memory slice
-// for read-back. It mirrors stubAuditLogService.Log so the harness
+// for read-back. It mirrors harnessStubAuditLog.Log so the harness
 // can seed wiki_batch_job_audit rows without a DB. Production write
 // path is wikiBatchAuditRepository.Insert (Build #14) — out of scope
 // here.
@@ -197,10 +199,10 @@ func (r *stubBatchJobRepo) ListExpiredEvents(_ context.Context, before time.Time
 	return out, nil
 }
 
-// stubBacklinksCacheRepo is a minimal WikiBacklinksCacheRepository.
+// harnessStubBacklinksCache is a minimal WikiBacklinksCacheRepository.
 // Only the four methods Build #24 actually calls are implemented:
 // CountByKB, DeleteByKB, FindReferencingSlugs, Delete, LogInvalidation.
-type stubBacklinksCacheRepo struct {
+type harnessStubBacklinksCache struct {
 	mu              sync.Mutex
 	rows            map[string]map[string]string // kbID → slug → detailsJSON
 	logEntries      []*types.WikiBacklinksCacheInvalidationLogEntry
@@ -209,11 +211,11 @@ type stubBacklinksCacheRepo struct {
 	refLookupResult []string
 }
 
-func newStubBacklinksCacheRepo() *stubBacklinksCacheRepo {
-	return &stubBacklinksCacheRepo{rows: map[string]map[string]string{}}
+func newHarnessStubBacklinksCache() *harnessStubBacklinksCache {
+	return &harnessStubBacklinksCache{rows: map[string]map[string]string{}}
 }
 
-func (r *stubBacklinksCacheRepo) seed(kbID, slug, details string) {
+func (r *harnessStubBacklinksCache) seed(kbID, slug, details string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.rows[kbID] == nil {
@@ -222,7 +224,7 @@ func (r *stubBacklinksCacheRepo) seed(kbID, slug, details string) {
 	r.rows[kbID][slug] = details
 }
 
-func (r *stubBacklinksCacheRepo) Get(_ context.Context, kbID, slug string) (*types.WikiBacklinksCacheRow, error) {
+func (r *harnessStubBacklinksCache) Get(_ context.Context, kbID, slug string) (*types.WikiBacklinksCacheRow, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	row, ok := r.rows[kbID][slug]
@@ -232,12 +234,12 @@ func (r *stubBacklinksCacheRepo) Get(_ context.Context, kbID, slug string) (*typ
 	return &types.WikiBacklinksCacheRow{KbID: kbID, Slug: slug, DirectJSON: row}, nil
 }
 
-func (r *stubBacklinksCacheRepo) Upsert(_ context.Context, row *types.WikiBacklinksCacheRow) error {
+func (r *harnessStubBacklinksCache) Upsert(_ context.Context, row *types.WikiBacklinksCacheRow) error {
 	r.seed(row.KbID, row.Slug, row.DirectJSON)
 	return nil
 }
 
-func (r *stubBacklinksCacheRepo) Delete(_ context.Context, kbID string, slugs []string) (int64, error) {
+func (r *harnessStubBacklinksCache) Delete(_ context.Context, kbID string, slugs []string) (int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	bucket := r.rows[kbID]
@@ -255,7 +257,7 @@ func (r *stubBacklinksCacheRepo) Delete(_ context.Context, kbID string, slugs []
 	return affected, nil
 }
 
-func (r *stubBacklinksCacheRepo) DeleteByKB(_ context.Context, kbID string) (int64, error) {
+func (r *harnessStubBacklinksCache) DeleteByKB(_ context.Context, kbID string) (int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	bucket := r.rows[kbID]
@@ -265,7 +267,7 @@ func (r *stubBacklinksCacheRepo) DeleteByKB(_ context.Context, kbID string) (int
 	return affected, nil
 }
 
-func (r *stubBacklinksCacheRepo) FindReferencingSlugs(_ context.Context, kbID, _ string) ([]string, error) {
+func (r *harnessStubBacklinksCache) FindReferencingSlugs(_ context.Context, kbID, _ string) ([]string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.refLookupResult != nil {
@@ -279,37 +281,37 @@ func (r *stubBacklinksCacheRepo) FindReferencingSlugs(_ context.Context, kbID, _
 	return out, nil
 }
 
-func (r *stubBacklinksCacheRepo) CountByKB(_ context.Context, kbID string) (int64, error) {
+func (r *harnessStubBacklinksCache) CountByKB(_ context.Context, kbID string) (int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return int64(len(r.rows[kbID])), nil
 }
 
-func (r *stubBacklinksCacheRepo) LogInvalidation(_ context.Context, e *types.WikiBacklinksCacheInvalidationLogEntry) error {
+func (r *harnessStubBacklinksCache) LogInvalidation(_ context.Context, e *types.WikiBacklinksCacheInvalidationLogEntry) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.logEntries = append(r.logEntries, e)
 	return nil
 }
 
-// stubBacklinksCacheRepo unused interface methods.
-func (r *stubBacklinksCacheRepo) ListByKB(context.Context, string, int, int) ([]*types.WikiBacklinksCacheStatus, int64, error) {
+// harnessStubBacklinksCache unused interface methods.
+func (r *harnessStubBacklinksCache) ListByKB(context.Context, string, int, int) ([]*types.WikiBacklinksCacheStatus, int64, error) {
 	return nil, 0, nil
 }
-func (r *stubBacklinksCacheRepo) DeleteStale(context.Context, time.Time, int) (int64, error) {
+func (r *harnessStubBacklinksCache) DeleteStale(context.Context, time.Time, int) (int64, error) {
 	return 0, nil
 }
-func (r *stubBacklinksCacheRepo) CountRows(context.Context) (int64, error) { return 0, nil }
-func (r *stubBacklinksCacheRepo) CountBackrefRows(context.Context) (int64, error) {
+func (r *harnessStubBacklinksCache) CountRows(context.Context) (int64, error) { return 0, nil }
+func (r *harnessStubBacklinksCache) CountBackrefRows(context.Context) (int64, error) {
 	return 0, nil
 }
-func (r *stubBacklinksCacheRepo) ListStaleForUpdate(context.Context, interface{}, time.Time, int) ([]string, error) {
+func (r *harnessStubBacklinksCache) ListStaleForUpdate(_ context.Context, _ *gorm.DB, _ time.Time, _ int) ([]string, error) {
 	return nil, nil
 }
-func (r *stubBacklinksCacheRepo) ListInvalidationLog(context.Context, string, int, int) ([]*types.WikiBacklinksCacheInvalidationLogEntry, int64, error) {
+func (r *harnessStubBacklinksCache) ListInvalidationLog(context.Context, string, int, int) ([]*types.WikiBacklinksCacheInvalidationLogEntry, int64, error) {
 	return nil, 0, nil
 }
-func (r *stubBacklinksCacheRepo) SumPayloadSizeByKB(context.Context, string) (int64, error) {
+func (r *harnessStubBacklinksCache) SumPayloadSizeByKB(context.Context, string) (int64, error) {
 	return 0, nil
 }
 
@@ -357,6 +359,23 @@ func (r *stubAclRepo) ListAudit(_ context.Context, kbID string, since time.Time,
 	}
 	return rev, total, nil
 }
+// WikiAclRepositoryStore surface — the stub satisfies the full
+// interfaces.WikiAclRepository contract (Store + ListAudit) so it
+// can stand in for the production repo in tests that exercise the
+// audit harness.
+func (r *stubAclRepo) GetAclBySlug(_ context.Context, _, _ string) (*types.WikiPageAcl, error) {
+	return nil, nil
+}
+func (r *stubAclRepo) UpdateAclWithRevision(_ context.Context, _, _ string, _ types.WikiPageAcl, _ int64, _, _, _, _ string) (*types.WikiPageAcl, error) {
+	return nil, nil
+}
+func (r *stubAclRepo) PageOwnerAndAdmin(_ context.Context, _, _, _ string) (string, bool, error) {
+	return "", false, nil
+}
+func (r *stubAclRepo) GroupMembers(_ context.Context, _ uint64, _ []string) ([]string, error) {
+	return nil, nil
+}
+
 
 // stubKBResolver is the test TenantResolver. Returns the configured
 // tenant id or (0, nil) when the KB is unknown.
@@ -377,9 +396,9 @@ func (r *stubKBResolver) ResolveTenantID(_ context.Context, kbID string) (uint64
 // ---------------------------------------------------------------------------
 
 func TestWikiAuditService_ListAuditEvents_FourSourceMerge(t *testing.T) {
-	auditSvc := newStubAuditLogService()
+	auditSvc := newHarnessStubAuditLog()
 	batchRepo := newStubBatchJobRepo()
-	cacheRepo := newStubBacklinksCacheRepo()
+	cacheRepo := newHarnessStubBacklinksCache()
 	aclRepo := newStubAclRepo()
 	resolver := &stubKBResolver{tenantIDByKBID: map[string]uint64{"kb-1": 7}}
 
@@ -470,9 +489,9 @@ func TestWikiAuditService_ListAuditEvents_FourSourceMerge(t *testing.T) {
 
 func TestWikiAuditService_ListAuditEvents_PaginationClamp(t *testing.T) {
 	svc := NewWikiAuditService(WikiAuditServiceDeps{
-		AuditLogSvc:  newStubAuditLogService(),
+		AuditLogSvc:  newHarnessStubAuditLog(),
 		BatchJobRepo: newStubBatchJobRepo(),
-		BacklinksCacheRepo: newStubBacklinksCacheRepo(),
+		BacklinksCacheRepo: newHarnessStubBacklinksCache(),
 		AclRepo:      newStubAclRepo(),
 		TenantResolver: &stubKBResolver{tenantIDByKBID: map[string]uint64{"kb-x": 1}},
 	})
@@ -513,7 +532,7 @@ func TestWikiAuditService_ListAuditEvents_ActorKindNormalization(t *testing.T) {
 	//   - "" → system
 	//   - "sweep" → sweep
 	//   - "user-1" → user
-	auditSvc := newStubAuditLogService()
+	auditSvc := newHarnessStubAuditLog()
 	_ = auditSvc.Log(context.Background(), &types.AuditLog{
 		TenantID: 1, Action: "wiki.audit.system",
 		ActorUserID: "", ScopeType: "knowledge_base", ScopeID: "kb-1",
@@ -530,7 +549,7 @@ func TestWikiAuditService_ListAuditEvents_ActorKindNormalization(t *testing.T) {
 	svc := NewWikiAuditService(WikiAuditServiceDeps{
 		AuditLogSvc:        auditSvc,
 		BatchJobRepo:       newStubBatchJobRepo(),
-		BacklinksCacheRepo: newStubBacklinksCacheRepo(),
+		BacklinksCacheRepo: newHarnessStubBacklinksCache(),
 		AclRepo:            newStubAclRepo(),
 		TenantResolver:     &stubKBResolver{tenantIDByKBID: map[string]uint64{"kb-1": 1}},
 	})
@@ -566,7 +585,7 @@ func TestWikiAuditService_ListAuditEvents_NilSafeRegression(t *testing.T) {
 	// when one of the Build #24 dependencies hasn't been wired yet
 	// (e.g. a freshly-forked harness without the new repos).
 	svc := NewWikiAuditService(WikiAuditServiceDeps{
-		AuditLogSvc:    newStubAuditLogService(),
+		AuditLogSvc:    newHarnessStubAuditLog(),
 		BatchJobRepo:   nil,
 		BacklinksCacheRepo: nil,
 		AclRepo:        nil,
@@ -592,7 +611,7 @@ func TestWikiAuditService_ListAuditEvents_NilSafeRegression(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestWikiAclService_ACLChangeHook_SmallKBUsesFullWipe(t *testing.T) {
-	cacheRepo := newStubBacklinksCacheRepo()
+	cacheRepo := newHarnessStubBacklinksCache()
 	// Seed 3 rows so we're firmly under the 10k threshold.
 	cacheRepo.seed("kb-1", "p1", `{"d":[]}`)
 	cacheRepo.seed("kb-1", "p2", `{"d":[]}`)
@@ -607,7 +626,7 @@ func TestWikiAclService_ACLChangeHook_SmallKBUsesFullWipe(t *testing.T) {
 		context.Background(),
 		"kb-1", "p1",
 		"inherit", "private",
-		0, 1,
+		0, 1, false,
 	)
 
 	if cacheRepo.deletesByKB != 3 {
@@ -626,7 +645,7 @@ func TestWikiAclService_ACLChangeHook_SmallKBUsesFullWipe(t *testing.T) {
 }
 
 func TestWikiAclService_ACLChangeHook_LargeKBUsesReverseLookup(t *testing.T) {
-	cacheRepo := newStubBacklinksCacheRepo()
+	cacheRepo := newHarnessStubBacklinksCache()
 	// Seed 12k synthetic rows so CountByKB returns > threshold.
 	// We don't actually allocate 12k entries — the stub's CountByKB
 	// returns len(rows[kbID]), so a single sentinel entry works
@@ -640,7 +659,7 @@ func TestWikiAclService_ACLChangeHook_LargeKBUsesReverseLookup(t *testing.T) {
 		context.Background(),
 		"kb-2", "p1",
 		"inherit", "private",
-		0, 1,
+		0, 1, false,
 	)
 
 	if cacheRepo.deletesByKB != 0 {
@@ -662,7 +681,7 @@ func TestWikiAclService_ACLChangeHook_NilCacheRepoIsNoop(t *testing.T) {
 		context.Background(),
 		"kb-3", "p1",
 		"inherit", "private",
-		0, 1,
+		0, 1, false,
 	)
 }
 
@@ -673,7 +692,7 @@ func TestWikiAclService_ACLChangeHook_NilCacheRepoIsNoop(t *testing.T) {
 // largeCountingCacheRepo overrides CountByKB so we can drive the
 // threshold branch without actually allocating thousands of rows.
 type largeCountingCacheRepo struct {
-	inner          *stubBacklinksCacheRepo
+	inner          *harnessStubBacklinksCache
 	rowCount       int64
 	refLookupResult []string
 }
@@ -706,7 +725,7 @@ func (r *largeCountingCacheRepo) DeleteStale(context.Context, time.Time, int) (i
 	return 0, nil
 }
 func (r *largeCountingCacheRepo) CountRows(context.Context) (int64, error) { return 0, nil }
-func (r *largeCountingCacheRepo) ListStaleForUpdate(context.Context, interface{}, time.Time, int) ([]string, error) {
+func (r *largeCountingCacheRepo) ListStaleForUpdate(_ context.Context, _ *gorm.DB, _ time.Time, _ int) ([]string, error) {
 	return nil, nil
 }
 func (r *largeCountingCacheRepo) ListInvalidationLog(context.Context, string, int, int) ([]*types.WikiBacklinksCacheInvalidationLogEntry, int64, error) {
@@ -721,30 +740,35 @@ func (r *largeCountingCacheRepo) SumPayloadSizeByKB(context.Context, string) (in
 // A no-op WikiAclRepo stub is plugged in — these tests don't read ACL
 // rows, only the cache wipe side.
 func newWikiAclServiceForTest(cacheRepo interfaces.WikiBacklinksCacheRepository) *wikiAclService {
-	svc := NewWikiAclService(stubWikiAclRepo{}, nil)
+	svc := NewWikiAclService(harnessStubWikiAcl{}, nil)
 	if cacheRepo != nil {
 		svc.SetCacheRepo(cacheRepo)
 	}
 	return svc.(*wikiAclService)
 }
 
-// stubWikiAclRepo is a no-op implementation of WikiAclRepo used by
+// harnessStubWikiAcl is a no-op implementation of WikiAclRepo used by
 // the ACL change hook tests. The wipe tests don't touch the ACL repo
 // at all, so the methods can simply error or no-op.
-type stubWikiAclRepo struct{}
+type harnessStubWikiAcl struct{}
 
-func (stubWikiAclRepo) GetAclBySlug(_ context.Context, _, _ string) (*types.WikiPageAcl, error) {
+func (harnessStubWikiAcl) GetAclBySlug(_ context.Context, _, _ string) (*types.WikiPageAcl, error) {
 	return nil, nil
 }
-func (stubWikiAclRepo) UpdateAclWithRevision(_ context.Context, _, _ string, _ types.WikiPageAcl, _ int64, _ string, _, _ string) (*types.WikiPageAcl, error) {
+func (harnessStubWikiAcl) UpdateAclWithRevision(_ context.Context, _, _ string, _ types.WikiPageAcl, _ int64, _, _, _, _ string) (*types.WikiPageAcl, error) {
 	return nil, fmt.Errorf("not implemented in harness")
 }
-func (stubWikiAclRepo) PageOwnerAndAdmin(_ context.Context, _, _, _ string) (string, bool, error) {
+func (harnessStubWikiAcl) PageOwnerAndAdmin(_ context.Context, _, _, _ string) (string, bool, error) {
 	return "", false, nil
 }
-func (stubWikiAclRepo) GroupMembers(_ context.Context, _ uint64, _ []string) ([]string, error) {
+func (harnessStubWikiAcl) GroupMembers(_ context.Context, _ uint64, _ []string) ([]string, error) {
 	return nil, nil
 }
+// ListAudit satisfies the new interfaces.WikiAclRepository method.
+func (harnessStubWikiAcl) ListAudit(_ context.Context, _ string, _ time.Time, _, _ int) ([]*types.WikiAclAuditEntry, int64, error) {
+	return nil, 0, nil
+}
+
 
 // ---------------------------------------------------------------------------
 // Build #25 — correlation_id end-to-end + missing-request-id fallback.
@@ -776,7 +800,7 @@ func newAuditLogServiceForTest() (interfaces.AuditLogService, *stubAuditLogRepo)
 }
 
 // stubAuditLogRepo is the repo layer the production auditLogService
-// writes through. The stubAuditLogService above is a higher-level
+// writes through. The harnessStubAuditLog above is a higher-level
 // stand-in for the interface; we need a separate repo stub because
 // AuditLogService takes a repo, not a service.
 type stubAuditLogRepo struct {
@@ -888,7 +912,7 @@ func TestWikiAuditService_ListAuditEvents_CorrelationIDFilter_AllSources_HTTPReq
 	// applied.
 	const reqID = "req-e2e-test-7777"
 
-	auditSvc := newStubAuditLogService()
+	auditSvc := newHarnessStubAuditLog()
 	_ = auditSvc.Log(context.Background(), &types.AuditLog{
 		TenantID: 7, Action: "wiki.page.create", ScopeType: "knowledge_base",
 		ScopeID: "kb-1", TargetType: "page", TargetID: "p1",
@@ -911,7 +935,7 @@ func TestWikiAuditService_ListAuditEvents_CorrelationIDFilter_AllSources_HTTPReq
 		CorrelationID: reqID,
 	})
 
-	cacheRepo := newStubBacklinksCacheRepo()
+	cacheRepo := newHarnessStubBacklinksCache()
 	_ = cacheRepo.LogInvalidation(context.Background(), &types.WikiBacklinksCacheInvalidationLogEntry{
 		KbID: "kb-1", Slug: "p1",
 		Op: string(types.BacklinkCacheInvalidateUpdatePage),
@@ -999,7 +1023,7 @@ func TestWikiAuditService_ListAuditEvents_CorrelationIDFilter_BackgroundPrefixes
 		adminID = "admin:cron-7"
 	)
 
-	auditSvc := newStubAuditLogService()
+	auditSvc := newHarnessStubAuditLog()
 	_ = auditSvc.Log(context.Background(), &types.AuditLog{
 		TenantID: 7, Action: "wiki.cache.sweep", ScopeType: "knowledge_base",
 		ScopeID: "kb-1", TargetType: "cache", TargetID: "kb-1",
@@ -1021,7 +1045,7 @@ func TestWikiAuditService_ListAuditEvents_CorrelationIDFilter_BackgroundPrefixes
 		CorrelationID: "sweep:other-job",
 	})
 
-	cacheRepo := newStubBacklinksCacheRepo()
+	cacheRepo := newHarnessStubBacklinksCache()
 	_ = cacheRepo.LogInvalidation(context.Background(), &types.WikiBacklinksCacheInvalidationLogEntry{
 		KbID: "kb-1", Slug: "p1",
 		Op: string(types.BacklinkCacheInvalidateSweep),
@@ -1111,3 +1135,5 @@ func TestWikiAuditService_ListAuditEvents_CorrelationIDFilter_BackgroundPrefixes
 		t.Errorf("ghost events: got %d want 0", len(respUnknown.Events))
 	}
 }
+
+func (r *largeCountingCacheRepo) CountBackrefRows(_ context.Context) (int64, error) { return 0, nil }
