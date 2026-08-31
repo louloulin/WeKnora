@@ -253,3 +253,135 @@ cd .. && bash scripts/smoke-collab-docs.sh
 ## 8. 一句话总结
 
 **WeKnora 已完成 genoffice 引擎 vendor + 适配层 35+ 函数 + Yjs 协作自研 + 9 项 P0 后端能力(v0.7.30 → v0.7.38);飞书级差距仅剩 12 项,按 v0.7.41 → v0.7.45 分 5 个版本 / 10 周推进可达飞书文档 2026 入门级。**
+
+---
+
+## 9. v0.7.46+ 路线图(genoffice 三件套 gateway copy 余量)
+
+承接 v0.7.43.c（§13.4），继续 copy genoffice 剩余 gateway，目标是把 xlsx / docs / slides 三件套的核心 OOXML 能力 100% 落地到 WeKnora。
+
+### 9.1 genoffice gateway 余量盘点
+
+| 类型 | 文件 | 行数 | 状态 | 改造难度 | 优先级 |
+| --- | --- | --- | --- | --- | --- |
+| SHEET | `xlsx-notes.ts`（单元格批注） | 297 | ❌ 未 copy | 中（多文件 + VML） | P0 |
+| SHEET | `xlsx-sheets.ts`（sheet 增删改 + rename 引用替换） | 607 | ❌ 未 copy | 中 | P0 |
+| SHEET | `xlsx-page-setup.ts`（打印页面） | 487 | ❌ 未 copy | 低（纯属性写） | P0 |
+| SHEET | `xlsx-package-io.ts`（包级 IO） | 366 | ❌ 未 copy | 低 | P1 |
+| SHEET | `xlsx-table-add.ts`（ListObject 表对象） | 292 | ❌ 未 copy | 中（多文件 + Content_Types） | P1 |
+| SHEET | `xlsx-structure.ts`（结构性操作 + 引用解析） | 1384 | ❌ 未 copy | 高（被多文件依赖） | P1 |
+| SHEET | `xlsx-drawing-edit.ts`（SHEET 内绘图编辑） | 406 | ❌ 未 copy | 中 | P1 |
+| SHEET | `xlsx-drawing-add.ts`（绘图新增） | 842 | ❌ 未 copy | 中 | P2 |
+| SHEET | `xlsx-pivot.ts` + `pivot-add.ts` + `pivot-expand.ts` | 1795 | ❌ 未 copy | 高（透视表全功能） | P2 |
+| SHEET | `csv-import.ts` | 259 | ❌ 未 copy | 低 | P3 |
+| DOC | `editor/equation.ts`（TipTap math 节点） | 600+ | ❌ 未 copy | 高（自定义 schema） | P1 |
+| DOC | `editor/convert.ts`（TipTap ↔ docx-engine） | 500+ | ❌ 未 copy | 高（pmDocToSavePlan） | P1 |
+| DOC | `editor/table-handle.ts` + `table-properties.ts` + `table-sizing.ts` | 800+ | ❌ 未 copy | 中 | P1 |
+| DOC | `editor/revisions.ts`（修订历史） | 400+ | ❌ 未 copy | 高 | P2 |
+| DOC | `editor/shape-draw.ts` + `shape-svg.ts` | 500+ | ❌ 未 copy | 中 | P2 |
+| DOC | `editor/hf-dom.ts` + `hf-text.ts` + `cover-pages.ts` | 700+ | ❌ 未 copy | 中 | P2 |
+| DOC | `editor/toc-refresh.ts` + `pagination-gaps.ts` + `page-break.ts` | 600+ | ❌ 未 copy | 中 | P2 |
+| DOC | `editor/numbering.ts`（编号） | 400+ | ❌ 未 copy | 中 | P2 |
+| DOC | `editor/comments.ts`（DOC 批注） | 300+ | 部分已接 | 中 | P1 |
+| DOC | `editor/para-border-merge.ts` | 200+ | ❌ 未 copy | 低 | P3 |
+| PPT | `renderer/animation-actions.ts` + `animation-play.ts` | 800+ | 部分已接 | 低 | P1 |
+| PPT | `renderer/table-actions.ts` + `table-hit.ts` | 500+ | ❌ 未 copy | 中 | P1 |
+| PPT | `renderer/draw-shape.ts`（PPT 形状绘制） | 300+ | ❌ 未 copy | 中 | P1 |
+| PPT | `renderer/format-brush.ts` | 400+ | ❌ 未 copy | 中 | P2 |
+| PPT | `renderer/picture-edit-actions.ts` | 400+ | ❌ 未 copy | 中 | P2 |
+| PPT | `renderer/ruler-ticks.ts` + `adjust-handles.ts` | 300+ | ❌ 未 copy | 中 | P2 |
+| PPT | `renderer/clipboard-actions.ts` | 400+ | ❌ 未 copy | 低 | P2 |
+| PPT | `renderer/arrange-actions.ts` | 300+ | ❌ 未 copy | 中 | P2 |
+| PPT | SmartArt (dgm-hier) | - | ❌ 未 copy | 高（OOXML schema 自写） | P2 |
+
+总计约 **13000+ 行**未 copy。其中 P0 / P1 高价值低改造约 **4500 行**。
+
+### 9.2 v0.7.44 — SHEET 余量 copy 第 1 批（1 周）
+
+| # | 任务 | 文件 | 验收 |
+| --- | --- | --- | --- |
+| 44.1 | copy `xlsx-page-setup.ts` → `xlsxPageSetup.ts` | `frontend/src/editor/adapters/` | 7 tests pass: orientation / paperSize / fitToPage / margins / printGridlines / printHeadings / headers |
+| 44.2 | 接入 `CollabSheetEditor.vue` 页面设置 modal | `CollabSheetEditor.vue` | 「页面」按钮 → 弹 modal → 应用 |
+| 44.3 | copy `xlsx-sheets.ts` → `xlsxSheets.ts` | 同上 | 5 tests pass: addSheet / renameSheet / removeSheet / moveSheet / hideSheet |
+| 44.4 | 接入 `CollabSheetEditor.vue` sheet 管理 UI | `CollabSheetEditor.vue` | 右键 tab → 「重命名/删除/移动/隐藏」 |
+| 44.5 | 扩展 `transformWorkbook` 支持多 sheet XML 串行编辑 | `xlsxWorksheetIo.ts` | 多 sheet round-trip 不串扰 |
+| 44.6 | STATUS.md §14 + PLAN_V3.md 更新 | `docs/collab-docs/` | — |
+
+### 9.3 v0.7.45 — SHEET 余量 copy 第 2 批（1 周）
+
+| # | 任务 | 文件 | 验收 |
+| --- | --- | --- | --- |
+| 45.1 | copy `xlsx-notes.ts` → `xlsxNotes.ts` | `frontend/src/editor/adapters/` | 6 tests pass: addNote / removeNote / listNotes / persist VML + rels |
+| 45.2 | 扩展 `transformWorkbook` 支持 worksheet.xml + `<sheetN>.xml.rels` + `[Content_Types].xml` 三文件联动 | `xlsxWorksheetIo.ts` | hyperlink 已对齐（v0.7.44 集成 UI 时一并完成） |
+| 45.3 | 接入 SHEET 单元格批注 UI | `CollabSheetEditor.vue` | 右键 cell → 「批注」→ 输入 → 显示红角标 |
+| 45.4 | copy `xlsx-table-add.ts` → `xlsxTable.ts` | `frontend/src/editor/adapters/` | 4 tests pass: addTable / styledTable / withTotalsRow |
+| 45.5 | 接入 SHEET 表对象 UI（飞书 SHEET 「插入表格」） | `CollabSheetEditor.vue` | 「插入」→ 「表格」→ 选区 + 样式 → 写入 ListObject |
+| 45.6 | copy `xlsx-package-io.ts` → `xlsxPackageIo.ts` | 同上 | 4 tests pass: 整包读 + 整包写 + Content_Types 合并 |
+
+### 9.4 v0.7.46 — SHEET 结构操作 + 透视表基础（1.5 周）
+
+| # | 任务 | 文件 | 验收 |
+| --- | --- | --- | --- |
+| 46.1 | copy `xlsx-structure.ts` → `xlsxStructure.ts` | `frontend/src/editor/adapters/` | 12 tests pass: 公式 / 跨表引用 / 命名区域 / chart series / hyperlink anchor 解析 |
+| 46.2 | copy `xlsx-drawing-edit.ts` → `xlsxDrawingEdit.ts` | 同上 | 6 tests pass: 嵌入图片 / 形状 / 调整位置 + 大小 |
+| 46.3 | copy `xlsx-pivot.ts` + `xlsx-pivot-expand.ts` → `xlsxPivot.ts` | 同上 | 8 tests pass: 创建透视表 / 字段映射 / 行/列/值区域 |
+| 46.4 | 接入 SHEET 透视表 UI（飞书 SHEET 「插入透视表」） | `CollabSheetEditor.vue` | 数据源 + 字段配置 → 实时渲染 |
+| 46.5 | adapter 测试 +20（structure + drawing + pivot） | `__tests__/` | pass |
+| 46.6 | Y.Map `sheet:features` 同步 feature 规则（freeze/filter/cf/dv/spark/notes/tables/pivots） | `useYjsCollabDoc.ts` | 多客户端可见 |
+
+### 9.5 v0.7.47 — DOC 飞书级补完（2 周）
+
+承接 v0.7.43 的 DOC 路线，重点 copy docs/editor/：
+
+| # | 任务 | 文件 | 验收 |
+| --- | --- | --- | --- |
+| 47.1 | copy `editor/convert.ts`（pmDocToSavePlan + blocksToPmDoc） | `frontend/src/editor/adapters/docConvert.ts` | 8 tests pass: TipTap ↔ docx-engine Block JSON |
+| 47.2 | 接入 `CollabDocProEditor.vue` convert 桥接 | `CollabDocProEditor.vue` | 上传 .docx → 编辑 → 下载 .docx 闭环 |
+| 47.3 | copy `editor/table-handle.ts` + `table-properties.ts` + `table-sizing.ts` | `frontend/src/editor/adapters/docTable*.ts` | 6 tests pass: 表格 UI + 颜色 + 合并 + 行高 |
+| 47.4 | copy `editor/equation.ts` → 自建 `docInlineMath` / `docProtected` schema | `frontend/src/components/collab/extensions/` | 输入 `/math` → 实时公式预览 |
+| 47.5 | copy `editor/comments.ts`（DOC 段落级批注） | `frontend/src/editor/adapters/docComments.ts` | 选段 → 「批注」→ 红角标 + 侧边面板 |
+| 47.6 | copy `editor/toc-refresh.ts` + `pagination-gaps.ts` + `page-break.ts` | `frontend/src/editor/adapters/doc*.ts` | 大纲视图 + 分页符 |
+
+### 9.6 v0.7.48 — PPT 飞书级补完（2 周）
+
+| # | 任务 | 文件 | 验收 |
+| --- | --- | --- | --- |
+| 48.1 | copy `renderer/draw-shape.ts` + `shape-svg.ts` | `frontend/src/editor/adapters/pptShape*.ts` | 6 tests pass: 矩形 / 圆形 / 箭头 / 流程图 |
+| 48.2 | copy `renderer/table-actions.ts` + `table-hit.ts` | `frontend/src/editor/adapters/pptTable*.ts` | 4 tests pass: 表格 CRUD + 命中测试 |
+| 48.3 | copy `renderer/animation-actions.ts` 补全 11 类动画 | `frontend/src/components/collab/CollabAnim*.vue` | 全部动画生效 + 时间轴 |
+| 48.4 | copy `renderer/format-brush.ts` | `frontend/src/editor/adapters/pptFormatBrush.ts` | 选 → 拖 → 应用 |
+| 48.5 | 自写 PPT SmartArt（OOXML dgm schema） | `frontend/src/editor/adapters/pptSmartArt.ts` | 4 tests pass: hierarchy / list / process / cycle |
+| 48.6 | 接入 `CollabSlideKonvaEditor.vue` 形状工具栏 + SmartArt 面板 | 同上 | 飞书级 PPT UI |
+
+### 9.7 v0.7.49 — 生产化 + 跨端对齐（2 周）
+
+| # | 任务 | 文件 | 验收 |
+| --- | --- | --- | --- |
+| 49.1 | 三件套 gateway 全量 100% 测试覆盖（target: 250+ tests） | `frontend/src/editor/adapters/__tests__/` | pass |
+| 49.2 | Y.Map 粒度细化：DOC per-paragraph Y.Text；SLIDE per-shape Y.Map | `useYjsCollabDoc.ts` | 多客户端并发无冲突 |
+| 49.3 | 冲突解决策略（Yjs UndoManager + auto-merge + UI 提示） | 同上 | — |
+| 49.4 | 后端 export 真实字节流（接 docparser / python-pptx / SheetJS save） | `internal/handler/collaborative_doc.go` | `/export` 返回真 .docx/.pptx/.xlsx |
+| 49.5 | 离线编辑（IndexedDB Yjs provider + Service Worker） | `frontend/src/composables/useYjsIndexedDB.ts` | 弱网/离线可编辑 |
+| 49.6 | E2E Playwright 冒烟（doc/sheet/slide 全跑）+ 性能基线 | `scripts/smoke-collab-docs.sh` | 通过 + <500ms P95 |
+
+### 9.8 Token 经济预估
+
+按每 turn 实际：
+- v0.7.43 (公式引擎 + 5 modals + 公式持久化) — 本 turn 之前完成
+- v0.7.43.c (cells 颜色) — 本 turn 完成（修复 1 bug + 4 tests）
+- v0.7.44 (page-setup + sheets + transformWorkbook 扩展) — 预计 1 turn
+- v0.7.45 (notes + tables + package-io + hyperlinks UI) — 预计 1 turn
+- v0.7.46 (structure + drawing + pivot) — 预计 1.5 turn（pivot 复杂）
+- v0.7.47 (DOC convert + table + equation + comments) — 预计 1.5 turn
+- v0.7.48 (PPT shape + table + animation + format-brush + SmartArt) — 预计 1.5 turn
+- v0.7.49 (生产化) — 预计 1 turn
+
+**总计 ~9 turn（每 turn 约 30-60 分钟），可完成飞书 / 腾讯文档级三件套全能力。**
+
+### 9.9 关键决策记录
+
+- **transformWorkbook 多文件扩展**：notes / hyperlinks / drawing 需要同时改 worksheet.xml + rels.xml + [Content_Types].xml。需把 `transformWorkbook` 升级为 `transformPackage`，支持 per-file 串行 pipeline。
+- **公式自动重算 vs 持久化**：v0.7.43.b 已实现持久化（写入 `<f>` + seed `v=0`），但 SheetJS 不重算。下一步：前端评估引擎（sheetFormula.ts）覆盖写时 + 读时，提供预览值，避免 Excel 打开时看到 stale value。
+- **Y.Map 同步 vs 本地 ref**：当前 freeze/filter/cf/dv/spark/notes 仍是本地 ref，Y.Map 同步在 v0.7.46 统一做，避免每加一个 feature 都改 Y.Map schema。
+- **SheetJS + 自管 styles.xml 双轨**：v0.7.43.c 已落地——SheetJS 写 cell.s index，我们维护 styles.xml + cellXfs。后续 styles（border / numFmt / protection）都走这套机制。
+
