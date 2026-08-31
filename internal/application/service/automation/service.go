@@ -25,14 +25,21 @@ type Service struct {
 	now     func() time.Time
 }
 
-// NewService wires the service with the default action registry.
-func NewService(repo interfaces.AutomationRepository) *Service {
+// NewService wires the service with the default action registry. The
+// optional agentRunner enables the RunAgent action; pass nil for tests
+// that do not exercise that path (the action returns a sentinel error
+// when invoked without a runner).
+func NewService(repo interfaces.AutomationRepository, agentRunner AgentRunner) *Service {
 	reg := NewActionRegistry()
 	reg.Register(UpdateFieldAction{})
 	reg.Register(CreateRowAction{})
 	reg.Register(SendWebhookAction{})
-	reg.Register(RunAgentAction{})
 	reg.Register(NotifyAction{})
+	if agentRunner != nil {
+		reg.Register(RunAgentAction{Runner: agentRunner})
+	} else {
+		reg.Register(RunAgentAction{})
+	}
 	return &Service{repo: repo, actions: reg, now: time.Now}
 }
 

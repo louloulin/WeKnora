@@ -141,7 +141,7 @@ func newLinearAutomation() *types.Automation {
 
 func TestService_CreateAndGet(t *testing.T) {
 	repo := newFakeRepo()
-	svc := NewService(repo)
+	svc := NewService(repo, nil)
 	a := newLinearAutomation()
 	if err := svc.Create(context.Background(), a); err != nil {
 		t.Fatalf("create: %v", err)
@@ -160,7 +160,7 @@ func TestService_CreateAndGet(t *testing.T) {
 
 func TestService_CreateRejectsCycle(t *testing.T) {
 	repo := newFakeRepo()
-	svc := NewService(repo)
+	svc := NewService(repo, nil)
 	a := newLinearAutomation()
 	a.Steps[0].NextIDs = []string{"s2"}
 	a.Steps[1].NextIDs = []string{"s1"} // back-edge → cycle
@@ -171,7 +171,7 @@ func TestService_CreateRejectsCycle(t *testing.T) {
 
 func TestService_Run_LinearHappyPath(t *testing.T) {
 	repo := newFakeRepo()
-	svc := NewService(repo)
+	svc := NewService(repo, nil)
 	a := newLinearAutomation()
 	if err := svc.Create(context.Background(), a); err != nil {
 		t.Fatal(err)
@@ -199,7 +199,7 @@ func TestService_Run_LinearHappyPath(t *testing.T) {
 
 func TestService_Run_FailStopsSubsequent(t *testing.T) {
 	repo := newFakeRepo()
-	svc := NewService(repo)
+	svc := NewService(repo, nil)
 	a := newLinearAutomation()
 	// Make s1 reference an unknown action kind.
 	a.Steps[0].ActionType = "nonexistent_kind"
@@ -228,7 +228,7 @@ func TestService_Run_RetriesOnTransientFailure(t *testing.T) {
 	defer srv.Close()
 
 	repo := newFakeRepo()
-	svc := NewService(repo)
+	svc := NewService(repo, nil)
 	a := &types.Automation{
 		ID:            "auto-retry",
 		TenantID:      1,

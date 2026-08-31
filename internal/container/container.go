@@ -530,6 +530,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewFormulaHandler))
 	// v0.7.27 Build #33 — automation / button engine.
 	must(container.Provide(repository.NewAutomationRepository))
+	must(container.Provide(autosvc.NewAgentStudioAdapter))
 	must(container.Provide(autosvc.NewService))
 	must(container.Provide(handler.NewAutomationHandler))
 	// v0.7.19 — wiki realtime (Yjs collaboration) wiring.
