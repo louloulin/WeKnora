@@ -294,7 +294,7 @@ func RegisterKnowledgeTagRoutes(r *gin.RouterGroup, tagHandler *handler.TagHandl
 //
 // wikiAclHandler is the Build #7 surface — it is independent of the page
 // CRUD so a future split of the handler package can pass either alone.
-func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHandler, wikiAclHandler *handler.WikiAclHandler, wikiTagHandler *handler.WikiTagHandler, wikiTemplateHandler *handler.WikiTemplateHandler, wikiSearchV2Handler *handler.WikiSearchV2Handler, g *rbacGuards) {
+func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHandler, wikiAclHandler *handler.WikiAclHandler, wikiTagHandler *handler.WikiTagHandler, wikiTemplateHandler *handler.WikiTemplateHandler, wikiSearchV2Handler *handler.WikiSearchV2Handler, wikiCommentHandler *handler.WikiCommentHandler, g *rbacGuards) {
 	wiki := g.apiKeyGroup(r.Group("/knowledgebase/:kb_id/wiki"), apiKeyIngest(apiKeyFullAccess()))
 	wikiRead := wiki.With(apiKeyRetrieve(apiKeyFullAccess()))
 	{
@@ -383,6 +383,18 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		wikiRead.GET("/pages/:slug/tags", g.Viewer(), g.KBAccessRead("kb_id"), wikiTagHandler.GetPageTags)
 		wiki.PUT("/pages/:slug/tags", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiTagHandler.SetPageTags)
 		wiki.POST("/pages/batch-tag", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiTagHandler.BatchTagPages)
+
+		// Page comments (Build #22 / v0.7.25) — reply / resolve / anchor.
+		// Reads use the same Viewer + KBAccessRead guard as the page itself;
+		// writes use OwnedWikiKBOrAdmin + KBAccessWrite so a KB member who
+		// owns the KB can post comments while a non-owner Contributor is
+		// limited to KB read (the handler enforces per-comment author /
+		// owner rules on top).
+		wikiRead.GET("/pages/:slug/comments", g.Viewer(), g.KBAccessRead("kb_id"), wikiCommentHandler.List)
+		wiki.POST("/pages/:slug/comments", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiCommentHandler.Create)
+		wiki.PUT("/pages/:slug/comments/:comment_id", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiCommentHandler.Update)
+		wiki.POST("/pages/:slug/comments/:comment_id/resolve", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiCommentHandler.SetResolved)
+		wiki.DELETE("/pages/:slug/comments/:comment_id", g.OwnedWikiKBOrAdmin(), g.KBAccessWrite("kb_id"), wikiCommentHandler.Delete)
 
 		// Page template skeleton engine (Build #18). Both endpoints run
 		// under the same OwnedWikiKBOrAdmin + KBAccessWrite guard as the
