@@ -1,5 +1,7 @@
 {
   "dependencies": {
+    "@tiptap/extension-collaboration": "^2.27.2",
+    "@tiptap/extension-collaboration-cursor": "^2.26.2",
     "cfb": "^1.2.2",
     "fast-xml-parser": "^5.11.1",
     "jszip": "^3.10.1",
@@ -8,6 +10,8 @@
     "ppt-to-text": "^1.0.1",
     "pptxgenjs": "^4.0.1",
     "utif2": "^4.1.0",
-    "word-extractor": "^1.0.4"
+    "word-extractor": "^1.0.4",
+    "y-websocket": "^2.1.0",
+    "yjs": "^13.6.32"
   }
 }
