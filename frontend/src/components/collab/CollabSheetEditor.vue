@@ -426,7 +426,7 @@ import {
 import { applyCfRules, type CfWireRule } from '@/editor/adapters/xlsxCf'
 import { applyDvRules, type DvWireRule } from '@/editor/adapters/xlsxDv'
 import { applySparklineAdditions, type SparklineGroupAdd } from '@/editor/adapters/xlsxSparkline'
-import { transformWorkbook } from '@/editor/adapters/xlsxWorksheetIo'
+import { transformWorkbook, transformPackage, inspectXlsx, type MutablePackage } from '@/editor/adapters/xlsxWorksheetIo'
 import { applyPageSetupState, type SheetPageSetupState } from '@/editor/adapters/xlsxPageSetup'
 import { applyHyperlinkEdits, type HyperlinkEdit } from '@/editor/adapters/xlsxHyperlinks'
 import { applySheetNotes, type SheetNote } from '@/editor/adapters/xlsxNotes'
@@ -1298,8 +1298,17 @@ const scheduleSave = () => {
 // state produces a (worksheetXml) => worksheetXml function that
 // sequentially applies the relevant adapters. Sheets with no feature
 // state get a no-op transform (never enters the pipeline).
-const buildFeatureTransforms = (): Record<string, (xml: string) => string> => {
+interface SheetPathResolver {
+  /** Resolve the worksheet XML path inside the package for a given sheet name. */
+  resolveWorksheetPath(name: string): Promise<string | null>
+}
+
+const buildFeaturePipeline = (): {
+  transforms: Record<string, (xml: string) => string>
+  packageTransformer: ((pkg: MutablePackage, paths: SheetPathResolver) => Promise<void>) | null
+} => {
   const transforms: Record<string, (xml: string) => string> = {}
+  let hasMultiFile = false
   sheets.value.forEach((sh, idx) => {
     const fr = freezeBySheet.value[idx]
     const fs = filterBySheet.value[idx]
@@ -1307,10 +1316,12 @@ const buildFeatureTransforms = (): Record<string, (xml: string) => string> => {
     const dv = dvBySheet.value[idx]
     const sp = sparkBySheet.value[idx]
     const ps = pageSetupBySheet.value[idx]
-    const hl = hyperlinksBySheet.value[idx]
     const nt = notesBySheet.value[idx]
     const tb = tablesBySheet.value[idx]
-    if (!fr && !fs && !cf?.length && !dv?.length && !sp?.length && !ps && !hl?.length && !nt?.length && !tb?.length) return
+    const hasSingle = fr || fs || cf?.length || dv?.length || sp?.length || ps
+    const hasMulti = nt?.length || tb?.length
+    if (hasMulti) hasMultiFile = true
+    if (!hasSingle && !hasMulti) return
     transforms[sh.name] = (xml: string) => {
       let next = xml
       if (fr) next = injectSheetViewFreeze(next, fr)
@@ -1319,36 +1330,50 @@ const buildFeatureTransforms = (): Record<string, (xml: string) => string> => {
       if (dv?.length) next = applyDvRules(next, dv)
       if (sp && sp.length) next = applySparklineAdditions(next, sp as readonly SparklineGroupAdd[])
       if (ps) next = applyPageSetupState(next, ps)
-      if (hl && hl.length) {
-        // Hyperlink transform is multi-file; just stash the edits for the
-        // transformer to pick up alongside the worksheet.
-        next = applyHyperlinkEdits(next, null, hl).worksheetXml
-      }
       return next
     }
   })
-  // v0.7.45 — multi-file transforms (notes + hyperlinks + tables). These
-  // operate on JSZip directly; collect them under a separate key.
-  const extras: Record<string, { worksheet: (xml: string) => string; rels?: (xml: string) => string }> = {}
-  sheets.value.forEach((sh, idx) => {
-    const hl = hyperlinksBySheet.value[idx]
-    const nt = notesBySheet.value[idx]
-    const tb = tablesBySheet.value[idx]
-    if (!hl?.length && !nt?.length && !tb?.length) return
-    extras[sh.name] = extras[sh.name] || { worksheet: (x) => x }
-    const prev = extras[sh.name]!
-    extras[sh.name] = {
-      worksheet: (xml) => {
-        let x = prev.worksheet(xml)
-        // Hyperlink rels pass — handled below in the rels callback; here we
-        // patch the worksheet to declare relationship namespace.
-        return x
-      },
-      rels: prev.rels,
+  if (!hasMultiFile) return { transforms, packageTransformer: null }
+
+  const packageTransformer = async (pkg: MutablePackage, paths: SheetPathResolver): Promise<void> => {
+    const touched = new Set<string>()
+    for (let idx = 0; idx < sheets.value.length; idx++) {
+      const sh = sheets.value[idx]
+      const nt = notesBySheet.value[idx]
+      const tb = tablesBySheet.value[idx]
+      const wsPath = await paths.resolveWorksheetPath(sh.name)
+      if (!wsPath) continue
+      if (nt && nt.length) {
+        await applySheetNotes(pkg as any, wsPath, nt, touched)
+      }
+      if (tb && tb.length) {
+        // Each table addition needs worksheetPath set to the resolved path.
+        const resolved: TableAddition[] = tb.map((t) => ({
+          ...t,
+          worksheetPath: wsPath,
+        }))
+        await applyTableAdditions(pkg as any, resolved, touched)
+      }
     }
-  })
-  void extras  // future: thread through transformWorkbook when multi-file is plumbed
-  return transforms
+    // Hyperlinks — must run LAST because it patches worksheet.xml + rels.xml.
+    for (let idx = 0; idx < sheets.value.length; idx++) {
+      const sh = sheets.value[idx]
+      const hl = hyperlinksBySheet.value[idx]
+      if (!hl?.length) continue
+      const wsPath = await paths.resolveWorksheetName?.(sh.name) ?? (await paths.resolveWorksheetPath(sh.name))
+      if (!wsPath) continue
+      const wsXml = await pkg.readText(wsPath)
+      const relsPath = wsPath.replace(/^xl\/worksheets\//, 'xl/worksheets/_rels/').replace(/\.xml$/, '.xml.rels')
+      let relsXml: string | null = null
+      if (await pkg.has(relsPath)) relsXml = await pkg.readText(relsPath)
+      const patch = applyHyperlinkEdits(wsXml, relsXml, hl)
+      pkg.write(wsPath, patch.worksheetXml)
+      if (patch.relsChanged && patch.relsXml !== null) {
+        pkg.write(relsPath, patch.relsXml)
+      }
+    }
+  }
+  return { transforms, packageTransformer }
 }
 
 // Tiny inline freeze-pane injector — delegates to xlsxAdapter via the
@@ -1391,9 +1416,19 @@ const flushSave = async () => {
       rows: sh.rows.map((r) => r.map((v) => buildCell(v))),
     }))
     let bytes = await saveXlsxBytes(wb)
-    const transforms = buildFeatureTransforms()
+    const { transforms, packageTransformer } = buildFeaturePipeline()
     if (Object.keys(transforms).length > 0) {
       bytes = await transformWorkbook(bytes, transforms)
+    }
+    if (packageTransformer) {
+      bytes = await transformPackage(bytes, async (pkg) => {
+        await packageTransformer(pkg, {
+          async resolveWorksheetPath(name) {
+            const io = await inspectXlsx(bytes)
+            return io.sheetPaths.get(name) ?? null
+          },
+        })
+      })
     }
     await uploadCollabDocBytes(props.docId, bytes, `${props.title || 'collab-doc'}.xlsx`)
     saveLabel.value = '已保存'
@@ -1419,9 +1454,19 @@ const exportXlsx = async () => {
       rows: sh.rows.map((r) => r.map((v) => buildCell(v))),
     }))
     let bytes = await saveXlsxBytes(wb)
-    const transforms = buildFeatureTransforms()
+    const { transforms, packageTransformer } = buildFeaturePipeline()
     if (Object.keys(transforms).length > 0) {
       bytes = await transformWorkbook(bytes, transforms)
+    }
+    if (packageTransformer) {
+      bytes = await transformPackage(bytes, async (pkg) => {
+        await packageTransformer(pkg, {
+          async resolveWorksheetPath(name) {
+            const io = await inspectXlsx(bytes)
+            return io.sheetPaths.get(name) ?? null
+          },
+        })
+      })
     }
     const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
     const blob = new Blob([ab], {
