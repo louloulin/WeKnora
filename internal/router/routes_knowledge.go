@@ -348,6 +348,9 @@ func RegisterWikiPageRoutes(r *gin.RouterGroup, wikiHandler *handler.WikiPageHan
 		// Viewer guard so a KB member can also discover cross-KB
 		// references without needing Admin.
 		wikiRead.GET("/pages/:slug/backlinks/cross-kb", g.Viewer(), g.KBAccessRead("kb_id"), wikiHandler.GetPageBacklinksCrossKB)
+		// AI Verification (Build #29) — runs the freshness /
+		// contradiction / link-health / trust-score checks on the page.
+
 		// Backlink graph v2 (Build #20) — same KBAccessRead guard; returns
 		// four sections (direct / indirect / related / broken) + stats in
 		// one round-trip so the panel can render the full graph without

@@ -100,6 +100,7 @@ type RouterParams struct {
 	DataSourceCredentialsHandler *handler.DataSourceCredentialsHandler
 	WeKnoraCloudHandler          *handler.WeKnoraCloudHandler
 	WikiPageHandler              *handler.WikiPageHandler
+	VerificationHandler          *handler.VerificationHandler
 	WikiAclHandler               *handler.WikiAclHandler
 	WikiTagHandler               *handler.WikiTagHandler
 	WikiTemplateHandler          *handler.WikiTemplateHandler
@@ -331,6 +332,12 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterDataSourceRoutes(v1, params.DataSourceHandler, params.DataSourceCredentialsHandler, rbacGuards)
 		RegisterWeKnoraCloudRoutes(v1, params.WeKnoraCloudHandler, rbacGuards)
 		RegisterWikiPageRoutes(v1, params.WikiPageHandler, params.WikiAclHandler, params.WikiTagHandler, params.WikiTemplateHandler, params.WikiSearchV2Handler, params.WikiCommentHandler, rbacGuards)
+		// AI Verification (Build #29) — per-page + per-KB scan routes.
+		// Same KBAccessRead guard as the page-level backlinks so KB members
+		// can introspect their own pages without Admin.
+		if params.VerificationHandler != nil {
+			RegisterVerificationRoutes(v1, params.VerificationHandler, rbacGuards)
+		}
 		RegisterWikiRealtimeRoutes(v1, params.WikiRealtimeWSHandler, rbacGuards)
 		RegisterWikiSyncBlockRoutes(v1, params.WikiSyncBlockHandler)
 		RegisterAgentStudioRoutes(v1, params.AgentStudioHandler)

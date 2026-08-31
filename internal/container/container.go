@@ -53,6 +53,7 @@ import (
 	dockbsvc "github.com/Tencent/WeKnora/internal/application/service/dockb"
 	dlpsvc "github.com/Tencent/WeKnora/internal/application/service/dlp"
 	"github.com/Tencent/WeKnora/internal/application/service"
+	verification "github.com/Tencent/WeKnora/internal/application/service/verification"
 	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
 	dbsvc "github.com/Tencent/WeKnora/internal/application/service/database"
 	"github.com/Tencent/WeKnora/internal/application/service/file"
@@ -891,6 +892,14 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewDataSourceHandler))
 	// Wiki page handler
 	must(container.Provide(handler.NewWikiPageHandler))
+	// AI Verification (Build #29) — wraps the verification.Service in
+	// an HTTP handler. The verification.Service is wired from the same
+	// wikiPage repo the rest of the wiki surface uses so the scanner
+	// reads the exact same page rows the editor writes.
+	must(container.Provide(func(repo interfaces.WikiPageRepository) *verification.Service {
+		return verification.NewService(verification.NewWikiPageFetcher(repo))
+	}))
+	must(container.Provide(handler.NewVerificationHandler))
 	// Wiki page ACL handler (Build #7 backend).
 	must(container.Provide(func(acl service.WikiAclService) *handler.WikiAclHandler {
 		return handler.NewWikiAclHandler(acl)
