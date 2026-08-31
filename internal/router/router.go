@@ -98,6 +98,7 @@ type RouterParams struct {
 	WikiTagHandler               *handler.WikiTagHandler
 	WikiTemplateHandler          *handler.WikiTemplateHandler
 	WikiSearchV2Handler          *handler.WikiSearchV2Handler
+	WikiRealtimeWSHandler        *handler.WikiRealtimeWSHandler
 	MemoryHandler                *handler.MemoryHandler
 	// CitationLogHandler — Build #30 B4. Wired optionally so the
 	// citation-log route is registered when the handler is present.
@@ -307,6 +308,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterDataSourceRoutes(v1, params.DataSourceHandler, params.DataSourceCredentialsHandler, rbacGuards)
 		RegisterWeKnoraCloudRoutes(v1, params.WeKnoraCloudHandler, rbacGuards)
 		RegisterWikiPageRoutes(v1, params.WikiPageHandler, params.WikiAclHandler, params.WikiTagHandler, params.WikiTemplateHandler, params.WikiSearchV2Handler, rbacGuards)
+		RegisterWikiRealtimeRoutes(v1, params.WikiRealtimeWSHandler, rbacGuards)
 		RegisterMemoryRoutes(v1, params.MemoryHandler, rbacGuards)
 		RegisterChunkerDebugRoutes(v1, rbacGuards)
 

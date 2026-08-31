@@ -438,6 +438,21 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewWikiAclRepository))
 	must(container.Provide(service.NewWikiAclService))
 	must(container.Provide(service.NewWikiPageService))
+
+	// v0.7.19 — wiki realtime (Yjs collaboration) wiring.
+	must(container.Provide(repository.NewWikiRealtimeSnapshotRepository))
+	must(container.Provide(repository.NewWikiRealtimeSessionRepository))
+	must(container.Provide(func(
+		snapRepo interfaces.WikiRealtimeSnapshotRepository,
+		sessRepo interfaces.WikiRealtimeSessionRepository,
+		checker *authz.CompositeChecker,
+	) *service.WikiRealtimeService {
+		return service.NewWikiRealtimeService(snapRepo, sessRepo, service.NewWikiRealtimeAuthzAdapter(checker))
+	}))
+	must(container.Provide(func(svc *service.WikiRealtimeService) *handler.WikiRealtimeWSHandler {
+		return handler.NewWikiRealtimeWSHandler(svc)
+	}))
+
 	must(container.Provide(repository.NewWikiBatchJobRepository))
 	must(container.Provide(repository.NewWikiBatchAuditRepository))
 	must(container.Provide(repository.NewWikiBatchFailureRepository))
