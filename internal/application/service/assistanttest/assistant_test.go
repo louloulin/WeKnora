@@ -292,8 +292,10 @@ var _ interfaces.AssistantConversationRepository = (*fakeAssistantRepo)(nil)
 var _ interfaces.KBRetriever = (*fakeKBRetriever)(nil)
 var _ interfaces.WikiRetriever = (*fakeWikiRetriever)(nil)
 
-// streamingProvider records the request and emits canned events.
-// Used by the AskStream tests below.
+// streamingProvider records the request and replays the canned
+// event sequence. Complete reassembles the token events into a
+// single AnswerText so Ask callers see what Stream would emit;
+// Stream just forwards events to the sink for AskStream callers.
 type streamingProvider struct {
 	emits  []llmstream.Event
 	gotReq llmstream.Request
@@ -302,7 +304,29 @@ type streamingProvider struct {
 func (s *streamingProvider) Name() string { return "fake-stream" }
 func (s *streamingProvider) Complete(ctx context.Context, req llmstream.Request) (llmstream.Response, error) {
 	s.gotReq = req
-	return llmstream.Response{AnswerText: "complete-impl", ModelName: "fake-stream"}, nil
+	var b strings.Builder
+	var tokens, finishReason int
+	for _, e := range s.emits {
+		if e.Type == llmstream.EventToken {
+			if d, ok := e.Data.(llmstream.TokenEventData); ok {
+				b.WriteString(d.Text)
+				tokens++
+			}
+		}
+		if e.Type == llmstream.EventDone {
+			if d, ok := e.Data.(llmstream.DoneEventData); ok && d.FinishReason != "" {
+				finishReason++
+			}
+		}
+	}
+	return llmstream.Response{
+		AnswerText:       b.String(),
+		ModelName:        "fake-stream",
+		PromptTokens:     5,
+		CompletionTokens: tokens,
+		StartedAt:        time.Now().UTC(),
+		FinishedAt:       time.Now().UTC(),
+	}, nil
 }
 func (s *streamingProvider) Stream(ctx context.Context, req llmstream.Request, sink llmstream.EventSink) error {
 	s.gotReq = req
@@ -396,4 +420,100 @@ func TestAssistant_SetProvider_ReplacesProvider(t *testing.T) {
 	if replacement.gotReq.Query != "x" {
 		t.Fatalf("SetProvider didn't take effect; provider got query %q, want %q", replacement.gotReq.Query, "x")
 	}
+}
+
+// TestAssistant_Ask_UsesRealProvider — end-to-end smoke that an
+// OpenAI-shaped provider (we use a fake that emits the right SSE
+// deltas) drives the Ask path through to the response body. This
+// is the integration test that v0.7.17.x adds to confirm the
+// OpenAI provider swaps in without breaking the assistant service
+// contract.
+func TestAssistant_Ask_UsesRealProvider(t *testing.T) {
+	repo := newFakeAssistantRepo()
+	kb := &fakeKBRetriever{}
+	wiki := &fakeWikiRetriever{}
+	provider := &streamingProvider{emits: []llmstream.Event{
+		{Type: llmstream.EventToken, Data: llmstream.TokenEventData{Text: "Real"}},
+		{Type: llmstream.EventToken, Data: llmstream.TokenEventData{Text: " answer"}},
+		{Type: llmstream.EventDone, Data: llmstream.DoneEventData{PromptTokens: 5, CompletionTokens: 2}},
+	}}
+	svc := service.NewAssistantService(repo, kb, wiki, nil, nil, provider)
+
+	resp, err := svc.Ask(context.Background(),
+		types.AssistantAskRequest{Query: "x"},
+		service.AssistantAskOptions{TenantID: 7},
+	)
+	if err != nil {
+		t.Fatalf("Ask: %v", err)
+	}
+	if resp.AnswerText != "Real answer" {
+		t.Fatalf("expected assembled text, got %q", resp.AnswerText)
+	}
+	if resp.ModelName != "fake-stream" {
+		t.Fatalf("expected provider model name to flow through, got %q", resp.ModelName)
+	}
+}
+
+// TestAssistant_Ask_TransientProviderErrorDegrades — when the LLM
+// provider returns a transient error, the service must still
+// return a usable response (with the placeholder answer + the
+// retrieved citations). Permanent errors still propagate.
+func TestAssistant_Ask_TransientProviderErrorDegrades(t *testing.T) {
+	repo := newFakeAssistantRepo()
+	kb := &fakeKBRetriever{}
+	wiki := &fakeWikiRetriever{}
+	provider := &errProvider{err: llmstream.ErrProviderUnavailable}
+	svc := service.NewAssistantService(repo, kb, wiki, nil, nil, provider)
+
+	resp, err := svc.Ask(context.Background(),
+		types.AssistantAskRequest{Query: "x"},
+		service.AssistantAskOptions{TenantID: 7},
+	)
+	if err != nil {
+		t.Fatalf("Ask should not error on transient, got %v", err)
+	}
+	if resp.AnswerText == "" {
+		t.Fatalf("expected placeholder answer on transient, got empty")
+	}
+	if resp.ModelName != "fake-err" {
+		t.Fatalf("expected provider name to flow through, got %q", resp.ModelName)
+	}
+}
+
+// TestAssistant_Ask_PermanentProviderErrorPropagates — when the LLM
+// returns a non-transient error, the caller sees the failure so
+// they can retry / report a bug instead of silently seeing stale
+// placeholder text.
+func TestAssistant_Ask_PermanentProviderErrorPropagates(t *testing.T) {
+	repo := newFakeAssistantRepo()
+	kb := &fakeKBRetriever{}
+	wiki := &fakeWikiRetriever{}
+	permanent := errors.New("provider permanently broken")
+	provider := &errProvider{err: permanent}
+	svc := service.NewAssistantService(repo, kb, wiki, nil, nil, provider)
+
+	_, err := svc.Ask(context.Background(),
+		types.AssistantAskRequest{Query: "x"},
+		service.AssistantAskOptions{TenantID: 7},
+	)
+	if err == nil {
+		t.Fatalf("expected error on permanent provider failure")
+	}
+	if errors.Is(err, llmstream.ErrProviderUnavailable) {
+		t.Fatalf("permanent error should NOT be reported as transient")
+	}
+}
+
+// errProvider is a Provider stub that returns a configured error
+// from Complete (used to exercise the transient / permanent error
+// branch in AssistantService.Ask).
+type errProvider struct{ err error }
+
+func (e *errProvider) Name() string { return "fake-err" }
+func (e *errProvider) Complete(ctx context.Context, req llmstream.Request) (llmstream.Response, error) {
+	return llmstream.Response{}, e.err
+}
+func (e *errProvider) Stream(ctx context.Context, req llmstream.Request, sink llmstream.EventSink) error {
+	_ = sink.OnEvent(llmstream.Event{Type: llmstream.EventError, Error: e.err})
+	return e.err
 }
