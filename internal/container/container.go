@@ -48,7 +48,7 @@ import (
 	tencentVectorDBRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/tencentvectordb"
 	weaviateRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/weaviate"
 	connsvc "github.com/Tencent/WeKnora/internal/application/service/connector"
-
+	asvc "github.com/Tencent/WeKnora/internal/application/service/agentstudio"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
 	dbsvc "github.com/Tencent/WeKnora/internal/application/service/database"
@@ -492,6 +492,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(func(svc *service.WikiRealtimeService) *handler.WikiRealtimeWSHandler {
 		return handler.NewWikiRealtimeWSHandler(svc)
 	}))
+	// v0.7.21 — Custom Agent Studio wiring (飞书妙搭 / Notion Custom Agents parity).
+	must(container.Provide(repository.NewAgentStudioRepository))
+	must(container.Provide(asvc.NewAgentStudioService))
+	must(container.Provide(handler.NewAgentStudioHandler))
+
 	// v0.7.20 — wiki sync blocks wiring (Notion Synced Blocks / 飞书同步块 parity).
 	must(container.Provide(repository.NewWikiSyncBlockRepository))
 	must(container.Provide(repository.NewWikiSyncBlockRefRepository))
