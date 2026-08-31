@@ -106,7 +106,6 @@ type RouterParams struct {
 	WikiCommentHandler            *handler.WikiCommentHandler
 	WikiTemplateHandler          *handler.WikiTemplateHandler
 	WikiSearchV2Handler          *handler.WikiSearchV2Handler
-	WikiCommentHandler            *handler.WikiCommentHandler
 	WikiRealtimeWSHandler        *handler.WikiRealtimeWSHandler
 	CollabDocHandler            *handler.CollabDocHandler
 	CollabDocBytesHandler        *handler.CollabDocBytesHandler
@@ -114,6 +113,7 @@ type RouterParams struct {
 	CollabDocCommentHandler      *handler.CollabDocCommentHandler
 	CollabDocAuditHandler        *handler.CollabDocAuditHandler
 	MindMapHandler               *handler.MindMapHandler
+	SlideHandler                  *handler.SlideHandler
 	WikiSyncBlockHandler         *handler.WikiSyncBlockHandler
 	AgentStudioHandler           *handler.AgentStudioHandler
 	DLPAuthZHandler              *handler.DLPAuthZHandler
@@ -377,6 +377,9 @@ func NewRouter(params RouterParams) *gin.Engine {
 		}
 		if params.DocIntegrationHandler != nil {
 			params.DocIntegrationHandler.Mount(v1)
+		}
+		if params.SlideHandler != nil {
+			params.SlideHandler.Mount(v1)
 		}
 		if params.MarketplaceHandler != nil {
 			params.MarketplaceHandler.Mount(v1)

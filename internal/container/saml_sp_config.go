@@ -8,6 +8,9 @@ import (
 	"encoding/pem"
 	"errors"
 	"math/big"
+	"os"
+	"strings"
+	"github.com/Tencent/WeKnora/internal/samlsp"
 	"time"
 )
 
@@ -63,4 +66,53 @@ func generateDevCert() (*x509.Certificate, *rsa.PrivateKey, error) {
 		return nil, nil, err
 	}
 	return cert, key, nil
+}
+
+// newSAMLSPConfig reads the SP-side SAML configuration from the
+// process environment. The cert + key are PEM-encoded; we generate
+// a self-signed pair on first boot when neither env var is set so
+// the SP works out of the box for local development. Production
+// deployments must provision SAML_SP_CERT_PEM + SAML_SP_KEY_PEM.
+//
+// TODO: read the SP cert from the admin-managed settings table
+// once the SAML admin UI lands (today the admin can only manage
+// the IdP-side config; the SP side is operator-managed).
+func newSAMLSPConfig() (*samlsp.SPConfig, error) {
+	cfg := &samlsp.SPConfig{
+		EntityID:    envOr("SAML_SP_ENTITY_ID", "urn:weknora:saml:sp"),
+		ACSURL:      envOr("SAML_SP_ACS_URL", "http://localhost:8080/api/v1/auth/saml/acs"),
+		SLOURL:      envOr("SAML_SP_SLO_URL", "http://localhost:8080/api/v1/auth/saml/slo"),
+		MetadataURL: envOr("SAML_SP_METADATA_URL", "http://localhost:8080/api/v1/auth/saml/metadata"),
+	}
+	certPEM := envOr("SAML_SP_CERT_PEM", "")
+	keyPEM := envOr("SAML_SP_KEY_PEM", "")
+	if certPEM != "" && keyPEM != "" {
+		cert, err := decodePEMCertificate(certPEM)
+		if err != nil {
+			return nil, err
+		}
+		key, err := decodePEMPrivateKey(keyPEM)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Certificate = cert
+		cfg.Key = key
+	} else {
+		// Dev fallback: ephemeral self-signed cert. The key never
+		// leaves the process so this is acceptable for local dev.
+		cert, key, err := generateDevCert()
+		if err != nil {
+			return nil, err
+		}
+		cfg.Certificate = cert
+		cfg.Key = key
+	}
+	return cfg, nil
+}
+
+func envOr(key, fallback string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
+	}
+	return fallback
 }

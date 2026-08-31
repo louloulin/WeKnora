@@ -64,6 +64,7 @@ import (
 	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
 	dbsvc "github.com/Tencent/WeKnora/internal/application/service/database"
 	mmsvc "github.com/Tencent/WeKnora/internal/application/service/mindmap"
+	sldsvc "github.com/Tencent/WeKnora/internal/application/service/slides"
 	"github.com/Tencent/WeKnora/internal/application/service/file"
 	"github.com/Tencent/WeKnora/internal/application/service/memory"
 	"github.com/Tencent/WeKnora/internal/application/service/retriever"
@@ -104,7 +105,6 @@ import (
 	"github.com/Tencent/WeKnora/internal/models/limiter"
 	"github.com/Tencent/WeKnora/internal/models/utils/ollama"
 	"github.com/Tencent/WeKnora/internal/router"
-	"github.com/Tencent/WeKnora/internal/samlsp"
 	"github.com/Tencent/WeKnora/internal/storageallowlist"
 	"github.com/Tencent/WeKnora/internal/stream"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
@@ -550,6 +550,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewMindMapRepository))
 	must(container.Provide(mmsvc.NewMindMapService))
 	must(container.Provide(handler.NewMindMapHandler))
+	// v0.7.37 Build #44 — Slides (Markdown → 演示文稿). Deck/slide persistence,
+	// auto-generate from doc markdown, export to markdown/json/html, audit
+	// hook reserved for Build #46 Governance. Mirrors the MindMap wiring.
+	must(container.Provide(repository.NewSlideDeckRepository))
+	must(container.Provide(sldsvc.NewSlideService))
+	must(container.Provide(handler.NewSlideHandler))
 	// v0.7.26 Build #31 — formula / rollup / linked-record engine.
 	// Adapter so the formula handler can ask the database service for a field.
 	must(container.Provide(func(svc *dbsvc.Service) handler.FieldSource {
@@ -724,9 +730,6 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewKnowledgeReferenceService))
 	must(container.Provide(service.NewWikiKBReferenceBackfillService))
 	must(container.Provide(service.NewWikiTagService))
-	// Wiki page comments (Build #22 / v0.7.25) — reply / resolve / anchor.
-	must(container.Provide(repository.NewWikiCommentRepository))
-	must(container.Provide(service.NewWikiCommentService))
 	// Wiki page template skeleton engine (Build #18). Service is
 	// constructed un-wired; wireWikiTemplateService injects the page
 	// and tag services so the apply-template path can create child
@@ -1031,8 +1034,6 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	}))
 	// Wiki tag handler (Build #17 backend).
 	must(container.Provide(handler.NewWikiTagHandler))
-	// Wiki page comments handler (Build #22 / v0.7.25).
-	must(container.Provide(handler.NewWikiCommentHandler))
 	// Inline AI (v0.7.25 Build #23) — paragraph-level actions
 	// (summarize / translate / rewrite / explain / extract_task /
 	// generate_table). Resolves the tenant's default chat model
