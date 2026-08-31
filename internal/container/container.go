@@ -80,6 +80,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/im/yunzhijia"
 	"github.com/Tencent/WeKnora/internal/infrastructure/docparser"
 	infra_web_search "github.com/Tencent/WeKnora/internal/infrastructure/web_search"
+	"github.com/Tencent/WeKnora/internal/llmstream"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/mcp"
 	"github.com/Tencent/WeKnora/internal/models/chat"
@@ -512,12 +513,20 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	) *handler.WikiSearchV2Handler {
 		return handler.NewWikiSearchV2Handler(kbSvc, searchSvc, pageHandler.SearchPages)
 	}))
-	// AI Assistant Q&A backend (Build v0.7.15). The repo persists
-	// one row per Ask turn; the service fuses KB and Wiki retrieval,
-	// strips the wiki <mark> tags, persists an audit row, and
-	// returns a structured response. The handler exposes 3 endpoints
-	// (ask / list conversations / get a single conversation thread).
+	// AI Assistant Q&A backend (Build v0.7.15 + v0.7.17). The repo
+	// persists one row per Ask turn; the service fuses KB and Wiki
+	// retrieval, strips the wiki <mark> tags, persists an audit row,
+	// and (in v0.7.17) delegates answer generation to an LLM Provider.
+	// The handler exposes 4 endpoints: ask (sync), ask-stream
+	// (?stream=1, SSE), list conversations, get a single conversation
+	// thread.
 	must(container.Provide(repository.NewAssistantConversationRepository))
+	// Default LLM provider — NoopProvider returns the same placeholder
+	// text v0.7.15 produced. Replace with a real OpenAI / Anthropic /
+	// Doubao provider once those land in v0.7.17.x.
+	must(container.Provide(func() llmstream.Provider {
+		return llmstream.NoopProvider{}
+	}))
 	must(container.Provide(service.NewAssistantService))
 	must(container.Provide(handler.NewAssistantHandler))
 	must(container.Provide(service.NewWikiIngestService, dig.Name("wikiIngest")))
