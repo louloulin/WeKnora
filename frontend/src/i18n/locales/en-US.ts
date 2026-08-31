@@ -459,6 +459,22 @@ export default {
     channelWechat: 'WeChat',
     channelWecom: 'WeCom',
     channelFeishu: 'Feishu',
+    collabDoc: {
+      title: 'Collaborative Documents',
+      sub: 'Feishu / Tencent document parity: DOC, SHEET, SLIDE with real-time multi-user editing.',
+      createTitle: 'New document title',
+      kind: 'Kind',
+      visibility: 'Visibility',
+      updated: 'Updated',
+      delete: 'Delete',
+      empty: 'No documents yet. Click "New" to create your first collaborative document.',
+      backToList: '← Back to list',
+      syncToKB: 'Sync to knowledge base',
+      kbIdPlaceholder: 'Knowledge base ID',
+      connected: 'Connected',
+      connecting: 'Connecting...',
+      create: 'New',
+    },
     channelFeishuDrive: 'Feishu Drive',
     channelLarkDrive: 'Lark Drive',
     channelDingtalk: 'DingTalk',
@@ -2895,10 +2911,10 @@ export default {
         rss: 'RSS / Atom',
         confluence: 'Confluence',
         notion: 'Notion',
-        jira: 'Jira'
+        jira: 'Jira',
         m365: 'Microsoft 365',
-        google_workspace: 'Google Workspace'
-      }
+        google_workspace: 'Google Workspace',
+      },
     },
     dlp: {
       editorTitle: 'DLP Policy Editor — sensitive data protection',
@@ -6724,9 +6740,9 @@ export default {
         rss: 'RSS / Atom',
         confluence: 'Confluence',
         notion: 'Notion',
-        jira: 'Jira'
+        jira: 'Jira',
         m365: 'Microsoft 365',
-        google_workspace: 'Google Workspace'
+        google_workspace: 'Google Workspace',
       },
       feishu: 'Feishu',
       lark: 'Lark',

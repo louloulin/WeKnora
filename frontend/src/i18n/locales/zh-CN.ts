@@ -744,9 +744,9 @@ export default {
         rss: 'RSS / Atom',
         confluence: 'Confluence',
         notion: 'Notion',
-        jira: 'Jira'
+        jira: 'Jira',
         m365: 'Microsoft 365',
-        google_workspace: 'Google Workspace'
+        google_workspace: 'Google Workspace',
       },
       feishu: '飞书',
       lark: 'Lark（飞书国际版）',
@@ -4476,9 +4476,9 @@ export default {
         rss: 'RSS / Atom',
         confluence: 'Confluence',
         notion: 'Notion',
-        jira: 'Jira'
+        jira: 'Jira',
         m365: 'Microsoft 365',
-        google_workspace: 'Google Workspace'
+        google_workspace: 'Google Workspace',
       }
     },
     dlp: {
@@ -6814,6 +6814,22 @@ export default {
     channelWechat: '微信',
     channelWecom: '企业微信',
     channelFeishu: '飞书',
+    collabDoc: {
+      title: '协作文档',
+      sub: '类似飞书文档 / 腾讯文档：DOC、SHEET、SLIDE 三类多人实时协作。',
+      createTitle: '新文档标题',
+      kind: '类型',
+      visibility: '可见性',
+      updated: '更新时间',
+      delete: '删除',
+      empty: '尚无文档，点击"新建"创建第一个协作文档。',
+      backToList: '← 返回列表',
+      syncToKB: '同步到知识库',
+      kbIdPlaceholder: '知识库 ID',
+      connected: '已连接',
+      connecting: '连接中...',
+      create: '新建',
+    },
     channelFeishuDrive: "飞书云盘",
     channelLarkDrive: "Lark 云盘",
     channelDingtalk: '钉钉',
