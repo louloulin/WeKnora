@@ -263,3 +263,7 @@ func (r *fakeWikiBacklinksCacheRepo) CountByKB(_ context.Context, _ string) (int
 func (r *fakeWikiBacklinksCacheRepo) DeleteByKB(_ context.Context, _ string) (int64, error) { return 0, nil }
 
 func (r *fakeWikiBacklinksCacheRepo) ListInvalidationLog(_ context.Context, _ string, _, _ int) ([]*types.WikiBacklinksCacheInvalidationLogEntry, int64, error) { return nil, 0, nil }
+
+func (r *fakeWikiBacklinksCacheRepo) LogInvalidation(_ context.Context, _ *types.WikiBacklinksCacheInvalidationLogEntry) error { return nil }
+
+func (r *fakeWikiBacklinksCacheRepo) SumPayloadSizeByKB(_ context.Context, _ string) (int64, error) { return 0, nil }

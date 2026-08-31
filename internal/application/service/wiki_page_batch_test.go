@@ -367,3 +367,10 @@ func TestAssertBatchKBOwnership_FlagsFirstCrossKB(t *testing.T) {
 		t.Errorf("mismatch detail wrong: %+", mismatch)
 	}
 }
+
+// CountByType satisfies the new interfaces.WikiPageRepository method.
+func (r *stubBatchRepo) CountByType(_ context.Context, _ string) (map[string]int64, error) { return map[string]int64{}, nil }
+
+func (r *stubBatchRepo) CountOrphans(_ context.Context, _ string) (int64, error) { return 0, nil }
+
+func (r *stubBatchRepo) CountPagesByFolder(_ context.Context, _ string) (int64, error) { return 0, nil }
