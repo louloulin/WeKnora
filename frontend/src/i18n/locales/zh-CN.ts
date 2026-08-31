@@ -3713,6 +3713,36 @@ export default {
       posting: '正在发表...',
       loadFailed: '加载评论失败'
     },
+    inlineAI: {
+      title: 'AI 助手',
+      menuLabel: '问 AI',
+      actions: {
+        summarize: '总结',
+        translate: '翻译',
+        rewrite: '改写',
+        explain: '解释',
+        extractTask: '提取任务',
+        generateTable: '生成表格'
+      },
+      targetLanguage: '目标语言',
+      targetLanguagePlaceholder: '例如 English / 中文',
+      instruction: '自定义指令',
+      instructionPlaceholder: '可选，覆盖默认 action 提示',
+      modelLabel: '模型（可选）',
+      modelPlaceholder: '使用空间默认',
+      run: '运行',
+      running: '运行中...',
+      resultTitle: 'AI 结果',
+      insertIntoDoc: '插入到文档',
+      replaceSelection: '替换选中内容',
+      copy: '复制',
+      copied: '已复制',
+      errorTitle: 'AI 调用失败',
+      errorUnavailable: '当前空间未配置聊天模型',
+      errorBadInput: '输入无效 — 请至少选择一句话',
+      tooLong: '选中文本过长（最大 16 KB）',
+      applyFailed: '结果无法应用到文档'
+    },
     wikiBrowser: {
       editBtn: '编辑',
       historyBtn: '历史',

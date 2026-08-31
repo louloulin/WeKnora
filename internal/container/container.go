@@ -715,6 +715,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewWikiTagHandler))
 	// Wiki page comments handler (Build #22 / v0.7.25).
 	must(container.Provide(handler.NewWikiCommentHandler))
+	// Inline AI (v0.7.25 Build #23) — paragraph-level actions
+	// (summarize / translate / rewrite / explain / extract_task /
+	// generate_table). Resolves the tenant's default chat model
+	// when the request does not specify model_id.
+	must(container.Provide(service.NewInlineAIService))
+	must(container.Provide(handler.NewInlineAIHandler))
 	must(container.Provide(handler.NewWikiTemplateHandler))
 	// Complete the Wiki post-construction wiring only after all providers
 	// participating in the page-service dependency graph are registered.

@@ -11,3 +11,10 @@ var (
 	ErrWikiCommentForbidden = errors.New("wiki comment forbidden")
 	ErrWikiCommentBadInput  = errors.New("wiki comment bad input")
 )
+
+// Inline AI sentinels. The service translates LLM failures into
+// ErrInlineAIDown so the handler can render a friendly "AI temporarily
+// unavailable" toast without leaking provider internals.
+var (
+	ErrInlineAIUnavailable = errors.New("inline ai: model unavailable")
+)

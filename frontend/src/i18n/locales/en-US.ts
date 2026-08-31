@@ -2837,6 +2837,36 @@ export default {
       posting: 'Posting...',
       loadFailed: 'Failed to load comments'
     },
+    inlineAI: {
+      title: 'AI Assistant',
+      menuLabel: 'Ask AI',
+      actions: {
+        summarize: 'Summarize',
+        translate: 'Translate',
+        rewrite: 'Rewrite',
+        explain: 'Explain',
+        extractTask: 'Extract tasks',
+        generateTable: 'Generate table'
+      },
+      targetLanguage: 'Target language',
+      targetLanguagePlaceholder: 'e.g. English / 中文',
+      instruction: 'Custom instruction',
+      instructionPlaceholder: 'Optional override for the action prompt',
+      modelLabel: 'Model (optional)',
+      modelPlaceholder: 'Use tenant default',
+      run: 'Run',
+      running: 'Running...',
+      resultTitle: 'AI result',
+      insertIntoDoc: 'Insert into document',
+      replaceSelection: 'Replace selection',
+      copy: 'Copy',
+      copied: 'Copied',
+      errorTitle: 'AI failed',
+      errorUnavailable: 'No chat model configured for this tenant',
+      errorBadInput: 'Invalid input — please select at least one sentence',
+      tooLong: 'Selection is too long (max 16 KB)',
+      applyFailed: 'Could not apply the result to the document'
+    },
     wikiBrowser: {
       editBtn: 'Edit',
       historyBtn: 'History',
