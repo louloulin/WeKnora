@@ -27,12 +27,12 @@ const (
 //	op          = "eq" / "ne" / "co" / "sw" / "pr"
 //	value       = DQUOTE *value-char DQUOTE
 type Filter struct {
-	Kind     FilterKind
-	Attr     string
-	Op       string
-	Value    string
-	Left     *Filter
-	Right    *Filter
+	Kind  FilterKind
+	Attr  string
+	Op    string
+	Value string
+	Left  *Filter
+	Right *Filter
 }
 
 // ParseFilter parses a SCIM 2.0 filter expression. Supports

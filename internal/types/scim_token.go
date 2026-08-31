@@ -19,7 +19,7 @@ type SCIMToken struct {
 	ID          uint64         `gorm:"primaryKey;autoIncrement" json:"id"`
 	TenantID    uint64         `gorm:"not null;uniqueIndex:uniq_scim_token_tenant" json:"tenant_id"`
 	Name        string         `gorm:"size:128;not null" json:"name"`
-	TokenHash   string         `gorm:"size:128;not null" json:"-"`        // SHA-256 hex
+	TokenHash   string         `gorm:"size:128;not null" json:"-"`           // SHA-256 hex
 	TokenPrefix string         `gorm:"size:16;not null" json:"token_prefix"` // first 8 chars for display
 	CreatedBy   string         `gorm:"type:varchar(36);not null" json:"created_by"`
 	LastUsedAt  *time.Time     `json:"last_used_at,omitempty"`

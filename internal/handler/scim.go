@@ -11,9 +11,9 @@ import (
 
 	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/application/service"
+	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/scimsp"
 	"github.com/Tencent/WeKnora/internal/types"
-	"github.com/Tencent/WeKnora/internal/logger"
 )
 
 // SCIM keys used to thread values through gin's context.
@@ -76,9 +76,9 @@ func scimToken(c *gin.Context) (uint64, bool) {
 // plus the discovery endpoints. Every method writes the
 // application/scim+json content type so IdPs can sniff responses.
 type SCIMHandler struct {
-	tokenSvc    *service.SCIMTokenService
-	syncLogSvc  *service.SCIMSyncLogService
-	userSvc     *service.SCIMUserService
+	tokenSvc   *service.SCIMTokenService
+	syncLogSvc *service.SCIMSyncLogService
+	userSvc    *service.SCIMUserService
 }
 
 // NewSCIMHandler constructs the handler.
@@ -109,10 +109,10 @@ func (h *SCIMHandler) ServiceProviderConfig(c *gin.Context) {
 func (h *SCIMHandler) ResourceTypes(c *gin.Context) {
 	c.Header("Content-Type", scimsp.ContentType)
 	c.JSON(http.StatusOK, gin.H{
-		"schemas": []string{scimsp.SchemaListResponse},
+		"schemas":      []string{scimsp.SchemaListResponse},
 		"totalResults": 2,
 		"itemsPerPage": 2,
-		"startIndex": 1,
+		"startIndex":   1,
 		"Resources": []any{
 			map[string]any{
 				"schemas":     []string{scimsp.SchemaResourceType},
@@ -381,8 +381,6 @@ func writeSCIMErrorFor(c *gin.Context, err error) {
 		writeSCIMError(c, http.StatusInternalServerError, "internal error", "")
 	}
 }
-
-
 
 func buildLocation(prefix, id string) string {
 	return prefix + "/" + id
