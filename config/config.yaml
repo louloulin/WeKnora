@@ -111,3 +111,18 @@ extract:
 tenant:
   # Enable cross-tenant access (can be enabled for intranet environments)
   enable_cross_tenant_access: false
+
+# GeoIP lookup — used by Conditional Access to auto-fill the country
+# field of an EvaluationRequest from the request's ClientIP. The
+# default resolver is a no-op (returns miss for every IP); replace it
+# with a MMDBCountryResolver by setting the GEOIP_MMDB_PATH env var
+# and rebuilding with `-tags geoipmmdb`.
+#
+# static_mapping entries are hand-maintained CIDR → country pairs that
+# take precedence over the mmdb lookup (handy for whitelisting your
+# own egress IPs before they hit a third-party DB).
+geoip:
+  static_mapping:
+    # example:
+    #   "203.0.113.0/24": "CN"
+    #   "198.51.100.0/24": "US"

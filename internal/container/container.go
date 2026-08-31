@@ -72,6 +72,7 @@ import (
 	rssConnector "github.com/Tencent/WeKnora/internal/datasource/connector/rss"
 	yuqueConnector "github.com/Tencent/WeKnora/internal/datasource/connector/yuque"
 	"github.com/Tencent/WeKnora/internal/event"
+	"github.com/Tencent/WeKnora/internal/geoiplookup"
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/handler/session"
 	imPkg "github.com/Tencent/WeKnora/internal/im"
@@ -239,8 +240,22 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewSCIMSyncLogService))
 	must(container.Provide(service.NewSCIMUserService))
 	must(container.Provide(service.NewMFAService))
+	// GeoIP resolver — CountryResolver is the seam ConditionalAccessService
+	// uses to auto-fill the country field of an EvaluationRequest. The
+	// default is NoopCountryResolver; deployments with a MaxMind
+	// GeoLite2-Country.mmdb can swap in MMDBCountryResolver via env
+	// config (rebuild with -tags geoipmmdb).
+	must(container.Provide(func() geoiplookup.CountryResolver {
+		return geoiplookup.NoopCountryResolver{}
+	}))
 	// ConditionalAccessService evaluates the policy engine.
 	must(container.Provide(service.NewConditionalAccessService))
+	// Wire the resolver into the service at construction time so the
+	// evaluator can FillCountryFromIP before MatchConditions runs.
+	must(container.Decorate(func(svc *service.ConditionalAccessService, resolver geoiplookup.CountryResolver) *service.ConditionalAccessService {
+		svc.SetCountryResolver(resolver)
+		return svc
+	}))
 	must(container.Provide(newSAMLSPConfig))
 	// AuthZ persistent tuple store — read lookup + admin CRUD service.
 	// The lookup is registered before the composite so the closure
