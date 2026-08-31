@@ -92,18 +92,13 @@ func (c *CompositeChecker) DisableCache() {
 	c.decisionCache = nil
 }
 
-// Check is the primary entry point. Cross-tenant short-circuit runs
-// first; then adapter dispatch; then cache lookup; then adapter
-// answer with cache write-back.
+// Check is the primary entry point. Cache lookup runs first; then
+// adapter dispatch; then cache write-back. Cross-tenant handling
+// lives inside each adapter because KB / Agent / WikiPage must
+// consult their cross-tenant share / ACL layer before denying;
+// the TenantRole / Notification / ChatMessage adapters re-check
+// cross-tenant themselves and deny conservatively.
 func (c *CompositeChecker) Check(ctx context.Context, req CheckRequest) Decision {
-	// Cross-tenant deny is the cheapest possible answer and is
-	// always conservative — no need to round-trip.
-	if req.User.TenantID != 0 && req.Object.TenantID != 0 &&
-		req.User.TenantID != req.Object.TenantID {
-		return Deny(CodeWrongTenant, "composite",
-			"principal in tenant "+itoa(req.User.TenantID)+
-				" cannot access resource in tenant "+itoa(req.Object.TenantID))
-	}
 	if key := c.cacheKey(req); key != "" {
 		if d, ok := c.lookupCache(key); ok {
 			return d
@@ -215,22 +210,6 @@ func (c *CompositeChecker) storeCache(key string, d Decision) {
 	c.decisionCache.put(key, d)
 }
 
-// itoa is a local int-to-string helper to keep this file allocation-
-// light. Cheaper than fmt.Sprintf for the cross-tenant deny path
-// which is the single hottest entry point.
-func itoa(n uint64) string {
-	if n == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(buf[i:])
-}
 
 // StableReasonOrder is a small helper for tests + admin UI:
 // sort a set of Decisions so the most "specific" deny wins.

@@ -106,11 +106,11 @@ type NotificationAdapter struct {
 	// recipient user id. When nil the adapter cannot answer and
 	// falls back to CodeNoSuchResource so the caller surfaces
 	// 404 instead of 403 (we do not want to leak existence).
-	RecipientLookup func(ctx context.Context, tenantID uint64, notificationID string) (recipientUserID string, found bool, err error)
+	RecipientLookup NotificationRecipientLookup
 }
 
 // NewNotificationAdapter constructs the adapter.
-func NewNotificationAdapter(lookup func(ctx context.Context, tenantID uint64, notificationID string) (string, bool, error)) *NotificationAdapter {
+func NewNotificationAdapter(lookup NotificationRecipientLookup) *NotificationAdapter {
 	return &NotificationAdapter{RecipientLookup: lookup}
 }
 
@@ -161,11 +161,11 @@ func (a *NotificationAdapter) Invalidate(_ context.Context, _ Object) error {
 type ChatMessageAdapter struct {
 	// SessionOwnerLookup resolves (tenant, messageID) to the
 	// session owner (creator) user id.
-	SessionOwnerLookup func(ctx context.Context, tenantID uint64, messageID string) (ownerID string, sessionID string, found bool, err error)
+	SessionOwnerLookup ChatMessageSessionOwnerLookup
 }
 
 // NewChatMessageAdapter constructs the adapter.
-func NewChatMessageAdapter(lookup func(ctx context.Context, tenantID uint64, messageID string) (string, string, bool, error)) *ChatMessageAdapter {
+func NewChatMessageAdapter(lookup ChatMessageSessionOwnerLookup) *ChatMessageAdapter {
 	return &ChatMessageAdapter{SessionOwnerLookup: lookup}
 }
 
