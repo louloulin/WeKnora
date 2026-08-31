@@ -66,6 +66,7 @@ type RouterParams struct {
 	EvalBadcaseHandler           *handler.EvalBadcaseHandler
 	AuthHandler                  *handler.AuthHandler
 	SAMLHandler                  *handler.SAMLHandler
+	LDAPHandler                  *handler.LDAPHandler
 	InitializationHandler        *handler.InitializationHandler
 	SystemHandler                *handler.SystemHandler
 	AuthZHandler                 *handler.AuthZHandler
@@ -243,6 +244,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		v1.Use(rbacGuards.apiKeyAuthorizer.Middleware())
 
 		RegisterAuthRoutes(v1, params.AuthHandler, rbacGuards, params.SAMLHandler)
+		registerLDAPRoutes(v1, v1.Group("/api/v1", rbacGuards.SystemAdmin()), params.LDAPHandler)
 		RegisterTenantRoutes(v1, params.TenantHandler, params.TenantMemberHandler, params.TenantInvitationHandler, params.AuditLogHandler, rbacGuards)
 		RegisterMyInvitationRoutes(v1, params.TenantInvitationHandler)
 		RegisterKnowledgeBaseRoutes(v1, params.KBHandler, rbacGuards)
