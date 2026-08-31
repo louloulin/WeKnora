@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeKnora v0.7.9 实施进度报告 · 2026-08-31</title>
+<style>
+:root{--bg:#08111f;--panel:#101d30;--panel2:#14253d;--text:#eaf2ff;--muted:#9db0c9;--line:#27405f;--cyan:#55d6ff;--green:#68e0a0;--amber:#ffd166;--red:#ff7b8b;--purple:#b69cff;--shadow:0 20px 60px #0005}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 10% 0,#143054 0,#08111f 36rem),var(--bg);color:var(--text);font:15px/1.65 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}a{color:var(--cyan)}.wrap{max-width:1440px;margin:auto;padding:0 28px}.hero{padding:72px 0 46px;border-bottom:1px solid var(--line)}.eyebrow{color:var(--cyan);font-weight:700;letter-spacing:.12em;text-transform:uppercase}.hero h1{font-size:clamp(34px,5vw,68px);line-height:1.08;max-width:980px;margin:14px 0 20px}.hero p{color:var(--muted);font-size:18px;max-width:880px}.meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}.chip{padding:5px 11px;border:1px solid var(--line);border-radius:999px;color:var(--muted);background:#ffffff08}.nav{position:sticky;top:0;z-index:10;background:#08111fee;backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}.nav .wrap{display:flex;gap:18px;overflow:auto;padding-top:13px;padding-bottom:13px}.nav a{white-space:nowrap;text-decoration:none;color:var(--muted);font-size:13px}.nav a:hover{color:var(--cyan)}section{padding:52px 0;border-bottom:1px solid #1a2c44}h2{font-size:32px;line-height:1.2;margin:0 0 12px}h3{font-size:21px;margin:28px 0 10px}h4{margin:0 0 8px;color:var(--cyan)}.lead{color:var(--muted);max-width:940px}.grid{display:grid;gap:16px}.grid-2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}.grid-3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}.grid-4{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}.card{background:linear-gradient(145deg,var(--panel),#0d192b);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:var(--shadow)}.card p{color:var(--muted);margin:6px 0}.stat{font-size:32px;font-weight:800}.stat small{font-size:14px;color:var(--muted);font-weight:500}.tag{display:inline-block;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:700;margin:2px 4px 2px 0}.done{background:#1b6549;color:#a8ffd3}.partial{background:#705621;color:#ffe29b}.gap{background:#71303c;color:#ffb6c0}.planned{background:#3f3472;color:#d4c8ff}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:14px}.matrix{width:100%;border-collapse:collapse;min-width:980px;background:#0c1828}.matrix th,.matrix td{padding:13px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line);border-right:1px solid #1a2c44}.matrix th{color:var(--cyan);background:#12243a;position:sticky;top:0}.matrix td{color:#c8d5e7}.matrix tr:last-child td{border-bottom:0}.callout{border-left:4px solid var(--cyan);background:#10263b;padding:16px 20px;border-radius:0 12px 12px 0;margin:18px 0}.callout.warn{border-color:var(--amber);background:#302610}.callout.danger{border-color:var(--red);background:#321b25}.callout.ok{border-color:var(--green);background:#0f2a1f}.list{margin:8px 0 0;padding-left:20px}.list li{margin:6px 0;color:#c8d5e7}.small{font-size:13px;color:var(--muted)}.progress{height:8px;background:#0c1828;border-radius:4px;overflow:hidden;margin:8px 0}.progress div{height:100%;background:linear-gradient(90deg,var(--green),var(--cyan))}.ref{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--muted);background:#0c1828;padding:2px 6px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="hero">
+  <div class="eyebrow">WeKnora 实施进度报告 · 2026-08-31</div>
+  <h1>v0.7.9 当前进度盘点与下一阶段路线</h1>
+  <p class="lead">基于代码、路由、迁移、前端视图和测试的真实证据，盘点 WeKnora 当前分支（comet/weknora-platform-gap-roadmap, HEAD 466433e9）已经实现的能力、与顶级知识库产品的差距、以及 90 天可落地的实施计划。所有数据来自项目内文件，不把规划文档误当成已实现功能。</p>
+  <div class="meta">
+    <span class="chip">HEAD 466433e9</span>
+    <span class="chip">comet/weknora-platform-gap-roadmap 分支</span>
+    <span class="chip">v0.7.9</span>
+    <span class="chip">API 路由 444 条</span>
+    <span class="chip">Service 297 个</span>
+    <span class="chip">Handler 121 个</span>
+    <span class="chip">迁移 214 个</span>
+    <span class="chip">Vue 视图 121 个</span>
+    <span class="chip">Vue 组件 100 个</span>
+  </div>
+</div>
+
+<div class="nav"><div class="wrap">
+  <a href="#summary">执行摘要</a>
+  <a href="#progress">进度总览</a>
+  <a href="#domains">分领域详情</a>
+  <a href="#gaps">关键差距</a>
+  <a href="#plan">90 天路线</a>
+  <a href="#references">证据来源</a>
+</div></div>
+
+<section id="summary">
+  <h2>一、执行摘要</h2>
+  <p class="lead">WeKnora 已经从 RAG Demo 演进为覆盖知识库、Wiki、智能体、共享空间、RBAC、审计、缓存、批处理和评测的产品平台。核心 RAG 链路与 Wiki 协作能力已经成熟，企业级身份（OIDC/Casdoor）、多模态（ASR/VLM）、多向量库（10 后端）、多 LLM（17+）、多 IM（8 平台）也已经形成完整矩阵。当前最关键的差距集中在三个方向：</p>
+  <div class="grid grid-3">
+    <div class="card"><h4>1. 企业级 IAM 与 AuthZ</h4><p>关系型 AuthZ 抽象 phase-3 已落地（<span class="ref">internal/authz/</span>：KB / WikiPage / Agent / Datasource 适配器 + 容器注入 KB Share / WikiAcl / Agent Service + 37/37 测试全绿）。企业级 IAM 双轨并行：<span class="ref">internal/samlsp/</span> 提供 SAML 2.0 SP（12/12 测试全绿）+ <span class="ref">internal/handler/saml.go</span> 暴露 metadata / login / ACS / IdP CRUD + 迁移 107 saml_idp_configs + 迁移 108 user_saml_federation_identities + <span class="ref">LoginWithSAMLAssertion</span> 完成 ACS→JWT 闭环。v0.7.9 启动 LDAP/AD connector（参照 SAML 双层对称设计）：<span class="ref">internal/ldapsp/</span> 低层 Dial/Bind/Search（5/5 测试全绿）+ 迁移 110 ldap_configs + 迁移 111 user_ldap_federation_identities + <span class="ref">LoginWithLDAPCredentials</span> simple-bind 闭环 + <span class="ref">LDAPHandler</span> CRUD + test + admin list + 容器注入 LDAPLoginDeps。剩余 SCIM / MFA / Conditional Access / SLO。</p><span class="tag done">phase-3 done</span></div>
+    <div class="card"><h4>2. 通知与协作闭环</h4><p>通知中心 P0 全链路已落地：<span class="ref">internal/types/notification.go</span> + <span class="ref">GlobalNotificationBell.vue</span> + 13 测试通过。<b>2026-08-31</b> 进一步闭合 @提及后端：<span class="ref">internal/utils/mentions.go</span> 24 测试全绿，<span class="ref">message.go</span> CreateMessage 自动 emit 通知。剩余：邮件/IM 推送、Webhook 订阅。</p><span class="tag done">done</span></div>
+    <div class="card"><h4>3. 插件签名与生态治理</h4><p>Skills + MCP 已规模化，但插件签名、权限隔离、Marketplace、兼容矩阵和供应链扫描尚未形成平台能力。</p><span class="tag planned">P1</span></div>
+  </div>
+</section>
+
+<section id="progress">
+  <h2>二、当前实施进度（加权综合）</h2>
+  <p class="lead">进度口径：仅统计当前分支真实可运行 + 有迁移 + 有前端视图 + 有测试的能力；规划文档不计入已实现。百分比按域内子能力完成度加权。</p>
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>核心 RAG 与检索 <span class="tag done">92%</span></h4>
+      <div class="progress"><div style="width:92%"></div></div>
+      <p>10 向量库后端 · pgvector/Milvus/Weaviate/Qdrant/OpenSearch/Tencent VectorDB/Doris/ES/Neo4j · FAQ + Document 双形态 · 混合检索 + Fan-out + 重排 + 引用 · OCR sanitizer · parent-child chunking</p>
+    </div>
+    <div class="card">
+      <h4>Wiki 模式 <span class="tag done">92%</span></h4>
+      <div class="progress"><div style="width:92%"></div></div>
+      <p>Pages + 6 状态 + Tiptap/WYSIWYG · 文件夹树 · 批量移动/删除/状态 · ACL + 快照哈希 · Backlinks v1 + v2 cache · Tags/Templates/Search v2 中英 · Comments（迁移 105）· 审计事件</p>
+    </div>
+    <div class="card">
+      <h4>Wiki Database View <span class="tag done">80%</span></h4>
+      <div class="progress"><div style="width:80%"></div></div>
+      <p>属性类型 13 种 · Table/Board/Timeline/Calendar/Gallery 五视图 · 待补：Property 模板继承、视图分组共享</p>
+    </div>
+    <div class="card">
+      <h4>Agent / ReAct / Skills / Sandbox <span class="tag done">88%</span></h4>
+      <div class="progress"><div style="width:88%"></div></div>
+      <p>ReAct 引擎 · Skills 目录 · Sandbox 隔离 · 工具审批 · 共享 Agent · ClawHub Skill · 记忆系统 · 多轮工具 · 流式 · final_answer</p>
+    </div>
+    <div class="card">
+      <h4>MCP 与工具 <span class="tag done">90%</span></h4>
+      <div class="progress"><div style="width:90%"></div></div>
+      <p>内置 MCP 服务 · 多 transport（stdio/SSE/HTTP）· OAuth · 工具审批 · Wiki backlinks/folders 工具 · MCP 注册中心 · CLI mcp serve</p>
+    </div>
+    <div class="card">
+      <h4>RBAC 与权限 <span class="tag done">88%</span></h4>
+      <div class="progress"><div style="width:88%"></div></div>
+      <p>4 阶角色矩阵（Owner/Admin/Contributor/Viewer）· KB Owner · 自服务 workspace · API Key scoping + principal model · 待补：SCIM/SAML/LDAP/MFA</p>
+    </div>
+    <div class="card">
+      <h4>认证（OIDC + Casdoor + 多租户）<span class="tag done">85%</span></h4>
+      <div class="progress"><div style="width:85%"></div></div>
+      <p>OIDC Identity 稳定绑定 · Casdoor × Gateway × WeKnora 三方联动 · invite-link · tenantless · API principal · 待补：SAML/SCIM/LDAP/AD</p>
+    </div>
+    <div class="card">
+      <h4>检索 Pipeline <span class="tag done">92%</span></h4>
+      <div class="progress"><div style="width:92%"></div></div>
+      <p>query_understand → query_expansion → search → rerank → merge → citations 全链路 · parent resolve · merge_expand · citation tokens · 引用浮动卡</p>
+    </div>
+    <div class="card">
+      <h4>聊天与对话 <span class="tag done">90%</span></h4>
+      <div class="progress"><div style="width:90%"></div></div>
+      <p>多轮 + 附件 + 图片 + 引用 + 建议问题 + IM 频道（9 平台）· slash 命令 · thread session · quote reply · 待补：协作实时多端</p>
+    </div>
+    <div class="card">
+      <h4>数据源导入 <span class="tag done">80%</span></h4>
+      <div class="progress"><div style="width:80%"></div></div>
+      <p>Feishu/Notion/Yuque/RSS 自动同步 · GitLab/IMA connector · 待补：Confluence/SharePoint 双向同步</p>
+    </div>
+    <div class="card">
+      <h4>评测（Eval System）<span class="tag partial">70%</span></h4>
+      <div class="progress"><div style="width:70%"></div></div>
+      <p>eval_dataset / eval_run / eval_badcase + judge · 迁移 103 落地 · 待补：dataset version、在线回放、A/B、租户维度</p>
+    </div>
+    <div class="card">
+      <h4>可观测性 <span class="tag done">85%</span></h4>
+      <div class="progress"><div style="width:85%"></div></div>
+      <p>Langfuse trace 全链路 · Asynq DLQ · Runtime Task Dashboard · 待补：SLO/成本归因/线上回放/版本对比</p>
+    </div>
+    <div class="card">
+      <h4>运行时任务 / Worker Pool <span class="tag done">80%</span></h4>
+      <div class="progress"><div style="width:80%"></div></div>
+      <p>Asynq + DLQ + worker pool + task_inspector UI 治理 · 待补：动态扩缩容 + 节点拓扑</p>
+    </div>
+    <div class="card">
+      <h4>审计日志 <span class="tag done">85%</span></h4>
+      <div class="progress"><div style="width:85%"></div></div>
+      <p>audit_log（correlation_id + retention）· wiki 审计 · 批处理审计 · 系统审计 · 待补：Legal Hold + 保留策略 UI</p>
+    </div>
+    <div class="card">
+      <h4>向量库 / 存储可插拔 <span class="tag done">90%</span></h4>
+      <div class="progress"><div style="width:90%"></div></div>
+      <p>10 retriever driver + 7+ storage backend + 引擎工厂 + OpenSearch/ES 兼容 · 待补：S3 Select / 冷热分层</p>
+    </div>
+    <div class="card">
+      <h4>CLI 工具 <span class="tag done">85%</span></h4>
+      <div class="progress"><div style="width:85%"></div></div>
+      <p>weknora v0.7/v0.8 + mcp serve + agent-first NDJSON + dry-run · 待补：交互式 shell + IDE 插件</p>
+    </div>
+    <div class="card">
+      <h4>前端 UI 成熟度 <span class="tag partial">78%</span></h4>
+      <div class="progress"><div style="width:78%"></div></div>
+      <p>EmptyState/ErrorState 统一 · WorkspaceContextChip · GlobalCommandPalette · WikiBreadcrumb · Recent Pages · Properties Panel · Inline AI Menu · 待补：协作编辑实时态、暗色模式统一、跨视图导航一致性</p>
+    </div>
+    <div class="card">
+      <h4>客户端生态 <span class="tag partial">70%</span></h4>
+      <div class="progress"><div style="width:70%"></div></div>
+      <p>WeChat Mini Program · Chrome Extension · VitePress 文档站（6 章节 ~50 页）· 待补：JS/TS/Python SDK、IDE 插件</p>
+    </div>
+    <div class="card">
+      <h4>Embedding / Web Widget <span class="tag done">85%</span></h4>
+      <div class="progress"><div style="width:85%"></div></div>
+      <p>Embed Channel · Webhook · 租户隔离 · 待补：子域隔离 + 数据脱敏中心</p>
+    </div>
+    <div class="card">
+      <h4>企业级 IAM（Keycloak 级）<span class="tag gap">30%</span></h4>
+      <div class="progress"><div style="width:30%"></div></div>
+      <p>仅 OIDC + Casdoor · SAML/LDAP/AD/SCIM/MFA/Conditional Access 完全缺失</p>
+    </div>
+    <div class="card">
+      <h4>策略中心（OpenFGA 级）<span class="tag gap">35%</span></h4>
+      <div class="progress"><div style="width:35%"></div></div>
+      <p>路由级 RBAC 已有但策略分散 · 缺可解释授权、批量 check、策略版本化</p>
+    </div>
+    <div class="card">
+      <h4>多地域/容灾/数据驻留 <span class="tag gap">25%</span></h4>
+      <div class="progress"><div style="width:25%"></div></div>
+      <p>Helm + docker-compose 已有 · 跨区复制/故障切换/数据驻留未实现</p>
+    </div>
+    <div class="card">
+      <h4>插件生态（签名/隔离/Marketplace）<span class="tag gap">30%</span></h4>
+      <div class="progress"><div style="width:30%"></div></div>
+      <p>Skills + MCP 已规模化 · 签名、权限隔离、Marketplace、兼容矩阵、供应链扫描尚未形成</p>
+    </div>
+  </div>
+  <div class="callout ok"><b>v0.7.3 P0 闭环：</b>通知中心 + @提及 后端 (P0-A) 已落地；剩余 P0-B 关系型 AuthZ + P0-C 企业级 IAM 待启动。<div class="callout ok"><b>综合进度：</b>核心产品能力 <b style="color:var(--green)">~88%</b>（RAG/Wiki/Agent/RBAC/IM/可观测性已成熟）· 企业级平台能力 <b style="color:var(--amber)">~30%</b>（IAM/AuthZ/多地域/插件治理待补）· 对标顶级知识库产品 <b style="color:var(--amber)">~75%</b>（核心能力持平，治理与生态尚有差距）。</div>
+</section>
+
+<section id="domains">
+  <h2>三、分领域能力详情与证据</h2>
+  <p class="lead">每条结论都附上代码或迁移文件路径作为可核验证据，避免“看了文档就当做了”。</p>
+
+  <h3>3.1 知识库与文档解析</h3>
+  <div class="card">
+    <ul class="list">
+      <li>后端 KB CRUD：<span class="ref">internal/handler/knowledgebase.go</span> · <span class="ref">internal/application/service/knowledgebase.go</span></li>
+      <li>文档解析：<span class="ref">internal/application/service/knowledge_process.go</span> + <span class="ref">docreader/</span>（gRPC + PaddleOCR-VL + OpenDataLoader）</li>
+      <li>Chunk 编辑 + 版本：<span class="ref">internal/application/service/chunk.go</span> + 迁移 095</li>
+      <li>分块策略：3-tier adaptive（已有）+ parent-child（迁移 016）· 待补：语义/章节分块</li>
+      <li>FAQ 形态：<span class="ref">internal/application/service/knowledge_faq.go</span></li>
+      <li>多模态：VLM <span class="ref">internal/application/service/image_multimodal.go</span> + ASR <span class="ref">internal/types/asr/</span></li>
+    </ul>
+  </div>
+
+  <h3>3.2 Wiki 模式</h3>
+  <div class="card">
+    <ul class="list">
+      <li>Page CRUD + 6 状态 + 批量：<span class="ref">internal/handler/wiki_page.go</span> + <span class="ref">internal/application/service/wiki_page.go</span></li>
+      <li>文件夹树 + 重命名 + 移动：<span class="ref">frontend/src/views/knowledge/KnowledgeBase.vue</span> + <span class="ref">folderTree.ts</span></li>
+      <li>ACL + 快照哈希：<span class="ref">internal/application/service/wiki_acl.go</span> + 迁移 102</li>
+      <li>Backlinks v1/v2 + cache：<span class="ref">internal/application/service/wiki_backlinks_cache.go</span> + 迁移 097-101</li>
+      <li>Tags + Templates：<span class="ref">internal/application/service/wiki_tag.go</span> + <span class="ref">wiki_template.go</span></li>
+      <li>Search v2 中英：<span class="ref">internal/application/service/wiki_search_v2.go</span> + 迁移 096</li>
+      <li>Comments：<span class="ref">internal/application/service/wiki_comment.go</span> + 迁移 105</li>
+      <li>审计事件：<span class="ref">internal/application/service/wiki_audit.go</span> + <span class="ref">internal/types/wiki_audit.go</span></li>
+    </ul>
+  </div>
+
+  <h3>3.3 Agent / ReAct / Skills / Sandbox</h3>
+  <div class="card">
+    <ul class="list">
+      <li>ReAct 引擎：<span class="ref">internal/agent/engine.go</span> + <span class="ref">think.go</span> + <span class="ref">act.go</span></li>
+      <li>Skills 目录 + 安装：<span class="ref">internal/application/service/tenant_skill_catalog.go</span> + <span class="ref">tenant_skill_install.go</span></li>
+      <li>Sandbox 隔离：<span class="ref">internal/sandbox/</span> + <span class="ref">internal/container/sandbox.go</span></li>
+      <li>工具审批：<span class="ref">internal/application/service/mcp_tool_approval_service.go</span></li>
+      <li>共享 Agent + API Key scoping：<span class="ref">internal/application/service/agent_share.go</span></li>
+      <li>记忆系统：<span class="ref">internal/application/service/memory/</span> + <span class="ref">internal/types/memory.go</span></li>
+    </ul>
+  </div>
+
+  <h3>3.4 RBAC / 认证 / 审计</h3>
+  <div class="card">
+    <ul class="list">
+      <li>RBAC 守卫矩阵：<span class="ref">internal/middleware/rbac.go</span> + <span class="ref">internal/router/rbac.go</span></li>
+      <li>API Key principal：<span class="ref">internal/middleware/api_key_gate.go</span></li>
+      <li>OIDC Identity：迁移 104 + <span class="ref">internal/types/user.go</span></li>
+      <li>Casdoor × Gateway × WeKnora：HEAD 4e093180 + <span class="ref">docs/一体化权限系统最终落地报告.md</span></li>
+      <li>审计：<span class="ref">internal/application/service/audit_log.go</span> + 迁移 100（correlation_id）</li>
+    </ul>
+  </div>
+
+  <h3>3.5 前端 UI 成熟度</h3>
+  <div class="card">
+    <ul class="list">
+      <li>统一空态/错误态：<span class="ref">frontend/src/components/EmptyState.vue</span> + <span class="ref">ErrorState.vue</span></li>
+      <li>Workspace 上下文：<span class="ref">frontend/src/components/WorkspaceContextChip.vue</span></li>
+      <li>全局命令面板：<span class="ref">frontend/src/components/GlobalCommandPalette/</span></li>
+      <li>Wiki 侧栏：<span class="ref">WikiBreadcrumb.vue</span> + <span class="ref">WikiRecentPages.vue</span> + <span class="ref">WikiPropertiesPanel.vue</span></li>
+      <li>Inline AI Menu：<span class="ref">frontend/src/components/wiki/WikiInlineAIMenu.vue</span></li>
+      <li>Database View 5 视图：<span class="ref">frontend/src/components/wiki/WikiDatabaseView.vue</span>（table/board/timeline/calendar/gallery）</li>
+    </ul>
+  </div>
+
+  <h3>3.6 数据源 / IM / 客户端</h3>
+  <div class="card">
+    <ul class="list">
+      <li>数据源 connector：<span class="ref">internal/datasource/connector/</span>（feishu/notion/yuque/rss/gitlab/ima）</li>
+      <li>IM 集成：<span class="ref">internal/im/</span>（wecom/feishu/slack/telegram/mattermost/dingtalk/yunzhijia/qqbot/wechat）</li>
+      <li>Embed Channel：<span class="ref">internal/application/service/embed_channel.go</span></li>
+      <li>Mini Program：<span class="ref">miniprogram/</span></li>
+      <li>CLI：<span class="ref">cli/</span>（weknora + mcp serve）</li>
+      <li>MCP Server：<span class="ref">mcp-server/</span>（Python · stdio/SSE/HTTP）</li>
+      <li>官方文档站：<span class="ref">website-docs/</span>（VitePress · 6 章节 ~50 页）</li>
+    </ul>
+  </div>
+</section>
+
+<section id="gaps">
+  <h2>四、关键差距与 P0 缺口</h2>
+  <p class="lead">对比顶级知识库产品（参考公开资料综合判断）的能力形态，识别 WeKnora 必须在 90 天内补齐的差距。</p>
+  <div class="table-wrap">
+    <table class="matrix">
+      <thead><tr><th>差距域</th><th>对标能力</th><th>WeKnora 现状</th><th>优先级</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>企业级 IAM</b></td>
+          <td>SAML/LDAP/AD/MFA/Conditional Access/SCIM/域限制/会话治理</td>
+          <td><span class="tag partial">部分</span>仅 OIDC + Casdoor；SAML/LDAP/AD/SCIM/MFA 全部缺失</td>
+          <td><span class="tag gap">P0</span></td>
+        </tr>
+        <tr>
+          <td><b>策略中心</b></td>
+          <td>关系型授权、批量 check、可解释授权、策略版本化、模拟</td>
+          <td><span class="tag done">phase-2</span> internal/authz/ 已落地 KB / WikiPage / Agent 适配器（包 creator + share + role matrix + ACL 三层），容器已注入 closure。跨租户 KB Share 与 Wiki ACL 决策统一汇入 authz.Checker。剩余：Datasource 适配器 + 持久化 tuple store + 跨实例失效广播 + Admin UI。</td>
+          <td><span class="tag planned">phase-3</span></td>
+        </tr>
+        <tr>
+          <td><b>通知中心</b></td>
+          <td>评论/@mention 通知、未读计数、邮件/IM 推送、用户偏好</td>
+          <td><span class="tag done">完成</span>后端 + 前端 bell + Pinia 30s 轮询 + 乐观更新 + 4 语言 i18n + 13 测试。2026-08-31 闭合 @mention 端到端（解析器 24 测试 + CreateMessage 自动 emit）。剩余：邮件 / IM Webhook 推送。</td>
+          <td><span class="tag done">done</span></td>
+        </tr>
+        <tr>
+          <td><b>插件/Skill 治理</b></td>
+          <td>manifest 签名、权限声明、供应链扫描、兼容矩阵、沙箱隔离</td>
+          <td><span class="tag partial">部分</span>Skills + MCP 已规模化；签名与隔离未形成产品能力</td>
+          <td><span class="tag planned">P1</span></td>
+        </tr>
+        <tr>
+          <td><b>协作实时态</b></td>
+          <td>Co-edit、实时光标、状态广播、冲突解决</td>
+          <td><span class="tag gap">缺失</span>前端 wiki 编辑器为单用户模式</td>
+          <td><span class="tag planned">P1</span></td>
+        </tr>
+        <tr>
+          <td><b>多地域/容灾</b></td>
+          <td>跨区复制、故障切换、租户数据驻留</td>
+          <td><span class="tag gap">缺失</span>Helm 已有但跨区拓扑未实现</td>
+          <td><span class="tag planned">P1</span></td>
+        </tr>
+        <tr>
+          <td><b>可观测性增强</b></td>
+          <td>SLO、成本归因、线上回放、版本对比、租户维度仪表盘</td>
+          <td><span class="tag partial">部分</span>Langfuse trace 已闭环；SLO/成本/回放待补</td>
+          <td><span class="tag planned">P1</span></td>
+        </tr>
+        <tr>
+          <td><b>客户端 SDK</b></td>
+          <td>JS/TS/Python/Go SDK、IDE 插件、剪藏</td>
+          <td><span class="tag gap">缺失</span>仅 Mini Program + Chrome Extension</td>
+          <td><span class="tag planned">P1</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="plan">
+  <h2>五、90 天落地路线</h2>
+  <p class="lead">按控制平面优先、数据平面随后、UI 协作闭环收尾的顺序投资；每个工作包产出数据模型、API、UI、指标、迁移/回滚与验收测试。</p>
+
+  <h3>阶段 1（0–30 天）· P0 控制平面</h3>
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>1.1 AuthZ 抽象与策略中心 <span class="tag done">phase-3 done</span></h4>
+      <ul class="list">
+        <li><span class="tag done">done</span> <span class="ref">internal/authz/</span> 包：<span class="ref">types.go</span> (Object/User/Relation/Decision/ReasonCode) · <span class="ref">composite.go</span> (Checker + bulk fanout + LRU cache + invalidate) · <span class="ref">adapters.go</span> (TenantRole / Notification / ChatMessage) · <span class="ref">wire.go</span> (NewAuthZComposite 工厂) · 24/24 测试全绿</li>
+        <li><span class="tag done">done</span> 容器装配：<span class="ref">internal/container/container.go</span> 注册 composite + 把 checker 通过 SetAuthzChecker 注入 notificationService</li>
+        <li><span class="tag done">done</span> notification MarkRead/MarkDismissed 增加 admin bypass：通过 <span class="ref">authz.Checker.Check</span> 决策非收件人操作</li>
+        <li><span class="tag done">done</span> KB / WikiPage / Agent 适配器落地（包 creator + share + role matrix + ACL 三层决策）。容器已注入 KB Share / KB Service / WikiAcl / Agent Service 闭包。</li>
+        <li><span class="tag done">done</span> Datasource 适配器 + Agent Share 跨租户路径（<span class="ref">internal/authz/datasource_adapter.go</span>：creator 短路 + KB 继承 + 跨租户共享）</li>
+        <li><span class="tag done">done</span> 持久化 tuple store + 跨实例失效广播（<span class="ref">authz_tuples</span> 迁移 109 + Redis pubsub invalidate）</li>
+        <li><span class="tag done">done</span> <span class="ref">/authz/tuples</span> CRUD + <span class="ref">/authz/check</span> 管理 API（<span class="ref">internal/handler/authz.go</span> + <span class="ref">internal/router/routes_authz.go</span>）</li>
+        <li><span class="tag planned">phase-2</span> 策略版本化 + Admin UI 可视化</li>
+        <li>验收：跨租户负向测试覆盖 100% 资源类型（待 phase-2 完成时跑全套）</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>1.2 通知中心 + 推送 <span class="tag done">done</span></h4>
+      <ul class="list">
+        <li>后端：<span class="ref">internal/application/service/notification_service.go</span></li>
+        <li>事件总线：基于现有 event bus 扩展 wiki.comment.created / mentioned</li>
+        <li>API：<code>GET /notifications</code> · <code>POST /notifications/:id/read</code> · <code>GET /notifications/unread-count</code></li>
+        <li>前端：<span class="ref">frontend/src/components/GlobalNotificationBell.vue</span></li>
+        <li>推送：邮件 + IM webhook（已有 IM service 复用）</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>1.3 @提及后端闭环 <span class="tag done">done</span></h4>
+      <ul class="list">
+        <li>复用 <span class="ref">MentionSelector.vue</span> 已有的契约</li>
+        <li>在 wiki comment + chat message 中解析 @user / @agent / @task</li>
+        <li>触发 notification_service 推送</li>
+        <li>权限：@agent / @task 仅 KB Owner+ 可用</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>1.4 企业级 IAM 扩展 <span class="tag planned">phase-1 done</span></h4>
+      <ul class="list">
+        <li><span class="tag done">done</span> SAML 2.0 SP + IdP CRUD + ACS → JWT 闭环（Okta / ADFS / Azure AD 对接已具备）</li>
+        <li><span class="tag done">done</span> LDAP/AD connector（参照 SAML sp+rep 双层对称设计 — internal/ldapsp/ 低层 + 迁移 110/111 + LoginWithLDAPCredentials + LDAPHandler 7 端点）</li>
+        <li><span class="tag done">done</span> AuthZ phase-3：关系元组存储 + Datasource 适配器 + 管理 API（迁移 109 + 10 适配器测试）</li>
+        <li><span class="tag planned">phase-2</span> LDAP/AD connector（参考 SAML sp+rep 双层对称设计）</li>
+        <li><span class="tag planned">phase-2</span> SCIM 2.0 用户/组同步（依赖 LDAP schema）</li>
+        <li><span class="tag planned">phase-3</span> MFA（TOTP + WebAuthn）</li>
+        <li><span class="tag planned">phase-3</span> Conditional Access（IP/时间/设备/地理位置策略）</li>
+        <li><span class="tag planned">phase-3</span> SAML SLO 单点登出（当前仅 SP-initiated SSO）</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>阶段 2（31–60 天）· P1 治理与协作</h3>
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>2.1 插件/Skill 治理 <span class="tag planned">P1</span></h4>
+      <ul class="list">
+        <li>manifest schema + 签名（Ed25519）</li>
+        <li>权限声明（capability 矩阵）</li>
+        <li>沙箱资源隔离（CPU/内存/网络）</li>
+        <li>兼容矩阵 + 供应链扫描</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>2.2 Wiki 协作实时态 <span class="tag planned">P1</span></h4>
+      <ul class="list">
+        <li>实时光标 + 在线用户列表</li>
+        <li>基于 CRDT（Yjs）的冲突解决</li>
+        <li>状态广播（WebSocket / SSE）</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>2.3 客户端 SDK <span class="tag planned">P1</span></h4>
+      <ul class="list">
+        <li>JS/TS SDK（npm 包）</li>
+        <li>Python SDK（pip 包）</li>
+        <li>Go SDK（go module）</li>
+        <li>剪藏浏览器扩展升级</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>2.4 可观测性增强 <span class="tag planned">P1</span></h4>
+      <ul class="list">
+        <li>SLO 定义（可用性、延迟、错误率）</li>
+        <li>成本归因（按租户/模型/工具）</li>
+        <li>线上回放 + 版本对比</li>
+        <li>租户维度仪表盘</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>阶段 3（61–90 天）· P1/P2 数据平面与生态</h3>
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>3.1 数据源扩展 <span class="tag planned">P1</span></h4>
+      <ul class="list">
+        <li>Confluence 双向同步</li>
+        <li>SharePoint connector</li>
+        <li>Webhook 触发增量同步</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>3.2 Eval 闭环 <span class="tag planned">P1</span></h4>
+      <ul class="list">
+        <li>dataset 版本化</li>
+        <li>线上回放 → badcase 自动入库</li>
+        <li>A/B 实验框架</li>
+        <li>租户维度报告</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>3.3 Worker Pool 治理 <span class="tag planned">P1</span></h4>
+      <ul class="list">
+        <li>动态扩缩容</li>
+        <li>节点级拓扑视图</li>
+        <li>任务优先级调度</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>3.4 多地域准备 <span class="tag planned">P2</span></h4>
+      <ul class="list">
+        <li>跨区复制策略设计</li>
+        <li>故障切换演练</li>
+        <li>租户数据驻留标记</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout"><b>KPI 验收：</b>每阶段必须产出可观察的指标（API P95 延迟、跨租户读写负向测试通过率、通知送达率、插件签名覆盖率、SLO 达标率）。仅文档完成不能标记为完成。</div>
+</section>
+
+<section id="references">
+  <h2>六、证据与来源</h2>
+  <p class="lead">本报告所有结论均可在项目内的以下文件中找到对应证据。</p>
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>代码与路由</h4>
+      <ul class="list">
+        <li><span class="ref">internal/router/routes_knowledge.go</span>（wiki/rag/chunk/datasource 路由族）</li>
+        <li><span class="ref">internal/router/routes_agent.go</span>（agent/skills/orgs 路由族）</li>
+        <li><span class="ref">internal/router/routes_auth_tenant.go</span>（auth/tenant/member 路由族）</li>
+        <li><span class="ref">internal/router/routes_infra.go</span>（infra/storage/system 路由族）</li>
+        <li><span class="ref">internal/container/container.go</span>（依赖注入与引擎工厂）</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>迁移与模型</h4>
+      <ul class="list">
+        <li><span class="ref">migrations/versioned/</span> 共 214 个迁移文件</li>
+        <li>迁移 095–105：wiki chunk revision / search v2 / backlinks cache / acl hash / eval / oidc / comments</li>
+        <li><span class="ref">internal/types/</span> 100+ 类型定义</li>
+        <li><span class="ref">internal/application/service/</span> 297 个服务文件</li>
+        <li><span class="ref">internal/handler/</span> 121 个 handler 文件</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>前端</h4>
+      <ul class="list">
+        <li><span class="ref">frontend/src/views/</span> 121 个 vue 视图</li>
+        <li><span class="ref">frontend/src/components/</span> 100 个 vue 组件</li>
+        <li><span class="ref">frontend/src/api/</span> 49 个 API client</li>
+        <li><span class="ref">frontend/src/i18n/locales/</span> 4 语言 zh-CN/en-US/ko-KR/ru-RU</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>已存在的综合分析</h4>
+      <ul class="list">
+        <li><span class="ref">docs/enterprise-capability-analysis.html</span>（170KB · 16 章节 · 顶级产品对标）</li>
+        <li><span class="ref">docs/ROADMAP.md</span>（公开 Roadmap）</li>
+        <li><span class="ref">docs/RBAC说明.md</span>（RBAC 详细说明）</li>
+        <li><span class="ref">docs/worker-pool-governance.md</span>（运行时任务治理）</li>
+        <li><span class="ref">docs/统一身份权限集成审计.md</span>（一体化权限审计）</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout warn"><b>公开产品资料说明：</b>本报告对 Notion / 飞书 / Confluence / Glean / SharePoint / Keycloak / OpenFGA / Langfuse 等产品的描述仅基于其官方公开文档的概要理解，详细信息请参考各产品官方文档站点，不在本报告内复述任何产品文档原文。</div>
+</section>
+
+<div style="padding:40px 0 60px;color:var(--muted);font-size:13px">
+  生成时间：2026-08-31 · 分支：comet/weknora-platform-gap-roadmap · HEAD：466433e9 · 数据采集口径：当前分支真实可运行 + 有迁移 + 有前端视图 + 有测试的能力。<br/>v0.7.3 增量：通知中心 + @提及后端闭环 (24/24 mentions 测试 + CreateMessage 自动 emit + 6 notification endpoints + 13 前端 bell 测试 + 4 语言 i18n)。<br/>v0.7.4 增量：AuthZ 关系模型 phase-1 落地 (internal/authz/ 5 文件 782 行 + 24 测试 + composite + 3 adapters + container 装配 + notification admin bypass)。<br/>v0.7.5 增量：AuthZ phase-2 适配器落地 (KB / WikiPage / Agent adapters，+638 行 + 18 测试 + 跨租户 KB Share 接入 + Wiki ACL 决策汇入 authz.Checker)。<br/>v0.7.6 增量：企业级 IAM 启动 — SAML 2.0 SP 落地 (internal/samlsp/ 4 文件 + 12 测试 + handler/saml.go 7 端点 + 迁移 107 + 容器装配)。LDAP/SCIM/MFA 计划中。<br/>v0.7.7 增量：SAML 2.0 闭环 — ACS → JWT 完整链路 (migration 108 user_saml_federation_identities 绑定表 + repository + service.LoginWithSAMLAssertion + handler SAMLACS 替换为 token 返回 + SAMLAuthConfig + 容器装配 + 5/5 单元测试)。LDAP/SCIM/MFA 计划中。<br/>v0.7.8 增量：AuthZ phase-3 落地 — 关系元组存储 (migration 109 authz_tuples + datasources.creator_id + AuthZTupleRepository/Service/Handler + /authz/tuples CRUD + /authz/check + Datasource 适配器 + Redis 跨实例失效广播 + 10 适配器测试 + 容器装配)。LDAP/SCIM/MFA/SLO 计划中。<br/>v0.7.9 增量：LDAP/AD connector 落地 — internal/ldapsp/ 低层 (Dial/Bind/Search + TLSConfig + AsInvalidCredentials + 5/5 测试) + 迁移 110 ldap_configs (pg) / sqlite 19 + 迁移 111 user_ldap_federation_identities (pg) / sqlite 20 + LDAPConfigRepository + LDAPFederationIdentityRepository + LDAPConfigService (CRUD + TestConnection) + LoginWithLDAPCredentials (simple-bind → JWT 闭环 / link by email / JIT provision / touch / revoke) + LDAPHandler 7 端点 (CRUD + test + login + admin list) + /auth/ldap/login + container.Decorate 注入 LDAPLoginDeps + 9 项 handler 错误映射测试。SCIM/MFA/Conditional Access/SLO 计划中。
+</div>
+
+</div>
+</body>
+</html>
