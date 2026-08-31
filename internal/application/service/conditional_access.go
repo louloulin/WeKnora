@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Tencent/WeKnora/internal/geoiplookup"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -28,6 +29,11 @@ type ConditionalAccessService struct {
 	repo interfaces.ConditionalAccessRepository
 	// now is injected for tests so they can pin time-of-day / day-of-week.
 	now func() time.Time
+	// countryResolver is the optional IP→country resolver that fills
+	// CountryCode on the EvaluationRequest before MatchConditions runs.
+	// When nil, callers must populate CountryCode themselves
+	// (v0.7.14 behaviour).
+	countryResolver geoiplookup.CountryResolver
 }
 
 // NewConditionalAccessService is the DI constructor.
@@ -40,6 +46,21 @@ func (s *ConditionalAccessService) SetNow(now func() time.Time) {
 	if now != nil {
 		s.now = now
 	}
+}
+
+// SetCountryResolver installs the IP→country resolver the evaluator
+// consults when an EvaluationRequest arrives without a pre-populated
+// CountryCode. Pass nil to revert to the v0.7.14 behaviour (caller
+// must supply the country themselves).
+func (s *ConditionalAccessService) SetCountryResolver(r geoiplookup.CountryResolver) {
+	s.countryResolver = r
+}
+
+// CountryResolver returns the resolver currently in use. Exposed so
+// the auth handler can call FillCountryFromIP without holding a
+// separate reference to the resolver.
+func (s *ConditionalAccessService) CountryResolver() geoiplookup.CountryResolver {
+	return s.countryResolver
 }
 
 // ErrConditionalAccessInvalidRequest is the service-layer sentinel
@@ -106,6 +127,7 @@ func (s *ConditionalAccessService) Evaluate(
 	} else {
 		req.Now = req.Now.UTC()
 	}
+	req = FillCountryFromIP(req, s.countryResolver)
 	policies, err := s.repo.ListEnabled(ctx, req.TenantID)
 	if err != nil {
 		return types.Decision{}, err
