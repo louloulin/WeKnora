@@ -53,6 +53,7 @@ import (
 	kg "github.com/Tencent/WeKnora/internal/application/service/kg"
 	workflowsvc "github.com/Tencent/WeKnora/internal/application/service/workflow"
 	regionsvc "github.com/Tencent/WeKnora/internal/application/service/region"
+	docsvc "github.com/Tencent/WeKnora/internal/application/service/doc_integration"
 	asvc "github.com/Tencent/WeKnora/internal/application/service/agentstudio"
 	authzsvc "github.com/Tencent/WeKnora/internal/application/service/authzadmin"
 	dockbsvc "github.com/Tencent/WeKnora/internal/application/service/dockb"
@@ -559,6 +560,15 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		return regionsvc.NewService(repo, resolver)
 	}))
 	must(container.Provide(handler.NewRegionHandler))
+	// v0.7.34 Build #42 — Docs × KB integration foundation.
+	must(container.Provide(repository.NewDocIntegrationRepository))
+	must(container.Provide(func(repo interfaces.DocIntegrationRepository) *docsvc.Service {
+		// Production wiring plugs in real KG / KB / Wiki / LLM
+		// collaborators via dig groups; the foundation ships with
+		// nil collaborators so the build is green out of the box.
+		return docsvc.NewService(repo, nil, nil, nil, nil)
+	}))
+	must(container.Provide(handler.NewDocIntegrationHandler))
 	// v0.7.19 — wiki realtime (Yjs collaboration) wiring.
 	must(container.Provide(repository.NewWikiRealtimeSnapshotRepository))
 	must(container.Provide(repository.NewWikiRealtimeSessionRepository))
