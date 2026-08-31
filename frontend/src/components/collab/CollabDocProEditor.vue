@@ -39,6 +39,10 @@
       <button class="collab-doc-pro__btn collab-doc-pro__btn--ai" :disabled="!aiOriginal" @click="onOpenAi" type="button">
         问 AI
       </button>
+      <!-- v0.7.42 — Math formula (LaTeX → MathML) via docxAdapter.latexToDocxMath -->
+      <button class="collab-doc-pro__btn" type="button" data-testid="doc-math-btn" @click="onOpenMath">
+        公式
+      </button>
       <button class="collab-doc-pro__btn" :disabled="!doc" @click="onToggleHistory" type="button">
         {{ historyOpen ? '关闭历史' : '版本历史' }}
       </button>
@@ -95,6 +99,25 @@
         @close="aiOpen = false"
         @accept="onAcceptAi"
       />
+      <!-- v0.7.42 — Math formula dialog (LaTeX in, MathML out) -->
+      <div v-if="mathOpen" class="collab-doc-pro__math-bg" @click="mathOpen = false">
+        <div class="collab-doc-pro__math" @click.stop>
+          <h3>插入公式 (LaTeX)</h3>
+          <textarea
+            v-model="mathLatex"
+            class="collab-doc-pro__math-input"
+            placeholder="例: \frac{a}{b} 或 x^2 + y^2 = z^2"
+            rows="3"
+            data-testid="doc-math-input"
+          ></textarea>
+          <div class="collab-doc-pro__math-preview" data-testid="doc-math-preview" v-html="mathPreviewHtml"></div>
+          <p v-if="mathError" class="collab-doc-pro__math-error" data-testid="doc-math-error">{{ mathError }}</p>
+          <div class="collab-doc-pro__math-actions">
+            <button type="button" @click="mathOpen = false">取消</button>
+            <button type="button" data-testid="doc-math-insert" @click="onInsertMath">插入文档</button>
+          </div>
+        </div>
+      </div>
       <div v-if="historyOpen" class="collab-doc-pro__history">
         <div class="collab-doc-pro__history-head">版本历史</div>
         <div v-if="versions.length === 0" class="collab-doc-pro__history-empty">暂无历史版本</div>
@@ -149,6 +172,9 @@ import {
   saveDocxBytes,
   saveDocxBytesWithImages,
   patchParagraphText,
+  latexToDocxMath,
+  mathDisplayParagraph,
+  docxMathToMathML,
   buildBlankDocxDoc,
   type DocxAdapterDocument,
   type DocxAdapterParagraph,
@@ -182,6 +208,54 @@ const aiAnchor = ref({ x: 0, y: 0 })
 const aiOriginal = ref('')
 let aiTargetIndex: number | null = null
 const historyOpen = ref(false)
+
+// v0.7.42 — Math formula dialog (LaTeX → MathML via docxAdapter).
+// Uses browser-native MathML for preview (Firefox / Safari / Edge);
+// Chrome shows source until a KaTeX renderer is wired in later.
+const mathOpen = ref(false)
+const mathLatex = ref('')
+const mathError = ref<string | null>(null)
+const mathPreviewHtml = computed(() => {
+  const latex = mathLatex.value.trim()
+  if (!latex) return '<em style="color:#999">在上方输入 LaTeX 以预览</em>'
+  const omml = latexToDocxMath(latex)
+  if (!omml) {
+    mathError.value = '无法解析 LaTeX 语法'
+    return ''
+  }
+  mathError.value = null
+  const wrapped = '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">' + omml + '</m:oMath>'
+  const mathml = docxMathToMathML(wrapped)
+  if (!mathml) return '<em style="color:#999">MathML 渲染不可用</em>'
+  return mathml
+})
+const onOpenMath = () => {
+  mathLatex.value = ''
+  mathError.value = null
+  mathOpen.value = true
+}
+const onInsertMath = () => {
+  const latex = mathLatex.value.trim()
+  if (!latex) {
+    mathError.value = '请输入 LaTeX'
+    return
+  }
+  const paragraphXml = mathDisplayParagraph(latex)
+  if (!paragraphXml) {
+    mathError.value = '无法解析 LaTeX 语法'
+    return
+  }
+  const mathml = docxMathToMathML('<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">' + latexToDocxMath(latex) + '</m:oMath>')
+  // Insert as raw HTML block — wrapped math content survives TipTap editing
+  // (the source LaTeX is preserved in data-latex so save round-trip can
+  // recover OMML via mathDisplayParagraph()).
+  const html = `<div class="collab-doc-pro__math-block" data-latex="${latex.replace(/"/g, '&quot;')}">${mathml ?? paragraphXml}</div>`
+  if (editor.value) {
+    editor.value.chain().focus().insertContent(html).run()
+    mathOpen.value = false
+    scheduleSave()
+  }
+}
 const versions = ref<Array<{ version: number; size_bytes: number; created_at: string }>>([])
 
 let handle: ReturnType<typeof useYjsCollabDoc> | null = null
@@ -755,6 +829,67 @@ onBeforeUnmount(teardown)
 </script>
 
 <style scoped>
+.collab-doc-pro__math-bg {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100;
+}
+.collab-doc-pro__math {
+  background: var(--td-bg-color-container);
+  padding: 20px;
+  border-radius: 8px;
+  min-width: 420px;
+  max-width: 80vw;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.collab-doc-pro__math h3 { margin: 0; font-size: 16px; }
+.collab-doc-pro__math-input {
+  padding: 8px 12px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 13px;
+  resize: vertical;
+}
+.collab-doc-pro__math-preview {
+  padding: 12px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 4px;
+  background: var(--td-bg-color-secondarycontainer);
+  min-height: 60px;
+  font-family: serif;
+  text-align: center;
+  overflow-x: auto;
+}
+.collab-doc-pro__math-error {
+  color: var(--td-error-color-7);
+  font-size: 12px;
+  margin: 0;
+}
+.collab-doc-pro__math-actions {
+  display: flex; gap: 8px; justify-content: flex-end;
+}
+.collab-doc-pro__math-actions button {
+  padding: 6px 14px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 4px;
+  background: var(--td-bg-color-container);
+  cursor: pointer; font-size: 12px;
+}
+.collab-doc-pro__math-actions button:last-child {
+  background: var(--td-brand-color-7); color: white; border-color: var(--td-brand-color-7);
+}
+.collab-doc-pro__math-block {
+  display: block;
+  padding: 8px 12px;
+  margin: 8px 0;
+  background: var(--td-bg-color-secondarycontainer);
+  border-left: 3px solid var(--td-brand-color-7);
+  text-align: center;
+  font-family: serif;
+}
+</style>
 .collab-doc-pro { display: flex; flex-direction: column; height: 100%; }
 .collab-doc-pro__toolbar {
   display: flex; align-items: center; gap: 10px;

@@ -39,6 +39,16 @@
       <button class="collab-sheet-editor__export" :disabled="downloading" @click="exportXlsx" type="button">
         {{ downloading ? '下载中...' : '下载 .xlsx' }}
       </button>
+      <button class="collab-sheet-editor__feature" @click="openFreezeModal" type="button" title="冻结窗格">冻结</button>
+      <button class="collab-sheet-editor__feature" @click="openFilterModal" type="button" title="数据筛选">筛选</button>
+      <button class="collab-sheet-editor__feature" @click="openCfModal" type="button" title="条件格式">条件格式</button>
+      <button class="collab-sheet-editor__feature" @click="openDvModal" type="button" title="数据验证">数据验证</button>
+      <button class="collab-sheet-editor__feature" @click="openSparkModal" type="button" title="迷你图">迷你图</button>
+      <button class="collab-sheet-editor__feature" @click="openPageSetupModal" type="button" title="页面布局">页面</button>
+      <button class="collab-sheet-editor__feature" @click="openSheetManageModal" type="button" title="工作表管理">工作表</button>
+      <button class="collab-sheet-editor__feature" @click="openNoteModal" type="button" title="单元格批注">批注</button>
+      <button class="collab-sheet-editor__feature" @click="openHyperlinkModal" type="button" title="超链接">链接</button>
+      <button class="collab-sheet-editor__feature" @click="openTableModal" type="button" title="插入表对象">表格</button>
       <span class="collab-sheet-editor__peers">
         <span
           v-for="p in peers"
@@ -55,13 +65,270 @@
         v-for="(sh, si) in sheets"
         :key="si"
         class="collab-sheet-editor__tab"
-        :class="{ active: si === activeSheet }"
+        :class="{ active: si === activeSheet, hidden: sheetHiddenBySheet[si] }"
+        :title="sheetHiddenBySheet[si] ? `${sh.name} (已隐藏)` : sh.name"
         @click="switchSheet(si)"
       >
         {{ sh.name }}
       </button>
       <button class="collab-sheet-editor__tab collab-sheet-editor__add-col" @click="addSheet" type="button" title="新增 sheet">+ 新 sheet</button>
     </div>
+    <div v-if="featureDialog" class="collab-sheet-editor__modal-bg" @click="featureDialog = null">
+      <div class="collab-sheet-editor__modal" @click.stop>
+        <h3 v-if="featureDialog === 'freeze'">冻结窗格 ({{ activeSheetName }})</h3>
+        <h3 v-else-if="featureDialog === 'filter'">筛选 ({{ activeSheetName }})</h3>
+        <h3 v-else-if="featureDialog === 'cf'">条件格式 ({{ activeSheetName }})</h3>
+        <h3 v-else-if="featureDialog === 'dv'">数据验证 ({{ activeSheetName }})</h3>
+        <h3 v-else-if="featureDialog === 'spark'">迷你图 ({{ activeSheetName }})</h3>
+        <h3 v-else-if="featureDialog === 'pageSetup'">页面布局 ({{ activeSheetName }})</h3>
+        <h3 v-else-if="featureDialog === 'sheetManage'">工作表管理</h3>
+        <h3 v-else-if="featureDialog === 'note'">单元格批注 ({{ activeSheetName }})</h3>
+        <h3 v-else-if="featureDialog === 'hyperlink'">超链接 ({{ activeSheetName }})</h3>
+        <h3 v-else-if="featureDialog === 'table'">插入表格对象 ({{ activeSheetName }})</h3>
+
+        <template v-if="featureDialog === 'freeze'">
+          <label>冻结上方行数 <input v-model.number="freezeRowsInput" type="number" min="0" max="50" /></label>
+          <label>冻结左侧列数 <input v-model.number="freezeColsInput" type="number" min="0" max="20" /></label>
+          <div class="collab-sheet-editor__modal-actions">
+            <button type="button" @click="onFreezeClear">清除</button>
+            <button type="button" @click="featureDialog = null">取消</button>
+            <button type="button" @click="onFreezeCommit">应用</button>
+          </div>
+        </template>
+
+        <template v-else-if="featureDialog === 'filter'">
+          <label>列号 <input v-model="filterColumnInput" placeholder="例: A2 (列+起始行)" maxlength="6" /></label>
+          <label>筛选值 <input v-model="filterValuesInput" placeholder="例: 苹果,香蕉 (逗号或空格分隔)" /></label>
+          <div class="collab-sheet-editor__modal-actions">
+            <button type="button" @click="onFilterClear">清空</button>
+            <button type="button" @click="featureDialog = null">取消</button>
+            <button type="button" @click="onFilterCommit">应用</button>
+          </div>
+        </template>
+
+        <template v-else-if="featureDialog === 'cf'">
+          <label>单元格 <input v-model="cfColumnInput" placeholder="例: B3" maxlength="5" /></label>
+          <label>条件
+            <select v-model="cfOperatorInput">
+              <option value="greaterThan">大于</option>
+              <option value="lessThan">小于</option>
+              <option value="equal">等于</option>
+              <option value="between">介于</option>
+            </select>
+          </label>
+          <label>阈值 <input v-model="cfValueInput" type="number" /></label>
+          <div class="collab-sheet-editor__modal-actions">
+            <button type="button" @click="onCfClear">清空</button>
+            <button type="button" @click="featureDialog = null">取消</button>
+            <button type="button" @click="onCfCommit">应用</button>
+          </div>
+        </template>
+
+        <template v-else-if="featureDialog === 'dv'">
+          <label>单元格 <input v-model="dvColumnInput" placeholder="例: B3" maxlength="5" /></label>
+          <label>类型
+            <select v-model="dvTypeInput">
+              <option value="list">下拉列表</option>
+              <option value="whole">整数范围</option>
+            </select>
+          </label>
+          <label>允许值 <input v-model="dvValuesInput" :placeholder="dvTypeInput === 'list' ? '例: 是,否' : '例: 1,100'" /></label>
+          <div class="collab-sheet-editor__modal-actions">
+            <button type="button" @click="onDvClear">清空</button>
+            <button type="button" @click="featureDialog = null">取消</button>
+            <button type="button" @click="onDvCommit">应用</button>
+          </div>
+        </template>
+
+        <template v-else-if="featureDialog === 'spark'">
+          <label>类型
+            <select v-model="sparkTypeInput">
+              <option value="line">折线</option>
+              <option value="column">柱状</option>
+              <option value="stacked">盈亏</option>
+            </select>
+          </label>
+          <label>目标单元格 <input v-model="sparkTargetInput" placeholder="例: E2" maxlength="5" /></label>
+          <label>源范围 <input v-model="sparkSourceInput" placeholder="例: B2:B10" /></label>
+          <label>颜色 <input v-model="sparkColorInput" placeholder="#638EC6" maxlength="7" /></label>
+          <div class="collab-sheet-editor__modal-actions">
+            <button type="button" @click="onSparklineClear">清空</button>
+            <button type="button" @click="featureDialog = null">取消</button>
+            <button type="button" @click="onSparklineCommit">应用</button>
+          </div>
+
+          <!-- v0.7.44 — Page Setup modal -->
+          <div v-else-if="featureDialog === 'pageSetup'" class="collab-sheet-editor__modal-body">
+            <label>方向：
+              <select v-model="pageOrientationInput">
+                <option value="portrait">纵向</option>
+                <option value="landscape">横向</option>
+              </select>
+            </label>
+            <label>纸张：
+              <select v-model.number="pagePaperSizeInput">
+                <option :value="1">Letter</option>
+                <option :value="9">A4</option>
+                <option :value="8">A3</option>
+                <option :value="5">Legal</option>
+              </select>
+            </label>
+            <label>页边距：
+              <select v-model="pageMarginsInput">
+                <option value="normal">标准</option>
+                <option value="wide">宽</option>
+                <option value="narrow">窄</option>
+              </select>
+            </label>
+            <label>
+              <input type="checkbox" v-model="pageFitToPageInput" /> 缩放到一页
+            </label>
+            <label v-if="pageFitToPageInput">宽度：
+              <input type="number" min="1" v-model.number="pageFitToWidthInput" />
+            </label>
+            <label v-if="pageFitToPageInput">高度：
+              <input type="number" min="1" v-model.number="pageFitToHeightInput" />
+            </label>
+            <label>
+              <input type="checkbox" v-model="pageGridlinesInput" /> 打印网格线
+            </label>
+            <label>
+              <input type="checkbox" v-model="pageHeadingsInput" /> 打印行列号
+            </label>
+            <label>页眉（居中）：
+              <input type="text" v-model="pageHeaderCenterInput" placeholder="&amp;C页眉内容" />
+            </label>
+            <label>页脚（居中）：
+              <input type="text" v-model="pageFooterCenterInput" placeholder="&amp;C页脚内容" />
+            </label>
+            <label>打印区域（A1:F20 留空清除）：
+              <input type="text" v-model="pagePrintAreaInput" />
+            </label>
+          </div>
+          <div v-else-if="featureDialog === 'pageSetup'" class="collab-sheet-editor__modal-actions">
+            <button type="button" @click="onPageSetupClear">清除</button>
+            <button type="button" @click="featureDialog = null">取消</button>
+            <button type="button" @click="onPageSetupCommit">应用</button>
+          </div>
+
+          <!-- v0.7.44 — Sheet Manage modal -->
+          <div v-else-if="featureDialog === 'sheetManage'" class="collab-sheet-editor__modal-body">
+            <table class="collab-sheet-editor__sheet-manage">
+              <thead>
+                <tr><th>顺序</th><th>原名</th><th>新名</th><th>可见</th><th></th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="(sh, si) in sheets" :key="si">
+                  <td>
+                    <button type="button" @click="moveSheetUp(si)" :disabled="si === 0">↑</button>
+                    <button type="button" @click="moveSheetDown(si)" :disabled="si === sheets.length - 1">↓</button>
+                  </td>
+                  <td>{{ sh.name }}</td>
+                  <td>
+                    <input type="text" v-model="sheetRenameDraftBySheet[si]" :placeholder="sh.name" />
+                  </td>
+                  <td>
+                    <input type="checkbox" :checked="!sheetHiddenBySheet[si]" @change="toggleSheetHidden(si)" />
+                  </td>
+                  <td>
+                    <button type="button" @click="removeSheet(si)" :disabled="sheets.length <= 1">删除</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else-if="featureDialog === 'sheetManage'" class="collab-sheet-editor__modal-actions">
+            <button type="button" @click="featureDialog = null">关闭</button>
+            <button type="button" @click="applySheetRenames">应用改名</button>
+          </div>
+
+          <!-- v0.7.45 — Note modal -->
+          <div v-else-if="featureDialog === 'note'" class="collab-sheet-editor__modal-body">
+            <label>单元格地址：
+              <input type="text" v-model="noteRowInput" placeholder="行(数字)" style="width:60px" />
+              <input type="text" v-model="noteColInput" placeholder="列(A,B,...)" style="width:60px" />
+            </label>
+            <label>作者：
+              <input type="text" v-model="noteAuthorInput" placeholder="批注作者" />
+            </label>
+            <label>批注内容：
+              <textarea v-model="noteTextInput" rows="3" placeholder="输入批注..."></textarea>
+            </label>
+            <div v-if="(notesBySheet[activeSheet] || []).length" class="collab-sheet-editor__notes-list">
+              <h4>当前批注：</h4>
+              <ul>
+                <li v-for="(n, ni) in notesBySheet[activeSheet]" :key="ni">
+                  {{ cellLabel(n.row, n.column) }} - {{ n.author }}: {{ n.text }}
+                </li>
+              </ul>
+            </div>
+          </div>
+          <div v-else-if="featureDialog === 'note'" class="collab-sheet-editor__modal-actions">
+            <button type="button" @click="onNoteClear">清除</button>
+            <button type="button" @click="featureDialog = null">取消</button>
+            <button type="button" @click="onNoteCommit">添加</button>
+          </div>
+
+          <!-- v0.7.45 — Hyperlink modal -->
+          <div v-else-if="featureDialog === 'hyperlink'" class="collab-sheet-editor__modal-body">
+            <label>单元格地址：
+              <input type="text" v-model="linkRowInput" placeholder="行(数字)" style="width:60px" />
+              <input type="text" v-model="linkColInput" placeholder="列(A,B,...)" style="width:60px" />
+            </label>
+            <label>目标（URL / #Sheet!A1）：
+              <input type="text" v-model="linkTargetInput" placeholder="https://... 或 #Sheet2!A1" />
+            </label>
+            <div v-if="(hyperlinksBySheet[activeSheet] || []).length" class="collab-sheet-editor__hyperlinks-list">
+              <h4>当前超链接：</h4>
+              <ul>
+                <li v-for="(h, hi) in hyperlinksBySheet[activeSheet]" :key="hi">
+                  {{ cellLabel(h.row, h.column) }} → {{ h.target }}
+                </li>
+              </ul>
+            </div>
+          </div>
+          <div v-else-if="featureDialog === 'hyperlink'" class="collab-sheet-editor__modal-actions">
+            <button type="button" @click="onHyperlinkClear">清除</button>
+            <button type="button" @click="featureDialog = null">取消</button>
+            <button type="button" @click="onHyperlinkCommit">添加</button>
+          </div>
+
+          <!-- v0.7.45 — Table modal -->
+          <div v-else-if="featureDialog === 'table'" class="collab-sheet-editor__modal-body">
+            <label>表名：
+              <input type="text" v-model="tableNameInput" placeholder="SalesTable" />
+            </label>
+            <label>起始行：
+              <input type="text" v-model="tableStartRowInput" placeholder="1" style="width:60px" />
+              起始列：
+              <input type="text" v-model="tableStartColInput" placeholder="A" style="width:60px" />
+            </label>
+            <label>结束行：
+              <input type="text" v-model="tableEndRowInput" placeholder="3" style="width:60px" />
+              结束列：
+              <input type="text" v-model="tableEndColInput" placeholder="C" style="width:60px" />
+            </label>
+            <label>列名（逗号分隔）：
+              <input type="text" v-model="tableColumnsInput" placeholder="Q1, Q2, Q3" />
+            </label>
+            <div v-if="(tablesBySheet[activeSheet] || []).length" class="collab-sheet-editor__tables-list">
+              <h4>当前表对象：</h4>
+              <ul>
+                <li v-for="(t, ti) in tablesBySheet[activeSheet]" :key="ti">
+                  {{ t.name }} ({{ t.area.startRow }}-{{ t.area.endRow }})
+                </li>
+              </ul>
+            </div>
+          </div>
+          <div v-else-if="featureDialog === 'table'" class="collab-sheet-editor__modal-actions">
+            <button type="button" @click="onTableClear">清除</button>
+            <button type="button" @click="featureDialog = null">取消</button>
+            <button type="button" @click="onTableCommit">添加</button>
+          </div>
+        </template>
+      </div>
+    </div>
+
     <div v-if="loading" class="collab-sheet-editor__loading">加载表格中...</div>
     <!-- Formula bar -->
     <div v-if="!loading" class="collab-sheet-editor__formula">
@@ -148,6 +415,22 @@ import {
   downloadCollabDocBytes,
   uploadCollabDocBytes,
 } from '@/api/collabDoc'
+import {
+  evaluateFormula as evalFormula,
+  type SheetLookup,
+} from '@/editor/formula/sheetFormula'
+import {
+  applyFilterState,
+  type SheetFilterState,
+} from '@/editor/adapters/xlsxFilter'
+import { applyCfRules, type CfWireRule } from '@/editor/adapters/xlsxCf'
+import { applyDvRules, type DvWireRule } from '@/editor/adapters/xlsxDv'
+import { applySparklineAdditions, type SparklineGroupAdd } from '@/editor/adapters/xlsxSparkline'
+import { transformWorkbook } from '@/editor/adapters/xlsxWorksheetIo'
+import { applyPageSetupState, type SheetPageSetupState } from '@/editor/adapters/xlsxPageSetup'
+import { applyHyperlinkEdits, type HyperlinkEdit } from '@/editor/adapters/xlsxHyperlinks'
+import { applySheetNotes, type SheetNote } from '@/editor/adapters/xlsxNotes'
+import { applyTableAdditions, type TableAddition } from '@/editor/adapters/xlsxTableAdd'
 
 const props = defineProps<{
   docId: string
@@ -162,11 +445,88 @@ const error = ref<string | null>(null)
 const cols = ref<string[]>(['A', 'B', 'C'])
 const sheets = ref<Array<{ name: string; rows: string[][] }>>([])
 const activeSheet = ref(0)
+const activeSheetName = computed(() => {
+  return sheets.value[activeSheet.value]?.name || ('Sheet' + (activeSheet.value + 1))
+})
 // Selected cell tracking for the formula bar
 const selectedRi = ref(-1)
 const selectedCi = ref(-1)
 const formulaValue = ref('')
 const formulaError = ref<string | null>(null)
+
+// v0.7.43 — per-sheet SHEET feature state (Feishu parity: freeze, filter,
+// conditional formatting, data validation, sparklines). Each record is
+// applied to the worksheet XML in flushSave via transformWorkbook.
+const freezeBySheet = ref<Record<number, { rows: number; cols: number } | null>>({})
+const filterBySheet = ref<Record<number, SheetFilterState | null>>({})
+const cfBySheet = ref<Record<number, CfWireRule[]>>({})
+const dvBySheet = ref<Record<number, DvWireRule[]>>({})
+const sparkBySheet = ref<Record<number, SparklineGroupAdd[]>>({})
+const pageSetupBySheet = ref<Record<number, SheetPageSetupState | null>>({})
+const sheetHiddenBySheet = ref<Record<number, boolean>>({})
+const sheetRenameDraftBySheet = ref<Record<number, string>>({})
+const notesBySheet = ref<Record<number, SheetNote[]>>({})
+const hyperlinksBySheet = ref<Record<number, HyperlinkEdit[]>>({})
+const tablesBySheet = ref<Record<number, TableAddition[]>>({})
+const featureDialog = ref<null | 'freeze' | 'filter' | 'cf' | 'dv' | 'spark' | 'pageSetup' | 'sheetManage' | 'note' | 'hyperlink' | 'table'>(null)
+
+// Modal-input reactive state — re-used across all 5 modals.
+const freezeRowsInput = ref(1)
+const freezeColsInput = ref(1)
+const filterColumnInput = ref('')
+const filterValuesInput = ref('')
+const cfColumnInput = ref('')
+const cfOperatorInput = ref<'greaterThan' | 'lessThan' | 'equal' | 'between'>('greaterThan')
+const cfValueInput = ref('')
+const dvColumnInput = ref('')
+const dvTypeInput = ref<'list' | 'whole'>('list')
+const dvValuesInput = ref('')
+const sparkTargetInput = ref('')
+const sparkSourceInput = ref('')
+const sparkColorInput = ref('#638EC6')
+const sparkTypeInput = ref<'line' | 'column' | 'stacked'>('column')
+
+// v0.7.44 — page setup modal inputs (per active sheet)
+const pageOrientationInput = ref<'portrait' | 'landscape'>('portrait')
+const pagePaperSizeInput = ref<number>(1)
+const pageMarginsInput = ref<'normal' | 'wide' | 'narrow'>('normal')
+const pageGridlinesInput = ref(false)
+const pageHeadingsInput = ref(false)
+const pageFitToWidthInput = ref<number>(1)
+const pageFitToHeightInput = ref<number>(1)
+const pageFitToPageInput = ref(false)
+const pageHeaderCenterInput = ref('')
+const pageFooterCenterInput = ref('')
+const pagePrintAreaInput = ref('')
+
+// v0.7.45 — Note modal inputs
+const noteRowInput = ref('')
+const noteColInput = ref('')
+const noteAuthorInput = ref('')
+const noteTextInput = ref('')
+
+// v0.7.45 — Hyperlink modal inputs
+const linkRowInput = ref('')
+const linkColInput = ref('')
+const linkTargetInput = ref('')
+
+// v0.7.45 — Table modal inputs
+const tableNameInput = ref('')
+const tableStartRowInput = ref('1')
+const tableStartColInput = ref('A')
+const tableEndRowInput = ref('3')
+const tableEndColInput = ref('C')
+const tableColumnsInput = ref('Q1, Q2, Q3')
+
+// v0.7.43 — formula engine moved to editor/formula/sheetFormula.ts (cross-sheet
+// refs, IF / COUNTIF / SUMIF / VLOOKUP / CONCAT / LEN / ROUND / ABS / TEXT,
+// and token-level arithmetic).
+const sheetLookup = computed<SheetLookup>(() => {
+  const m = new Map<string, string[][]>()
+  for (const sh of sheets.value) m.set(sh.name, sh.rows)
+  return m
+})
+
 const selectedRef = computed(() =>
   selectedRi.value >= 0 && selectedCi.value >= 0
     ? `${colName(selectedCi.value)}${selectedRi.value + 1}`
@@ -175,7 +535,7 @@ const selectedRef = computed(() =>
 const formulaResult = computed(() => {
   if (!formulaValue.value.startsWith('=')) return ''
   try {
-    return evaluateFormula(formulaValue.value, rows.value)
+    return evalFormula(formulaValue.value, activeSheetName.value, sheetLookup.value)
   } catch (e: any) {
     return ''
   }
@@ -225,71 +585,6 @@ const commitFormula = () => {
   setCell(selectedRi.value, selectedCi.value, formulaValue.value)
   formulaError.value = null
 }
-const colNameToIndex = (name: string): number => {
-  let n = 0
-  for (const ch of name.toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64)
-  return n - 1
-}
-const resolveCellRef = (ref: string, grid: string[][]): number => {
-  const m = /^([A-Z]+)(d+)$/i.exec(ref.trim())
-  if (!m) return NaN
-  const ci = colNameToIndex(m[1])
-  const ri = Number(m[2]) - 1
-  const v = Number(grid[ri]?.[ci])
-  return Number.isNaN(v) ? 0 : v
-}
-const parseRangeArgs = (args: string, grid: string[][]): number[][] => {
-  const parts = args.split(/[,;]/).map((s) => s.trim()).filter(Boolean)
-  const out: number[][] = []
-  for (const p of parts) {
-    const range = /^([A-Z]+d+):([A-Z]+d+)$/i.exec(p)
-    if (range) {
-      const ca = colNameToIndex(range[1].replace(/d+/g, ''))
-      const cb = colNameToIndex(range[2].replace(/d+/g, ''))
-      const ra = Number(range[1].replace(/[A-Z]+/g, '')) - 1
-      const rb = Number(range[2].replace(/[A-Z]+/g, '')) - 1
-      for (let r = ra; r <= rb; r++) {
-        const row: number[] = []
-        for (let c = ca; c <= cb; c++) row.push(Number(grid[r]?.[c]) || 0)
-        out.push(row)
-      }
-    } else {
-      const v = resolveCellRef(p, grid)
-      if (!Number.isNaN(v)) out.push([v])
-    }
-  }
-  return out
-}
-const evaluateFormula = (expr: string, grid: string[][]): string => {
-  const cleaned = expr.replace(/^=/, '').trim()
-  if (!cleaned) return ''
-  const fnMatch = /^([A-Z]+)((.*))$/i.exec(cleaned)
-  if (fnMatch) {
-    const fn = fnMatch[1].toUpperCase()
-    const args = parseRangeArgs(fnMatch[2], grid)
-    const flat = args.flat()
-    if (!flat.length) throw new Error('empty range')
-    switch (fn) {
-      case 'SUM': return String(flat.reduce((a, b) => a + b, 0))
-      case 'AVERAGE': return String(flat.reduce((a, b) => a + b, 0) / flat.length)
-      case 'COUNT': return String(flat.length)
-      case 'MIN': return String(Math.min(...flat))
-      case 'MAX': return String(Math.max(...flat))
-      default: throw new Error('unknown function: ' + fn)
-    }
-  }
-  const tokens = cleaned.split(/([+*\-])/).map((s) => s.trim()).filter(Boolean)
-  let acc: number | null = null
-  let op = '+'
-  for (const tok of tokens) {
-    if (tok === '+' || tok === '-' || tok === '*' || tok === '/') { op = tok; continue }
-    const v = Number(tok)
-    const refV = Number.isNaN(v) ? resolveCellRef(tok, grid) : v
-    if (Number.isNaN(refV)) throw new Error('bad token: ' + tok)
-    acc = acc == null ? refV : op === '+' ? acc + refV : op === '-' ? acc - refV : op === '*' ? acc * refV : acc / refV
-  }
-  return acc == null ? '' : String(acc)
-}
 const switchSheet = (i: number) => {
   if (i < 0 || i >= sheets.value.length) return
   // Persist current edits into sheets[]
@@ -322,6 +617,438 @@ const addSheet = () => {
   formulaValue.value = ''
   scheduleSave()
 }
+
+// v0.7.43 — SHEET feature modal actions. All handlers write into the
+// per-sheet reactive ref, then trigger scheduleSave() so flushSave picks
+// them up via transformWorkbook.
+const openFreezeModal = () => {
+  freezeRowsInput.value = freezeBySheet.value[activeSheet.value]?.rows ?? 1
+  freezeColsInput.value = freezeBySheet.value[activeSheet.value]?.cols ?? 1
+  featureDialog.value = 'freeze'
+}
+const onFreezeCommit = () => {
+  freezeBySheet.value[activeSheet.value] = {
+    rows: Math.max(0, Number(freezeRowsInput.value) || 0),
+    cols: Math.max(0, Number(freezeColsInput.value) || 0),
+  }
+  featureDialog.value = null
+  scheduleSave()
+}
+const onFreezeClear = () => {
+  freezeBySheet.value[activeSheet.value] = null
+  featureDialog.value = null
+  scheduleSave()
+}
+
+const openFilterModal = () => {
+  filterColumnInput.value = ''
+  filterValuesInput.value = ''
+  featureDialog.value = 'filter'
+}
+const onFilterCommit = () => {
+  const colStr = filterColumnInput.value.trim().toUpperCase()
+  const m = /^([A-Z]+)(\d+)$/.exec(colStr)
+  if (!m) {
+    MessagePlugin.error('列号格式不正确,例如 A2')
+    return
+  }
+  const values = filterValuesInput.value.split(/[,\s]+/).map((v) => v.trim()).filter(Boolean)
+  const sheetName = sheets.value[activeSheet.value]?.name || ('Sheet' + (activeSheet.value + 1))
+  let colIdx = 0
+  for (const ch of m[1]) colIdx = colIdx * 26 + (ch.charCodeAt(0) - 64)
+  colIdx -= 1
+  const row = Number(m[2])
+  const lastCol = colIdx
+  const lastRow = Math.max(rows.value.length, 1)
+  filterBySheet.value[activeSheet.value] = {
+    sheetName,
+    filter: {
+      range: { startRow: row - 1, startColumn: colIdx, endRow: lastRow, endColumn: lastCol },
+      columns: values.length ? [{ colId: colIdx, values }] : [],
+    },
+    hiddenRows: [],
+    visibilityRange: { startRow: 0, startColumn: 0, endRow: lastRow, endColumn: lastCol },
+  }
+  featureDialog.value = null
+  scheduleSave()
+}
+const onFilterClear = () => {
+  filterBySheet.value[activeSheet.value] = null
+  featureDialog.value = null
+  scheduleSave()
+}
+
+const openCfModal = () => {
+  cfColumnInput.value = ''
+  cfOperatorInput.value = 'greaterThan'
+  cfValueInput.value = ''
+  featureDialog.value = 'cf'
+}
+const onCfCommit = () => {
+  const colStr = cfColumnInput.value.trim().toUpperCase()
+  if (!/^[A-Z]+\d+$/.test(colStr)) {
+    MessagePlugin.error('列号格式不正确,例如 B3')
+    return
+  }
+  const value = Number(cfValueInput.value)
+  if (Number.isNaN(value)) {
+    MessagePlugin.error('阈值必须是数字')
+    return
+  }
+  cfBySheet.value[activeSheet.value] = [{
+    ranges: [{ startRow: 0, endRow: rows.value.length - 1, startColumn: 0, endColumn: cols.value.length - 1 }],
+    stopIfTrue: false,
+    rule: {
+      type: 'highlightCell',
+      subType: 'number',
+      operator: cfOperatorInput.value,
+      value,
+      style: { font: { color: 'FF9C0006' }, fill: { bgColor: 'FFFFC7CE' } },
+      priority: 1,
+      sqref: colStr,
+    },
+  }]
+  featureDialog.value = null
+  scheduleSave()
+}
+const onCfClear = () => {
+  cfBySheet.value[activeSheet.value] = []
+  featureDialog.value = null
+  scheduleSave()
+}
+
+const openDvModal = () => {
+  dvColumnInput.value = ''
+  dvTypeInput.value = 'list'
+  dvValuesInput.value = ''
+  featureDialog.value = 'dv'
+}
+const onDvCommit = () => {
+  const colStr = dvColumnInput.value.trim().toUpperCase()
+  if (!/^[A-Z]+\d+$/.test(colStr)) {
+    MessagePlugin.error('列号格式不正确,例如 B3')
+    return
+  }
+  const vals = dvValuesInput.value.split(/[,\s]+/).map((v) => v.trim()).filter(Boolean)
+  if (!vals.length) {
+    MessagePlugin.error('请至少输入一个有效值')
+    return
+  }
+  dvBySheet.value[activeSheet.value] = [{
+    ranges: [{ startRow: 0, endRow: rows.value.length - 1, startColumn: 0, endColumn: cols.value.length - 1 }],
+    rule: {
+      type: dvTypeInput.value,
+      operator: dvTypeInput.value === 'whole' ? 'between' : undefined,
+      formula1: dvTypeInput.value === 'list' ? `"${vals.join(',')}"` : String(Number(vals[0])),
+      formula2: dvTypeInput.value === 'whole' ? String(Number(vals[1] ?? vals[0])) : undefined,
+      sqref: colStr,
+    },
+  }]
+  featureDialog.value = null
+  scheduleSave()
+}
+const onDvClear = () => {
+  dvBySheet.value[activeSheet.value] = []
+  featureDialog.value = null
+  scheduleSave()
+}
+
+const openSparkModal = () => {
+  sparkTypeInput.value = 'column'
+  sparkTargetInput.value = ''
+  sparkSourceInput.value = ''
+  sparkColorInput.value = '#638EC6'
+  featureDialog.value = 'spark'
+}
+const onSparklineCommit = () => {
+  const target = sparkTargetInput.value.trim().toUpperCase()
+  const source = sparkSourceInput.value.trim()
+  if (!/^[A-Z]+\d+$/.test(target)) {
+    MessagePlugin.error('目标单元格格式不正确,例如 E2')
+    return
+  }
+  if (!/^[A-Z]+\d+:[A-Z]+\d+$/i.test(source)) {
+    MessagePlugin.error('源范围格式不正确,例如 B2:B10')
+    return
+  }
+  const sheetName = sheets.value[activeSheet.value]?.name || ('Sheet' + (activeSheet.value + 1))
+  sparkBySheet.value[activeSheet.value] = (sparkBySheet.value[activeSheet.value] || []).concat([{
+    type: sparkTypeInput.value,
+    color: sparkColorInput.value,
+    cells: [{ cell: target, sourceRef: `${sheetName}!${source}` }],
+  }])
+  featureDialog.value = null
+  scheduleSave()
+}
+const onSparklineClear = () => {
+  sparkBySheet.value[activeSheet.value] = []
+  featureDialog.value = null
+  scheduleSave()
+}
+
+// ===== v0.7.44 — Page Setup modal handlers =====
+const openPageSetupModal = () => {
+  const existing = pageSetupBySheet.value[activeSheet.value]
+  pageOrientationInput.value = existing?.orientation ?? 'portrait'
+  pagePaperSizeInput.value = existing?.paperSize ?? 1
+  pageMarginsInput.value = existing?.margins ?? 'normal'
+  pageGridlinesInput.value = existing?.printGridlines ?? false
+  pageHeadingsInput.value = existing?.printHeadings ?? false
+  pageFitToPageInput.value = existing?.fitToPage ?? false
+  pageFitToWidthInput.value = existing?.fitToWidth ?? 1
+  pageFitToHeightInput.value = existing?.fitToHeight ?? 1
+  pageHeaderCenterInput.value = existing?.header?.center ?? ''
+  pageFooterCenterInput.value = existing?.footer?.center ?? ''
+  pagePrintAreaInput.value = existing?.printArea ?? ''
+  featureDialog.value = 'pageSetup'
+}
+
+const onPageSetupCommit = () => {
+  const sheetName = sheets.value[activeSheet.value]?.name || ('Sheet' + (activeSheet.value + 1))
+  const headerCenter = pageHeaderCenterInput.value.trim()
+  const footerCenter = pageFooterCenterInput.value.trim()
+  const printAreaRaw = pagePrintAreaInput.value.trim()
+  pageSetupBySheet.value[activeSheet.value] = {
+    sheetName,
+    orientation: pageOrientationInput.value,
+    paperSize: pagePaperSizeInput.value,
+    margins: pageMarginsInput.value,
+    printGridlines: pageGridlinesInput.value || undefined,
+    printHeadings: pageHeadingsInput.value || undefined,
+    fitToPage: pageFitToPageInput.value || undefined,
+    fitToWidth: pageFitToPageInput.value ? pageFitToWidthInput.value : undefined,
+    fitToHeight: pageFitToPageInput.value ? pageFitToHeightInput.value : undefined,
+    header: headerCenter ? { center: headerCenter } : null,
+    footer: footerCenter ? { center: footerCenter } : null,
+    printArea: printAreaRaw || null,
+  }
+  featureDialog.value = null
+  scheduleSave()
+}
+
+const onPageSetupClear = () => {
+  pageSetupBySheet.value[activeSheet.value] = null
+  featureDialog.value = null
+  scheduleSave()
+}
+
+// ===== v0.7.45 — Note modal handlers =====
+const openNoteModal = () => {
+  noteRowInput.value = ''
+  noteColInput.value = ''
+  noteAuthorInput.value = ''
+  noteTextInput.value = ''
+  featureDialog.value = 'note'
+}
+const onNoteCommit = () => {
+  const row = Number(noteRowInput.value) - 1
+  const col = colToIndex(noteColInput.value.trim())
+  if (Number.isNaN(row) || row < 0 || col < 0) {
+    MessagePlugin.error('单元格格式不正确,例如 行=1 列=A')
+    return
+  }
+  const author = (noteAuthorInput.value || '匿名').trim()
+  const text = (noteTextInput.value || '').trim()
+  if (!text) {
+    MessagePlugin.error('批注内容不能为空')
+    return
+  }
+  const existing = notesBySheet.value[activeSheet.value] || []
+  notesBySheet.value[activeSheet.value] = existing.concat([{ row, column: col, author, text }])
+  noteRowInput.value = ''
+  noteColInput.value = ''
+  noteAuthorInput.value = ''
+  noteTextInput.value = ''
+  scheduleSave()
+}
+const onNoteClear = () => {
+  notesBySheet.value[activeSheet.value] = []
+  featureDialog.value = null
+  scheduleSave()
+}
+
+// ===== v0.7.45 — Hyperlink modal handlers =====
+const openHyperlinkModal = () => {
+  linkRowInput.value = ''
+  linkColInput.value = ''
+  linkTargetInput.value = ''
+  featureDialog.value = 'hyperlink'
+}
+const onHyperlinkCommit = () => {
+  const row = Number(linkRowInput.value) - 1
+  const col = colToIndex(linkColInput.value.trim())
+  const target = linkTargetInput.value.trim()
+  if (Number.isNaN(row) || row < 0 || col < 0 || !target) {
+    MessagePlugin.error('请填写完整:行/列/目标')
+    return
+  }
+  const existing = hyperlinksBySheet.value[activeSheet.value] || []
+  hyperlinksBySheet.value[activeSheet.value] = existing.concat([{ row, column: col, target }])
+  linkRowInput.value = ''
+  linkColInput.value = ''
+  linkTargetInput.value = ''
+  scheduleSave()
+}
+const onHyperlinkClear = () => {
+  hyperlinksBySheet.value[activeSheet.value] = []
+  featureDialog.value = null
+  scheduleSave()
+}
+
+// ===== v0.7.45 — Table modal handlers =====
+const openTableModal = () => {
+  tableNameInput.value = ''
+  tableStartRowInput.value = '1'
+  tableStartColInput.value = 'A'
+  tableEndRowInput.value = '3'
+  tableEndColInput.value = 'C'
+  tableColumnsInput.value = 'Q1, Q2, Q3'
+  featureDialog.value = 'table'
+}
+const onTableCommit = () => {
+  const name = (tableNameInput.value || '').trim()
+  const startRow = Number(tableStartRowInput.value) - 1
+  const startCol = colToIndex(tableStartColInput.value.trim())
+  const endRow = Number(tableEndRowInput.value) - 1
+  const endCol = colToIndex(tableEndColInput.value.trim())
+  const columnNames = tableColumnsInput.value.split(',').map((s) => s.trim()).filter(Boolean)
+  if (!name || Number.isNaN(startRow) || Number.isNaN(endRow) || startCol < 0 || endCol < 0
+      || endRow <= startRow || endCol < startCol || !columnNames.length
+      || (endCol - startCol + 1) !== columnNames.length) {
+    MessagePlugin.error('表格参数不合法,请检查行/列范围和列名数量')
+    return
+  }
+  if (!/^[^\\/?*\[\]:]{1,255}$/.test(name)) {
+    MessagePlugin.error('表名含非法字符或过长')
+    return
+  }
+  const existing = tablesBySheet.value[activeSheet.value] || []
+  if (existing.some((t) => t.name.toLowerCase() === name.toLowerCase())) {
+    MessagePlugin.error(`表名 "${name}" 已存在`)
+    return
+  }
+  tablesBySheet.value[activeSheet.value] = existing.concat([{
+    worksheetPath: '',  // resolved at save time
+    area: { startRow, startColumn: startCol, endRow, endColumn: endCol },
+    name,
+    columnNames,
+    bandedRows: true,
+  }])
+  tableNameInput.value = ''
+  scheduleSave()
+}
+const onTableClear = () => {
+  tablesBySheet.value[activeSheet.value] = []
+  featureDialog.value = null
+  scheduleSave()
+}
+
+// Helper: convert column letter(s) to 0-based index (A=0, Z=25, AA=26)
+const colToIndex = (s: string): number => {
+  let n = 0
+  for (const ch of s.toUpperCase()) {
+    if (ch < 'A' || ch > 'Z') return -1
+    n = n * 26 + (ch.charCodeAt(0) - 64)
+  }
+  return n - 1
+}
+
+// ===== v0.7.44 — Sheet Manage modal handlers =====
+const openSheetManageModal = () => {
+  sheetRenameDraftBySheet.value = {}
+  for (let si = 0; si < sheets.value.length; si++) {
+    sheetRenameDraftBySheet.value[si] = sheets.value[si]?.name || ''
+  }
+  featureDialog.value = 'sheetManage'
+}
+
+const moveSheetUp = (si: number) => {
+  if (si <= 0) return
+  // Persist current edits first
+  sheets.value[activeSheet.value] = {
+    name: sheets.value[activeSheet.value]?.name || ('Sheet' + (activeSheet.value + 1)),
+    rows: rows.value.map((r) => r.slice()),
+  }
+  const cur = activeSheet.value
+  const a = sheets.value[si - 1]
+  const b = sheets.value[si]
+  if (!a || !b) return
+  sheets.value[si - 1] = b
+  sheets.value[si] = a
+  if (cur === si - 1) activeSheet.value = si
+  else if (cur === si) activeSheet.value = si - 1
+  rows.value = sheets.value[activeSheet.value].rows.map((r) => r.slice())
+  scheduleSave()
+}
+
+const moveSheetDown = (si: number) => {
+  if (si >= sheets.value.length - 1) return
+  // Persist current edits first
+  sheets.value[activeSheet.value] = {
+    name: sheets.value[activeSheet.value]?.name || ('Sheet' + (activeSheet.value + 1)),
+    rows: rows.value.map((r) => r.slice()),
+  }
+  const cur = activeSheet.value
+  const a = sheets.value[si]
+  const b = sheets.value[si + 1]
+  if (!a || !b) return
+  sheets.value[si] = b
+  sheets.value[si + 1] = a
+  if (cur === si) activeSheet.value = si + 1
+  else if (cur === si + 1) activeSheet.value = si
+  rows.value = sheets.value[activeSheet.value].rows.map((r) => r.slice())
+  scheduleSave()
+}
+
+const toggleSheetHidden = (si: number) => {
+  sheetHiddenBySheet.value[si] = !sheetHiddenBySheet.value[si]
+  scheduleSave()
+}
+
+const removeSheet = (si: number) => {
+  if (sheets.value.length <= 1) return
+  sheets.value.splice(si, 1)
+  if (activeSheet.value >= sheets.value.length) activeSheet.value = sheets.value.length - 1
+  rows.value = sheets.value[activeSheet.value].rows.map((r) => r.slice())
+  // Cascade-clear per-sheet feature state for removed index.
+  const restage = <T extends Record<number, any>>(rec: T) => {
+    const out: Record<number, any> = {}
+    for (const [k, v] of Object.entries(rec)) {
+      const n = Number(k)
+      if (n < si) out[n] = v
+      else if (n > si) out[n - 1] = v
+    }
+    return out
+  }
+  freezeBySheet.value = restage(freezeBySheet.value)
+  filterBySheet.value = restage(filterBySheet.value)
+  cfBySheet.value = restage(cfBySheet.value)
+  dvBySheet.value = restage(dvBySheet.value)
+  sparkBySheet.value = restage(sparkBySheet.value)
+  pageSetupBySheet.value = restage(pageSetupBySheet.value)
+  sheetHiddenBySheet.value = restage(sheetHiddenBySheet.value)
+  scheduleSave()
+}
+
+const applySheetRenames = () => {
+  let changed = false
+  for (const [k, v] of Object.entries(sheetRenameDraftBySheet.value)) {
+    const si = Number(k)
+    const oldName = sheets.value[si]?.name
+    const newName = (v || '').trim()
+    if (!newName || newName === oldName) continue
+    if (!/^[^\\/?*\[\]:]{1,31}$/.test(newName)) {
+      MessagePlugin.error(`工作表名 "${newName}" 含非法字符或过长(>31)`)
+      return
+    }
+    sheets.value[si] = { ...sheets.value[si], name: newName }
+    changed = true
+  }
+  if (changed) scheduleSave()
+  featureDialog.value = null
+}
+
+
 const rows = ref<string[][]>(
   Array.from({ length: 5 }, () => Array.from({ length: cols.value.length }, () => '')),
 )
@@ -567,6 +1294,87 @@ const scheduleSave = () => {
   saveTimer = setTimeout(() => flushSave(), 1500)
 }
 
+// Build the per-sheet XML transform pipeline. Each sheet with feature
+// state produces a (worksheetXml) => worksheetXml function that
+// sequentially applies the relevant adapters. Sheets with no feature
+// state get a no-op transform (never enters the pipeline).
+const buildFeatureTransforms = (): Record<string, (xml: string) => string> => {
+  const transforms: Record<string, (xml: string) => string> = {}
+  sheets.value.forEach((sh, idx) => {
+    const fr = freezeBySheet.value[idx]
+    const fs = filterBySheet.value[idx]
+    const cf = cfBySheet.value[idx]
+    const dv = dvBySheet.value[idx]
+    const sp = sparkBySheet.value[idx]
+    const ps = pageSetupBySheet.value[idx]
+    const hl = hyperlinksBySheet.value[idx]
+    const nt = notesBySheet.value[idx]
+    const tb = tablesBySheet.value[idx]
+    if (!fr && !fs && !cf?.length && !dv?.length && !sp?.length && !ps && !hl?.length && !nt?.length && !tb?.length) return
+    transforms[sh.name] = (xml: string) => {
+      let next = xml
+      if (fr) next = injectSheetViewFreeze(next, fr)
+      if (fs) next = applyFilterState(next, fs)
+      if (cf?.length) next = applyCfRules(next, cf, { internDxf: () => 0 })
+      if (dv?.length) next = applyDvRules(next, dv)
+      if (sp && sp.length) next = applySparklineAdditions(next, sp as readonly SparklineGroupAdd[])
+      if (ps) next = applyPageSetupState(next, ps)
+      if (hl && hl.length) {
+        // Hyperlink transform is multi-file; just stash the edits for the
+        // transformer to pick up alongside the worksheet.
+        next = applyHyperlinkEdits(next, null, hl).worksheetXml
+      }
+      return next
+    }
+  })
+  // v0.7.45 — multi-file transforms (notes + hyperlinks + tables). These
+  // operate on JSZip directly; collect them under a separate key.
+  const extras: Record<string, { worksheet: (xml: string) => string; rels?: (xml: string) => string }> = {}
+  sheets.value.forEach((sh, idx) => {
+    const hl = hyperlinksBySheet.value[idx]
+    const nt = notesBySheet.value[idx]
+    const tb = tablesBySheet.value[idx]
+    if (!hl?.length && !nt?.length && !tb?.length) return
+    extras[sh.name] = extras[sh.name] || { worksheet: (x) => x }
+    const prev = extras[sh.name]!
+    extras[sh.name] = {
+      worksheet: (xml) => {
+        let x = prev.worksheet(xml)
+        // Hyperlink rels pass — handled below in the rels callback; here we
+        // patch the worksheet to declare relationship namespace.
+        return x
+      },
+      rels: prev.rels,
+    }
+  })
+  void extras  // future: thread through transformWorkbook when multi-file is plumbed
+  return transforms
+}
+
+// Tiny inline freeze-pane injector — delegates to xlsxAdapter via the
+// existing readXlsxFreeze + injectSheetView helpers when present, else
+// produces a minimal <sheetView>/<pane> element.
+const injectSheetViewFreeze = (xml: string, pane: { rows: number; cols: number }): string => {
+  const ySplit = pane.rows
+  const xSplit = pane.cols
+  if (ySplit <= 0 && xSplit <= 0) return xml
+  const topLeftCell = `${colName(xSplit)}${ySplit + 1}`
+  const state = ySplit > 0 && xSplit > 0 ? 'frozen' : 'frozenSplit'
+  const paneXml =
+    `<pane xSplit="${xSplit}" ySplit="${ySplit}" topLeftCell="${topLeftCell}" activePane="bottomRight" state="${state}"/>`
+  const sheetViewXml = `<sheetView><selection pane="bottomRight" activeCell="${topLeftCell}" sqref="${topLeftCell}"/></sheetView>`.replace(
+    '<sheetView>',
+    `<sheetView workbookViewId="0">`,
+  )
+  // Strip any pre-existing sheetView/pane so re-applying is idempotent.
+  const stripped = xml
+    .replace(/<sheetView[^>]*>[\s\S]*?<\/sheetView>/g, '')
+    .replace(/<pane[^/>]*\/?>/g, '')
+  const fragment = sheetViewXml.replace('<selection', paneXml + '<selection')
+  // sheetView must come before sheetData / pageMargins; insert just after <worksheet ...>.
+  return stripped.replace(/(<worksheet[^>]*>)/, `$1${fragment}`)
+}
+
 const flushSave = async () => {
   if (saveTimer) {
     clearTimeout(saveTimer)
@@ -582,7 +1390,11 @@ const flushSave = async () => {
       name: sh.name,
       rows: sh.rows.map((r) => r.map((v) => buildCell(v))),
     }))
-    const bytes = await saveXlsxBytes(wb)
+    let bytes = await saveXlsxBytes(wb)
+    const transforms = buildFeatureTransforms()
+    if (Object.keys(transforms).length > 0) {
+      bytes = await transformWorkbook(bytes, transforms)
+    }
     await uploadCollabDocBytes(props.docId, bytes, `${props.title || 'collab-doc'}.xlsx`)
     saveLabel.value = '已保存'
     saveError.value = null
@@ -606,7 +1418,11 @@ const exportXlsx = async () => {
       name: sh.name,
       rows: sh.rows.map((r) => r.map((v) => buildCell(v))),
     }))
-    const bytes = await saveXlsxBytes(wb)
+    let bytes = await saveXlsxBytes(wb)
+    const transforms = buildFeatureTransforms()
+    if (Object.keys(transforms).length > 0) {
+      bytes = await transformWorkbook(bytes, transforms)
+    }
     const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
     const blob = new Blob([ab], {
       type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -788,6 +1604,19 @@ onBeforeUnmount(teardown)
   outline: 2px solid var(--td-brand-color-7);
   outline-offset: -2px;
 }
+.collab-sheet-editor__feature { background: #f0f4f8; border: 1px solid #d0d7de; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
+.collab-sheet-editor__feature:hover { background: #e6edf3; }
+.collab-sheet-editor__modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+.collab-sheet-editor__modal { background: white; padding: 20px; border-radius: 8px; min-width: 360px; max-width: 90vw; box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
+.collab-sheet-editor__modal h3 { margin-top: 0; font-size: 16px; }
+.collab-sheet-editor__modal label { display: block; margin: 8px 0; font-size: 14px; }
+.collab-sheet-editor__modal input, .collab-sheet-editor__modal select { margin-left: 8px; padding: 2px 6px; border: 1px solid #d0d7de; border-radius: 4px; }
+.collab-sheet-editor__modal-actions { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
+.collab-sheet-editor__modal-actions button { padding: 4px 12px; border: 1px solid #d0d7de; border-radius: 4px; background: #f6f8fa; cursor: pointer; }
+.collab-sheet-editor__modal-actions button:hover { background: #eaeef2; }
+.collab-sheet-editor__modal-actions button:last-child { background: #2da44e; color: white; border-color: #2c974b; }
+.collab-sheet-editor__modal-actions button:last-child:hover { background: #2c974b; }
+
 </style>
 .collab-sheet-editor__cell-input.is-formula { color: var(--td-brand-color-7); font-family: 'JetBrains Mono', ui-monospace, monospace; }
 .collab-sheet-editor__cell-input.is-percent { text-align: right; }
