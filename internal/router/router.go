@@ -98,6 +98,7 @@ type RouterParams struct {
 	WikiTagHandler               *handler.WikiTagHandler
 	WikiTemplateHandler          *handler.WikiTemplateHandler
 	WikiSearchV2Handler          *handler.WikiSearchV2Handler
+	WikiCommentHandler            *handler.WikiCommentHandler
 	MemoryHandler                *handler.MemoryHandler
 	// CitationLogHandler — Build #30 B4. Wired optionally so the
 	// citation-log route is registered when the handler is present.

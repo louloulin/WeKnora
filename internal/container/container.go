@@ -465,6 +465,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// Wiki tag system (Build #17).
 	must(container.Provide(repository.NewWikiTagRepository))
 	must(container.Provide(service.NewWikiTagService))
+	// Wiki page comments (Build #22 / v0.7.25) — reply / resolve / anchor.
+	must(container.Provide(repository.NewWikiCommentRepository))
+	must(container.Provide(service.NewWikiCommentService))
 	// Wiki page template skeleton engine (Build #18). Service is
 	// constructed un-wired; wireWikiTemplateService injects the page
 	// and tag services so the apply-template path can create child
@@ -710,6 +713,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	}))
 	// Wiki tag handler (Build #17 backend).
 	must(container.Provide(handler.NewWikiTagHandler))
+	// Wiki page comments handler (Build #22 / v0.7.25).
+	must(container.Provide(handler.NewWikiCommentHandler))
 	must(container.Provide(handler.NewWikiTemplateHandler))
 	// Complete the Wiki post-construction wiring only after all providers
 	// participating in the page-service dependency graph are registered.
