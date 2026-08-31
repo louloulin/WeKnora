@@ -7133,5 +7133,22 @@ export default {
         'system.alert': '系统提醒'
       }
     },
-  }
+  },
+  assistant: {
+    title: 'AI 助手',
+    assistantLabel: 'AI 助手',
+    placeholder: '向 AI 助手提问（Enter 发送，Shift+Enter 换行）',
+    send: '发送',
+    stop: '停止',
+    history: '历史记录',
+    clear: '清空对话',
+    collapse: '收起',
+    expand: '展开',
+    citationsCount: '引用',
+    generating: '生成中…',
+    retry: '重试',
+    scopeAll: '所有可见 KB',
+    scopeKbOnly: 'KB：{ids}',
+    scopeWithWiki: 'Wiki + KB：{ids}',
+  },
 }
