@@ -306,3 +306,30 @@ func (u *User) ToUserInfo() *UserInfo {
 		UpdatedAt:           u.UpdatedAt,
 	}
 }
+
+// SAMLFederationIdentity binds a local WeKnora user to a SAML 2.0
+// Identity Provider assertion. The composite (TenantID, IdPEntityID,
+// NameID) uniquely identifies the binding so the same user can have
+// one row per IdP they federate with (a user with two SAML IdPs
+// — say, an Okta tenant + an ADFS tenant — gets two rows).
+//
+// Mirrors the OIDCIdentity schema (user_oidc_identities) so the
+// federation layer is symmetric across OIDC and SAML.
+type SAMLFederationIdentity struct {
+	ID           string     `json:"id" gorm:"type:varchar(36);primaryKey"`
+	UserID       string     `json:"user_id" gorm:"type:varchar(36);not null;index"`
+	TenantID     uint64     `json:"tenant_id" gorm:"not null;index"`
+	IdPEntityID  string     `json:"idp_entity_id" gorm:"size:512;not null;index:uniq_saml_fed,priority:1"`
+	NameID       string     `json:"name_id" gorm:"size:512;not null;index:uniq_saml_fed,priority:2"`
+	NameIDFormat string     `json:"name_id_format" gorm:"size:64;not null;default:emailAddress"`
+	SessionIndex string     `json:"session_index" gorm:"size:128;not null;default:''"`
+	EmailAtLast  string     `json:"email_at_last_login" gorm:"size:255;not null;default:''"`
+	DisplayName  string     `json:"display_name" gorm:"size:255;not null;default:''"`
+	LastLoginAt  time.Time  `json:"last_login_at"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	RevokedAt    *time.Time `json:"revoked_at,omitempty" gorm:"index"`
+}
+
+// TableName pins the table name so GORM does not pluralize it.
+func (SAMLFederationIdentity) TableName() string { return "user_saml_federation_identities" }
