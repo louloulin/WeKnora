@@ -543,6 +543,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(kg.NewNERPipeline))
 	must(container.Provide(kg.NewREPipeline))
 	must(container.Provide(kg.NewKGSupertagService))
+	must(container.Provide(kg.NewKGGraphService))
 	must(container.Provide(handler.NewKGHandler))
 	// v0.7.31 Build #37 — AI Workflow Builder foundation.
 	must(container.Provide(repository.NewWorkflowRepository))

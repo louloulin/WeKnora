@@ -16,6 +16,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"github.com/Tencent/WeKnora/internal/application/service/kg"
 	"github.com/Tencent/WeKnora/internal/logger"
@@ -25,14 +26,15 @@ import (
 
 // KGHandler exposes the Knowledge Graph + KGSupertag REST surface.
 type KGHandler struct {
-	svc *kg.KGSupertagService
-	re  *kg.REPipeline
-	ner *kg.NERPipeline
+	svc   *kg.KGSupertagService
+	re    *kg.REPipeline
+	ner   *kg.NERPipeline
+	graph *kg.KGGraphService
 }
 
 // NewKGHandler constructs the KGHandler with the supplied services.
-func NewKGHandler(svc *kg.KGSupertagService, re *kg.REPipeline, ner *kg.NERPipeline) *KGHandler {
-	return &KGHandler{svc: svc, re: re, ner: ner}
+func NewKGHandler(svc *kg.KGSupertagService, re *kg.REPipeline, ner *kg.NERPipeline, graph *kg.KGGraphService) *KGHandler {
+	return &KGHandler{svc: svc, re: re, ner: ner, graph: graph}
 }
 
 // Mount registers all /supertags and /knowledgebase/:kb_id/knowledge-graph routes.
@@ -46,6 +48,7 @@ func (h *KGHandler) Mount(rg *gin.RouterGroup) {
 	rg.POST("/knowledgebase/:kb_id/extract", h.ExtractFromDocument)
 	rg.GET("/knowledgebase/:kb_id/entities", h.ListEntities)
 	rg.GET("/knowledgebase/:kb_id/relations", h.ListRelations)
+	rg.GET("/knowledgebase/:kb_id/graph", h.GetGraph)
 }
 
 // CreateSupertag persists a new KGSupertag from the request body.
@@ -187,6 +190,30 @@ func (h *KGHandler) ListEntities(c *gin.Context) {
 // ListRelations returns relations for a KB.
 func (h *KGHandler) ListRelations(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "use entity lookups for relations"})
+}
+
+// GetGraph returns the assembled node+edge graph for a KB, optionally
+// filtered by supertag. Designed for 2D/3D visualization frontends.
+func (h *KGHandler) GetGraph(c *gin.Context) {
+	kbID := c.Param("kb_id")
+	if kbID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "kb_id is required"})
+		return
+	}
+	supertagID := c.Query("supertag")
+	limit := 500
+	if v := c.Query("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	graph, err := h.graph.BuildGraph(c, uint64FromCtx(c), kbID, supertagID, limit)
+	if err != nil {
+		logger.Errorf(c, "kg.graph: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, graph)
 }
 
 // uint64FromCtx extracts the tenant ID from the gin context, falling back
