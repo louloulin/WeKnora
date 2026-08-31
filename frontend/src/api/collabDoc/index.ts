@@ -22,6 +22,10 @@ export interface CollabDoc {
   owner_user_id: number
   visibility: string
   share_token: string
+  /** Optional share-link expiry (ISO 8601) — set when the owner enabled share. */
+  share_expires_at?: string | null
+  /** True iff the share link is currently password-protected. */
+  share_password_protected?: boolean
   created_at: string
   updated_at: string
   archived_at?: string | null
@@ -251,3 +255,60 @@ export async function collabDocAuditSummary(
   const u = `/collaborative-docs/audit/summary${qs.toString() ? `?${qs.toString()}` : ''}`
   return get(u)
 }
+
+// ---------------------------------------------------------------------------
+// Share link API (v0.7.38 — share_token + password + expiry).
+//
+// POST   /collaborative-docs/:id/share  →  EnableShare (returns { share_token, ... })
+// DELETE /collaborative-docs/:id/share  →  DisableShare (204)
+// GET    /collaborative-docs/share/:token/download?password=X → ShareDownload
+// ---------------------------------------------------------------------------
+
+export interface EnableShareRequest {
+  /** ≥6 char password. Empty string means an open link (no password). */
+  password: string
+  /** Optional ISO-8601 expiry. Null means never expire. */
+  expires_at?: string | null
+}
+
+export interface EnableShareResponse {
+  id: string
+  share_token: string
+  expires_at: string | null
+  /** True iff the link requires the X-Share-Password header. */
+  protected: boolean
+  /** Absolute URL the user can paste into Slack / email. */
+  url: string
+}
+
+export async function enableCollabDocShare(
+  id: string,
+  req: EnableShareRequest,
+): Promise<EnableShareResponse> {
+  return post(`/collaborative-docs/${id}/share`, req)
+}
+
+export async function disableCollabDocShare(id: string): Promise<void> {
+  await del(`/collaborative-docs/${id}/share`)
+}
+
+/**
+ * Download the share-view bytes for a doc. Returns the raw .docx/.pptx/.xlsx
+ * bytes as a Blob. Pass the share password via the X-Share-Password header
+ * when the link is protected (the backend returns 403 + WWW-Authenticate
+ * header when the password is missing or wrong).
+ */
+export async function downloadCollabDocShare(
+  shareToken: string,
+  password?: string,
+): Promise<Blob> {
+  const headers: Record<string, string> = {}
+  if (password) headers['X-Share-Password'] = password
+  const u = `/collaborative-docs/share/${encodeURIComponent(shareToken)}/download`
+  const res = await fetch(u, { headers })
+  if (!res.ok) {
+    throw new Error(`share download failed: HTTP ${res.status}`)
+  }
+  return res.blob()
+}
+

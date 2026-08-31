@@ -24,6 +24,7 @@ const (
 	WebhookEventCollabDocArchived WebhookEvent = "collab.doc.archived"
 	WebhookEventCollabDocDeleted  WebhookEvent = "collab.doc.deleted"
 	WebhookEventCollabDocShared   WebhookEvent = "collab.doc.shared"
+	WebhookEventCollabDocUnshared WebhookEvent = "collab.doc.unshared"
 	WebhookEventCollabDocUploaded WebhookEvent = "collab.doc.uploaded"
 	WebhookEventCollabDocExported WebhookEvent = "collab.doc.exported"
 
@@ -42,6 +43,7 @@ var ValidWebhookEvents = map[WebhookEvent]bool{
 	WebhookEventCollabDocArchived: true,
 	WebhookEventCollabDocDeleted:  true,
 	WebhookEventCollabDocShared:   true,
+	WebhookEventCollabDocUnshared: true,
 	WebhookEventCollabDocUploaded: true,
 	WebhookEventCollabDocExported: true,
 	WebhookEventCollabCommentAdded:    true,

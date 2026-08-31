@@ -24,8 +24,26 @@
         >
           {{ auditVisible ? '隐藏历史' : '查看历史' }}
         </button>
+        <button
+          type="button"
+          class="collab-editor-view__share-toggle"
+          @click="shareVisible = !shareVisible"
+          data-testid="share-toggle"
+        >
+          {{ shareVisible ? '隐藏分享' : '分享设置' }}
+        </button>
         <div v-if="auditVisible" class="collab-editor-view__audit-wrap">
           <CollabAuditTimeline :doc-id="doc.id" />
+        </div>
+        <div v-if="shareVisible" class="collab-editor-view__share-wrap">
+          <CollabSharePasswordPanel
+            :doc-id="doc.id"
+            :initial-share-token="doc.share_token || ''"
+            :initial-protected="!!doc.share_password_protected"
+            :initial-expires-at="doc.share_expires_at || null"
+            @updated="onShareUpdated"
+            @disabled="onShareDisabled"
+          />
         </div>
       </div>
       <div class="collab-editor-view__main">
@@ -53,6 +71,7 @@ import CollabDocProEditor from '@/components/collab/CollabDocProEditor.vue'
 import CollabSheetEditor from '@/components/collab/CollabSheetEditor.vue'
 import CollabSlideKonvaEditor from '@/components/collab/CollabSlideKonvaEditor.vue'
 import CollabAuditTimeline from '@/components/collab/CollabAuditTimeline.vue'
+import CollabSharePasswordPanel from '@/components/collab/CollabSharePasswordPanel.vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { useAuthStore } from '@/stores/auth'
 
@@ -60,6 +79,7 @@ const route = useRoute()
 const doc = ref<CollabDoc | null>(null)
 const loading = ref(true)
 const auditVisible = ref(false)
+const shareVisible = ref(false)
 const error = ref<string | null>(null)
 const syncing = ref(false)
 const authStore = useAuthStore()
@@ -84,6 +104,24 @@ const load = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const onShareUpdated = (payload: { share_token: string; protected: boolean; expires_at: string | null }) => {
+  if (doc.value) {
+    doc.value.share_token = payload.share_token
+    doc.value.share_password_protected = payload.protected
+    doc.value.share_expires_at = payload.expires_at
+  }
+  MessagePlugin.success('分享设置已更新')
+}
+
+const onShareDisabled = () => {
+  if (doc.value) {
+    doc.value.share_token = ''
+    doc.value.share_password_protected = false
+    doc.value.share_expires_at = null
+  }
+  MessagePlugin.success('分享链接已禁用')
 }
 
 const onSyncToKB = async () => {
@@ -132,6 +170,22 @@ onMounted(load)
 }
 .collab-editor-view__audit-toggle:hover { background: var(--td-brand-color-1); }
 .collab-editor-view__audit-wrap {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--td-component-stroke);
+}
+.collab-editor-view__share-toggle {
+  margin-top: 8px;
+  padding: 6px 12px;
+  background: transparent;
+  color: var(--td-brand-color-7);
+  border: 1px solid var(--td-brand-color-7);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.collab-editor-view__share-toggle:hover { background: var(--td-brand-color-1); }
+.collab-editor-view__share-wrap {
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px dashed var(--td-component-stroke);

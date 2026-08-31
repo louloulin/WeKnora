@@ -630,6 +630,15 @@ func (s *CollabDocService) EnableShare(ctx context.Context, tenantID, userID uin
 		Target: d.ShareToken,
 		Payload: fmt.Sprintf(`{"password_protected":%v,"expires_at":%q}`, password != "", formatExpires(expiresAt)),
 	})
+	// v0.7.41 — emit WebHook event so KB-sync consumers see share-link
+	// lifecycle changes. Payload mirrors the audit row so receivers can
+	// render the same notification card.
+	s.publishEvent(ctx, "collab.doc.shared", map[string]any{
+		"doc_id":            docID,
+		"doc_kind":          d.DocKind,
+		"password_protected": password != "",
+		"expires_at":        formatExpires(expiresAt),
+	})
 	return d, nil
 }
 
@@ -659,6 +668,12 @@ func (s *CollabDocService) DisableShare(ctx context.Context, tenantID, userID ui
 	s.RecordAudit(ctx, types.RecordAuditRequest{
 		TenantID: tenantID, DocID: docID, ActorUserID: userID,
 		Action: types.AuditActionShareDisable,
+	})
+	// v0.7.41 — emit WebHook unshare event. Same payload shape as
+	// collab.doc.shared minus the expiry (the link is gone, not expiring).
+	s.publishEvent(ctx, "collab.doc.unshared", map[string]any{
+		"doc_id":   docID,
+		"doc_kind": d.DocKind,
 	})
 	return nil
 }

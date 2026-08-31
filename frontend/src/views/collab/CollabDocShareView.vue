@@ -19,11 +19,33 @@
       <p v-else-if="error" class="collab-share__error">{{ error }}</p>
       <template v-else>
         <p class="collab-share__hint">这是只读模式，下载文件后可在本地图编辑后再上传。</p>
+
+        <div v-if="requiresPassword" class="collab-share__password">
+          <label class="collab-share__label">
+            {{ t('knowledgeBase.collabDoc.share.passwordLabel') }}
+            <input
+              v-model="password"
+              type="password"
+              autocomplete="off"
+              data-testid="share-view-password-input"
+              @keyup.enter="onDownload"
+            />
+          </label>
+        </div>
+
         <div class="collab-share__actions">
-          <button class="collab-share__btn primary" @click="onDownload" :disabled="downloading">
+          <button
+            class="collab-share__btn primary"
+            data-testid="share-view-download-btn"
+            @click="onDownload"
+            :disabled="downloading || (requiresPassword && !password)"
+          >
             {{ downloading ? '下载中...' : `下载 ${kindLabel}` }}
           </button>
         </div>
+        <p v-if="downloadError" class="collab-share__error" data-testid="share-view-error">
+          {{ downloadError }}
+        </p>
         <p class="collab-share__meta">最新版本：v{{ version }} · {{ formatSize(sizeBytes) }} · 更新时间：{{ formatTime(updatedAt) }}</p>
       </template>
     </section>
@@ -33,6 +55,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import { downloadCollabDocShare } from '@/api/collabDoc'
 
 interface ShareMetadata {
   id: string
@@ -45,6 +69,7 @@ interface ShareMetadata {
 
 const route = useRoute()
 const token = String(route.params.token || '')
+const { t } = useI18n()
 
 const title = ref('')
 const kindLabel = ref('文档')
@@ -54,6 +79,9 @@ const updatedAt = ref('')
 const loading = ref(true)
 const downloading = ref(false)
 const error = ref<string | null>(null)
+const downloadError = ref<string | null>(null)
+const requiresPassword = ref(false)
+const password = ref('')
 
 const kindMap: Record<string, string> = {
   doc: 'Word 文档 (.docx)',
@@ -91,20 +119,28 @@ const load = async () => {
 }
 
 const onDownload = async () => {
+  if (downloading.value) return
   downloading.value = true
+  downloadError.value = null
   try {
-    const url = `/api/v1/collaborative-docs/share/${encodeURIComponent(token)}/download`
-    const resp = await fetch(url)
-    if (!resp.ok) throw new Error(`下载失败: ${resp.status}`)
-    const blob = await resp.blob()
+    const blob = await downloadCollabDocShare(token, password.value || undefined)
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
     const ext = kindLabel.value.includes('Word') ? '.docx' : kindLabel.value.includes('Excel') ? '.xlsx' : '.pptx'
     a.download = `${title.value || 'collab-doc'}${ext}`
     a.click()
     URL.revokeObjectURL(a.href)
+    requiresPassword.value = false
   } catch (e: any) {
-    error.value = e?.message || '下载失败'
+    const msg = (e && e.message) || '下载失败'
+    if (msg.includes('HTTP 403')) {
+      requiresPassword.value = true
+      downloadError.value = '密码错误或缺失，请重新输入。'
+    } else if (msg.includes('HTTP 404')) {
+      downloadError.value = '分享链接已过期或被禁用。'
+    } else {
+      downloadError.value = msg
+    }
   } finally {
     downloading.value = false
   }
@@ -121,6 +157,10 @@ onMounted(load)
 .collab-share__actions { margin: 16px 0; }
 .collab-share__btn { padding: 8px 16px; border: 1px solid var(--td-component-stroke, #dcdcdc); background: transparent; border-radius: 4px; cursor: pointer; }
 .collab-share__btn.primary { background: var(--td-brand-color-7, #2b6cb0); color: #fff; border-color: var(--td-brand-color-7, #2b6cb0); }
+.collab-share__btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.collab-share__password { margin: 12px 0; }
+.collab-share__label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.collab-share__label input { padding: 6px 8px; border: 1px solid var(--td-component-stroke, #dcdcdc); border-radius: 4px; font-size: 13px; }
 .collab-share__meta { font-size: 12px; color: var(--td-text-color-secondary, #666); }
 .collab-share__loading, .collab-share__error { padding: 24px 0; }
 .collab-share__error { color: var(--td-error-color-7, #c00); }
