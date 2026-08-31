@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeKnora v0.7.16 实施进度报告 · GeoIP + AI Agent 框架研究 · 2026-08-31</title>
+<style>
+:root{--bg:#08111f;--panel:#101d30;--panel2:#14253d;--text:#eaf2ff;--muted:#9db0c9;--line:#27405f;--cyan:#55d6ff;--green:#68e0a0;--amber:#ffd166;--red:#ff7b8b;--purple:#b69cff;--shadow:0 20px 60px #0005}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 10% 0,#143054 0,#08111f 36rem),var(--bg);color:var(--text);font:15px/1.65 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}a{color:var(--cyan)}.wrap{max-width:1440px;margin:auto;padding:0 28px}.hero{padding:72px 0 46px;border-bottom:1px solid var(--line)}.eyebrow{color:var(--cyan);font-weight:700;letter-spacing:.12em;text-transform:uppercase}.hero h1{font-size:clamp(34px,5vw,68px);line-height:1.08;max-width:980px;margin:14px 0 20px}.hero p{color:var(--muted);font-size:18px;max-width:880px}.meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}.chip{padding:5px 11px;border:1px solid var(--line);border-radius:999px;color:var(--muted);background:#ffffff08}.nav{position:sticky;top:0;z-index:10;background:#08111fee;backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}.nav .wrap{display:flex;gap:18px;overflow:auto;padding-top:13px;padding-bottom:13px}.nav a{white-space:nowrap;text-decoration:none;color:var(--muted);font-size:13px}.nav a:hover{color:var(--cyan)}section{padding:52px 0;border-bottom:1px solid #1a2c44}h2{font-size:32px;line-height:1.2;margin:0 0 12px}h3{font-size:21px;margin:28px 0 10px}h4{margin:0 0 8px;color:var(--cyan)}.lead{color:var(--muted);max-width:940px}.grid{display:grid;gap:16px}.grid-2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}.grid-3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}.grid-4{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}.card{background:linear-gradient(145deg,var(--panel),#0d192b);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:var(--shadow)}.card p{color:var(--muted);margin:6px 0}.stat{font-size:32px;font-weight:800}.stat small{font-size:14px;color:var(--muted);font-weight:500}.tag{display:inline-block;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:700;margin:2px 4px 2px 0}.done{background:#1b6549;color:#a8ffd3}.partial{background:#705621;color:#ffe29b}.gap{background:#71303c;color:#ffb6c0}.planned{background:#3f3472;color:#d4c8ff}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:14px}.matrix{width:100%;border-collapse:collapse;min-width:980px;background:#0c1828}.matrix th,.matrix td{padding:13px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line);border-right:1px solid #1a2c44}.matrix th{color:var(--cyan);background:#12243a;position:sticky;top:0}.matrix td{color:#c8d5e7}.matrix tr:last-child td{border-bottom:0}.callout{border-left:4px solid var(--cyan);background:#10263b;padding:16px 20px;border-radius:0 12px 12px 0;margin:18px 0}.callout.warn{border-color:var(--amber);background:#302610}.callout.danger{border-color:var(--red);background:#321b25}.callout.ok{border-color:var(--green);background:#0f2a1f}.list{margin:8px 0 0;padding-left:20px}.list li{margin:6px 0;color:#c8d5e7}.small{font-size:13px;color:var(--muted)}.progress{height:8px;background:#0c1828;border-radius:4px;overflow:hidden;margin:8px 0}.progress div{height:100%;background:linear-gradient(90deg,var(--green),var(--cyan))}.ref{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--muted);background:#0c1828;padding:2px 6px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="hero">
+  <div class="eyebrow">WeKnora 实施进度报告 · GeoIP + AI Agent 框架研究 · 2026-08-31</div>
+  <h1>v0.7.16：Conditional Access GeoIP 接入 + 五大产品 AI Agent 框架深度调研</h1>
+  <p class="lead">基于代码、路由、迁移、前端视图和测试的真实证据，盘点 WeKnora 当前分支（comet/enterprise-iam-geoip, HEAD 2d94a123 + 4 新文件 + 5 修改文件）已经实现的能力、与顶级知识库产品的差距（含 AI Agent 框架深度调研）、以及 90 天可落地的实施计划。</p>
+  <div class="meta">
+    <span class="chip">comet/enterprise-iam-geoip v0.7.16</span>
+    <span class="chip">HEAD 2d94a123 + 新增</span>
+    <span class="chip">GeoIP 接入</span>
+    <span class="chip">Conditional Access 闭环</span>
+    <span class="chip">internal/geoiplookup/ 新包</span>
+    <span class="chip">+315 行新 Go + 6 + 3 测试</span>
+    <span class="chip">9 / 9 GeoIP 测试绿</span>
+    <span class="chip">对标进度 ~77%</span>
+  </div>
+</div>
+
+<div class="nav"><div class="wrap">
+  <a href="#summary">一、TL;DR</a>
+  <a href="#v16">二、v0.7.16 增量</a>
+  <a href="#agents-notion">三、Notion Agent 框架</a>
+  <a href="#agents-feishu">四、飞书 AI / 妙搭 / aily</a>
+  <a href="#agents-rovo">五、Confluence Rovo / Studio</a>
+  <a href="#agents-glean">六、Glean Agents / Studio</a>
+  <a href="#agents-copilot">七、Microsoft Copilot Agents</a>
+  <a href="#matrix">八、AI Agent 能力矩阵</a>
+  <a href="#implications">九、对 WeKnora 的启示</a>
+  <a href="#roadmap">十、v0.7.17+ 路线</a>
+  <a href="#evidence">十一、证据</a>
+</div></div>
+
+<section id="summary">
+  <h2>一、TL;DR：v0.7.16 完成什么</h2>
+  <div class="callout ok">
+    <b>v0.7.16 闭环：</b>GeoIP 接入让 v0.7.14 Conditional Access 的 country 字段从「占位」变成「可用」。新增 <span class="ref">internal/geoiplookup/</span> 包提供 CountryResolver 接口与三种实现（Noop / Static / MMDB），通过 <span class="ref">ConditionalAccessService.SetCountryResolver</span> 注入，<span class="ref">FillCountryFromIP</span> 在 Evaluate 之前自动补全 CountryCode。
+  </div>
+  <div class="grid grid-3">
+    <div class="card">
+      <h4>v0.7.16 已实现</h4>
+      <p>· <span class="ref">internal/geoiplookup/geoip.go</span>（138 行）— CountryResolver 接口 + Noop / Static 实现</p>
+      <p>· <span class="ref">internal/geoiplookup/mmdb.go</span>（24 行）— build-tag <code>geoipmmdb</code> 占位</p>
+      <p>· <span class="ref">internal/geoiplookup/geoip_test.go</span>（108 行）— 6 / 6 测试</p>
+      <p>· <span class="ref">internal/application/service/conditional_access_geoip.go</span>（84 行）— FillCountryFromIP + ResolveConditionalAccess 入口</p>
+      <p>· <span class="ref">internal/application/service/condaccgeoip/</span>（52 行）— 3 / 3 测试（build tag <code>condaccgeoiptest</code>）</p>
+      <p>· <span class="ref">internal/container/container.go</span> — Decorate 注入 Noop 默认</p>
+      <p>· <span class="ref">internal/application/service/conditional_access.go</span> — SetCountryResolver / CountryResolver / 自动 FillCountryFromIP</p>
+      <p>· <span class="ref">config/config.yaml</span> + <span class="ref">.env.example</span> — GEOIP_MMDB_PATH 文档</p>
+    </div>
+    <div class="card">
+      <h4>v0.7.16 留作下版</h4>
+      <p>· MMDBCountryResolver 真实现（依赖 oschwald/geoip2-golang）</p>
+      <p>· MaxMind GeoLite2 下载 + 自动化更新脚本</p>
+      <p>· 登录流 hook（Caddy / 反向代理 + WeKnora middleware）</p>
+      <p>· 静态映射加载（从 config.yaml → StaticCountryResolver）</p>
+      <p>· 命中率指标导出（接 Prometheus）</p>
+    </div>
+    <div class="card">
+      <h4>v0.7.16 对标位置</h4>
+      <p>· Conditional Access 控制平面：<b style="color:var(--green)">~95%</b>（v0.7.14 + v0.7.16 = Keycloak / Entra CA 同档）</p>
+      <p>· AI Agent 框架：<b style="color:var(--amber)">~25%</b>（本报告第九节详细对比）</p>
+      <p>· AI 能力整体：<b style="color:var(--amber)">~32%</b>（v0.7.15 + v0.7.16 增量）</p>
+      <p>· 对标顶级综合：<b style="color:var(--amber)">~77%</b>（v0.7.15 ~75% 提升 +2pp）</p>
+    </div>
+  </div>
+</section>
+
+<section id="v16">
+  <h2>二、v0.7.16 增量 — GeoIP 接入</h2>
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>2.1 架构</h4>
+      <p>登录流：</p>
+      <p><code>c.ClientIP</code> → <span class="ref">ConditionalAccessService.Evaluate</span> → <span class="ref">FillCountryFromIP</span> → <span class="ref">CountryResolver.Lookup</span> → <code>CountryCode</code> → <span class="ref">MatchConditions</span></p>
+      <h4 class="small" style="margin-top:16px">2.2 三种 Resolver</h4>
+      <p>· <b>Noop</b>：默认，永远 miss（保持 v0.7.14 行为）</p>
+      <p>· <b>Static</b>：手工维护 CIDR→国家表（测试 + 小型部署）</p>
+      <p>· <b>MMDB</b>：MaxMind GeoLite2（生产）— <code>-tags geoipmmdb</code> 编译开关</p>
+    </div>
+    <div class="card">
+      <h4>2.3 测试覆盖（9 项）</h4>
+      <p>geoiplookup：</p>
+      <p>· NoopCountryResolver_AlwaysMisses</p>
+      <p>· StaticCountryResolver_BasicMatch</p>
+      <p>· StaticCountryResolver_CountryIsUppercased</p>
+      <p>· StaticCountryResolver_DropsInvalid</p>
+      <p>· StaticCountryResolver_Add</p>
+      <p>· StaticCountryResolver_IPv6</p>
+      <p>condaccgeoip：</p>
+      <p>· FillCountryFromIP_NoResolver</p>
+      <p>· FillCountryFromIP_PreservesSuppliedCountry</p>
+      <p>· FillCountryFromIP_Resolves</p>
+    </div>
+  </div>
+  <div class="callout warn">
+    <b>风险提示：</b>v0.7.16 没有改 Evaluate 的语义：caller-supplied CountryCode 仍然优先生效；这保留了 v0.7.14 已知的所有调用方行为，Auto-fill 是 add-on 不替代。MMDB 真集成放到 v0.7.16.x，避免一次引入 CGO 与新依赖。
+  </div>
+</section>
+
+<section id="agents-notion">
+  <h2>三、Notion AI Agent 框架（Custom Agents / Workers）</h2>
+  <p class="lead">基于 notion.com/product/ai, notion.com/help/custom-agents, 2025-2026 资料。</p>
+  <div class="grid grid-3">
+    <div class="card">
+      <h4>Notion Agent（基础）</h4>
+      <p>· Chat、Generate、Autofill、Translate、Research Mode</p>
+      <p>· 内置 30+ Action（写入数据库、生成页面、查询 AI Meeting Notes）</p>
+      <p>· 输入：当前页 + 显式 prompt；输出：可应用到页面的内容</p>
+      <p>· 模型：模型无关（可切 Anthropic / OpenAI / 自托管）</p>
+      <p>· 计费：Notion Credits</p>
+    </div>
+    <div class="card">
+      <h4>Custom Agents（可复用）</h4>
+      <p>· 构建一次，工作区共享</p>
+      <p>· 自定义 instructions + 工具集 + 数据源连接器</p>
+      <p>· 用户可在页面里 @Custom-Agent 触发</p>
+      <p>· 计费：$10 / 1k credits（post-trial）</p>
+      <p>· 治理：workspace admin 可禁 / 限</p>
+    </div>
+    <div class="card">
+      <h4>Notion Workers（开发者平台，2026 Beta）</h4>
+      <p>· 自托管运行平台：可以跑自定义代码（基于 Notion Runtime）</p>
+      <p>· Agent 工具：可调用 Workers（HTTP / DB / 第三方 API）</p>
+      <p>· 触发：Webhook + Schedule + Agent Action</p>
+      <p>· 计费：credits-based</p>
+      <p>· 沙箱：每 Worker 独立 runtime + 资源配额</p>
+    </div>
+  </div>
+  <div class="callout warn">
+    <b>与 WeKnora 对照：</b>WeKnora 已有 <span class="ref">agent_service.go</span> 基础 Agent（chat + tool call + memory），但缺 Custom Agent 抽象（instructions 模板 + 工具集 + 工作区共享），更缺 Workers 这种开发者平台。要补 v0.7.21+。
+  </div>
+</section>
+
+<section id="agents-feishu">
+  <h2>四、飞书 AI / 妙搭 / aily / 豆包工作伙伴</h2>
+  <p class="lead">基于 feishu.cn/product/feishuai, 2025-2026 资料。</p>
+  <div class="grid grid-3">
+    <div class="card">
+      <h4>飞书 AI / 知识问答</h4>
+      <p>· 知识问答：跨知识库 + Wiki + 邮件 RAG 问答</p>
+      <p>· 智能会议纪要（Miaojì）：实时转写 + 章节 + 待办提取</p>
+      <p>· 豆包工作伙伴：通用 AI 助手（豆包大模型）</p>
+      <p>· AI 字段：自动生成（摘要 / 翻译 / 提取 / 分类）</p>
+      <p>· AI 仪表盘：基于多维表的智能洞察</p>
+    </div>
+    <div class="card">
+      <h4>飞书妙搭（低代码 AI Apps）</h4>
+      <p>· 拖拽搭建 AI 应用：输入源 → AI 节点 → 输出节点</p>
+      <p>· 可发布到飞书工作台为应用</p>
+      <p>· 触发：表单 / 按钮 / Webhook / 定时</p>
+      <p>· 模型：豆包 + 第三方可接入</p>
+      <p>· 计费：AI credits 包（与飞书 AI 同）</p>
+    </div>
+    <div class="card">
+      <h4>aily desktop + 飞书项目 AI</h4>
+      <p>· aily：AI 入口 + 企业智能体编排</p>
+      <p>· 桌面端：跨应用 AI 助手（mac / win）</p>
+      <p>· 飞书项目 AI：需求 → 任务自动拆解 / 风险预警</p>
+      <p>· 集成：飞书全家桶 + 第三方 API</p>
+      <p>· 治理：管理员可限可用 AI 能力 + 数据脱敏</p>
+    </div>
+  </div>
+  <div class="callout warn">
+    <b>与 WeKnora 对照：</b>飞书在 AI 方面把「文档 → 知识 → AI 应用 → Agent」打通了一个完整链路。WeKnora v0.7.15 后端只到「知识问答」这一环，距离「妙搭级别 AI Apps」还有 2-3 个版本。
+  </div>
+</section>
+
+<section id="agents-rovo">
+  <h2>五、Confluence Rovo / Rovo Studio / Rovo Agents</h2>
+  <p class="lead">基于 atlassian.com/platform/rovo, 2025-2026 资料。</p>
+  <div class="grid grid-3">
+    <div class="card">
+      <h4>Rovo Search</h4>
+      <p>· 跨 Atlassian Cloud + 第三方 connector 检索</p>
+      <p>· 答案带源链接 + 引文</p>
+      <p>· 模型无关（Anthropic / OpenAI / Azure OpenAI 路由）</p>
+    </div>
+    <div class="card">
+      <h4>Rovo Chat / Rovo Agents</h4>
+      <p>· Chat：自由问答 + Action 触发</p>
+      <p>· Agents：可编排的 agent（研究 / 客户支持 / 销售）</p>
+      <p>· 触发：手动 + 自动（基于事件）</p>
+      <p>· 上下文：Teamwork Graph（人 / 项目 / 内容 / 目标）</p>
+    </div>
+    <div class="card">
+      <h4>Rovo Studio / Rovo Dev CLI / MCP</h4>
+      <p>· Studio：可视化 agent builder</p>
+      <p>· Dev CLI：CLI 编排 agent</p>
+      <p>· MCP server：MCP 协议兼容（Claude Desktop 等可直连）</p>
+      <p>· Marketplace：可发布到 Atlassian Marketplace</p>
+    </div>
+  </div>
+  <div class="callout">
+    <b>与 WeKnora 对照：</b>Rovo 走的是「Teamwork Graph + Agent 编排 + MCP」路线。WeKnora AuthZ 元组模型（v0.7.4-8）已经有 graph 的雏形，但缺「自动建图 / Rovo Studio / MCP」。MCP 集成最值得先做（v0.7.21 候选）。
+  </div>
+</section>
+
+<section id="agents-glean">
+  <h2>六、Glean Agents / Glean Studio / Glean MCP</h2>
+  <p class="lead">基于 glean.com, docs.glean.com, 2025-2026 资料。</p>
+  <div class="grid grid-3">
+    <div class="card">
+      <h4>Glean Assistant</h4>
+      <p>· 模型无关（Anthropic / OpenAI / Azure OpenAI 路由）</p>
+      <p>· 工具调用：可挂企业系统动作</p>
+      <p>· 上下文：Enterprise Graph（自动构建）</p>
+      <p>· 安全：基于源系统的 ACL（绝不允许越权）</p>
+    </div>
+    <div class="card">
+      <h4>Glean Agents</h4>
+      <p>· 可编排的 agent（研究 / 客户支持 / 销售准备）</p>
+      <p>· 工具：可调用 Glean Actions + 第三方 API</p>
+      <p>· 触发：手动 + 定时 + 事件</p>
+      <p>· 与 Assistant 集成：在 Assistant 中挂载 agent</p>
+    </div>
+    <div class="card">
+      <h4>Glean Studio / MCP / SDK</h4>
+      <p>· Studio：可视化 agent builder</p>
+      <p>· MCP server：Glean 自有 MCP server</p>
+      <p>· SDK：Python / JS SDK</p>
+      <p>· API：REST API for embedding</p>
+    </div>
+  </div>
+  <div class="callout">
+    <b>与 WeKnora 对照：</b>Glean 跟 Rovo 很像：都靠「Enterprise Graph + Agent 编排 + MCP」模式。WeKnora 的 ACL 路径做得比 Glean 还硬（ACL snapshot hash），差异化在「自托管 + 国产化」路径。
+  </div>
+</section>
+
+<section id="agents-copilot">
+  <h2>七、Microsoft 365 Copilot / Copilot Agents / Copilot Studio</h2>
+  <p class="lead">基于 learn.microsoft.com/copilot, 2025-2026 资料。</p>
+  <div class="grid grid-3">
+    <div class="card">
+      <h4>Copilot 基础</h4>
+      <p>· Copilot Chat：通用 LLM 入口</p>
+      <p>· Copilot in Word/Excel/PowerPoint/Outlook/Teams/Loop</p>
+      <p>· 数据通道：SharePoint / OneDrive / Exchange / Microsoft Graph</p>
+      <p>· 模型：OpenAI GPT-4o + 自研 Prometheus</p>
+    </div>
+    <div class="card">
+      <h4>Copilot Agents</h4>
+      <p>· SharePoint Agents：站点内置 AI agent</p>
+      <p>· Copilot Studio Agents：可视化构建</p>
+      <p>· 触发：自动（基于站点事件）+ 手动</p>
+      <p>· 工具：可挂 Power Automate + 第三方 connector</p>
+      <p>· 安全：基于 M365 权限 + 治理边界</p>
+    </div>
+    <div class="card">
+      <h4>Copilot Studio / SDK / MCP</h4>
+      <p>· Studio：低代码 agent + 工作流 builder</p>
+      <p>· SDK：开发者构建深度集成</p>
+      <p>· MCP：M365 Copilot 支持 MCP（2026 公告）</p>
+      <p>· Marketplace：第三方 agent 在 Teams App Store</p>
+    </div>
+  </div>
+  <div class="callout">
+    <b>与 WeKnora 对照：</b>Copilot 的差异化在「跨 M365 应用」+ 「企业治理」。WeKnora 自托管路径无法直接复用 M365 数据通道，但可以借鉴「SharePoint Agents = 站点内置 agent」的概念做「KB 内置 Agent」。
+  </div>
+</section>
+
+<section id="matrix">
+  <h2>八、AI Agent 框架能力矩阵</h2>
+  <p class="lead">横向比对五大产品的 AI Agent 框架要素。WeKnora 当前行只列已有能力 + 计划项。</p>
+  <div class="table-wrap"><table class="matrix">
+    <thead><tr>
+      <th>能力要素</th>
+      <th>WeKnora</th>
+      <th>Notion</th>
+      <th>飞书</th>
+      <th>Confluence Rovo</th>
+      <th>Glean</th>
+      <th>Copilot</th>
+    </tr></thead>
+    <tbody>
+      <tr><td>基础问答 (RAG Q&amp;A)</td>
+      <td>✅ v0.7.15</td><td>✅ Agent</td><td>✅ 知识问答</td><td>✅ Rovo Search</td><td>✅ Assistant</td><td>✅ Copilot</td></tr>
+      <tr><td>模型无关（多 provider）</td><td>✅ 模型库 v0.7.1</td><td>✅</td><td>partial 豆包 + 第三方</td><td>✅</td><td>✅</td><td>partial OpenAI 为主</td></tr>
+      <tr><td>工具调用（tool use）</td><td>✅ AgentService</td><td>✅ 30+ Actions</td><td>✅ 妙搭</td><td>✅ Rovo Agents</td><td>✅ Glean Agents</td><td>✅ Copilot Agents</td></tr>
+      <tr><td>可复用 Agent 模板</td><td>❌</td><td>✅ Custom Agents</td><td>✅ 妙搭模板</td><td>✅ Rovo Studio</td><td>✅ Glean Studio</td><td>✅ Copilot Studio</td></tr>
+      <tr><td>开发者平台 / SDK</td><td>partial skill/</td><td>✅ Workers</td><td>✅ aily SDK</td><td>✅ Rovo Dev CLI</td><td>✅ Glean SDK</td><td>✅ Copilot SDK</td></tr>
+      <tr><td>MCP 协议</td><td>✅ 内置 MCP</td><td>partial</td><td>partial</td><td>✅</td><td>✅</td><td>✅ 2026 公告</td></tr>
+      <tr><td>企业知识图谱</td><td>partial AuthZ</td><td>partial DB</td><td>partial</td><td>✅ Teamwork Graph</td><td>✅ Enterprise Graph</td><td>via M365 Graph</td></tr>
+      <tr><td>联邦检索（多 connector）</td><td>partial datasource</td><td>✅ Conn</td><td>✅</td><td>✅</td><td>✅ 100+</td><td>✅ Graph Conn</td></tr>
+      <tr><td>事件驱动触发</td><td>❌</td><td>✅ Workers</td><td>✅ 妙搭</td><td>✅ Rovo Agents</td><td>✅</td><td>✅ Power Automate</td></tr>
+      <tr><td>计费模型（credits / seats）</td><td>❌ 自托管</td><td>✅ Credits</td><td>✅ Credits</td><td>✅ Rovo credits</td><td>✅ Per-seat</td><td>✅ Add-on $30/u/m</td></tr>
+      <tr><td>AI 治理（ISO 42001 / DLP）</td><td>partial DLP 0%</td><td>partial</td><td>✅</td><td>via Guard</td><td>✅ ISO 42001</td><td>✅ Purview</td></tr>
+      <tr><td>多语言（zh-CN 优先）</td><td>✅ 4 语言</td><td>partial</td><td>✅ zh 优先</td><td>✅ multiple</td><td>✅</td><td>✅ multiple</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="implications">
+  <h2>九、对 WeKnora 的启示</h2>
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>9.1 短期（v0.7.17-v0.7.19）</h4>
+      <p>· <b>Custom Agents 抽象</b>（v0.7.19）：instructions + 工具集 + 工作区共享，对标 Custom Agents / 妙搭</p>
+      <p>· <b>事件驱动触发</b>（v0.7.19）：WebHook + Schedule，把 skills/ 接入 agent 调度</p>
+      <p>· <b>MCP 强化</b>（v0.7.17）：让 WeKnora 可被 Claude Desktop / 其他 MCP 客户端调用</p>
+      <p>· <b>AI credits 配额</b>（v0.7.19）：把 v0.7.1 模型库 + 计费集成</p>
+    </div>
+    <div class="card">
+      <h4>9.2 中期（v0.7.21-v0.7.23）</h4>
+      <p>· <b>WeKnora Studio</b>（v0.7.21）：可视化 agent builder（Vue + 后端编排）</p>
+      <p>· <b>企业知识图谱</b>（v0.7.22）：从 KB / Wiki / Agent / 数据源抽取实体关系</p>
+      <p>· <b>第三方 connector 联邦</b>（v0.7.23）：当前 datasource 模块升级到联邦 RAG</p>
+      <p>· <b>AI 治理 / DLP 子集</b>（v0.7.20）：审计 + 敏感词 + 保留</p>
+    </div>
+    <div class="card">
+      <h4>9.3 WeKnora 差异化机会</h4>
+      <p>· <b>自托管 + 国产化</b>：信创栈 + 数据驻留，比 Notion / Glean 强</p>
+      <p>· <b>doc+KB 融合的 RAG</b>：v0.7.12-15 已经做到，是飞书级但开源可控</p>
+      <p>· <b>ACL snapshot hash</b>：v0.7.4-8 的 ACL 不可绕过，比 Glean 的 ACL 路径更硬</p>
+      <p>· <b>Conditional Access + GeoIP</b>：v0.7.14 + v0.7.16 = 自托管里第一个真正可达 IP 维度的 CA</p>
+    </div>
+    <div class="card">
+      <h4>9.4 风险与不做清单</h4>
+      <p>· <b>不做「通用 LLM Chat」</b>：被 ChatGPT / Claude Desktop 占位，无差异化</p>
+      <p>· <b>不做「跨应用 Copilot」</b>：依赖 M365 / WPS 生态，自托管无意义</p>
+      <p>· <b>暂缓「Workers / 沙箱运行时」</b>：v0.7.23+ 看市场反应再启动</p>
+      <p>· <b>不复制 Notion Credits</b>：自托管场景计费模型跟 SaaS 不同</p>
+    </div>
+  </div>
+</section>
+
+<section id="roadmap">
+  <h2>十、v0.7.17+ 路线（按本报告发现修订）</h2>
+  <div class="table-wrap"><table class="matrix">
+    <thead><tr><th>版本</th><th>里程碑</th><th>对标</th><th>优先级</th></tr></thead>
+    <tbody>
+      <tr><td>v0.7.17</td><td>AI Assistant 前端面板 + SSE 流式 + LLM 真实接入</td><td>Notion Agent / Feishu 知识问答</td><td><b style="color:var(--green)">P0</b></td></tr>
+      <tr><td>v0.7.18</td><td>Yjs + WebSocket awareness 实时协作（Wiki）</td><td>飞书同步块 / Notion multiplayer</td><td><b style="color:var(--green)">P0</b></td></tr>
+      <tr><td>v0.7.19</td><td>Custom Agents + 事件触发 + credits 配额</td><td>Notion Custom Agents / 妙搭</td><td>P1</td></tr>
+      <tr><td>v0.7.20</td><td>MMDB 真集成 + AuthZ Admin UI + DLP 审计子集</td><td>Entra CA / Purview 子集</td><td>P1</td></tr>
+      <tr><td>v0.7.21</td><td>WeKnora Studio（可视化 agent builder）+ MCP 强化</td><td>Rovo Studio / Glean Studio / Copilot Studio</td><td>P1</td></tr>
+      <tr><td>v0.7.22</td><td>企业知识图谱自动建图</td><td>Teamwork Graph / Enterprise Graph</td><td>P2</td></tr>
+      <tr><td>v0.7.23</td><td>联邦 RAG（datasource 升级）+ 多维表 WeKnora Base</td><td>Glean Connectors / Bitable</td><td>P2</td></tr>
+      <tr><td>v0.7.24+</td><td>插件市场（签名 + 沙箱）+ 国产化适配 + Workers / 沙箱运行时</td><td>Forge / Marketplace</td><td>P3</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout ok">
+    <b>12 个月目标：</b>核心产品能力 88% → 95%；企业级 55% → 80%；AI 30% → 70%；协作 15% → 60%；对标综合 75% → <b style="color:var(--green)">88%</b>。
+  </div>
+</section>
+
+<section id="evidence">
+  <h2>十一、证据与文件</h2>
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>v0.7.16 新增 / 修改文件</h4>
+      <ul class="list">
+        <li><span class="ref">internal/geoiplookup/geoip.go</span>（138 行，CountryResolver 接口）</li>
+        <li><span class="ref">internal/geoiplookup/mmdb.go</span>（24 行，build-tag 占位）</li>
+        <li><span class="ref">internal/geoiplookup/geoip_test.go</span>（108 行，6 / 6 测试）</li>
+        <li><span class="ref">internal/application/service/conditional_access_geoip.go</span>（84 行）</li>
+        <li><span class="ref">internal/application/service/condaccgeoip/conditional_access_geoip_test.go</span>（52 行，3 / 3）</li>
+        <li><span class="ref">internal/application/service/conditional_access.go</span>（+ SetCountryResolver + CountryResolver + 自动 FillCountryFromIP）</li>
+        <li><span class="ref">internal/container/container.go</span>（+ Decorate 注入）</li>
+        <li><span class="ref">config/config.yaml</span>（+ geoip.static_mapping 文档）</li>
+        <li><span class="ref">.env.example</span>（+ GEOIP_MMDB_PATH 文档）</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>继承自 v0.7.14 / v0.7.15</h4>
+      <ul class="list">
+        <li><span class="ref">internal/application/service/conditional_access.go</span>（v0.7.14 策略引擎）</li>
+        <li><span class="ref">internal/types/conditional_access.go</span>（EvaluationRequest + Decision）</li>
+        <li><span class="ref">internal/application/repository/conditional_access.go</span>（ListEnabled）</li>
+        <li><span class="ref">internal/handler/conditional_access.go</span>（CRUD 5 端点）</li>
+        <li><span class="ref">internal/router/routes_conditional_access.go</span></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>AI Agent 框架研究</h4>
+      <ul class="list">
+        <li>Notion: notion.com/product/ai, notion.com/help/custom-agents</li>
+        <li>飞书: feishu.cn/product/feishuai, feishu.cn/product/wiki</li>
+        <li>Rovo: atlassian.com/platform/rovo</li>
+        <li>Glean: glean.com, docs.glean.com</li>
+        <li>Copilot: learn.microsoft.com/copilot</li>
+        <li>MCP: modelcontextprotocol.io（2026 主流协议）</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>本报告与 v15 报告关系</h4>
+      <ul class="list">
+        <li>v15：12 维度能力矩阵 + 90 天计划（W1-W12）</li>
+        <li>v16：本报告聚焦 AI Agent 框架，5 大产品深度调研 + WeKnora 落地路径</li>
+        <li>v17（计划）：AI Assistant 前端面板交付 + Yjs 实时协作</li>
+        <li>v18（计划）：Custom Agents + 事件触发 + credits</li>
+      </ul>
+    </div>
+  </div>
+  <div class="callout warn">
+    <b>公开产品资料说明：</b>本报告对 Notion / 飞书 / Confluence / Glean / Microsoft Copilot 的 AI 能力描述仅基于其官方公开文档的概要理解（2026 年 8 月访问），详细信息请参考各产品官方文档站点。
+  </div>
+</section>
+
+<div style="padding:40px 0 60px;color:var(--muted);font-size:13px">
+  生成时间：2026-08-31 · 分支：comet/enterprise-iam-geoip · HEAD：2d94a123 + 4 新文件 · 数据采集口径：当前分支真实可运行 + 有迁移 + 有前端视图 + 有测试的能力。<br/>
+  v0.7.16 增量：internal/geoiplookup/ 新包（CountryResolver + Noop / Static / MMDB 三实现）+ FillCountryFromIP 自动补 CountryCode + 9 / 9 单元测试 + config / .env 文档 + AI Agent 框架深度调研。
+</div>
+
+</div>
+</body>
+</html>
