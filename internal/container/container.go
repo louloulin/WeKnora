@@ -512,6 +512,14 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	) *handler.WikiSearchV2Handler {
 		return handler.NewWikiSearchV2Handler(kbSvc, searchSvc, pageHandler.SearchPages)
 	}))
+	// AI Assistant Q&A backend (Build v0.7.15). The repo persists
+	// one row per Ask turn; the service fuses KB and Wiki retrieval,
+	// strips the wiki <mark> tags, persists an audit row, and
+	// returns a structured response. The handler exposes 3 endpoints
+	// (ask / list conversations / get a single conversation thread).
+	must(container.Provide(repository.NewAssistantConversationRepository))
+	must(container.Provide(service.NewAssistantService))
+	must(container.Provide(handler.NewAssistantHandler))
 	must(container.Provide(service.NewWikiIngestService, dig.Name("wikiIngest")))
 	must(container.Provide(service.NewWikiLintService))
 	must(container.Provide(service.NewEmbedChannelService))

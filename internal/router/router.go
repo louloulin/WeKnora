@@ -103,6 +103,7 @@ type RouterParams struct {
 	WikiTagHandler               *handler.WikiTagHandler
 	WikiTemplateHandler          *handler.WikiTemplateHandler
 	WikiSearchV2Handler          *handler.WikiSearchV2Handler
+	AssistantHandler             *handler.AssistantHandler
 	MemoryHandler                *handler.MemoryHandler
 	// CitationLogHandler — Build #30 B4. Wired optionally so the
 	// citation-log route is registered when the handler is present.
@@ -251,6 +252,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		registerLDAPRoutes(v1, v1.Group("/api/v1", rbacGuards.SystemAdmin()), params.LDAPHandler)
 		registerSCIMRoutes(v1.Group("/api/v1"), params.SCIMHandler, handler.SCIMMiddleware(params.SCIMTokenService))
 		registerMFARoutes(v1.Group("/api/v1"), params.MFAHandler)
+		registerAssistantRoutes(v1.Group("/api/v1"), params.AssistantHandler)
 		RegisterTenantRoutes(v1, params.TenantHandler, params.TenantMemberHandler, params.TenantInvitationHandler, params.AuditLogHandler, rbacGuards)
 		RegisterMyInvitationRoutes(v1, params.TenantInvitationHandler)
 		RegisterKnowledgeBaseRoutes(v1, params.KBHandler, rbacGuards)
