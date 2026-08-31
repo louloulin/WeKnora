@@ -108,6 +108,7 @@ type RouterParams struct {
 	WikiCommentHandler            *handler.WikiCommentHandler
 	WikiRealtimeWSHandler        *handler.WikiRealtimeWSHandler
 	CollabDocHandler            *handler.CollabDocHandler
+	CollabDocBytesHandler        *handler.CollabDocBytesHandler
 	CollabDocRealtimeWSHandler   *handler.CollabDocRealtimeWSHandler
 	WikiSyncBlockHandler         *handler.WikiSyncBlockHandler
 	AgentStudioHandler           *handler.AgentStudioHandler
@@ -123,6 +124,7 @@ type RouterParams struct {
 	InlineAIHandler     *handler.InlineAIHandler
 	AuditExportHandler  *handler.AuditExportHandler
 	DatabaseHandler     *handler.DatabaseHandler
+	AutomationHandler   *handler.AutomationHandler
 }
 
 // NewRouter 创建新的路由
@@ -342,7 +344,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		}
 		RegisterWikiRealtimeRoutes(v1, params.WikiRealtimeWSHandler, rbacGuards)
 		if params.CollabDocHandler != nil {
-			RegisterCollabDocRoutes(v1, params.CollabDocHandler, params.CollabDocRealtimeWSHandler, rbacGuards)
+			RegisterCollabDocRoutes(v1, params.CollabDocHandler, params.CollabDocBytesHandler, params.CollabDocRealtimeWSHandler, rbacGuards)
 		}
 		RegisterWikiSyncBlockRoutes(v1, params.WikiSyncBlockHandler)
 		RegisterAgentStudioRoutes(v1, params.AgentStudioHandler)
@@ -365,6 +367,9 @@ func NewRouter(params RouterParams) *gin.Engine {
 		}
 		if params.DatabaseHandler != nil {
 			RegisterDatabaseRoutes(v1, params.DatabaseHandler, rbacGuards)
+		if params.AutomationHandler != nil {
+			params.AutomationHandler.Register(v1)
+		}
 		}
 
 		// Fail fast if any declared API-key policy points at a route

@@ -7,6 +7,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -292,3 +293,86 @@ func (r *collabDocSessionRepository) SweepOlderThan(ctx context.Context, cutoff 
 }
 
 var _ interfaces.CollabDocSessionRepository = (*collabDocSessionRepository)(nil)
+
+// collabDocFileRepository persists .docx/.pptx/.xlsx byte payloads keyed
+// by (tenant, doc_id). One row per save; the row with the highest version
+// is the canonical "open this doc" target. Mirrors the wiki realtime
+// snapshot repo for the binary side-channel.
+type collabDocFileRepository struct {
+	db *gorm.DB
+}
+
+// NewCollabDocFileRepository wires the binary repo.
+func NewCollabDocFileRepository(db *gorm.DB) interfaces.CollabDocFileRepository {
+	return &collabDocFileRepository{db: db}
+}
+
+func (r *collabDocFileRepository) SaveFile(ctx context.Context, in types.CollabDocFileUpsert) (*types.CollabDocFile, error) {
+	if err := in.Validate(); err != nil {
+		return nil, err
+	}
+	row := &types.CollabDocFile{
+		TenantID:  in.TenantID,
+		DocID:     in.DocID,
+		Format:    in.Format,
+		Content:   in.Content,
+		SizeBytes: len(in.Content),
+		Version:   in.Version,
+		CreatedAt: time.Now().UTC(),
+	}
+	if err := r.db.WithContext(ctx).Create(row).Error; err != nil {
+		return nil, fmt.Errorf("collab_doc_file save: %w", err)
+	}
+	return row, nil
+}
+
+func (r *collabDocFileRepository) GetLatestFile(ctx context.Context, tenantID uint64, docID string) (*types.CollabDocFile, error) {
+	var f types.CollabDocFile
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND doc_id = ?", tenantID, docID).
+		Order("version DESC").
+		First(&f).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("collab_doc_file latest: %w", err)
+	}
+	return &f, nil
+}
+
+func (r *collabDocFileRepository) GetFileByVersion(ctx context.Context, tenantID uint64, docID string, version int) (*types.CollabDocFile, error) {
+	var f types.CollabDocFile
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND doc_id = ? AND version = ?", tenantID, docID, version).
+		First(&f).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("collab_doc_file by_version: %w", err)
+	}
+	return &f, nil
+}
+
+func (r *collabDocFileRepository) CurrentVersion(ctx context.Context, tenantID uint64, docID string) (int, error) {
+	var max sql.NullInt64
+	err := r.db.WithContext(ctx).
+		Model(&types.CollabDocFile{}).
+		Where("tenant_id = ? AND doc_id = ?", tenantID, docID).
+		Select("MAX(version)").
+		Scan(&max).Error
+	if err != nil {
+		return 0, fmt.Errorf("collab_doc_file current_version: %w", err)
+	}
+	if !max.Valid {
+		return 0, nil
+	}
+	return int(max.Int64), nil
+}
+
+func (r *collabDocFileRepository) DeleteByDoc(ctx context.Context, tenantID uint64, docID string) error {
+	return r.db.WithContext(ctx).
+		Where("tenant_id = ? AND doc_id = ?", tenantID, docID).
+		Delete(&types.CollabDocFile{}).Error
+}

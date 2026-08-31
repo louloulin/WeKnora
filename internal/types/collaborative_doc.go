@@ -192,3 +192,73 @@ type ListCollaborativeDocsFilter struct {
 	Limit    int
 	Offset   int
 }
+
+// CollabDocFile is one persisted binary payload of a collab doc. Each save
+// of the underlying Office file (.docx/.pptx/.xlsx) creates a new row with
+// version+1 so history can be inspected and previous bytes can be
+// downloaded for rollback.
+type CollabDocFile struct {
+	ID          uint64                `json:"id"`
+	TenantID    uint64                `json:"tenant_id" gorm:"index"`
+	DocID       string                `json:"doc_id" gorm:"type:varchar(36);index"`
+	Format      CollaborativeDocKind  `json:"format" gorm:"type:varchar(16)"`
+	Content     []byte                `json:"-" gorm:"column:content;type:longblob"`
+	SizeBytes   int                   `json:"size_bytes"`
+	SHA256      string                `json:"sha256" gorm:"type:varchar(64)"`
+	Version     int                   `json:"version"`
+	CreatedAt   time.Time             `json:"created_at"`
+}
+
+// TableName returns the GORM table name.
+func (CollabDocFile) TableName() string { return "collab_doc_files" }
+
+// MarshalJSON encodes content as base64 so JSON callers can round-trip
+// without extra plumbing. Mirrors the snapshot MarshalJSON strategy.
+func (f CollabDocFile) MarshalJSON() ([]byte, error) {
+	type alias CollabDocFile
+	content := base64.StdEncoding.EncodeToString(f.Content)
+	return json.Marshal(struct {
+		alias
+		ContentB64 string `json:"content"`
+	}{
+		alias:     alias(f),
+		ContentB64: content,
+	})
+}
+
+// CollabDocFileUpsert is the input for SaveFile: tenant, doc, format, raw
+// bytes and the caller-computed version (current_version+1).
+type CollabDocFileUpsert struct {
+	TenantID  uint64
+	DocID     string
+	Format    CollaborativeDocKind
+	Content   []byte
+	Version   int
+}
+
+// Validate enforces non-empty invariants for SaveFile.
+func (u CollabDocFileUpsert) Validate() error {
+	if u.TenantID == 0 {
+		return ErrCollabDocInvalid("tenant_id is required")
+	}
+	if u.DocID == "" {
+		return ErrCollabDocInvalid("doc_id is required")
+	}
+	if !ValidCollaborativeDocKinds[u.Format] {
+		return ErrCollabDocInvalid("format is invalid")
+	}
+	if len(u.Content) == 0 {
+		return ErrCollabDocInvalid("content is empty")
+	}
+	if u.Version <= 0 {
+		return ErrCollabDocInvalid("version must be positive")
+	}
+	return nil
+}
+
+// GetLatestFileFilter narrows the latest-file query. When Format is set, it
+// overrides the doc_kind for the lookup (today they're 1:1, but the doc
+// engine doesn't enforce that).
+type GetLatestFileFilter struct {
+	Format CollaborativeDocKind
+}

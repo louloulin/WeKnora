@@ -1,0 +1,242 @@
+// Package handler — v0.7.26 collab_doc binary upload / download handlers.
+//
+// Endpoints:
+//
+//	POST   /collaborative-docs/:id/upload    multipart/form-data; file field
+//	GET    /collaborative-docs/:id/download  raw bytes; proper Content-Type
+//
+// These pair with the Yjs CRDT channel: the editor pulls the latest bytes
+// on open (download), mutates them locally, and POSTs a fresh version on
+// save (upload). The Yjs snapshot is independently persisted by the WS
+// handler.
+package handler
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"net/http"
+	"path/filepath"
+	"strings"
+
+	"github.com/Tencent/WeKnora/internal/application/service"
+	"github.com/Tencent/WeKnora/internal/errors"
+	"github.com/Tencent/WeKnora/internal/logger"
+	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/gin-gonic/gin"
+)
+
+// CollabDocBytesHandler is the binary REST surface for collab docs.
+type CollabDocBytesHandler struct {
+	svc *service.CollabDocService
+}
+
+// NewCollabDocBytesHandler wires the binary handler.
+func NewCollabDocBytesHandler(svc *service.CollabDocService) *CollabDocBytesHandler {
+	return &CollabDocBytesHandler{svc: svc}
+}
+
+// Mount attaches the binary routes onto an authenticated v1 group.
+func (h *CollabDocBytesHandler) Mount(rg *gin.RouterGroup) {
+	rg.POST("/collaborative-docs/:id/upload", h.Upload)
+	rg.GET("/collaborative-docs/:id/download", h.Download)
+	rg.GET("/collaborative-docs/:id/download/:version", h.DownloadVersion)
+}
+
+// Upload handles POST /collaborative-docs/:id/upload.
+//
+// Accepts a multipart/form-data body with a single "file" field. Filename
+// extension is used to pick the doc_kind (allowed only when it matches the
+// persisted doc_kind). Version is auto-incremented when omitted.
+func (h *CollabDocBytesHandler) Upload(c *gin.Context) {
+	tenantID, userID, ok := h.tenantAndUser(c)
+	if !ok {
+		return
+	}
+	docID := c.Param("id")
+	if docID == "" {
+		c.Error(errors.NewBadRequestError("missing doc id"))
+		return
+	}
+	doc, err := h.svc.GetDoc(c.Request.Context(), tenantID, userID, docID)
+	if err != nil || doc == nil {
+		c.Error(errors.NewNotFoundError("collab doc not found"))
+		return
+	}
+	fh, err := c.FormFile("file")
+	if err != nil {
+		c.Error(errors.NewBadRequestError("missing 'file' multipart field: " + err.Error()))
+		return
+	}
+	// Cap upload size at 64 MiB so a malicious client can't OOM the service.
+	const maxUploadBytes = 64 << 20
+	if fh.Size > maxUploadBytes {
+		c.Error(errors.NewBadRequestError(fmt.Sprintf("file too large: %d > %d", fh.Size, maxUploadBytes)))
+		return
+	}
+	src, err := fh.Open()
+	if err != nil {
+		c.Error(errors.NewInternalServerError("open uploaded file: "+err.Error()))
+		return
+	}
+	defer src.Close()
+	content, err := io.ReadAll(io.LimitReader(src, maxUploadBytes+1))
+	if err != nil {
+		c.Error(errors.NewInternalServerError("read uploaded file: "+err.Error()))
+		return
+	}
+	if len(content) == 0 {
+		c.Error(errors.NewBadRequestError("uploaded file is empty"))
+		return
+	}
+	// Validate kind by extension; reject mismatches.
+	format := kindFromFilename(fh.Filename)
+	if format == "" {
+		format = doc.DocKind
+	}
+	if format != doc.DocKind {
+		c.Error(errors.NewBadRequestError(fmt.Sprintf(
+			"uploaded file extension does not match doc_kind: kind=%s extension=%s",
+			doc.DocKind, format,
+		)))
+		return
+	}
+	// Compute sha256 for audit / dedup.
+	sum := sha256.Sum256(content)
+	hexSum := hex.EncodeToString(sum[:])
+	logger.Infof(c.Request.Context(), "[CollabDoc] upload doc=%s kind=%s bytes=%d sha256=%s",
+		docID, format, len(content), hexSum)
+	row, err := h.svc.SaveFile(c.Request.Context(), tenantID, userID, docID, types.CollabDocFileUpsert{
+		TenantID: tenantID,
+		DocID:    docID,
+		Format:   format,
+		Content:  content,
+		Version:  0, // auto-increment
+	})
+	if err != nil {
+		c.Error(errors.NewBadRequestError(err.Error()))
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{
+		"success": true,
+		"data": gin.H{
+			"id":         row.ID,
+			"doc_id":     row.DocID,
+			"format":     row.Format,
+			"size_bytes": row.SizeBytes,
+			"sha256":     hexSum,
+			"version":    row.Version,
+			"created_at": row.CreatedAt,
+		},
+	})
+}
+
+// Download handles GET /collaborative-docs/:id/download.
+func (h *CollabDocBytesHandler) Download(c *gin.Context) {
+	h.download(c, 0)
+}
+
+// DownloadVersion handles GET /collaborative-docs/:id/download/:version.
+func (h *CollabDocBytesHandler) DownloadVersion(c *gin.Context) {
+	var v int
+	if _, err := fmt.Sscanf(c.Param("version"), "%d", &v); err != nil || v <= 0 {
+		c.Error(errors.NewBadRequestError("invalid version"))
+		return
+	}
+	h.download(c, v)
+}
+
+func (h *CollabDocBytesHandler) download(c *gin.Context, version int) {
+	tenantID, userID, ok := h.tenantAndUser(c)
+	if !ok {
+		return
+	}
+	docID := c.Param("id")
+	doc, err := h.svc.GetDoc(c.Request.Context(), tenantID, userID, docID)
+	if err != nil || doc == nil {
+		c.Error(errors.NewNotFoundError("collab doc not found"))
+		return
+	}
+	var row *types.CollabDocFile
+	if version > 0 {
+		row, err = h.svc.LoadFileByVersion(c.Request.Context(), tenantID, userID, docID, version)
+	} else {
+		row, err = h.svc.LoadLatestFile(c.Request.Context(), tenantID, userID, docID)
+	}
+	if err != nil {
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
+	if row == nil {
+		c.Error(errors.NewNotFoundError("no file uploaded yet"))
+		return
+	}
+	mime := mimeForKind(row.Format)
+	filename := fmt.Sprintf("%s-v%d%s", sanitizeFilename(doc.Title), row.Version, extForKind(row.Format))
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	c.Header("X-Collab-Doc-Version", fmt.Sprintf("%d", row.Version))
+	c.Header("X-Collab-Doc-SHA256", hex.EncodeToString(sha256.New().Sum(row.Content))) // re-hash for header consistency
+	c.Data(http.StatusOK, mime, row.Content)
+}
+
+func (h *CollabDocBytesHandler) tenantAndUser(c *gin.Context) (uint64, uint64, bool) {
+	t := c.GetUint64(types.TenantIDContextKey.String())
+	u := c.GetUint64(types.UserIDContextKey.String())
+	if t == 0 || u == 0 {
+		c.Error(errors.NewUnauthorizedError("missing tenant/user context"))
+		return 0, 0, false
+	}
+	return t, u, true
+}
+
+func kindFromFilename(name string) types.CollaborativeDocKind {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".docx":
+		return types.CollaborativeDocKindDoc
+	case ".pptx":
+		return types.CollaborativeDocKindSlide
+	case ".xlsx":
+		return types.CollaborativeDocKindSheet
+	}
+	return ""
+}
+
+func extForKind(k types.CollaborativeDocKind) string {
+	switch k {
+	case types.CollaborativeDocKindDoc:
+		return ".docx"
+	case types.CollaborativeDocKindSlide:
+		return ".pptx"
+	case types.CollaborativeDocKindSheet:
+		return ".xlsx"
+	}
+	return ""
+}
+
+func mimeForKind(k types.CollaborativeDocKind) string {
+	switch k {
+	case types.CollaborativeDocKindDoc:
+		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case types.CollaborativeDocKindSlide:
+		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+	case types.CollaborativeDocKindSheet:
+		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	}
+	return "application/octet-stream"
+}
+
+func sanitizeFilename(s string) string {
+	out := make([]rune, 0, len(s))
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
+			out = append(out, r)
+		} else if r == ' ' {
+			out = append(out, '-')
+		}
+	}
+	if len(out) == 0 {
+		return "collab-doc"
+	}
+	return string(out)
+}

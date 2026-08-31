@@ -52,10 +52,10 @@ let handle: ReturnType<typeof useYjsCollabDoc> | null = null
 const setup = () => {
   if (!props.docId || !props.token) return
   handle = useYjsCollabDoc({ docId: props.docId, token: props.token, displayName: props.displayName })
-  connected.value = handle.connected.value
-  peers.value = handle.peers.value
-  error.value = handle.error.value
-  watch(handle.connected, (v) => (connected.value = !!v as boolean))
+  connected.value = Boolean(handle.connected.value)
+  peers.value = (handle.peers.value ?? []) as Array<{ clientId: number; displayName: string; color: string }>
+  error.value = (handle.error.value ?? null) as string | null
+  watch(handle.connected, (v) => (connected.value = Boolean(v)))
   watch(handle.peers, (v) => (peers.value = (v ?? []) as Array<{ clientId: number; displayName: string; color: string }>))
   watch(handle.error, (v) => (error.value = (v ?? null) as string | null))
   editor.value = new Editor({
@@ -71,7 +71,7 @@ const setup = () => {
 const teardown = () => {
   if (editor.value) {
     editor.value.destroy()
-    editor.value = null
+    editor.value = undefined
   }
   if (handle) {
     handle.destroy()

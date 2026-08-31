@@ -2916,6 +2916,7 @@ export default {
         google_workspace: 'Google Workspace',
       },
     },
+
     dlp: {
       editorTitle: 'DLP Policy Editor — sensitive data protection',
       createPolicy: 'New policy',

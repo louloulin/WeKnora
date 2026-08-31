@@ -28,6 +28,7 @@ type CollabDocService struct {
 	docRepo    interfaces.CollabDocRepository
 	snapRepo   interfaces.CollabDocSnapshotRepository
 	sessRepo   interfaces.CollabDocSessionRepository
+	fileRepo   interfaces.CollabDocFileRepository
 	authz      CollabDocAuthorizer
 
 	snapshotInterval time.Duration
@@ -65,12 +66,14 @@ func NewCollabDocService(
 	docRepo interfaces.CollabDocRepository,
 	snapRepo interfaces.CollabDocSnapshotRepository,
 	sessRepo interfaces.CollabDocSessionRepository,
+	fileRepo interfaces.CollabDocFileRepository,
 	authz CollabDocAuthorizer,
 ) *CollabDocService {
 	return &CollabDocService{
 		docRepo:          docRepo,
 		snapRepo:         snapRepo,
 		sessRepo:         sessRepo,
+		fileRepo:         fileRepo,
 		authz:            authz,
 		snapshotInterval: 5 * time.Minute,
 		snapshotBytes:    256 * 1024,
@@ -418,4 +421,94 @@ func (s *CollabDocService) AppendUpdate(tenantID uint64, docID string, payload [
 	accum := entry.accumulated
 	entry.mu.Unlock()
 	return s.ShouldSnapshot(tenantID, docID, accum, last)
+}
+
+// SaveFile stores a fresh binary version of a collab doc (the .docx / .pptx
+// / .xlsx bytes the editor produced). Version is monotonically incremented
+// from the latest stored version + 1 so concurrent writers don't collide.
+//
+// Returns the persisted file row (with the new version number) or an error
+// when the caller lacks write access, the doc kind is wrong, or the
+// version collides with an existing row.
+func (s *CollabDocService) SaveFile(
+	ctx context.Context, tenantID, userID uint64, docID string,
+	in types.CollabDocFileUpsert,
+) (*types.CollabDocFile, error) {
+	doc, err := s.docRepo.Get(ctx, tenantID, docID)
+	if err != nil {
+		return nil, fmt.Errorf("save_file: doc lookup: %w", err)
+	}
+	if doc == nil {
+		return nil, types.ErrCollabDocInvalid("collab doc not found")
+	}
+	allowed, err := s.authz.CanWrite(ctx, tenantID, userID, docID)
+	if err != nil {
+		return nil, fmt.Errorf("save_file: authz: %w", err)
+	}
+	if !allowed {
+		return nil, types.ErrCollabDocInvalid("write denied")
+	}
+	if in.Format == "" {
+		in.Format = doc.DocKind
+	}
+	if in.Format != doc.DocKind {
+		return nil, types.ErrCollabDocInvalid("format mismatch with doc_kind")
+	}
+	latest, err := s.fileRepo.CurrentVersion(ctx, tenantID, docID)
+	if err != nil {
+		return nil, fmt.Errorf("save_file: current_version: %w", err)
+	}
+	expected := latest + 1
+	if in.Version <= 0 {
+		in.Version = expected
+	} else if in.Version != expected {
+		return nil, types.ErrCollabDocInvalid(fmt.Sprintf(
+			"version conflict: caller=%d expected=%d", in.Version, expected,
+		))
+	}
+	row, err := s.fileRepo.SaveFile(ctx, in)
+	if err != nil {
+		return nil, fmt.Errorf("save_file: %w", err)
+	}
+	logger.Infof(ctx, "[CollabDoc] save_file doc=%s v=%d size=%d", docID, row.Version, row.SizeBytes)
+	return row, nil
+}
+
+// LoadLatestFile returns the latest .docx / .pptx / .xlsx bytes for a doc.
+// Returns (nil, nil) when no file has been uploaded yet so the editor can
+// render an empty document.
+func (s *CollabDocService) LoadLatestFile(
+	ctx context.Context, tenantID, userID uint64, docID string,
+) (*types.CollabDocFile, error) {
+	allowed, err := s.authz.CanRead(ctx, tenantID, userID, docID)
+	if err != nil {
+		return nil, fmt.Errorf("load_file: authz: %w", err)
+	}
+	if !allowed {
+		return nil, types.ErrCollabDocInvalid("read denied")
+	}
+	row, err := s.fileRepo.GetLatestFile(ctx, tenantID, docID)
+	if err != nil {
+		return nil, fmt.Errorf("load_file: %w", err)
+	}
+	return row, nil
+}
+
+// LoadFileByVersion returns a specific historical version's bytes. Used
+// for rollback / history UIs.
+func (s *CollabDocService) LoadFileByVersion(
+	ctx context.Context, tenantID, userID uint64, docID string, version int,
+) (*types.CollabDocFile, error) {
+	allowed, err := s.authz.CanRead(ctx, tenantID, userID, docID)
+	if err != nil {
+		return nil, fmt.Errorf("load_file_version: authz: %w", err)
+	}
+	if !allowed {
+		return nil, types.ErrCollabDocInvalid("read denied")
+	}
+	row, err := s.fileRepo.GetFileByVersion(ctx, tenantID, docID, version)
+	if err != nil {
+		return nil, fmt.Errorf("load_file_version: %w", err)
+	}
+	return row, nil
 }

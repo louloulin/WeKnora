@@ -43,3 +43,20 @@ type CollabDocSessionRepository interface {
 	DeleteByClient(ctx context.Context, tenantID uint64, docID string, clientID uint64) error
 	SweepOlderThan(ctx context.Context, cutoff time.Time) (int64, error)
 }
+
+// CollabDocFileRepository persists the binary payload of a collab doc. One
+// row per save; the latest row is the canonical "open this doc" target.
+type CollabDocFileRepository interface {
+	// SaveFile writes a new version row. Returns ErrCollabDocInvalid on
+	// version collision (existing row at the same (doc_id, version)).
+	SaveFile(ctx context.Context, in types.CollabDocFileUpsert) (*types.CollabDocFile, error)
+	// GetLatestFile returns the row with the highest version for a doc.
+	GetLatestFile(ctx context.Context, tenantID uint64, docID string) (*types.CollabDocFile, error)
+	// GetFileByVersion returns a specific version's row (for rollback).
+	GetFileByVersion(ctx context.Context, tenantID uint64, docID string, version int) (*types.CollabDocFile, error)
+	// CurrentVersion returns the highest version number for a doc, or 0
+	// when no file has been uploaded yet.
+	CurrentVersion(ctx context.Context, tenantID uint64, docID string) (int, error)
+	// DeleteByDoc removes every row for a doc (hard delete).
+	DeleteByDoc(ctx context.Context, tenantID uint64, docID string) error
+}

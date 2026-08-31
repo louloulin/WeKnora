@@ -1,6 +1,7 @@
 export * from './types'
 export { parseFontTable } from './font-table'
 export { parseDocx, styleRunFormat, type ParseExtras } from './parse'
+export { patchParagraphTexts } from './text-patch'
 export {
   saveDocx,
   findChartWorkbookPath,

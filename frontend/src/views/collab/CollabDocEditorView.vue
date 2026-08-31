@@ -18,7 +18,7 @@
         </button>
       </div>
       <div class="collab-editor-view__main">
-        <CollabDocEditor v-if="doc.doc_kind === 'doc'" :doc-id="doc.id" :title="doc.title" :token="token" :display-name="displayName" />
+        <CollabDocProEditor v-if="doc.doc_kind === 'doc'" :doc-id="doc.id" :title="doc.title" :token="token" :display-name="displayName" />
         <CollabSheetEditor v-else-if="doc.doc_kind === 'sheet'" :doc-id="doc.id" :title="doc.title" :token="token" :display-name="displayName" />
         <CollabSlideEditor v-else-if="doc.doc_kind === 'slide'" :doc-id="doc.id" :title="doc.title" :token="token" :display-name="displayName" />
         <div v-else>不支持的文档类型</div>
@@ -31,7 +31,7 @@
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { getCollabDoc, type CollabDoc } from '@/api/collabDoc'
-import CollabDocEditor from '@/components/collab/CollabDocEditor.vue'
+import CollabDocProEditor from '@/components/collab/CollabDocProEditor.vue'
 import CollabSheetEditor from '@/components/collab/CollabSheetEditor.vue'
 import CollabSlideEditor from '@/components/collab/CollabSlideEditor.vue'
 import { MessagePlugin } from 'tdesign-vue-next'
@@ -54,8 +54,8 @@ const load = async () => {
   error.value = null
   try {
     doc.value = await getCollabDoc(route.params.id as string)
-    token.value = authStore.accessToken || ''
-    displayName.value = authStore.user?.name || authStore.user?.username || '匿名用户'
+    token.value = authStore.token || ''
+    displayName.value = authStore.user?.username || '匿名用户'
   } catch (e: any) {
     error.value = e?.message || '加载失败'
   } finally {

@@ -49,6 +49,7 @@ import (
 	weaviateRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/weaviate"
 	connsvc "github.com/Tencent/WeKnora/internal/application/service/connector"
 	formulasvc "github.com/Tencent/WeKnora/internal/application/service/formula"
+	autosvc "github.com/Tencent/WeKnora/internal/application/service/automation"
 	asvc "github.com/Tencent/WeKnora/internal/application/service/agentstudio"
 	authzsvc "github.com/Tencent/WeKnora/internal/application/service/authzadmin"
 	dockbsvc "github.com/Tencent/WeKnora/internal/application/service/dockb"
@@ -527,6 +528,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	}))
 	must(container.Provide(formulasvc.NewService))
 	must(container.Provide(handler.NewFormulaHandler))
+	// v0.7.27 Build #33 — automation / button engine.
+	must(container.Provide(repository.NewAutomationRepository))
+	must(container.Provide(autosvc.NewService))
+	must(container.Provide(handler.NewAutomationHandler))
 	// v0.7.19 — wiki realtime (Yjs collaboration) wiring.
 	must(container.Provide(repository.NewWikiRealtimeSnapshotRepository))
 	must(container.Provide(repository.NewWikiRealtimeSessionRepository))
@@ -545,6 +550,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewCollabDocRepository))
 	must(container.Provide(repository.NewCollabDocSnapshotRepository))
 	must(container.Provide(repository.NewCollabDocSessionRepository))
+	must(container.Provide(repository.NewCollabDocFileRepository))
 	must(container.Provide(func(docRepo interfaces.CollabDocRepository) service.CollabDocAuthorizer {
 		return service.NewCollabDocDefaultAuthorizer(docRepo)
 	}))
@@ -552,11 +558,13 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		docRepo interfaces.CollabDocRepository,
 		snapRepo interfaces.CollabDocSnapshotRepository,
 		sessRepo interfaces.CollabDocSessionRepository,
+		fileRepo interfaces.CollabDocFileRepository,
 		authz service.CollabDocAuthorizer,
 	) *service.CollabDocService {
-		return service.NewCollabDocService(docRepo, snapRepo, sessRepo, authz)
+		return service.NewCollabDocService(docRepo, snapRepo, sessRepo, fileRepo, authz)
 	}))
 	must(container.Provide(handler.NewCollabDocHandler))
+	must(container.Provide(handler.NewCollabDocBytesHandler))
 	must(container.Provide(handler.NewCollabDocRealtimeWSHandler))
 	// v0.7.21 — Custom Agent Studio wiring (飞书妙搭 / Notion Custom Agents parity).
 	must(container.Provide(repository.NewAgentStudioRepository))

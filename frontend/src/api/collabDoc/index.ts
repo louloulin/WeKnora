@@ -90,7 +90,8 @@ export async function syncCollabDocToKB(id: string): Promise<unknown> {
 /** Upload a binary blob (e.g. .docx) as the document body. */
 export async function uploadCollabDocBytes(id: string, bytes: Uint8Array, filename: string): Promise<unknown> {
   const form = new FormData()
-  form.append('file', new Blob([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)]), filename)
+  const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
+  form.append('file', new Blob([buf]), filename)
   return post(`/collaborative-docs/${id}/upload`, form)
 }
 
