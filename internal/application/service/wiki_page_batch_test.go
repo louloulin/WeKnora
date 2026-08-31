@@ -301,7 +301,7 @@ func TestBatchMovePages_CrossKBRejects(t *testing.T) {
 		t.Fatalf("expected *types.WikiBatchKBMismatchError, got %T: %v", err, err)
 	}
 	if mismatch.Slug != "shared-slug" || mismatch.ActualKB != "kb-other" {
-		t.Errorf("mismatch detail wrong: %+", mismatch)
+		t.Errorf("mismatch detail wrong: %+v", mismatch)
 	}
 	if !types.IsWikiBatchKBMismatch(err) {
 		t.Errorf("IsWikiBatchKBMismatch returned false")
@@ -364,7 +364,7 @@ func TestAssertBatchKBOwnership_FlagsFirstCrossKB(t *testing.T) {
 		t.Fatalf("expected *WikiBatchKBMismatchError, got %T", err)
 	}
 	if mismatch.Slug != "shared" || mismatch.ActualKB != "kb-other" {
-		t.Errorf("mismatch detail wrong: %+", mismatch)
+		t.Errorf("mismatch detail wrong: %+v", mismatch)
 	}
 }
 
@@ -373,4 +373,54 @@ func (r *stubBatchRepo) CountByType(_ context.Context, _ string) (map[string]int
 
 func (r *stubBatchRepo) CountOrphans(_ context.Context, _ string) (int64, error) { return 0, nil }
 
-func (r *stubBatchRepo) CountPagesByFolder(_ context.Context, _ string) (int64, error) { return 0, nil }
+func (r *stubBatchRepo) CountPagesByFolder(_ context.Context, _ string, _ []string) (map[string]int64, error) { return map[string]int64{}, nil }
+
+
+
+// ============================================================================
+// Auto-generated WikiPageRepository no-op stubs.
+// These satisfy the full interface so stubBatchRepo can stand in
+// for the production repo. Each method returns its zero value.
+// ============================================================================
+func (r *stubBatchRepo) Create(_ context.Context, _ *types.WikiPage) error { return nil }
+func (r *stubBatchRepo) Update(_ context.Context, _ *types.WikiPage) error { return nil }
+func (r *stubBatchRepo) UpdateAutoLinkedContent(_ context.Context, _ *types.WikiPage) error { return nil }
+func (r *stubBatchRepo) GetByID(_ context.Context, _ string) (*types.WikiPage, error) { return nil, nil }
+func (r *stubBatchRepo) ListBacklinksAcrossKBs(_ context.Context, _ uint64, _ string, _ string, _ int) ([]*types.WikiPageLite, error) { return nil, nil }
+func (r *stubBatchRepo) List(_ context.Context, _ *types.WikiPageListRequest) ([]*types.WikiPage, int64, error) { return nil, 0, nil }
+func (r *stubBatchRepo) ListByType(_ context.Context, _ string, _ string) ([]*types.WikiPage, error) { return nil, nil }
+func (r *stubBatchRepo) ListByTypeLight(_ context.Context, _ string, _ string, _ int, _ int) ([]types.WikiIndexEntry, int64, error) { return nil, 0, nil }
+func (r *stubBatchRepo) ListBySourceRef(_ context.Context, _ string, _ string) ([]*types.WikiPage, error) { return nil, nil }
+func (r *stubBatchRepo) ListSlugsBySourceRef(_ context.Context, _ string, _ string) ([]string, error) { return nil, nil }
+func (r *stubBatchRepo) ListBySlugs(_ context.Context, _ string, _ []string) (map[string]*types.WikiPageLite, error) { return nil, nil }
+func (r *stubBatchRepo) ListSummariesByKnowledgeIDs(_ context.Context, _ string, _ []string) (map[string]string, error) { return nil, nil }
+func (r *stubBatchRepo) ExistsSlugs(_ context.Context, _ string, _ []string) (map[string]bool, error) { return nil, nil }
+func (r *stubBatchRepo) ListAllSlugs(_ context.Context, _ string) ([]string, error) { return nil, nil }
+func (r *stubBatchRepo) ListPagesCursor(_ context.Context, _ string, _ string, _ int) ([]*types.WikiPage, string, error) { return nil, "", nil }
+func (r *stubBatchRepo) ListByTypeRecent(_ context.Context, _ string, _ string, _ int) ([]types.WikiIndexEntry, error) { return nil, nil }
+func (r *stubBatchRepo) FindSimilarPages(_ context.Context, _ string, _ string, _ []string, _ int) ([]*types.WikiPageLite, error) { return nil, nil }
+func (r *stubBatchRepo) FindPagesMissingTSZh(_ context.Context, _ int) ([]*types.WikiPage, error) { return nil, nil }
+func (r *stubBatchRepo) UpdateContentTSZh(_ context.Context, _ string, _ string) error { return nil }
+func (r *stubBatchRepo) FindPagesByNormalizedTitle(_ context.Context, _ string, _ string, _ string) ([]*types.WikiPageLite, error) { return nil, nil }
+func (r *stubBatchRepo) FindPagesByNormalizedTitles(_ context.Context, _ string, _ string, _ []string) ([]*types.WikiPageLite, error) { return nil, nil }
+func (r *stubBatchRepo) ListDistinctCategoryPaths(_ context.Context, _ string, _ int) ([][]string, error) { return nil, nil }
+func (r *stubBatchRepo) CreateFolder(_ context.Context, _ *types.WikiFolder) error { return nil }
+func (r *stubBatchRepo) GetChildFolderByName(_ context.Context, _ string, _ string, _ string) (*types.WikiFolder, error) { return nil, nil }
+func (r *stubBatchRepo) ListChildFolders(_ context.Context, _ string, _ string) ([]*types.WikiFolder, error) { return nil, nil }
+func (r *stubBatchRepo) ListAllFolders(_ context.Context, _ string) ([]*types.WikiFolder, error) { return nil, nil }
+func (r *stubBatchRepo) UpdateFolder(_ context.Context, _ *types.WikiFolder) error { return nil }
+func (r *stubBatchRepo) DeleteFolder(_ context.Context, _ string, _ string) error { return nil }
+func (r *stubBatchRepo) CountPagesInFolder(_ context.Context, _ string, _ string) (int64, error) { return 0, nil }
+func (r *stubBatchRepo) ListPagesByFolderIDs(_ context.Context, _ string, _ []string) ([]*types.WikiPage, error) { return nil, nil }
+func (r *stubBatchRepo) ListAll(_ context.Context, _ string) ([]*types.WikiPage, error) { return nil, nil }
+func (r *stubBatchRepo) ListRecentForSuggestions(_ context.Context, _ uint64, _ []string, _ int) ([]*types.WikiPage, error) { return nil, nil }
+func (r *stubBatchRepo) DeleteByID(_ context.Context, _ string) error { return nil }
+func (r *stubBatchRepo) RestoreDeleted(_ context.Context, _ string, _ string, _ string) error { return nil }
+func (r *stubBatchRepo) Search(_ context.Context, _ string, _ string, _ int) ([]*types.WikiPage, error) { return nil, nil }
+func (r *stubBatchRepo) UpdateWithRevision(_ context.Context, _ *types.WikiPage, _ *types.WikiPageRevision) error { return nil }
+func (r *stubBatchRepo) ListRevisions(_ context.Context, _ string, _ string, _ int, _ int) ([]*types.WikiPageRevision, int64, error) { return nil, 0, nil }
+func (r *stubBatchRepo) GetRevision(_ context.Context, _ string, _ string, _ int) (*types.WikiPageRevision, error) { return nil, nil }
+func (r *stubBatchRepo) PruneRevisions(_ context.Context, _ types.WikiRevisionPruneRequest) error { return nil }
+func (r *stubBatchRepo) CreateIssue(_ context.Context, _ *types.WikiPageIssue) error { return nil }
+func (r *stubBatchRepo) ListIssues(_ context.Context, _ string, _ string, _ string) ([]*types.WikiPageIssue, error) { return nil, nil }
+func (r *stubBatchRepo) UpdateIssueStatus(_ context.Context, _ string, _ string) error { return nil }

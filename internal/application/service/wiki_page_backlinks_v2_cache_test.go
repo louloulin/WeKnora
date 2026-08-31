@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Tencent/WeKnora/internal/types"
+	"gorm.io/gorm"
 )
 
 // Build #21 — cache-first + write-time invalidation tests for
@@ -112,7 +113,7 @@ func (s *stubBacklinksCacheRepo) CountRows(ctx context.Context) (int64, error) {
 func (s *stubBacklinksCacheRepo) CountBackrefRows(ctx context.Context) (int64, error) {
 	return 0, nil
 }
-func (s *stubBacklinksCacheRepo) ListStaleForUpdate(ctx context.Context, _ interface{}, before time.Time, limit int) ([]string, error) {
+func (s *stubBacklinksCacheRepo) ListStaleForUpdate(ctx context.Context, _ *gorm.DB, before time.Time, limit int) ([]string, error) {
 	return []string{}, nil
 }
 func (s *stubBacklinksCacheRepo) ListInvalidationLog(ctx context.Context, kbID string, limit, offset int) ([]*types.WikiBacklinksCacheInvalidationLogEntry, int64, error) {
@@ -132,23 +133,21 @@ type stubBacklinksInvalidator struct {
 	resolveFn func(op types.BacklinkCacheInvalidateOp, kbID, slug string) []string
 }
 
-func (i *stubBacklinksInvalidator) Resolve(ctx context.Context, op types.BacklinkCacheInvalidateOp, kbID, slug string) ([]string, error) {
-	if i.resolveFn != nil {
-		out := i.resolveFn(op, kbID, slug)
+func (r *stubBacklinksInvalidator) Resolve(ctx context.Context, op types.BacklinkCacheInvalidateOp, kbID, slug string) ([]string, types.SlugSetStrategy, error) {
+	if r.resolveFn != nil {
+		out := r.resolveFn(op, kbID, slug)
 		if out == nil {
-			out = []string{}
+			return []string{}, types.SlugSetStrategySelf, nil
 		}
-		return out, nil
+		return out, types.SlugSetStrategySelf, nil
 	}
 	if slug == "" {
-		return []string{}, nil
+		return []string{}, types.SlugSetStrategySelf, nil
 	}
-	return []string{slug}, nil
+	return []string{slug}, types.SlugSetStrategySelf, nil
 }
 
-func (i *stubBacklinksInvalidator) Invalidate(ctx context.Context, req types.BacklinkCacheInvalidateRequest) (int64, error) {
-	return 0, nil
-}
+func (r *stubBacklinksInvalidator) Invalidate(_ context.Context, _ types.BacklinkCacheInvalidateRequest, _ types.SlugSetStrategy) (int64, error) { return 0, nil }
 
 // newBacklinksCacheService wires a minimal wikiPageService with the
 // stubs above so cache-first ListBacklinkGraph can be exercised without

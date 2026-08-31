@@ -40,4 +40,6 @@ type WikiTemplateService interface {
 		parentSlug string,
 		req types.WikiApplyTemplateRequest,
 	) (*types.WikiApplyTemplateResult, error)
+	SetPageService(svc WikiPageService)
+	SetTagService(svc WikiTagService)
 }

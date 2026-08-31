@@ -29,7 +29,6 @@ func liteWith(slug, title, ptype, status string, updatedAt time.Time, inLinks, o
 		PageType:  ptype,
 		Status:    status,
 		UpdatedAt: updatedAt,
-		InLinks:   types.StringArray(inLinks),
 		OutLinks:  types.StringArray(outLinks),
 	}
 }

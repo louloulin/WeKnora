@@ -1,5 +1,4 @@
 //go:build wikikbtest
-// +build wikikbtest
 package service_test
 
 import (

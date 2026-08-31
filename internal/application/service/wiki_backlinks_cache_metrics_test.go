@@ -213,7 +213,7 @@ func TestCacheMetricsStrategy_LegacyProjectionStillWorks(t *testing.T) {
 	missCount := countMetricWithKB(missFam, kbid)
 	if hitsCount == 0 || missCount == 0 {
 		t.Fatalf("expected hits>0 and misses>0 for %s; got hits=%d misses=%d",
-			kbid, hitsCount, missCount)
+			kbid, int(hitsCount), int(missCount))
 	}
 	// Ratio sanity — 3 hits / (3 hits + 1 miss) ≈ 0.75
 	ratio := float64(hitsCount) / float64(hitsCount+missCount)

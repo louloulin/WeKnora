@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"context"
 	"fmt"
 	"testing"
@@ -613,7 +614,7 @@ func TestFindPagesByNormalizedTitleMatchesWhitespace(t *testing.T) {
 
 	ctx := context.Background()
 	repo := repository.NewWikiPageRepository(db)
-	svc := NewWikiPageService(repo, nil, nil, nil, nil)
+	svc := NewWikiPageService(repo, nil, nil, nil, nil, &fakeAclService{})
 	now := time.Now()
 	require.NoError(t, repo.Create(ctx, &types.WikiPage{
 		ID: "page-kong", TenantID: 1, KnowledgeBaseID: "kb-id", Slug: "entity/confucius",
@@ -646,3 +647,6 @@ func TestFindPagesByNormalizedTitleMatchesWhitespace(t *testing.T) {
 	slugs := []string{batched[0].Slug, batched[1].Slug}
 	require.ElementsMatch(t, []string{"entity/confucius", "entity/mencius"}, slugs)
 }
+
+// SetCacheRepo satisfies the WikiAclService interface.
+func (s *fakeAclService) SetCacheRepo(_ interfaces.WikiBacklinksCacheRepository) {}

@@ -274,7 +274,7 @@ func TestInvalidatorResolve_AllOpsHaveStrategy(t *testing.T) {
 	cacheRepo := newObsFakeRepo()
 	inv := newWikiBacklinksCacheInvalidator(pageRepo, cacheRepo)
 	_ = inv // behavior is verified via cacheRepo side-effects
-	_ = inv // kept for symmetry with the other tests; behavior verified via cacheRepo
+	
 
 	matrix := invalidatorExpectedMatrix()
 	if got, want := len(matrix), len(slugSetStrategies); got != want {
@@ -329,6 +329,7 @@ func TestInvalidatorResolve_UnknownOpPanics(t *testing.T) {
 	pageRepo := newStubPageRepo()
 	cacheRepo := newObsFakeRepo()
 	inv := newWikiBacklinksCacheInvalidator(pageRepo, cacheRepo)
+	_ = inv // unused locally; behavior is verified via cacheRepo side-effects
 
 	const bogusOp types.BacklinkCacheInvalidateOp = "totally-bogus-op"
 	defer func() {
@@ -360,6 +361,7 @@ func TestInvalidatorResolve_DispatchByStrategy(t *testing.T) {
 	pageRepo := newStubPageRepo()
 	cacheRepo := newObsFakeRepo()
 	inv := newWikiBacklinksCacheInvalidator(pageRepo, cacheRepo)
+	_ = inv // unused locally; behavior is verified via cacheRepo side-effects
 
 	page := &types.WikiPage{
 		ID:              "id-alpha",
@@ -425,6 +427,7 @@ func TestInvalidatorResolve_EmptySlug(t *testing.T) {
 	pageRepo := newStubPageRepo()
 	cacheRepo := newObsFakeRepo()
 	inv := newWikiBacklinksCacheInvalidator(pageRepo, cacheRepo)
+	_ = inv // unused locally; behavior is verified via cacheRepo side-effects
 
 	// Empty slug for self_only → [].
 	got, strategy, err := inv.Resolve(context.Background(),
@@ -479,6 +482,7 @@ func TestInvalidator_LogsAuditStrategy(t *testing.T) {
 	// row a non-zero AffectedCount and proves the wipe actually ran.
 	cacheRepo.seed("kb-1", "alpha", time.Now().Add(-time.Hour))
 	inv := newWikiBacklinksCacheInvalidator(pageRepo, cacheRepo)
+	_ = inv // unused locally; behavior is verified via cacheRepo side-effects
 
 	page := &types.WikiPage{
 		ID:              "id-alpha",
@@ -550,6 +554,7 @@ func TestInvalidator_LogsStrategyForAllRegisteredOps(t *testing.T) {
 	cacheRepo := newObsFakeRepo()
 	cacheRepo.seed("kb-1", "alpha", time.Now().Add(-time.Hour))
 	inv := newWikiBacklinksCacheInvalidator(pageRepo, cacheRepo)
+	_ = inv // unused locally; behavior is verified via cacheRepo side-effects
 
 	page := &types.WikiPage{
 		ID:              "id-alpha",
@@ -667,6 +672,7 @@ func TestInvalidatorResolve_Fuzz(t *testing.T) {
 	pageRepo := newStubPageRepo()
 	cacheRepo := newObsFakeRepo()
 	inv := newWikiBacklinksCacheInvalidator(pageRepo, cacheRepo)
+	_ = inv // unused locally; behavior is verified via cacheRepo side-effects
 
 	// Seed 30 pages with deterministic in/out links so the slug set
 	// has something to dedup.

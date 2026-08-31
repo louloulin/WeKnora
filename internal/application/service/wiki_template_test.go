@@ -187,7 +187,7 @@ func (s *stubWikiTemplateTagSvc) GetPageTags(_ context.Context, _ string, slug s
 // buildTemplateService wires the two stubs into a fresh service.
 // Going through the production setters (which take the full
 // interfaces) exercises the same wiring code path the container uses.
-func buildTemplateService(pageSvc *stubWikiTemplatePageSvc, tagSvc *stubWikiTemplateTagSvc) *wikiTemplateService {
+func buildTemplateService(pageSvc *stubWikiTemplatePageSvc, tagSvc *stubWikiTemplateTagSvc) interfaces.WikiTemplateService {
 	s := NewWikiTemplateService()
 	s.SetPageService(pageSvc)
 	s.SetTagService(tagSvc)

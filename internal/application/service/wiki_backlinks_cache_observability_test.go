@@ -113,7 +113,7 @@ func (f *obsFakeRepo) ListByKB(_ context.Context, kbID string, _, _ int) ([]*typ
 				KbID:          row.KbID,
 				ComputedAt:    row.ComputedAt,
 				UpdatedAt:     row.UpdatedAt,
-				CorrelationID: row.CorrelationID,
+				SourceEventID: row.SourceEventID,
 			})
 		}
 	}
