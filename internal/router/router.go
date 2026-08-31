@@ -127,6 +127,7 @@ type RouterParams struct {
 	AutomationHandler   *handler.AutomationHandler
 	KGHandler           *handler.KGHandler
 	WorkflowHandler     *handler.WorkflowHandler
+	RegionHandler       *handler.RegionHandler
 }
 
 // NewRouter 创建新的路由
@@ -377,6 +378,9 @@ func NewRouter(params RouterParams) *gin.Engine {
 		}
 		if params.WorkflowHandler != nil {
 			params.WorkflowHandler.Mount(v1)
+		}
+		if params.RegionHandler != nil {
+			params.RegionHandler.Mount(v1)
 		}
 		}
 

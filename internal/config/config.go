@@ -50,6 +50,17 @@ type Config struct {
 	// against window.location.origin — fine for typical single-origin
 	// deployments. Sourced from FRONTEND_BASE_URL env at startup.
 	FrontendBaseURL string `yaml:"frontend_base_url" json:"frontend_base_url"`
+	Region          *RegionConfig `yaml:"region"            json:"region"`
+}
+
+// RegionConfig configures the multi-region + data-residency layer.
+// All fields are optional — zero values fall back to dev-local
+// defaults so existing single-region deployments need no config
+// changes.
+type RegionConfig struct {
+	// DefaultRegion is the fallback region used when a tenant has no
+	// explicit binding and the request IP can't be geo-resolved.
+	DefaultRegion string `yaml:"default_region" json:"default_region"`
 }
 
 // AgentConfig represents the global agent settings.

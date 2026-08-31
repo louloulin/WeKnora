@@ -52,6 +52,7 @@ import (
 	autosvc "github.com/Tencent/WeKnora/internal/application/service/automation"
 	kg "github.com/Tencent/WeKnora/internal/application/service/kg"
 	workflowsvc "github.com/Tencent/WeKnora/internal/application/service/workflow"
+	regionsvc "github.com/Tencent/WeKnora/internal/application/service/region"
 	asvc "github.com/Tencent/WeKnora/internal/application/service/agentstudio"
 	authzsvc "github.com/Tencent/WeKnora/internal/application/service/authzadmin"
 	dockbsvc "github.com/Tencent/WeKnora/internal/application/service/dockb"
@@ -545,6 +546,19 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewWorkflowRepository))
 	must(container.Provide(workflowsvc.NewService))
 	must(container.Provide(handler.NewWorkflowHandler))
+	// v0.7.31 Build #36 — Multi-region + Data Residency foundation.
+	must(container.Provide(repository.NewRegionRepository))
+	must(container.Provide(func(repo interfaces.RegionRepository, cfg *config.Config) *regionsvc.Resolver {
+		defaultRegion := types.Region(cfg.Region.DefaultRegion)
+		if !defaultRegion.IsValid() {
+			defaultRegion = types.RegionDev
+		}
+		return regionsvc.NewResolver(repo, nil, defaultRegion)
+	}))
+	must(container.Provide(func(repo interfaces.RegionRepository, resolver *regionsvc.Resolver) *regionsvc.Service {
+		return regionsvc.NewService(repo, resolver)
+	}))
+	must(container.Provide(handler.NewRegionHandler))
 	// v0.7.19 — wiki realtime (Yjs collaboration) wiring.
 	must(container.Provide(repository.NewWikiRealtimeSnapshotRepository))
 	must(container.Provide(repository.NewWikiRealtimeSessionRepository))
