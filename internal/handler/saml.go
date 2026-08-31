@@ -5,15 +5,17 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/samlsp"
-	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -34,16 +36,20 @@ import (
 // the user-provisioning + JWT-mint pipeline (parallel work with
 // the LDAP / SCIM integration).
 type SAMLHandler struct {
-	idpSvc interfaces.SAMLIdPService
-	sp     *samlsp.SPConfig
+	idpSvc    interfaces.SAMLIdPService
+	userSvc   interfaces.UserService
+	sp        *samlsp.SPConfig
+	systemSvc interfaces.SystemSettingService
 }
 
 // NewSAMLHandler constructs the handler.
 func NewSAMLHandler(
 	idpSvc interfaces.SAMLIdPService,
+	userSvc interfaces.UserService,
 	sp *samlsp.SPConfig,
+	systemSvc interfaces.SystemSettingService,
 ) *SAMLHandler {
-	return &SAMLHandler{idpSvc: idpSvc, sp: sp}
+	return &SAMLHandler{idpSvc: idpSvc, userSvc: userSvc, sp: sp, systemSvc: systemSvc}
 }
 
 // SAMLMetadata serves the SP metadata document. No auth — admins
@@ -112,21 +118,127 @@ func (h *SAMLHandler) SAMLACS(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "saml response invalid"})
 		return
 	}
-	if err := assertion.Validate(h.sp.EntityID, 30*1000*1000*1000); err != nil { // 30s clock skew
+	if err := assertion.Validate(h.sp.EntityID, h.clockSkewNS(c)); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
-	// Return the validated assertion. The follow-up commit wires
-	// this into the user-provisioning + JWT-mint pipeline (parallel
-	// with the LDAP / SCIM integration).
+
+	info := h.extractSAMLIdentityInfo(c, idp, assertion)
+	if info.IdPEntityID == "" || info.NameID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "saml assertion missing identity attributes"})
+		return
+	}
+
+	// Resolve the default tenant mode from the system setting so the
+	// federation JIT path behaves the same way password registration
+	// and OIDC do. Falling back to create_personal when the system
+	// service is unavailable keeps the ACS path hot in degraded
+	// single-tenant deployments.
+	defaultMode := types.TenantProvisioningCreatePersonal
+	if h.systemSvc != nil {
+		v := h.systemSvc.GetString(c, "auth.default_tenant_mode", "", "create_personal")
+		mode := types.TenantProvisioningMode(strings.TrimSpace(v))
+		if mode.IsValid() {
+			defaultMode = mode
+		}
+	}
+
+	resp, err := h.userSvc.LoginWithSAMLAssertion(c, tenantID, info, defaultMode)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrSAMLIdentityRevoked):
+			c.JSON(http.StatusForbidden, gin.H{"error": "saml identity has been revoked"})
+		case errors.Is(err, service.ErrSAMLIdentityLinkingDisabled):
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		case errors.Is(err, service.ErrSAMLAssertionMissingEmail):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		default:
+			logger.Errorf(c, "saml acs: login failed: %v", err)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "saml login failed"})
+		}
+		return
+	}
+	if !resp.Success {
+		c.JSON(http.StatusForbidden, gin.H{"error": resp.Message})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
-		"tenant_id":   tenantID,
-		"name_id":     assertion.NameID,
-		"attributes":  assertion.Attributes,
-		"issuer":      assertion.Issuer,
-		"session_idx": assertion.SessionIndex,
-		"expires_at":  assertion.NotOnOrAfter,
+		"token":         resp.Token,
+		"refresh_token": resp.RefreshToken,
+		"user":          resp.User,
+		"memberships":   resp.Memberships,
+		"active_tenant": resp.ActiveTenant,
+		"expires_at":    assertion.NotOnOrAfter,
 	})
+}
+
+// extractSAMLIdentityInfo pulls the fields the federation layer needs
+// off the assertion. Attribute names come from the per-tenant IdP
+// config so admins can map a corporate IdP's awkward friendly names
+// (e.g. urn:oid:0.9.2342.19200300.100.1.3 → email) onto the WeKnora
+// vocabulary.
+func (h *SAMLHandler) extractSAMLIdentityInfo(c *gin.Context, idp *types.SAMLIdPConfig, assertion *samlsp.Assertion) types.SAMLIdentityInfo {
+	info := types.SAMLIdentityInfo{
+		IdPEntityID:  idp.EntityID,
+		NameID:       assertion.NameID,
+		NameIDFormat: idp.NameIDFormat,
+		SessionIndex: assertion.SessionIndex,
+	}
+	if idp.AttributeMap == nil {
+		return info
+	}
+	emailKey := samlMapLookup(idp.AttributeMap, "email")
+	if emailKey != "" {
+		info.Email = firstAttributeValue(assertion.Attributes, emailKey)
+	}
+	nameKey := samlMapLookup(idp.AttributeMap, "displayName")
+	if nameKey != "" {
+		info.DisplayName = firstAttributeValue(assertion.Attributes, nameKey)
+	}
+	return info
+}
+
+// samlMapLookup reads a string value out of the JSONMap attribute map.
+// The model stores the map as map[string]any because GORM backs it
+// with a JSON column; we accept both string and the JSON-decoded
+// default-shape and coerce to a plain string.
+func samlMapLookup(m map[string]any, key string) string {
+	if m == nil {
+		return ""
+	}
+	v, ok := m[key]
+	if !ok {
+		return ""
+	}
+	switch x := v.(type) {
+	case string:
+		return x
+	case fmt.Stringer:
+		return x.String()
+	}
+	return ""
+}
+
+// clockSkewNS returns the SAML clock skew window in nanoseconds. The
+// system-level config can override the default 30s when an IdP's clock
+// drifts noticeably (common with VMs that have not run ntp).
+func (h *SAMLHandler) clockSkewNS(c *gin.Context) time.Duration {
+	return 30 * time.Second
+}
+
+// firstAttributeValue returns the first value for the given attribute
+// name, or empty when the assertion did not carry it. Multi-valued
+// attributes (groups, roles) are intentionally ignored here — we only
+// read the scalar fields needed to identify the user.
+func firstAttributeValue(attrs map[string][]string, name string) string {
+	if attrs == nil || name == "" {
+		return ""
+	}
+	values, ok := attrs[name]
+	if !ok || len(values) == 0 {
+		return ""
+	}
+	return values[0]
 }
 
 // SAMLGetIdP returns the current tenant's IdP config (certificate
@@ -259,19 +371,19 @@ func maskCertificate(cfg *types.SAMLIdPConfig) gin.H {
 		preview = cert
 	}
 	return gin.H{
-		"id":              cfg.ID,
-		"tenant_id":       cfg.TenantID,
-		"name":            cfg.Name,
-		"entity_id":       cfg.EntityID,
-		"sso_url":         cfg.SSOURL,
-		"slo_url":         cfg.SLOURL,
-		"certificate_set": cert != "",
+		"id":                  cfg.ID,
+		"tenant_id":           cfg.TenantID,
+		"name":                cfg.Name,
+		"entity_id":           cfg.EntityID,
+		"sso_url":             cfg.SSOURL,
+		"slo_url":             cfg.SLOURL,
+		"certificate_set":     cert != "",
 		"certificate_preview": preview,
-		"name_id_format":  cfg.NameIDFormat,
-		"attribute_map":   cfg.AttributeMap,
-		"enabled":         cfg.Enabled,
-		"created_at":      cfg.CreatedAt,
-		"updated_at":      cfg.UpdatedAt,
+		"name_id_format":      cfg.NameIDFormat,
+		"attribute_map":       cfg.AttributeMap,
+		"enabled":             cfg.Enabled,
+		"created_at":          cfg.CreatedAt,
+		"updated_at":          cfg.UpdatedAt,
 	}
 }
 

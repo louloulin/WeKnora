@@ -18,6 +18,14 @@ type UserService interface {
 	// provisioning is the default tenant mode for a newly auto-created user
 	// (resolved by the caller from auth.default_tenant_mode).
 	LoginWithOIDC(ctx context.Context, code, redirectURI string, provisioning types.TenantProvisioningMode) (*types.OIDCCallbackResponse, error)
+	// LoginWithSAMLAssertion exchanges a validated SAML assertion for a
+	// local JWT pair. The SAML ACS handler calls this after the SP
+	// library has validated the assertion signature + freshness. The
+	// flow mirrors LoginWithOIDC: lookup binding → touch or link →
+	// JIT-provision → mint tokens. provisioning is the default tenant
+	// mode for a brand-new auto-created user; the caller resolves it
+	// from the shared auth.default_tenant_mode policy.
+	LoginWithSAMLAssertion(ctx context.Context, tenantID uint64, info types.SAMLIdentityInfo, provisioning types.TenantProvisioningMode) (*types.LoginResponse, error)
 	// GetUserByID gets a user by ID
 	GetUserByID(ctx context.Context, id string) (*types.User, error)
 	// GetUsersByIDs batch-fetches users by id, returning a map keyed by

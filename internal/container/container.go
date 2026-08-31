@@ -48,12 +48,11 @@ import (
 	tencentVectorDBRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/tencentvectordb"
 	weaviateRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/weaviate"
 	"github.com/Tencent/WeKnora/internal/application/service"
-	"github.com/Tencent/WeKnora/internal/samlsp"
-	"github.com/Tencent/WeKnora/internal/authz"
 	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
 	"github.com/Tencent/WeKnora/internal/application/service/file"
 	"github.com/Tencent/WeKnora/internal/application/service/memory"
 	"github.com/Tencent/WeKnora/internal/application/service/retriever"
+	"github.com/Tencent/WeKnora/internal/authz"
 	"github.com/Tencent/WeKnora/internal/common"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/database"
@@ -88,6 +87,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/models/limiter"
 	"github.com/Tencent/WeKnora/internal/models/utils/ollama"
 	"github.com/Tencent/WeKnora/internal/router"
+	"github.com/Tencent/WeKnora/internal/samlsp"
 	"github.com/Tencent/WeKnora/internal/storageallowlist"
 	"github.com/Tencent/WeKnora/internal/stream"
 	"github.com/Tencent/WeKnora/internal/tracing/langfuse"
@@ -162,6 +162,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewModelRepository))
 	must(container.Provide(repository.NewUserRepository))
 	must(container.Provide(repository.NewOIDCIdentityRepository))
+	must(container.Provide(repository.NewSAMLIdentityRepository))
 	must(container.Provide(repository.NewAuthTokenRepository))
 	must(container.Provide(repository.NewSystemSettingRepository))
 	must(container.Provide(neo4jRepo.NewNeo4jRepository))
@@ -286,11 +287,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		}
 		_ = agentShareSvc // wired in phase-3 once the service exposes a CheckTenantAgentPermission equivalent of KB Share
 		return authz.NewAuthZComposite(authz.WireOptions{
-			KBCreator:        kbCreator,
-			KBShare:          kbShare,
-			WikiPageResolve:  wikiResolve,
-			WikiPageOwner:    wikiOwner,
-			AgentCreator:     agentCreator,
+			KBCreator:       kbCreator,
+			KBShare:         kbShare,
+			WikiPageResolve: wikiResolve,
+			WikiPageOwner:   wikiOwner,
+			AgentCreator:    agentCreator,
 			// AgentShare stays nil until AgentShareService exposes a
 			// tenant-share permission lookup; the adapter still
 			// serves same-tenant checks (creator + role matrix).
@@ -2242,7 +2243,6 @@ func (r *kbAuditTenantResolver) ResolveTenantID(ctx context.Context, kbID string
 	}
 	return kb.TenantID, nil
 }
-
 
 // newSAMLSPConfig reads the SP-side SAML configuration from the
 // process environment. The cert + key are PEM-encoded; we generate

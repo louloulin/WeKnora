@@ -15,19 +15,19 @@ import (
 // encryption) before it lands in this column. The encryption layer
 // is applied by the repository implementation, not by this model.
 type SAMLIdPConfig struct {
-	ID            uint64         `gorm:"primaryKey;autoIncrement" json:"id"`
-	TenantID      uint64         `gorm:"not null;uniqueIndex:uniq_saml_idp_tenant" json:"tenant_id"`
-	Name          string         `gorm:"size:128;not null" json:"name"`
-	EntityID      string         `gorm:"size:512;not null" json:"entity_id"`
-	SSOURL        string         `gorm:"size:1024;not null" json:"sso_url"`
-	SLOURL        string         `gorm:"size:1024" json:"slo_url,omitempty"`
-	Certificate   string         `gorm:"type:text;not null" json:"certificate"` // base64-encoded DER
-	NameIDFormat  string         `gorm:"size:32;not null;default:email" json:"name_id_format"`
-	AttributeMap  JSONMap        `gorm:"type:json" json:"attribute_map"`
-	Enabled       bool           `gorm:"not null;default:true" json:"enabled"`
-	CreatedAt     time.Time      `gorm:"not null" json:"created_at"`
-	UpdatedAt     time.Time      `json:"updated_at"`
-	DeletedAt     gorm.DeletedAt `gorm:"index" json:"-"`
+	ID           uint64         `gorm:"primaryKey;autoIncrement" json:"id"`
+	TenantID     uint64         `gorm:"not null;uniqueIndex:uniq_saml_idp_tenant" json:"tenant_id"`
+	Name         string         `gorm:"size:128;not null" json:"name"`
+	EntityID     string         `gorm:"size:512;not null" json:"entity_id"`
+	SSOURL       string         `gorm:"size:1024;not null" json:"sso_url"`
+	SLOURL       string         `gorm:"size:1024" json:"slo_url,omitempty"`
+	Certificate  string         `gorm:"type:text;not null" json:"certificate"` // base64-encoded DER
+	NameIDFormat string         `gorm:"size:32;not null;default:email" json:"name_id_format"`
+	AttributeMap JSONMap        `gorm:"type:json" json:"attribute_map"`
+	Enabled      bool           `gorm:"not null;default:true" json:"enabled"`
+	CreatedAt    time.Time      `gorm:"not null" json:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at"`
+	DeletedAt    gorm.DeletedAt `gorm:"index" json:"-"`
 }
 
 // TableName pins the table name so GORM does not pluralize it.
@@ -56,4 +56,31 @@ type SAMLIdPConfigUpdateRequest struct {
 	NameIDFormat *string            `json:"name_id_format"`
 	AttributeMap *map[string]string `json:"attribute_map"`
 	Enabled      *bool              `json:"enabled"`
+}
+
+// SAMLIdentityInfo is the typed payload LoginWithSAMLAssertion needs.
+// It is intentionally minimal so the handler does not leak the SAML SP
+// package types into other layers. The values are read directly off
+// the SAML assertion + the per-tenant IdP config (AttributeMap).
+type SAMLIdentityInfo struct {
+	// IdPEntityID is the unique identifier the IdP advertises in its
+	// metadata. Combined with NameID it forms the unique lookup key
+	// for the federation identity row.
+	IdPEntityID string
+	// NameID is the SAML subject identifier from the assertion. It is
+	// opaque to us — IdPs pick whatever they like (email, persistent
+	// UUID, transient session id).
+	NameID string
+	// NameIDFormat is the format string the IdP used for the NameID.
+	// Stored verbatim so re-issuance uses the same format.
+	NameIDFormat string
+	// SessionIndex lets us correlate logout requests back to the
+	// assertion that issued the session. Optional.
+	SessionIndex string
+	// Email is read from the assertion attribute named in the IdP
+	// config's AttributeMap ("email" by default).
+	Email string
+	// DisplayName is read from the assertion attribute named in the
+	// IdP config's AttributeMap ("displayName" by default).
+	DisplayName string
 }

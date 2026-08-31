@@ -117,6 +117,7 @@ func getJwtSecret() string {
 type userService struct {
 	userRepo         interfaces.UserRepository
 	oidcIdentityRepo interfaces.OIDCIdentityRepository
+	samlIdentityRepo interfaces.SAMLIdentityRepository
 	tokenRepo        interfaces.AuthTokenRepository
 	tenantService    interfaces.TenantService
 	memberService    interfaces.TenantMemberService
@@ -135,10 +136,12 @@ func NewUserService(
 	tenantService interfaces.TenantService,
 	memberService interfaces.TenantMemberService,
 	oidcIdentityRepo interfaces.OIDCIdentityRepository,
+	samlIdentityRepo interfaces.SAMLIdentityRepository,
 ) interfaces.UserService {
 	return &userService{
 		userRepo:         userRepo,
 		oidcIdentityRepo: oidcIdentityRepo,
+		samlIdentityRepo: samlIdentityRepo,
 		tokenRepo:        tokenRepo,
 		tenantService:    tenantService,
 		memberService:    memberService,
