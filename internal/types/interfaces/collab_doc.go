@@ -79,3 +79,27 @@ type CollabDocCommentRepository interface {
 	ListByDoc(ctx context.Context, tenantID uint64, docID string, filter types.ListCollabDocCommentsFilter) ([]*types.CollabDocComment, error)
 	DeleteByDoc(ctx context.Context, tenantID uint64, docID string) (int64, error)
 }
+
+// CollabDocAuditRepository persists immutable operation history for
+// collaborative documents. Rows are never updated; Record appends, List
+// reads. Summary aggregates by action and by day for the history panel.
+type CollabDocAuditRepository interface {
+	// Record writes a new entry. Caller is responsible for filling TenantID,
+	// DocID, Action, ActorUserID, and (when available) ActorName/IP/UA.
+	Record(ctx context.Context, in types.RecordAuditRequest) (*types.CollabDocAuditEntry, error)
+	// Get returns a single entry by id (mostly used for testing/debug).
+	Get(ctx context.Context, tenantID uint64, id uint64) (*types.CollabDocAuditEntry, error)
+	// List returns paginated entries matching the filter. Defaults
+	// (Limit<=0 -> 50, Offset<0 -> 0) are applied at the application
+	// layer not the repo, so test fixtures can exercise the no-default
+	// path.
+	List(ctx context.Context, tenantID uint64, filter types.ListCollabDocAuditFilter) ([]*types.CollabDocAuditEntry, error)
+	// Count returns the number of entries matching the filter (used for
+	// pagination + summary).
+	Count(ctx context.Context, tenantID uint64, filter types.ListCollabDocAuditFilter) (int64, error)
+	// Summary returns aggregated counts by action and by day for the
+	// history panel.
+	Summary(ctx context.Context, tenantID uint64, filter types.ListCollabDocAuditFilter) (*types.CollabDocAuditSummary, error)
+	// DeleteByDoc removes every entry for a doc (used on hard delete).
+	DeleteByDoc(ctx context.Context, tenantID uint64, docID string) (int64, error)
+}

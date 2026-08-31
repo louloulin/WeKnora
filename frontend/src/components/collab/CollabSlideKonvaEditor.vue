@@ -377,6 +377,21 @@
                 @tap="(e: any) => onShapeClick(shape.id, e)"
               />
             </template>
+            <!-- v0.7.30 — remote peer selection outlines (per-shape) -->
+            <v-rect
+              v-for="rs in remoteSelections"
+              :key="'rsel-' + rs.clientId + '-' + rs.shapeId"
+              :config="{
+                x: (remoteSelectionBounds(rs.shapeId)?.x ?? 0),
+                y: (remoteSelectionBounds(rs.shapeId)?.y ?? 0),
+                width: (remoteSelectionBounds(rs.shapeId)?.w ?? 0),
+                height: (remoteSelectionBounds(rs.shapeId)?.h ?? 0),
+                stroke: rs.color,
+                strokeWidth: 2,
+                dash: [8, 4],
+                listening: false,
+              }"
+            />
             <v-transformer
               ref="transformerRef"
               :config="{
@@ -575,6 +590,20 @@ const calloutPath = (w: number, h: number) => {
 
 // --- Awareness (remote cursors + presence) ---
 const remoteCursors = ref<Array<{ clientId: number; x?: number; y?: number; color: string; name: string }>>([])
+/** v0.7.30 — remote shape selections (for outline rendering). */
+const remoteSelections = ref<Array<{ clientId: number; shapeId: string; color: string; name: string }>>([])
+/** Look up a shape's display bounds in CSS pixels; returns null when the shape
+ *  isn't on the active slide (e.g. peer switched slides). */
+const remoteSelectionBounds = (shapeId: string): { x: number; y: number; w: number; h: number } | null => {
+  const shape = activeShapes.value.find((s) => s.id === shapeId)
+  if (!shape) return null
+  return {
+    x: emuToPx(shape.x),
+    y: emuToPx(shape.y),
+    w: emuToPx(shape.w),
+    h: emuToPx(shape.h),
+  }
+}
 
 // --- Speaker notes ---
 const notesStatus = ref('未修改')
@@ -653,6 +682,16 @@ const publishCursor = (px: number, py: number) => {
   const yEmu = Math.round((py / PX_PER_INCH) * 914400)
   handle.provider.awareness.setLocalStateField('cursor', { slide: activeIndex.value, x: xEmu, y: yEmu })
 }
+/** Publish selection: which shape (if any) the user has selected on the
+ *  current slide. Other collaborators see a colored dashed outline around
+ *  the same shape (rendered via `remoteSelections`). */
+const publishSelection = (shapeId: string | null) => {
+  if (!handle) return
+  handle.provider.awareness.setLocalStateField('selection', {
+    slide: activeIndex.value,
+    shapeId: shapeId ?? '',
+  })
+}
 const transformerRef = ref<any>(null)
 
 // --- v0.7.29 — comments anchor (current slide + selected shape if any) ---
@@ -662,6 +701,7 @@ watch([activeIndex, selectedId], ([s, id]) => {
     type: 'slide',
     ref: JSON.stringify({ slide: s, shapeId: id ?? '' }),
   }
+  publishSelection(id)
 }, { immediate: true })
 
 const onStageClick = (e: any) => {
@@ -1233,6 +1273,7 @@ handle.provider.on('status', (event: any) => {
 handle.provider.awareness.on('change', () => {
   const out: Array<{ clientId: number; displayName: string; color: string }> = []
   const cursors: Array<{ clientId: number; x?: number; y?: number; color: string; name: string }> = []
+  const selections: Array<{ clientId: number; shapeId: string; color: string; name: string }> = []
   handle!.provider.awareness.getStates().forEach((state: any, clientId: number) => {
     if (clientId === handle!.ydoc.clientID) return
     const u = state.user || {}
@@ -1247,9 +1288,19 @@ handle.provider.awareness.on('change', () => {
         name: u.name || '匿名用户',
       })
     }
+    const sel = state.selection
+    if (sel && sel.slide === activeIndex.value && sel.shapeId) {
+      selections.push({
+        clientId,
+        shapeId: sel.shapeId,
+        color: u.color || '#58a6ff',
+        name: u.name || '匿名用户',
+      })
+    }
   })
   peers.value = out
   remoteCursors.value = cursors
+  remoteSelections.value = selections
 })
 
 // Try to fetch existing pptx from server, else build a fresh one.

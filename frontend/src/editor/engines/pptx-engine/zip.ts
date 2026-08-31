@@ -27,7 +27,7 @@ export interface Relationship {
 
 export class PackageArchive {
   private constructor(
-    private readonly zip: JSZip,
+    readonly zip: JSZip,
     /** Original bytes of every entry, keyed by path inside the zip */
     readonly entries: Map<string, Uint8Array>,
     readonly originalHash: string,

@@ -111,6 +111,8 @@ type RouterParams struct {
 	CollabDocBytesHandler        *handler.CollabDocBytesHandler
 	CollabDocRealtimeWSHandler   *handler.CollabDocRealtimeWSHandler
 	CollabDocCommentHandler      *handler.CollabDocCommentHandler
+	CollabDocAuditHandler        *handler.CollabDocAuditHandler
+	MindMapHandler               *handler.MindMapHandler
 	WikiSyncBlockHandler         *handler.WikiSyncBlockHandler
 	AgentStudioHandler           *handler.AgentStudioHandler
 	DLPAuthZHandler              *handler.DLPAuthZHandler
@@ -350,7 +352,8 @@ func NewRouter(params RouterParams) *gin.Engine {
 		}
 		RegisterWikiRealtimeRoutes(v1, params.WikiRealtimeWSHandler, rbacGuards)
 		if params.CollabDocHandler != nil {
-			RegisterCollabDocRoutes(v1, params.CollabDocHandler, params.CollabDocBytesHandler, params.CollabDocRealtimeWSHandler, params.CollabDocCommentHandler, rbacGuards)
+			RegisterCollabDocRoutes(v1, params.CollabDocHandler, params.CollabDocBytesHandler, params.CollabDocRealtimeWSHandler, params.CollabDocCommentHandler, params.CollabDocAuditHandler, rbacGuards)
+			RegisterMindMapRoutes(v1, params.MindMapHandler)
 		}
 		RegisterWikiSyncBlockRoutes(v1, params.WikiSyncBlockHandler)
 		RegisterAgentStudioRoutes(v1, params.AgentStudioHandler)

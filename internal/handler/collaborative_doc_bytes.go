@@ -122,6 +122,20 @@ func (h *CollabDocBytesHandler) Upload(c *gin.Context) {
 		c.Error(errors.NewBadRequestError(err.Error()))
 		return
 	}
+	// v0.7.30 — record audit event. Non-blocking; middleware swallows
+	// errors via service.RecordAudit.
+	payload := fmt.Sprintf(`{"format":%q,"size_bytes":%d,"sha256":%q,"version":%d}`,
+		string(format), row.SizeBytes, hexSum, row.Version)
+	h.svc.RecordAudit(c.Request.Context(), types.RecordAuditRequest{
+		TenantID:    tenantID,
+		DocID:       docID,
+		ActorUserID: userID,
+		Action:      types.AuditActionUpload,
+		Target:      fmt.Sprintf("v%d", row.Version),
+		Payload:     payload,
+		IP:          c.ClientIP(),
+		UserAgent:   c.Request.UserAgent(),
+	})
 	c.JSON(http.StatusCreated, gin.H{
 		"success": true,
 		"data": gin.H{

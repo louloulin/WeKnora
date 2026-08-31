@@ -79,6 +79,12 @@ func (h *CollabDocHandler) Create(c *gin.Context) {
 		c.Error(errors.NewBadRequestError(err.Error()))
 		return
 	}
+	// v0.7.30 — audit
+	h.svc.RecordAudit(c.Request.Context(), types.RecordAuditRequest{
+		TenantID: tenantID, DocID: d.ID, ActorUserID: userID,
+		Action: types.AuditActionCreate, Target: string(req.DocKind),
+		IP: c.ClientIP(), UserAgent: c.Request.UserAgent(),
+	})
 	c.JSON(http.StatusCreated, gin.H{"success": true, "data": d})
 }
 
@@ -169,6 +175,12 @@ func (h *CollabDocHandler) Archive(c *gin.Context) {
 		c.Error(errors.NewBadRequestError(err.Error()))
 		return
 	}
+	// v0.7.30 — audit
+	h.svc.RecordAudit(c.Request.Context(), types.RecordAuditRequest{
+		TenantID: tenantID, DocID: id, ActorUserID: userID,
+		Action: types.AuditActionArchive,
+		IP: c.ClientIP(), UserAgent: c.Request.UserAgent(),
+	})
 	c.JSON(http.StatusOK, gin.H{"success": true})
 }
 
@@ -183,6 +195,12 @@ func (h *CollabDocHandler) Delete(c *gin.Context) {
 		c.Error(errors.NewBadRequestError(err.Error()))
 		return
 	}
+	// v0.7.30 — audit
+	h.svc.RecordAudit(c.Request.Context(), types.RecordAuditRequest{
+		TenantID: tenantID, DocID: id, ActorUserID: userID,
+		Action: types.AuditActionDelete,
+		IP: c.ClientIP(), UserAgent: c.Request.UserAgent(),
+	})
 	c.Status(http.StatusNoContent)
 }
 

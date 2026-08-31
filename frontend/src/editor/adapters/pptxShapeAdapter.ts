@@ -396,7 +396,7 @@ export function setSlideNotesOnDeck(
   const slide = deck.opened.deck.slides[slideIndex]
   if (!slide) return false
   try {
-    engineSetSlideNotes(deck.opened, slide.path, notes)
+    engineSetSlideNotes(deck.opened, slideIndex, notes)
     const idx = deck.slides.findIndex((s) => s.index === slideIndex)
     if (idx >= 0) deck.slides[idx].notes = notes
     return true

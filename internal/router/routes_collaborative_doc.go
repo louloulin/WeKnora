@@ -31,10 +31,14 @@ func RegisterCollabDocRoutes(
 	bytesH *handler.CollabDocBytesHandler,
 	ws *handler.CollabDocRealtimeWSHandler,
 	commentH *handler.CollabDocCommentHandler,
+	auditH *handler.CollabDocAuditHandler,
 	g *rbacGuards,
 ) {
 	if h != nil {
 		h.Mount(rg)
+	}
+	if auditH != nil {
+		auditH.Register(rg)
 	}
 	if bytesH != nil {
 		// Binary upload/download need write access. Read enforcement is

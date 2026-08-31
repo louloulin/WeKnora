@@ -30,6 +30,7 @@ type CollabDocService struct {
 	sessRepo   interfaces.CollabDocSessionRepository
 	fileRepo     interfaces.CollabDocFileRepository
 	commentRepo  interfaces.CollabDocCommentRepository
+	auditRepo    interfaces.CollabDocAuditRepository
 	authz        CollabDocAuthorizer
 
 	snapshotInterval time.Duration
@@ -75,6 +76,7 @@ func NewCollabDocService(
 	sessRepo interfaces.CollabDocSessionRepository,
 	fileRepo interfaces.CollabDocFileRepository,
 	commentRepo interfaces.CollabDocCommentRepository,
+	auditRepo interfaces.CollabDocAuditRepository,
 	authz CollabDocAuthorizer,
 ) *CollabDocService {
 	return &CollabDocService{
@@ -83,6 +85,7 @@ func NewCollabDocService(
 		sessRepo:    sessRepo,
 		fileRepo:    fileRepo,
 		commentRepo: commentRepo,
+		auditRepo:   auditRepo,
 		authz:       authz,
 		snapshotInterval:     5 * time.Minute,
 		snapshotBytes:        256 * 1024,
@@ -662,4 +665,48 @@ func (s *CollabDocService) DeleteComment(
 		return types.ErrCollabDocInvalid("comment: write access denied")
 	}
 	return s.commentRepo.Delete(ctx, tenantID, commentID)
+}
+
+// ----------------------------------------------------------------------------
+// v0.7.30 — audit log methods
+// ----------------------------------------------------------------------------
+
+// RecordAudit is the service-level entry-point used by handlers (after a
+// successful save/upload/share/etc.) and by middleware that wants to log
+// share-token reads. Errors are swallowed to a debug log to keep audit
+// recording non-blocking — main writes must not fail because the audit
+// table is unhealthy.
+func (s *CollabDocService) RecordAudit(ctx context.Context, in types.RecordAuditRequest) {
+	if s.auditRepo == nil {
+		return
+	}
+	if in.TenantID == 0 {
+		logger.Warn(ctx, "[CollabDoc] RecordAudit: skipped, missing tenant_id")
+		return
+	}
+	if !types.ValidCollabDocAuditActions[in.Action] {
+		logger.Warnf(ctx, "[CollabDoc] RecordAudit: skipped, invalid action %q", in.Action)
+		return
+	}
+	if _, err := s.auditRepo.Record(ctx, in); err != nil {
+		logger.Warnf(ctx, "[CollabDoc] RecordAudit: %v", err)
+	}
+}
+
+// ListAudit returns paginated entries for the tenant, optionally narrowed
+// by doc, actor, action, or time range. Handler wraps this with the
+// permission check.
+func (s *CollabDocService) ListAudit(ctx context.Context, tenantID uint64, filter types.ListCollabDocAuditFilter) ([]*types.CollabDocAuditEntry, error) {
+	if s.auditRepo == nil {
+		return nil, errors.New("audit repo not configured")
+	}
+	return s.auditRepo.List(ctx, tenantID, filter)
+}
+
+// AuditSummary returns the rolled-up view used by the history panel.
+func (s *CollabDocService) AuditSummary(ctx context.Context, tenantID uint64, filter types.ListCollabDocAuditFilter) (*types.CollabDocAuditSummary, error) {
+	if s.auditRepo == nil {
+		return nil, errors.New("audit repo not configured")
+	}
+	return s.auditRepo.Summary(ctx, tenantID, filter)
 }

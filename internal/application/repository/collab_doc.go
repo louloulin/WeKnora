@@ -544,3 +544,186 @@ func (r *collabDocCommentRepository) DeleteByDoc(ctx context.Context, tenantID u
 }
 
 var _ interfaces.CollabDocCommentRepository = (*collabDocCommentRepository)(nil)
+
+// ----------------------------------------------------------------------------
+// v0.7.30 — collab_doc_audit_log repository
+// ----------------------------------------------------------------------------
+
+type collabDocAuditRepository struct {
+	db *gorm.DB
+}
+
+// NewCollabDocAuditRepository wires the audit repo to the supplied GORM handle.
+func NewCollabDocAuditRepository(db *gorm.DB) interfaces.CollabDocAuditRepository {
+	return &collabDocAuditRepository{db: db}
+}
+
+// Record appends a single new entry. Validates the action enum and tenant
+// id; Defensively normalizes DocID to "*" when the caller leaves it empty
+// so tenant-scoped events (e.g. a tenant-wide export) still get recorded.
+func (r *collabDocAuditRepository) Record(ctx context.Context, in types.RecordAuditRequest) (*types.CollabDocAuditEntry, error) {
+	if in.TenantID == 0 {
+		return nil, types.ErrCollabDocInvalid("tenant_id is required")
+	}
+	if !types.ValidCollabDocAuditActions[in.Action] {
+		return nil, types.ErrCollabDocInvalid("action is invalid")
+	}
+	if in.DocID == "" {
+		in.DocID = "*"
+	}
+	entry := &types.CollabDocAuditEntry{
+		TenantID:    in.TenantID,
+		DocID:       in.DocID,
+		ActorUserID: in.ActorUserID,
+		ActorName:   in.ActorName,
+		ActorColor:  in.ActorColor,
+		Action:      in.Action,
+		Target:      in.Target,
+		Payload:     in.Payload,
+		IP:          in.IP,
+		UserAgent:   in.UserAgent,
+		CreatedAt:   time.Now().UTC(),
+	}
+	if err := r.db.WithContext(ctx).Create(entry).Error; err != nil {
+		return nil, fmt.Errorf("collab_doc_audit insert: %w", err)
+	}
+	return entry, nil
+}
+
+// Get returns a single entry. Used by tests + future debug endpoints.
+func (r *collabDocAuditRepository) Get(ctx context.Context, tenantID uint64, id uint64) (*types.CollabDocAuditEntry, error) {
+	var entry types.CollabDocAuditEntry
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND id = ?", tenantID, id).
+		First(&entry).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("collab_doc_audit get: %w", err)
+	}
+	return &entry, nil
+}
+
+// List returns paginated entries matching the filter. Limit/Offset
+// defaults are NOT applied here so tests can exercise corner cases.
+func (r *collabDocAuditRepository) List(ctx context.Context, tenantID uint64, filter types.ListCollabDocAuditFilter) ([]*types.CollabDocAuditEntry, error) {
+	q := r.db.WithContext(ctx).Where("tenant_id = ?", tenantID)
+	q = r.applyFilter(q, filter)
+	limit := filter.Limit
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	q = q.Order("created_at DESC, id DESC").Limit(limit).Offset(filter.Offset)
+	var rows []*types.CollabDocAuditEntry
+	if err := q.Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("collab_doc_audit list: %w", err)
+	}
+	return rows, nil
+}
+
+// Count returns the number of entries matching the filter.
+func (r *collabDocAuditRepository) Count(ctx context.Context, tenantID uint64, filter types.ListCollabDocAuditFilter) (int64, error) {
+	q := r.db.WithContext(ctx).Model(&types.CollabDocAuditEntry{}).
+		Where("tenant_id = ?", tenantID)
+	q = r.applyFilter(q, filter)
+	var n int64
+	if err := q.Count(&n).Error; err != nil {
+		return 0, fmt.Errorf("collab_doc_audit count: %w", err)
+	}
+	return n, nil
+}
+
+// Summary aggregates entries by action and by day. Server-side aggregation
+// keeps the panel payload small even for very active docs.
+func (r *collabDocAuditRepository) Summary(ctx context.Context, tenantID uint64, filter types.ListCollabDocAuditFilter) (*types.CollabDocAuditSummary, error) {
+	summary := &types.CollabDocAuditSummary{
+		ByAction: make(map[types.CollabDocAuditAction]uint64),
+	}
+	// Total count.
+	q := r.db.WithContext(ctx).Model(&types.CollabDocAuditEntry{}).
+		Where("tenant_id = ?", tenantID)
+	q = r.applyFilter(q, filter)
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, fmt.Errorf("collab_doc_audit summary count: %w", err)
+	}
+	summary.TotalEntries = uint64(total)
+
+	// By action.
+	type actionRow struct {
+		Action types.CollabDocAuditAction
+		N      int64
+	}
+	byAction := []actionRow{}
+	qAction := r.db.WithContext(ctx).
+		Model(&types.CollabDocAuditEntry{}).
+		Select("action, COUNT(*) AS n").
+		Where("tenant_id = ?", tenantID)
+	qAction = r.applyFilter(qAction, filter)
+	qAction = qAction.Group("action")
+	if err := qAction.Scan(&byAction).Error; err != nil {
+		return nil, fmt.Errorf("collab_doc_audit summary by action: %w", err)
+	}
+	for _, row := range byAction {
+		summary.ByAction[row.Action] = uint64(row.N)
+	}
+
+	// By day.
+	type dayRow struct {
+		Day string
+		N   int64
+	}
+	byDay := []dayRow{}
+	qDay := r.db.WithContext(ctx).
+		Model(&types.CollabDocAuditEntry{}).
+		// SQLite + MySQL both support strftime('%Y-%m-%d', created_at).
+		Select("strftime('%Y-%m-%d', created_at) AS day, COUNT(*) AS n").
+		Where("tenant_id = ?", tenantID)
+	qDay = r.applyFilter(qDay, filter)
+	qDay = qDay.Group("day").Order("day ASC")
+	if err := qDay.Scan(&byDay).Error; err != nil {
+		return nil, fmt.Errorf("collab_doc_audit summary by day: %w", err)
+	}
+	for _, row := range byDay {
+		summary.ByDay = append(summary.ByDay, types.CollabDocAuditDayCount{
+			Day:   row.Day,
+			Count: uint64(row.N),
+		})
+	}
+	return summary, nil
+}
+
+// DeleteByDoc removes every entry for a doc (hard delete cascade).
+func (r *collabDocAuditRepository) DeleteByDoc(ctx context.Context, tenantID uint64, docID string) (int64, error) {
+	res := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND doc_id = ?", tenantID, docID).
+		Delete(&types.CollabDocAuditEntry{})
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	return res.RowsAffected, nil
+}
+
+// applyFilter injects the DocID / Actor / Action / time-range predicates.
+// Shared by List, Count, and Summary so the three stay consistent.
+func (r *collabDocAuditRepository) applyFilter(q *gorm.DB, filter types.ListCollabDocAuditFilter) *gorm.DB {
+	if filter.DocID != "" {
+		q = q.Where("doc_id = ?", filter.DocID)
+	}
+	if filter.ActorUserID != 0 {
+		q = q.Where("actor_user_id = ?", filter.ActorUserID)
+	}
+	if filter.Action != "" {
+		q = q.Where("action = ?", filter.Action)
+	}
+	if filter.Since != nil {
+		q = q.Where("created_at >= ?", *filter.Since)
+	}
+	if filter.Until != nil {
+		q = q.Where("created_at <= ?", *filter.Until)
+	}
+	return q
+}
+
+var _ interfaces.CollabDocAuditRepository = (*collabDocAuditRepository)(nil)

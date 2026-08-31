@@ -63,6 +63,7 @@ import (
 	verification "github.com/Tencent/WeKnora/internal/application/service/verification"
 	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
 	dbsvc "github.com/Tencent/WeKnora/internal/application/service/database"
+	mmsvc "github.com/Tencent/WeKnora/internal/application/service/mindmap"
 	"github.com/Tencent/WeKnora/internal/application/service/file"
 	"github.com/Tencent/WeKnora/internal/application/service/memory"
 	"github.com/Tencent/WeKnora/internal/application/service/retriever"
@@ -526,6 +527,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewDatabaseRepository))
 	must(container.Provide(dbsvc.NewService))
 	must(container.Provide(handler.NewDatabaseHandler))
+	// v0.7.36 Build #43 — MindMap (思维导图编辑器) for Docs × KB 一体化.
+	must(container.Provide(repository.NewMindMapRepository))
+	must(container.Provide(mmsvc.NewMindMapService))
+	must(container.Provide(handler.NewMindMapHandler))
 	// v0.7.26 Build #31 — formula / rollup / linked-record engine.
 	// Adapter so the formula handler can ask the database service for a field.
 	must(container.Provide(func(svc *dbsvc.Service) handler.FieldSource {
@@ -597,6 +602,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewCollabDocSessionRepository))
 	must(container.Provide(repository.NewCollabDocFileRepository))
 	must(container.Provide(repository.NewCollabDocCommentRepository))
+	must(container.Provide(repository.NewCollabDocAuditRepository))
 	must(container.Provide(func(docRepo interfaces.CollabDocRepository) service.CollabDocAuthorizer {
 		return service.NewCollabDocDefaultAuthorizer(docRepo)
 	}))
@@ -606,14 +612,16 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		sessRepo interfaces.CollabDocSessionRepository,
 		fileRepo interfaces.CollabDocFileRepository,
 		commentRepo interfaces.CollabDocCommentRepository,
+		auditRepo interfaces.CollabDocAuditRepository,
 		authz service.CollabDocAuthorizer,
 	) *service.CollabDocService {
-		return service.NewCollabDocService(docRepo, snapRepo, sessRepo, fileRepo, commentRepo, authz)
+		return service.NewCollabDocService(docRepo, snapRepo, sessRepo, fileRepo, commentRepo, auditRepo, authz)
 	}))
 	must(container.Provide(handler.NewCollabDocHandler))
 	must(container.Provide(handler.NewCollabDocBytesHandler))
 	must(container.Provide(handler.NewCollabDocRealtimeWSHandler))
 	must(container.Provide(handler.NewCollabDocCommentHandler))
+	must(container.Provide(handler.NewCollabDocAuditHandler))
 	// v0.7.21 — Custom Agent Studio wiring (飞书妙搭 / Notion Custom Agents parity).
 	must(container.Provide(repository.NewAgentStudioRepository))
 	must(container.Provide(asvc.NewAgentStudioService))

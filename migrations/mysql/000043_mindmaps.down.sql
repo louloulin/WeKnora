@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS mindmap_nodes;
+DROP TABLE IF EXISTS mindmaps;

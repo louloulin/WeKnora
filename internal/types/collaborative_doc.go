@@ -346,3 +346,137 @@ type ListCollabDocCommentsFilter struct {
 	Limit     int
 	Offset    int
 }
+
+// ----------------------------------------------------------------------------
+// v0.7.30 — collab_doc_audit_log (immutable operation history)
+// ----------------------------------------------------------------------------
+
+// CollabDocAuditAction is the closed enum of operations recorded to the audit log.
+// Adding a new action requires a corresponding Writer call in the service
+// layer (search for `RecordAudit` in
+// internal/application/service/collaborative_doc.go).
+type CollabDocAuditAction string
+
+const (
+	AuditActionCreate       CollabDocAuditAction = "create"        // doc created
+	AuditActionRename       CollabDocAuditAction = "rename"        // doc.title updated
+	AuditActionUpload       CollabDocAuditAction = "upload"        // initial .docx/.pptx/.xlsx upload
+	AuditActionSave         CollabDocAuditAction = "save"          // session snapshot saved (.docx/.pptx/.xlsx bytes)
+	AuditActionShareEnable  CollabDocAuditAction = "share.enable"  // share_token turned on
+	AuditActionShareDisable CollabDocAuditAction = "share.disable" // share_token turned off
+	AuditActionShareAccess  CollabDocAuditAction = "share.access"  // anonymous reader fetched share URL
+	AuditActionArchive      CollabDocAuditAction = "archive"       // soft-delete
+	AuditActionRestore      CollabDocAuditAction = "restore"       // undelete
+	AuditActionDelete       CollabDocAuditAction = "delete"        // hard-delete
+	AuditActionCommentAdd   CollabDocAuditAction = "comment.add"   // comment posted
+	AuditActionCommentReply CollabDocAuditAction = "comment.reply" // comment reply posted
+	AuditActionCommentSolve CollabDocAuditAction = "comment.solve" // thread resolved/unresolved
+	AuditActionCommentDel   CollabDocAuditAction = "comment.delete"
+	AuditActionPolish       CollabDocAuditAction = "polish"        // AI 段落润色
+	AuditActionSyncToKB     CollabDocAuditAction = "sync_to_kb"    // KB ingestion pipeline
+	AuditActionExport       CollabDocAuditAction = "export"        // markdown / pdf export
+)
+
+// ValidCollabDocAuditActions is the closed set enforced at the application layer.
+var ValidCollabDocAuditActions = map[CollabDocAuditAction]bool{
+	AuditActionCreate:       true,
+	AuditActionRename:       true,
+	AuditActionUpload:       true,
+	AuditActionSave:         true,
+	AuditActionShareEnable:  true,
+	AuditActionShareDisable: true,
+	AuditActionShareAccess:  true,
+	AuditActionArchive:      true,
+	AuditActionRestore:      true,
+	AuditActionDelete:       true,
+	AuditActionCommentAdd:   true,
+	AuditActionCommentReply: true,
+	AuditActionCommentSolve: true,
+	AuditActionCommentDel:   true,
+	AuditActionPolish:       true,
+	AuditActionSyncToKB:     true,
+	AuditActionExport:       true,
+}
+
+// CollabDocAuditEntry is one row of the immutable operation history. Rows
+// are never updated — every meaningful user action produces a new entry so
+// the timeline is tamper-evident.
+type CollabDocAuditEntry struct {
+	ID           uint64     `json:"id" gorm:"primaryKey"`
+	TenantID     uint64     `json:"tenant_id" gorm:"index"`
+	DocID        string     `json:"doc_id" gorm:"type:varchar(36);index"`
+	ActorUserID  uint64     `json:"actor_user_id"`
+	ActorName    string     `json:"actor_name" gorm:"type:varchar(128)"`
+	ActorColor   string     `json:"actor_color" gorm:"type:varchar(16)"`
+	Action       CollabDocAuditAction `json:"action" gorm:"type:varchar(32)"`
+	Target       string     `json:"target" gorm:"type:varchar(64)"`
+	Payload      string     `json:"payload" gorm:"type:text"`
+	IP           string     `json:"ip" gorm:"type:varchar(64)"`
+	UserAgent    string     `json:"user_agent" gorm:"type:varchar(256)"`
+	CreatedAt    time.Time  `json:"created_at"`
+}
+
+// TableName returns the GORM table name.
+func (CollabDocAuditEntry) TableName() string { return "collab_doc_audit_log" }
+
+// Validate enforces non-empty invariants the audit repo relies on. DocID
+// is a sentinel here (Use "*" for tenant-scoped events not tied to a
+// single doc, e.g. a tenant-wide export). The application layer
+// normalizes empty DocID to "*" before calling Validate.
+func (e CollabDocAuditEntry) Validate() error {
+	if e.TenantID == 0 {
+		return ErrCollabDocInvalid("tenant_id is required")
+	}
+	if !ValidCollabDocAuditActions[e.Action] {
+		return ErrCollabDocInvalid("action is invalid")
+	}
+	if len(string(e.Action)) == 0 {
+		return ErrCollabDocInvalid("action is empty")
+	}
+	return nil
+}
+
+// RecordAuditRequest is the body used by service callers (e.g. middleware
+// wrapping a handler, or explicit calls inside the service). All string
+// fields default to ""; the application layer fills in IP / User-Agent
+// from gin.Context when available.
+type RecordAuditRequest struct {
+	TenantID    uint64               `json:"tenant_id"`
+	DocID       string               `json:"doc_id"`
+	ActorUserID uint64               `json:"actor_user_id"`
+	ActorName   string               `json:"actor_name"`
+	ActorColor  string               `json:"actor_color"`
+	Action      CollabDocAuditAction `json:"action" binding:"required"`
+	Target      string               `json:"target"`
+	Payload     string               `json:"payload"`
+	IP          string               `json:"ip"`
+	UserAgent   string               `json:"user_agent"`
+}
+
+// ListCollabDocAuditFilter narrows audit queries for the history panel.
+// All fields are optional; an empty Filter lists every entry for the
+// tenant (paginated by Limit/Offset).
+type ListCollabDocAuditFilter struct {
+	DocID       string
+	ActorUserID uint64
+	Action      CollabDocAuditAction
+	Since       *time.Time
+	Until       *time.Time
+	Limit       int
+	Offset      int
+}
+
+// CollabDocAuditSummary is the rolled-up view returned to the frontend
+// history panel ("12 saves, 3 comments this week" etc.).
+type CollabDocAuditSummary struct {
+	TotalEntries uint64                   `json:"total_entries"`
+	ByAction     map[CollabDocAuditAction]uint64   `json:"by_action"`
+	ByDay        []CollabDocAuditDayCount `json:"by_day"`
+}
+
+// CollabDocAuditDayCount is one row in the daily roll-up. Days with no
+// entries are skipped (not zero-filled) to keep payloads small.
+type CollabDocAuditDayCount struct {
+	Day    string `json:"day"`    // YYYY-MM-DD
+	Count  uint64 `json:"count"`
+}
