@@ -110,6 +110,7 @@ type RouterParams struct {
 	CollabDocHandler            *handler.CollabDocHandler
 	CollabDocBytesHandler        *handler.CollabDocBytesHandler
 	CollabDocRealtimeWSHandler   *handler.CollabDocRealtimeWSHandler
+	CollabDocCommentHandler      *handler.CollabDocCommentHandler
 	WikiSyncBlockHandler         *handler.WikiSyncBlockHandler
 	AgentStudioHandler           *handler.AgentStudioHandler
 	DLPAuthZHandler              *handler.DLPAuthZHandler
@@ -129,6 +130,7 @@ type RouterParams struct {
 	WorkflowHandler     *handler.WorkflowHandler
 	RegionHandler       *handler.RegionHandler
 	DocIntegrationHandler *handler.DocIntegrationHandler
+	MarketplaceHandler     *handler.MarketplaceHandler
 }
 
 // NewRouter 创建新的路由
@@ -348,7 +350,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		}
 		RegisterWikiRealtimeRoutes(v1, params.WikiRealtimeWSHandler, rbacGuards)
 		if params.CollabDocHandler != nil {
-			RegisterCollabDocRoutes(v1, params.CollabDocHandler, params.CollabDocBytesHandler, params.CollabDocRealtimeWSHandler, rbacGuards)
+			RegisterCollabDocRoutes(v1, params.CollabDocHandler, params.CollabDocBytesHandler, params.CollabDocRealtimeWSHandler, params.CollabDocCommentHandler, rbacGuards)
 		}
 		RegisterWikiSyncBlockRoutes(v1, params.WikiSyncBlockHandler)
 		RegisterAgentStudioRoutes(v1, params.AgentStudioHandler)
@@ -385,6 +387,9 @@ func NewRouter(params RouterParams) *gin.Engine {
 		}
 		if params.DocIntegrationHandler != nil {
 			params.DocIntegrationHandler.Mount(v1)
+		}
+		if params.MarketplaceHandler != nil {
+			params.MarketplaceHandler.Mount(v1)
 		}
 		}
 
