@@ -260,9 +260,4 @@ func parseSlackTS(ts string) (time.Time, error) {
 	return time.Unix(sec, 0), nil
 }
 
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
-}
+

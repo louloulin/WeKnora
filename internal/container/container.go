@@ -516,6 +516,25 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		// v0.7.25 Build #30 (G10) — M365 + Google Workspace connectors.
 		svc.Register(connsvc.NewM365Connector())
 		svc.Register(connsvc.NewGoogleWorkspaceConnector())
+		// v0.7.36 Build #30.x — Enterprise Search Connector expansion (G30.x).
+		// 14 new connectors: collaboration (Teams, Discord, Lark, DingTalk, WeCom),
+		// code (GitHub, GitLab), PM (Linear), CRM (HubSpot, Salesforce),
+		// meetings (Zoom), content (Notion API, Airtable, Box, Dropbox).
+		svc.Register(connsvc.NewTeamsConnector())
+		svc.Register(connsvc.NewDiscordConnector())
+		svc.Register(connsvc.NewLarkConnector())
+		svc.Register(connsvc.NewDingTalkConnector())
+		svc.Register(connsvc.NewWeComConnector())
+		svc.Register(connsvc.NewGitHubConnector())
+		svc.Register(connsvc.NewGitLabConnector())
+		svc.Register(connsvc.NewLinearConnector())
+		svc.Register(connsvc.NewHubSpotConnector())
+		svc.Register(connsvc.NewSalesforceConnector())
+		svc.Register(connsvc.NewZoomConnector())
+		svc.Register(connsvc.NewNotionAPIConnector())
+		svc.Register(connsvc.NewAirtableConnector())
+		svc.Register(connsvc.NewBoxConnector())
+		svc.Register(connsvc.NewDropboxConnector())
 		return svc
 	}))
 	must(container.Provide(handler.NewConnectorHandler))

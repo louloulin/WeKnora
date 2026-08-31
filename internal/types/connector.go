@@ -8,15 +8,33 @@ import "time"
 type ConnectorKind string
 
 const (
+	// v0.7.24 — original 5 kinds
 	ConnectorSlack      ConnectorKind = "slack"
 	ConnectorEmail      ConnectorKind = "email"
 	ConnectorWebhook    ConnectorKind = "webhook"
 	ConnectorRSS        ConnectorKind = "rss"
 	ConnectorConfluence ConnectorKind = "confluence"
+	// v0.7.25 — Build #30 first batch
 	ConnectorM365       ConnectorKind = "m365"
 	ConnectorGoogle     ConnectorKind = "google_workspace"
 	ConnectorNotion     ConnectorKind = "notion"
 	ConnectorJira       ConnectorKind = "jira"
+	// v0.7.36 — Build #30.x expansion (Glean 30+ parity)
+	ConnectorGitHub     ConnectorKind = "github"
+	ConnectorGitLab     ConnectorKind = "gitlab"
+	ConnectorLark       ConnectorKind = "lark"
+	ConnectorDingTalk   ConnectorKind = "dingtalk"
+	ConnectorWeCom      ConnectorKind = "wecom"
+	ConnectorTeams      ConnectorKind = "teams"
+	ConnectorZoom       ConnectorKind = "zoom"
+	ConnectorLinear     ConnectorKind = "linear"
+	ConnectorHubSpot    ConnectorKind = "hubspot"
+	ConnectorDiscord    ConnectorKind = "discord"
+	ConnectorSalesforce ConnectorKind = "salesforce"
+	ConnectorNotionAPI  ConnectorKind = "notion_api"
+	ConnectorAirtable   ConnectorKind = "airtable"
+	ConnectorBox        ConnectorKind = "box"
+	ConnectorDropbox    ConnectorKind = "dropbox"
 )
 
 // AllConnectorKinds lists the registered connector implementations.
@@ -31,6 +49,22 @@ var AllConnectorKinds = []ConnectorKind{
 	ConnectorJira,
 	ConnectorM365,
 	ConnectorGoogle,
+	// v0.7.36 — Build #30.x (Glean 30+ parity)
+	ConnectorGitHub,
+	ConnectorGitLab,
+	ConnectorLark,
+	ConnectorDingTalk,
+	ConnectorWeCom,
+	ConnectorTeams,
+	ConnectorZoom,
+	ConnectorLinear,
+	ConnectorHubSpot,
+	ConnectorDiscord,
+	ConnectorSalesforce,
+	ConnectorNotionAPI,
+	ConnectorAirtable,
+	ConnectorBox,
+	ConnectorDropbox,
 }
 
 // IngestConnector is a tenant-scoped registration of one external
