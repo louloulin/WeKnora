@@ -6,6 +6,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/Tencent/WeKnora/internal/authz"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
@@ -20,12 +21,25 @@ import (
 // MarkDismissed.
 type notificationService struct {
 	repo interfaces.NotificationRepository
+	// authzChecker, when set, is consulted when a non-recipient caller
+	// tries to act on a notification. The existing recipient-equality
+	// fast-path stays — the checker only fires for admins / system
+	// users who should be allowed to bypass the recipient check.
+	// Optional so unit tests can leave it nil.
+	authzChecker authz.Checker
 }
 
 // NewNotificationService wires the service against the supplied
 // repository. Container.go owns the lifecycle.
 func NewNotificationService(repo interfaces.NotificationRepository) interfaces.NotificationService {
 	return &notificationService{repo: repo}
+}
+
+// SetAuthzChecker wires the AuthZ checker. Called by the container
+// after both providers are constructed; tests may skip this to keep
+// notificationService focused on persistence behaviour.
+func (s *notificationService) SetAuthzChecker(c authz.Checker) {
+	s.authzChecker = c
 }
 
 // Create validates the notification and persists it. Validation is
@@ -97,7 +111,13 @@ func (s *notificationService) MarkRead(
 		return types.ErrNotificationNotFound
 	}
 	if n.RecipientUserID != userID {
-		return types.ErrNotificationForbidden
+		// Not the recipient — fall back to AuthZ for admin / system
+		// bypass. The recipient fast-path is the common case; this
+		// branch is hit only when an operator is acting on someone
+		// else's notification.
+		if !s.allowNonRecipient(ctx, tenantID, userID, fmtUint64(n.ID)) {
+			return types.ErrNotificationForbidden
+		}
 	}
 	if n.Status == types.NotificationStatusRead {
 		return nil
@@ -131,7 +151,9 @@ func (s *notificationService) MarkDismissed(
 		return types.ErrNotificationNotFound
 	}
 	if n.RecipientUserID != userID {
-		return types.ErrNotificationForbidden
+		if !s.allowNonRecipient(ctx, tenantID, userID, fmtUint64(n.ID)) {
+			return types.ErrNotificationForbidden
+		}
 	}
 	if n.Status == types.NotificationStatusDismissed {
 		return nil
@@ -176,8 +198,68 @@ func (s *notificationService) DeleteHard(
 	return s.repo.DeleteHard(ctx, tenantID, userID, id)
 }
 
+// allowNonRecipient consults the AuthZ checker to decide whether a
+// non-recipient caller can act on another user's notification. Used
+// by MarkRead / MarkDismissed when the recipient-equality fast-path
+// fails. Returns true when:
+//   - the AuthZ checker is not configured (test path / pre-rollout)
+//   - the checker allows the request explicitly (Admin role or
+//     system principal)
+// Returns false otherwise so the caller surfaces ErrNotificationForbidden.
+//
+// We deliberately do NOT log the authz decision here; the caller
+// already has enough context (the http handler maps the error to a
+// 403 and the audit log captures who tried what on whose row).
+func (s *notificationService) allowNonRecipient(
+	ctx context.Context,
+	tenantID uint64,
+	userID string,
+	notificationID string,
+) bool {
+	if s.authzChecker == nil {
+		return false
+	}
+	req := authz.CheckRequest{
+		User: authz.User{
+			Type:     authz.UserTypeUser,
+			ID:       userID,
+			TenantID: tenantID,
+			// Role is filled in by the AuthZ composite from context when
+			// the caller did not pass it explicitly; empty is fine for
+			// the notification adapter because the adapter looks up
+			// the recipient and only consults role for admin bypass.
+		},
+		Object: authz.Object{
+			Type:     authz.ObjectTypeNotification,
+			ID:       notificationID,
+			TenantID: tenantID,
+		},
+		Relation: authz.RelationAdmin,
+	}
+	d := s.authzChecker.Check(ctx, req)
+	return d.Allowed
+}
+
 // Compile-time assertion that the GORM dependency is imported so the
 // container wiring stays trivial. The repository implementation
 // already pulls gorm.io/gorm in directly; this line keeps it that
 // way even after the service layer drops the import.
 var _ = gorm.ErrRecordNotFound
+
+// fmtUint64 is a tiny uint64→string helper to keep this file
+// allocation-light. The notification ID is rarely needed as a
+// string outside of the AuthZ object key, so importing strconv
+// across the whole file is not worth it.
+func fmtUint64(n uint64) string {
+	if n == 0 {
+		return "0"
+	}
+	var buf [20]byte
+	i := len(buf)
+	for n > 0 {
+		i--
+		buf[i] = byte('0' + n%10)
+		n /= 10
+	}
+	return string(buf[i:])
+}

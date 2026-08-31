@@ -48,6 +48,7 @@ import (
 	tencentVectorDBRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/tencentvectordb"
 	weaviateRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/weaviate"
 	"github.com/Tencent/WeKnora/internal/application/service"
+	"github.com/Tencent/WeKnora/internal/authz"
 	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
 	"github.com/Tencent/WeKnora/internal/application/service/file"
 	"github.com/Tencent/WeKnora/internal/application/service/memory"
@@ -206,6 +207,19 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewTenantInvitationService))
 	must(container.Provide(repository.NewNotificationRepository))
 	must(container.Provide(service.NewNotificationService))
+	// AuthZ composite checker — built lazily so the notification
+	// service can be a dependency. The closure pattern avoids the
+	// chicken-and-egg problem (the authz package cannot import the
+	// service layer directly to break the cycle).
+	must(container.Provide(func() authz.Checker {
+		// Phase-1 rollout: only the tenant-role adapter is wired.
+		// The notification / chat-message adapters are registered
+		// in a follow-up that breaks the import cycle by lifting
+		// the lookup closures into this file. The recipient
+		// fast-path in notificationService.MarkRead / MarkDismissed
+		// stays intact; AuthZ adds the admin bypass for ops.
+		return authz.NewAuthZComposite(authz.WireOptions{})
+	}))
 	must(container.Provide(service.NewAuditLogService))
 	must(container.Provide(service.NewAuditLogRetentionRunner))
 	must(container.Provide(service.NewKnowledgeBaseService))
@@ -272,6 +286,13 @@ func BuildContainer(container *dig.Container) *dig.Container {
 			SetNotificationService(interfaces.NotificationService)
 		}); ok {
 			setter.SetNotificationService(notifSvc)
+		}
+	}))
+	must(container.Invoke(func(notifSvc interfaces.NotificationService, checker authz.Checker) {
+		if setter, ok := notifSvc.(interface {
+			SetAuthzChecker(authz.Checker)
+		}); ok {
+			setter.SetAuthzChecker(checker)
 		}
 	}))
 	must(container.Provide(service.NewMessageSuggestionService))
