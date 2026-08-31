@@ -34,6 +34,7 @@ type Config struct {
 	Auth            *AuthConfig            `yaml:"auth"             json:"auth"`
 	Audit           *AuditConfig           `yaml:"audit"            json:"audit"`
 	OIDCAuth        *OIDCAuthConfig        `yaml:"oidc_auth"        json:"oidc_auth"`
+	SAMLAuth        *SAMLAuthConfig        `yaml:"saml_auth"        json:"saml_auth"`
 	Models          []ModelConfig          `yaml:"models"           json:"models"`
 	VectorDatabase  *VectorDatabaseConfig  `yaml:"vector_database"  json:"vector_database"`
 	DocReader       *DocReaderConfig       `yaml:"docreader"        json:"docreader"`
@@ -347,6 +348,38 @@ type OIDCAuthConfig struct {
 	GatewayTenantMap                map[string]uint64    `yaml:"gateway_tenant_map" json:"gateway_tenant_map"`
 }
 
+// SAMLAuthConfig controls SAML 2.0 SP behaviour that is not per-tenant.
+// Per-tenant IdP metadata (entity id, SSO URL, signing certificate,
+// attribute map) lives in saml_idp_configs; this struct only holds the
+// federation policy that is shared across tenants (JIT provisioning,
+// default tenant mode, etc.).
+type SAMLAuthConfig struct {
+	// AllowEmailLinking decides whether a SAML assertion with an
+	// unknown (IdP, NameID) tuple can be linked to an existing local
+	// user that shares the assertion's email attribute. Mirrors
+	// OIDCAuthConfig.AllowEmailLinking so the federation policy is
+	// symmetric across OIDC and SAML.
+	AllowEmailLinking bool `yaml:"allow_email_linking" json:"allow_email_linking"`
+
+	// DefaultTenantMode controls what LoginWithSAMLAssertion does when
+	// JIT-provisioning a brand new local user. Empty falls back to the
+	// shared auth.default_tenant_mode system-setting; both surfaces
+	// share the same fallback chain to keep behaviour consistent.
+	DefaultTenantMode types.TenantProvisioningMode `yaml:"default_tenant_mode" json:"default_tenant_mode"`
+
+	// RequireEncryptedAssertion requires that incoming SAML Responses
+	// carry an EncryptedAssertion element. Some enterprise IdPs (older
+	// ADFS, custom Shibboleth) do not encrypt by default; setting this
+	// to true makes the ACS fail closed when the assertion is cleartext.
+	// Default false so the integration works out of the box.
+	RequireEncryptedAssertion bool `yaml:"require_encrypted_assertion" json:"require_encrypted_assertion"`
+
+	// ClockSkewSeconds relaxes the NotBefore / NotOnOrAfter window when
+	// the IdP clock drifts from ours. Mirrors the SAML SP package's
+	// internal default (30s) but operators can override per-deployment.
+	ClockSkewSeconds int `yaml:"clock_skew_seconds" json:"clock_skew_seconds"`
+}
+
 // PromptTemplateI18n holds localized name and description for a prompt template.
 type PromptTemplateI18n struct {
 	Name        string `yaml:"name"        json:"name"`
@@ -605,6 +638,7 @@ func LoadConfig() (*Config, error) {
 
 	// Validate configuration values
 	applyOIDCEnvOverrides(&cfg)
+	applySAMLAuthDefaults(&cfg)
 	applyAgentEnvOverrides(&cfg)
 	applyKnowledgeBaseEnvOverrides(&cfg)
 	applyAuthAndTenantDefaults(&cfg)
@@ -903,6 +937,33 @@ func applyKnowledgeBaseEnvOverrides(cfg *Config) {
 	if value := strings.TrimSpace(os.Getenv("WEKNORA_DOCREADER_CALL_TIMEOUT")); value != "" {
 		if d, err := time.ParseDuration(value); err == nil && d > 0 {
 			cfg.KnowledgeBase.DocReaderCallTimeout = d
+		}
+	}
+}
+
+// applySAMLAuthDefaults initialises cfg.SAMLAuth and applies SAML_AUTH_*
+// env overrides. The defaults match OIDC's: AllowEmailLinking defaults
+// to false (admin opt-in only) so a misconfigured IdP cannot silently
+// link itself to existing local users.
+func applySAMLAuthDefaults(cfg *Config) {
+	if cfg.SAMLAuth == nil {
+		cfg.SAMLAuth = &SAMLAuthConfig{}
+	}
+	if value := strings.TrimSpace(os.Getenv("SAML_AUTH_ALLOW_EMAIL_LINKING")); value != "" {
+		cfg.SAMLAuth.AllowEmailLinking = strings.EqualFold(value, "true")
+	}
+	if value := strings.TrimSpace(os.Getenv("SAML_AUTH_REQUIRE_ENCRYPTED_ASSERTION")); value != "" {
+		cfg.SAMLAuth.RequireEncryptedAssertion = strings.EqualFold(value, "true")
+	}
+	if value := strings.TrimSpace(os.Getenv("SAML_AUTH_CLOCK_SKEW_SECONDS")); value != "" {
+		if n, err := strconv.Atoi(value); err == nil && n >= 0 {
+			cfg.SAMLAuth.ClockSkewSeconds = n
+		}
+	}
+	if value := strings.TrimSpace(os.Getenv("SAML_AUTH_DEFAULT_TENANT_MODE")); value != "" {
+		mode := types.TenantProvisioningMode(value)
+		if mode.IsValid() {
+			cfg.SAMLAuth.DefaultTenantMode = mode
 		}
 	}
 }
