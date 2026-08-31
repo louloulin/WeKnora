@@ -167,6 +167,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewOIDCIdentityRepository))
 	must(container.Provide(repository.NewAuthZTupleRepository))
 	must(container.Provide(repository.NewSAMLIdentityRepository))
+	must(container.Provide(repository.NewLDAPConfigRepository))
+	must(container.Provide(repository.NewLDAPFederationIdentityRepository))
 	must(container.Provide(repository.NewAuthTokenRepository))
 	must(container.Provide(repository.NewSystemSettingRepository))
 	must(container.Provide(neo4jRepo.NewNeo4jRepository))
@@ -220,6 +222,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// admin-managed settings table.
 	must(container.Provide(repository.NewSAMLIdPRepository))
 	must(container.Provide(service.NewSAMLIdPService))
+	must(container.Provide(service.NewLDAPConfigService))
 	must(container.Provide(newSAMLSPConfig))
 	// AuthZ persistent tuple store — read lookup + admin CRUD service.
 	// The lookup is registered before the composite so the closure
@@ -718,11 +721,28 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewInitializationHandler))
 	must(container.Provide(handler.NewAuthHandler))
 	must(container.Provide(handler.NewSAMLHandler))
+	must(container.Provide(handler.NewLDAPHandler))
 	must(container.Provide(handler.NewSystemHandler))
 	must(container.Provide(func(repo interfaces.AuthZTupleRepository, checker authz.Checker) *service.AuthZTupleService {
 		return service.NewAuthZTupleService(repo, checker)
 	}))
 	must(container.Provide(handler.NewAuthZHandler))
+	// LDAP login wiring: the LDAP login method on userService needs
+	// the per-tenant config service, the federation repo, and a
+	// dialer. Pulling them out of dig here keeps the userService
+	// constructor signature stable.
+	// Attach the LDAP login dependencies to userService. We use the
+	// concrete type so SetLDAPLoginDeps is reachable; dig will
+	// resolve it through the same provider as the interface.
+	must(container.Decorate(func(in *service.UserService, ldapCfg *service.LDAPConfigService, fedRepo *repository.LDAPFederationIdentityRepository) *service.UserService {
+		in.SetLDAPLoginDeps(&service.LDAPLoginDeps{
+			ConfigSvc: ldapCfg,
+			Dialer:    nil,
+			FedRepo:   fedRepo,
+			Opts:      service.LDAPLoginOptions{AllowEmailLinking: false},
+		})
+		return in
+	}))
 	must(container.Provide(handler.NewFeaturesHandler))
 	must(container.Provide(handler.NewMCPServiceHandler))
 	must(container.Provide(handler.NewMCPCredentialsHandler))

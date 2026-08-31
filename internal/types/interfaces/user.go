@@ -26,6 +26,14 @@ type UserService interface {
 	// mode for a brand-new auto-created user; the caller resolves it
 	// from the shared auth.default_tenant_mode policy.
 	LoginWithSAMLAssertion(ctx context.Context, tenantID uint64, info types.SAMLIdentityInfo, provisioning types.TenantProvisioningMode) (*types.LoginResponse, error)
+	// LoginWithLDAPCredentials authenticates a user against an
+	// external LDAP directory and mints the local token pair on
+	// success. Mirrors LoginWithSAMLAssertion but uses simple-bind
+	// instead of a SAML assertion. provisioning is the default
+	// tenant mode for a brand-new auto-created user; the caller
+	// resolves it from the shared auth.default_tenant_mode policy.
+	LoginWithLDAPCredentials(ctx context.Context, tenantID uint64, username, password string, provisioning types.TenantProvisioningMode) (*types.LoginResponse, error)
+
 	// GetUserByID gets a user by ID
 	GetUserByID(ctx context.Context, id string) (*types.User, error)
 	// GetUsersByIDs batch-fetches users by id, returning a map keyed by

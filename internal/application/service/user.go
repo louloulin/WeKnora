@@ -113,6 +113,13 @@ func getJwtSecret() string {
 	return jwtSecret
 }
 
+// UserService is the exported alias for the unexported
+// userService implementation. Exposed so container wiring
+// (Decorate / Invoke) can hold a typed reference to the concrete
+// when it needs to call setters that are not on the interface
+// (e.g. SetLDAPLoginDeps).
+type UserService = userService
+
 // userService implements the UserService interface
 type userService struct {
 	userRepo         interfaces.UserRepository
@@ -126,6 +133,10 @@ type userService struct {
 	oidcJWKSEndpoint string
 	oidcJWKSAt       time.Time
 	oidcJWKSLock     sync.Mutex
+	// ldapLoginDeps holds the LDAP-specific dependencies used by
+	// LoginWithLDAPCredentials. Nil when LDAP integration is not
+	// wired (single-tenant installs, fresh dev environments).
+	ldapLoginDeps *LDAPLoginDeps
 }
 
 // NewUserService creates a new user service instance
@@ -147,6 +158,69 @@ func NewUserService(
 		memberService:    memberService,
 		config:           configInfo,
 	}
+}
+
+// SetLDAPLoginDeps attaches the LDAP-specific dependencies used by
+// LoginWithLDAPCredentials. Container wiring calls this after the
+// LDAP repos and services are constructed so userService stays a
+// pure dependency-injected object. Safe to leave unset — the LDAP
+// login method returns an error in that case.
+func (s *userService) SetLDAPLoginDeps(deps *LDAPLoginDeps) {
+	s.ldapLoginDeps = deps
+}
+
+// jitProvisionUserFromExternal provisions a local user from an external
+// identity (LDAP directory entry). It is the LDAP counterpart of
+// provisionOIDCUser: random password, OIDC-only flag, same Register
+// pipeline so the default-tenant-mode policy applies.
+func (s *userService) jitProvisionUserFromExternal(
+	ctx context.Context,
+	tenantID uint64,
+	email, name string,
+	provisioning types.TenantProvisioningMode,
+) (*types.User, error) {
+	if strings.TrimSpace(email) == "" {
+		return nil, errors.New("ldap JIT: email is required")
+	}
+	username := sanitizeUsernameCandidate(name)
+	if username == "" {
+		username = sanitizeUsernameCandidate(strings.Split(email, "@")[0])
+	}
+	if username == "" {
+		username = fmt.Sprintf("ldap-user-%d", time.Now().Unix())
+	}
+	// Resolve a unique username by appending a counter if needed.
+	candidate := username
+	for i := 0; i < 20; i++ {
+		existing, err := s.userRepo.GetUserByUsername(ctx, candidate)
+		if isUserLookupNotFound(err) || (err == nil && existing == nil) {
+			break
+		}
+		candidate = fmt.Sprintf("%s-%d", username, i+1)
+	}
+	randomPassword, err := generateRandomString(32)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate password for LDAP user: %w", err)
+	}
+	user, err := s.Register(ctx, &types.RegisterRequest{
+		Username:           candidate,
+		Email:              email,
+		Password:           randomPassword,
+		TenantProvisioning: provisioning,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to auto-provision LDAP user: %w", err)
+	}
+	// Mark OIDC-only so password login doesn't accidentally
+	// succeed for these accounts. Mirror of provisionOIDCUser.
+	externalOnly := true
+	user.Preferences.OidcOnlyLogin = &externalOnly
+	user.UpdatedAt = time.Now()
+	if err := s.userRepo.UpdateUser(ctx, user); err != nil {
+		return nil, fmt.Errorf("failed to mark LDAP-only login preference: %w", err)
+	}
+	_ = tenantID // tenant membership is ensured separately by the caller
+	return user, nil
 }
 
 // Register creates a new user account
