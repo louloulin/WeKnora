@@ -13,6 +13,7 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"go.uber.org/dig"
 
+	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/handler"
 	"github.com/Tencent/WeKnora/internal/handler/session"
@@ -66,7 +67,9 @@ type RouterParams struct {
 	EvalBadcaseHandler           *handler.EvalBadcaseHandler
 	AuthHandler                  *handler.AuthHandler
 	SAMLHandler                  *handler.SAMLHandler
+	SCIMTokenService             *service.SCIMTokenService
 	LDAPHandler                  *handler.LDAPHandler
+	SCIMHandler                  *handler.SCIMHandler
 	InitializationHandler        *handler.InitializationHandler
 	SystemHandler                *handler.SystemHandler
 	AuthZHandler                 *handler.AuthZHandler
@@ -249,6 +252,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 
 		RegisterAuthRoutes(v1, params.AuthHandler, rbacGuards, params.SAMLHandler)
 		registerLDAPRoutes(v1, v1.Group("/api/v1", rbacGuards.SystemAdmin()), params.LDAPHandler)
+		registerSCIMRoutes(v1.Group("/api/v1"), params.SCIMHandler, handler.SCIMMiddleware(params.SCIMTokenService))
 		RegisterTenantRoutes(v1, params.TenantHandler, params.TenantMemberHandler, params.TenantInvitationHandler, params.AuditLogHandler, rbacGuards)
 		RegisterMyInvitationRoutes(v1, params.TenantInvitationHandler)
 		RegisterKnowledgeBaseRoutes(v1, params.KBHandler, rbacGuards)

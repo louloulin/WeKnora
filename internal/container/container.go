@@ -169,6 +169,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewSAMLIdentityRepository))
 	must(container.Provide(repository.NewLDAPConfigRepository))
 	must(container.Provide(repository.NewLDAPFederationIdentityRepository))
+	must(container.Provide(repository.NewSCIMTokenRepository))
+	must(container.Provide(repository.NewSCIMSyncLogRepository))
 	must(container.Provide(repository.NewAuthTokenRepository))
 	must(container.Provide(repository.NewSystemSettingRepository))
 	must(container.Provide(neo4jRepo.NewNeo4jRepository))
@@ -223,6 +225,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewSAMLIdPRepository))
 	must(container.Provide(service.NewSAMLIdPService))
 	must(container.Provide(service.NewLDAPConfigService))
+	must(container.Provide(service.NewSCIMTokenService))
+	must(container.Provide(service.NewSCIMSyncLogService))
+	must(container.Provide(service.NewSCIMUserService))
 	must(container.Provide(newSAMLSPConfig))
 	// AuthZ persistent tuple store — read lookup + admin CRUD service.
 	// The lookup is registered before the composite so the closure
@@ -722,6 +727,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewAuthHandler))
 	must(container.Provide(handler.NewSAMLHandler))
 	must(container.Provide(handler.NewLDAPHandler))
+	must(container.Provide(handler.NewSCIMHandler))
 	must(container.Provide(handler.NewSystemHandler))
 	must(container.Provide(func(repo interfaces.AuthZTupleRepository, checker authz.Checker) *service.AuthZTupleService {
 		return service.NewAuthZTupleService(repo, checker)

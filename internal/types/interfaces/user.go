@@ -132,6 +132,11 @@ type UserRepository interface {
 	DeleteUser(ctx context.Context, id string) error
 	// ListUsers lists users with pagination
 	ListUsers(ctx context.Context, offset, limit int) ([]*types.User, error)
+	// ListUsersByTenant returns every user bound to a single
+	// tenant, used by SCIM provisioning and the admin user-search
+	// view. Soft-deleted rows are excluded; ordering is by
+	// created_at desc so the most recent signups appear first.
+	ListUsersByTenant(ctx context.Context, tenantID uint64, offset, limit int) ([]*types.User, int, error)
 	// ListSystemAdmins lists users where is_system_admin = true.
 	// Walks the partial-friendly idx_users_is_system_admin index. Returns
 	// the slice plus the total count for pagination metadata. Used by

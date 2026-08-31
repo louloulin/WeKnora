@@ -133,6 +133,28 @@ func (r *userRepository) DeleteUser(ctx context.Context, id string) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&types.User{}).Error
 }
 
+// ListUsersByTenant returns every user bound to a single tenant,
+// plus the total count so callers can populate pagination metadata.
+// Used by SCIM provisioning (GET /scim/v2/Users).
+func (r *userRepository) ListUsersByTenant(ctx context.Context, tenantID uint64, offset, limit int) ([]*types.User, int, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	q := r.db.WithContext(ctx).Where("tenant_id = ?", tenantID)
+	var total int64
+	if err := q.Model(&types.User{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var users []*types.User
+	if err := q.Order("created_at DESC").Offset(offset).Limit(limit).Find(&users).Error; err != nil {
+		return nil, 0, err
+	}
+	return users, int(total), nil
+}
+
 // ListUsers lists users with pagination
 func (r *userRepository) ListUsers(ctx context.Context, offset, limit int) ([]*types.User, error) {
 	var users []*types.User
