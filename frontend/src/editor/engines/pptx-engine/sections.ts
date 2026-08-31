@@ -19,7 +19,7 @@
  * unsectioned — an intuitive rule that naturally self-heals stale
  * references.
  */
-import { randomUUID } from 'node:crypto'
+import { randomUUID } from './polyfills'
 import { resolveTarget } from './zip'
 import { escapeXmlAttr } from './xml-utils'
 import { unescapeXml } from './notes'

@@ -59,3 +59,5 @@ async function bootstrap() {
 }
 
 bootstrap();
+import VueKonva from "vue-konva";
+  app.use(VueKonva);

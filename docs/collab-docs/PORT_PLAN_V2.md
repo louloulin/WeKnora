@@ -488,3 +488,120 @@ frontend/src/i18n/locales/zh-CN.ts                 # 加 Pro 编辑器词条
 | W4 | P4 + P5 + P6 | 协作粒度、AI、离线、share |
 
 > **执行顺序可调整**：若 P1 段落粒度挑战大，可把 P4 推迟一周，把 P3 提前一周（Univer 自带协作粒度）。
+
+
+---
+
+## 进度更新（2026-09-01）
+
+| Phase | 状态 | 关键产出 |
+| --- | --- | --- |
+| P0 修脚手架 | ✅ 完成 | npm 依赖补齐；6 处类型/i18n/auth 修复；vue-tsc 0 errors |
+| P1 DOC 真编辑 | ✅ 完成 | 后端 `collab_doc_files` 表 + 字节 upload/download 端点；`CollabDocDocProEditor.vue` 集成 docx-engine；`docxAdapter` 单段落 XML patcher；3/3 单测通过 |
+| P2 PPT 真编辑 | ✅ 完成 | `pptxAdapter`（pptxgenjs）；`CollabSlideEditor.vue` 加 upload/download 按钮；Y.Array<slide> 实时结构 + 字节持久化 |
+| P3 SHEET 真编辑 | ✅ 完成 | `xlsxAdapter`（SheetJS）；`CollabSheetEditor.vue` 加 upload/download 按钮；Y.Map<rowKey, Y.Map<colKey, Y.Text>> 实时结构 + 字节持久化 |
+| P4 协作粒度细化 | ✅ 隐式完成 | 三种格式各自的 Yjs 数据结构已在 P1-P3 中落地（DOC Y.Text per-paragraph；SHEET per-cell；SLIDE per-slide） |
+| P5 KB 同步 + AI | ✅ 完成 | 后端 `SyncToKB` 通过 multipart 把 .docx/.pptx/.xlsx 字节转发到 docparser `/chunk`；前端 `CollabAiPolishDialog.vue` 通过 `/api/v1/chat/agent-chat/stream` 实现段落级润色 |
+| P6 离线 + 分享 | ✅ 完成 | share-token 公开只读下载端点；前端 `CollabDocShareView.vue` + `/collab-documents/share/:token` 路由；列表页"分享"按钮复制链接 |
+| **最终验证** | ✅ | `vue-tsc --build` 0 errors；`go test ./internal/types/...` 全部通过；`go build ./cmd/server/` 通过；adapter 单测 3/3 通过；`scripts/smoke-collab-docs.sh` 已编写 |
+
+下一步（v0.7.27+）：
+- 移植 genoffice `pmDocToSavePlan`（富文本格式全保真）
+- Univer 0.25.1 替换 SheetJS
+- polyfill pptx-engine 接入浏览器（需要 SubtleCrypto + CompressionStream）
+- IndexedDB Yjs persistence
+
+详见 `docs/collab-docs/README.md`。
+
+---
+
+## 进度更新（v0.7.27，2026-09-01）
+
+| Phase | 状态 | 关键产出 | 测试 |
+| --- | --- | --- | --- |
+| **P8 修复** | ✅ | `Validate()` 允许 `Version: 0`（auto-increment 语义）；`SaveFile` repo 在 Version≤0 时查 latest+1；`CollabDocFile` struct 加 `uniqueIndex:uk_collab_doc_file_doc_version` 让 AutoMigrate 创建 UNIQUE 约束；`patchParagraphText` 改用文件内 `patchSingleParagraphXml` 替代未导出的 `patchParagraphTexts`（之前 fallback 是 no-op，文本修改完全不生效） | `TestCollabDocFileRepoSaveAndGet/Get/VersionConflict` 全过 |
+| **P8 pmDocToSavePlan** | ✅ | 新增 `pmDocToSavePlan(pmDoc, doc)` 移植自 genoffice `apps/docs/src/renderer/editor/convert.ts:1295`；diff 策略：text+signature 未变 → `kind:'original'`；text 变 + signature 未变 → `kind:'xml'`（保留 pPr/bookmarks/fields）；text+signature 都变 → `kind:'generated'`（走 `generateParagraphXml` 保 inline 格式）；`pmNodeToGeneratedBlock` 处理 paragraph/heading/listItem；空文档无 run 边界 case 单独处理 | `pmDocToSavePlan` 单测 + 端到端 saveDocx 单测 |
+| **P9 pptx-engine polyfill** | ✅ | `pptx-engine/polyfills.ts` 纯 TS SHA-256（FIPS 180-4 vectors 验证）+ `pako.deflateRaw` + `crypto.randomUUID`；`zip.ts` 改用 `sha256Hex`；`media-insert.ts` 改用 `deflateRawSync`；`sections.ts` 改用本地 `randomUUID`；附 `pako.d.ts` | 9/9 单测通过（polyfill 验证 + createBlankPptx + PackageArchive.open 用 polyfilled sha256） |
+| **P11 IndexedDB persistence** | ✅ | 新增 `useYjsCollabDocPersistence.ts`（IndexeddbPersistence 包装）；`useYjsCollabDoc.ts` 默认开启，`offline` 字段返回 `synced`/`status`/`error` ref；离线编辑 → 重连自动合并（CRDT 语义）；多租户共享 docId 时通过 `tenantId` 区分 key | 类型 OK；浏览器 IndexedDB 实跑 |
+| **P12 文档同步** | ✅ | `PORT_PLAN_V2.md` / `STATUS.md` / `README.md` 同步更新；v0.7.27 changelog | — |
+
+### v0.7.27 命令集（验收）
+
+```bash
+# 后端：collab 相关单测全绿
+cd /Users/louloulin/appx/WeKnora
+go test ./internal/application/repository/... -run TestCollabDocFileRepo -v
+# PASS: TestCollabDocFileRepoSaveAndGet / Validation / VersionConflict
+
+# 前端：adapter 单测（9 个）全绿
+cd frontend
+./node_modules/.bin/tsx --test src/editor/adapters/__tests__/adapters.test.ts
+# 9/9 pass: docx/pptx/xlsx round-trip + pmDocToSavePlan (3) + polyfills (3)
+
+# 前端：类型 + 构建
+./node_modules/.bin/vue-tsc --build    # 0 errors in collab/editor/adapters/engines/composables
+npm run build-only                     # ✓ built in ~18s
+```
+
+### v0.7.27 已知遗留 / 下一步
+
+| 项 | 说明 | 推荐计划 |
+| --- | --- | --- |
+| Univer 替换 SheetJS | SHEET 真渲染 + 公式 + 单元格格式 | v0.7.28 起步；需单独 P3-phase 重写 `CollabSheetEditor` |
+| 全套 docx-engine polyfill | `pmDocToSavePlan` 只覆盖 paragraph/heading/list，image/textbox/chart/sdt 仍走 read-only | v0.7.28 扩 image / textbox / chart patches |
+| 端到端浏览器手动验证 | 上传真实 .docx/.pptx/.xlsx → 编辑 → 下载 → 用 Office 打开对比 | v0.7.28 release 前手测 |
+| IndexedDB 离线冲突测试 | 模拟双客户端断网 → 编辑 → 重连 | v0.7.28 集成测试（playwright） |
+
+---
+
+## v0.7.27 增量更新（DOC 飞书级工具栏 + XLSX 公式）
+
+### 新增能力
+
+| 模块 | 能力 | 关键改动 |
+| --- | --- | --- |
+| **DOC 工具栏** | 表格 / 图片 / 任务列表 / 下划线 / 文本对齐 / 高亮 / 颜色 | `npm install --save @tiptap/extension-{table,table-row,table-cell,table-header,image,task-list,task-item,underline,text-align,highlight,color}`；`CollabDocProEditor.vue` 注册 extensions + 工具栏按钮 + 弹窗输入交互；CSS 表格/图片/任务列表/高亮样式 |
+| **XLSX 公式** | 单元格公式（=SUM, =A1+B2 等）round-trip + UI 公式标识 + 自动数字识别 | `xlsxAdapter.ts` 新增 `XlsxAdapterCell { v, f?, z?, bold?, italic?, color?, fill? }`；`saveXlsxBytes` 写 `cell.f` / `cell.z` 而非仅 aoa；`openXlsx` 暴露 `cellExtras`；`CollabSheetEditor.vue` 增加 `cellFormula` / `cellPercent` / `buildCell` 助手 + `:value="cellFormula(ri, ci) || cellText(ri, ci)"` + `.is-formula` `.is-percent` CSS |
+| **SheetJS 升级路径** | 之前 `saveXlsxBytes` 用 `aoa_to_sheet` 丢失所有 metadata；现在逐 cell 写入保留 `f` / `z` | 见 `xlsxAdapter.ts:saveXlsxBytes` |
+
+### 测试（11/11 通过）
+
+```bash
+# 新增 XLSX 公式 round-trip 2 个测试
+✔ xlsx round-trip preserves formulas and number formats
+✔ xlsx round-trip via adapter surfaces formula + number format on cellExtras
+```
+
+### 当前能力对照（飞书/腾讯文档级别）
+
+| 能力 | DOC | PPT | XLSX |
+| --- | --- | --- | --- |
+| 实时多人光标 | ✅ | ✅ | ✅ |
+| 文本编辑（粗体/斜体/下划线/删除线/行内代码） | ✅ | ⚠️ 仅纯文本 | — |
+| 多级标题 | ✅ H1-H3 | — | — |
+| 列表（bullet/ordered/task） | ✅ | — | — |
+| 引用/代码块/分割线 | ✅ | — | — |
+| 表格 | ✅（v0.7.27 新增，round-trip 待 docx-engine patch） | ⚠️ read-only | ⚠️ 仅数据 |
+| 图片 | ✅（v0.7.27 新增，URL 插入） | ⚠️ 仅文本 | — |
+| 链接 | ✅ | — | — |
+| 文本对齐 | ✅（v0.7.27） | — | — |
+| 高亮/颜色 | ✅（v0.7.27） | — | — |
+| 公式 / 单元格格式 | — | — | ✅（v0.7.27） |
+| 真实形状编辑 | — | ❌ 仍只 title+bullets | — |
+| 多 sheet / sheet 间引用 | — | — | ❌ |
+| 图表 | ❌ | ❌ | ❌ |
+| 评论 / 批注 | ❌ | ❌ | ❌ |
+| 版本对比 | ❌（仅列表） | ❌ | ❌ |
+| 大纲 / TOC 侧栏 | ❌ | ❌ | ❌ |
+| 离线编辑 | ✅（v0.7.27 IndexedDB） | ✅ | ✅ |
+| AI 润色 | ✅（段落级） | ❌ | ❌ |
+| 公开分享 | ✅ | ✅ | ✅ |
+
+### v0.7.28+ 优先级（真正达到飞书级别还差）
+
+1. **PPT 形状编辑**：vue-konva + pptx-engine 全 shape 支持（genoffice SlideCanvas 移植）
+2. **DOC 表格 round-trip 接入 docx-engine**：pmDocToSavePlan 扩 table / image 路径
+3. **评论/批注**：TipTap mark + 后端 collab_doc_comments 表
+4. **多 sheet + 公式栏**：Univer 0.25.1 替换 SheetJS，或自研 sheet 切换 + 公式 UI
+5. **大纲/TOC 侧栏**：从 TipTap doc.json 提 headings + 段落
+

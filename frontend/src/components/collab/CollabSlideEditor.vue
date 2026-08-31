@@ -55,7 +55,12 @@
         :class="{ active: idx === active }"
         @click="active = idx"
       >
-        <div class="collab-slide-editor__slide-num">第 {{ idx + 1 }} 页</div>
+        <div class="collab-slide-editor__slide-num">
+          第 {{ idx + 1 }} 页
+          <button class="collab-slide-editor__iconbtn" @click.stop="moveSlide(idx, idx - 1)" :disabled="idx === 0" title="上移">↑</button>
+          <button class="collab-slide-editor__iconbtn" @click.stop="moveSlide(idx, idx + 1)" :disabled="idx === slides.length - 1" title="下移">↓</button>
+          <button class="collab-slide-editor__iconbtn danger" @click.stop="deleteSlide(idx)" :disabled="slides.length <= 1" title="删除">×</button>
+        </div>
         <input
           class="collab-slide-editor__slide-title"
           :value="slide.title"
@@ -195,10 +200,12 @@ const syncFromY = () => {
   if (!ydeck) return
   const remote = ydeck.toArray().map((m: Y.Map<unknown>) => objToSlide(m.toJSON() as Record<string, unknown>))
   if (remote.length === 0 && handle && ydeck) {
-    handle.ydoc.transact(() => {
+    const localHandle = handle
+    const localDeck = ydeck
+    localHandle.ydoc.transact(() => {
       const seed = new Y.Map<unknown>()
       Object.entries(slideToObj(slides.value[0])).forEach(([k, v]) => seed.set(k, v))
-      ydeck.push([seed])
+      localDeck.push([seed])
     })
     return
   }
@@ -242,6 +249,39 @@ const removeBullet = (idx: number, bi: number) => {
     const yslide = ydeck!.get(idx) as Y.Map<unknown>
     yslide.set('bullets', slides.value[idx].bullets)
   })
+  scheduleSave()
+}
+
+const moveSlide = (from: number, to: number) => {
+  if (to < 0 || to >= slides.value.length) return
+  if (!ydeck || !handle) return
+  const slide = slides.value[from]
+  if (!slide) return
+  // Local mirror
+  const next = slides.value.slice()
+  next.splice(from, 1)
+  next.splice(to, 0, slide)
+  slides.value = next
+  // Yjs mutation: delete + insert
+  handle!.ydoc.transact(() => {
+    const m = ydeck!.get(from) as Y.Map<unknown>
+    ydeck!.delete(from, 1)
+    const cloned = new Y.Map<unknown>()
+    Object.entries(slideToObj(slide)).forEach(([k, v]) => cloned.set(k, v))
+    ydeck!.insert(to, [cloned])
+    // also propagate originalMap reference removal is implicit via delete above
+    void m
+  })
+  active.value = to
+  scheduleSave()
+}
+
+const deleteSlide = (idx: number) => {
+  if (slides.value.length <= 1) return
+  if (!ydeck || !handle) return
+  slides.value.splice(idx, 1)
+  handle!.ydoc.transact(() => ydeck!.delete(idx, 1))
+  if (active.value >= slides.value.length) active.value = slides.value.length - 1
   scheduleSave()
 }
 
@@ -387,5 +427,8 @@ onBeforeUnmount(teardown)
 .collab-slide-editor__bullets li { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
 .collab-slide-editor__bullet-input { flex: 1; padding: 4px 6px; border: 1px solid var(--td-component-stroke); border-radius: 4px; }
 .collab-slide-editor__bullet-del, .collab-slide-editor__bullet-add { background: transparent; border: none; cursor: pointer; color: var(--td-text-color-secondary); font-size: 14px; }
+.collab-slide-editor__iconbtn { background: transparent; border: 1px solid var(--td-component-stroke); border-radius: 4px; padding: 1px 6px; margin-left: 6px; cursor: pointer; font-size: 11px; }
+.collab-slide-editor__iconbtn:disabled { opacity: 0.4; cursor: not-allowed; }
+.collab-slide-editor__iconbtn.danger { color: var(--td-error-color-7); border-color: var(--td-error-color-3); }
 .collab-slide-editor__error { color: var(--td-error-color-7); padding: 8px 12px; }
 </style>

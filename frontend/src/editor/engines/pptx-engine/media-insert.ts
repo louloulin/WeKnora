@@ -12,6 +12,7 @@
  * repair); shows as the poster image in PowerPoint.
  */
 import { deflateSync } from 'node:zlib'
+import { deflateRawSync } from './polyfills'
 import type { EmuRect, Slide } from './types'
 import { creationIdXml, escapeXmlAttr } from './xml-utils'
 import { relsPathFor } from './zip'
@@ -89,7 +90,7 @@ export function solidPng(w: number, h: number, rgb: [number, number, number]): B
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     pngChunk('IHDR', ihdr),
-    pngChunk('IDAT', deflateSync(raw)),
+    pngChunk('IDAT', Buffer.from(deflateRawSync(raw))),
     pngChunk('IEND', Buffer.alloc(0)),
   ])
 }

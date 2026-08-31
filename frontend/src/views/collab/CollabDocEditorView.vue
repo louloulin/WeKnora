@@ -20,7 +20,14 @@
       <div class="collab-editor-view__main">
         <CollabDocProEditor v-if="doc.doc_kind === 'doc'" :doc-id="doc.id" :title="doc.title" :token="token" :display-name="displayName" />
         <CollabSheetEditor v-else-if="doc.doc_kind === 'sheet'" :doc-id="doc.id" :title="doc.title" :token="token" :display-name="displayName" />
-        <CollabSlideEditor v-else-if="doc.doc_kind === 'slide'" :doc-id="doc.id" :title="doc.title" :token="token" :display-name="displayName" />
+        <CollabSlideKonvaEditor
+          v-else-if="doc.doc_kind === 'slide'"
+          :doc-id="doc.id"
+          :title="doc.title"
+          :token="token"
+          :display-name="displayName"
+          :tenant-id="tenantId"
+        />
         <div v-else>不支持的文档类型</div>
       </div>
     </template>
@@ -33,7 +40,7 @@ import { useRoute } from 'vue-router'
 import { getCollabDoc, type CollabDoc } from '@/api/collabDoc'
 import CollabDocProEditor from '@/components/collab/CollabDocProEditor.vue'
 import CollabSheetEditor from '@/components/collab/CollabSheetEditor.vue'
-import CollabSlideEditor from '@/components/collab/CollabSlideEditor.vue'
+import CollabSlideKonvaEditor from '@/components/collab/CollabSlideKonvaEditor.vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { useAuthStore } from '@/stores/auth'
 
@@ -46,6 +53,9 @@ const authStore = useAuthStore()
 
 const token = ref('')
 const displayName = ref('匿名用户')
+const tenantId = ref<number | string>(
+  (authStore as any).user?.tenant_id ?? (authStore as any).user?.tenantId ?? 0,
+)
 
 const kindLabel = (k: string) => ({ doc: '文档', sheet: '表格', slide: '幻灯片' }[k] || k)
 

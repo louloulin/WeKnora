@@ -107,3 +107,77 @@ export function openCollabDocRealtimeURL(docId: string, token: string): string {
   const host = window.location.host
   return `${proto}//${host}/api/v1/collaborative-docs/${encodeURIComponent(docId)}/realtime?token=${encodeURIComponent(token)}`
 }
+
+
+// ── v0.7.29 — comments ────────────────────────────────────────────────
+
+export type CommentAnchorType = 'doc' | 'slide' | 'sheet'
+
+export interface CollabDocComment {
+  id: number
+  tenant_id: number
+  doc_id: string
+  thread_id: string
+  parent_id?: number | null
+  author_user_id: number
+  author_name: string
+  author_color: string
+  anchor_type: CommentAnchorType
+  anchor_ref: string
+  body: string
+  resolved: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateCollabDocCommentRequest {
+  thread_id?: string
+  parent_id?: number
+  anchor_type: CommentAnchorType
+  anchor_ref?: string
+  body: string
+}
+
+export interface UpdateCollabDocCommentRequest {
+  body?: string
+  resolved?: boolean
+}
+
+/** Fetch every comment message for a doc (chronological). */
+export async function listCollabDocComments(
+  id: string,
+  filter: { thread_id?: string; resolved?: boolean; limit?: number; offset?: number } = {},
+): Promise<{ comments: CollabDocComment[] }> {
+  const params = new URLSearchParams()
+  if (filter.thread_id) params.set('thread_id', filter.thread_id)
+  if (filter.resolved !== undefined) params.set('resolved', String(filter.resolved))
+  if (filter.limit !== undefined) params.set('limit', String(filter.limit))
+  if (filter.offset !== undefined) params.set('offset', String(filter.offset))
+  const qs = params.toString()
+  return get(`/collaborative-docs/${id}/comments${qs ? `?${qs}` : ''}`)
+}
+
+/** Add a comment message (starts a new thread when thread_id is omitted). */
+export async function createCollabDocComment(
+  id: string,
+  req: CreateCollabDocCommentRequest,
+): Promise<CollabDocComment> {
+  return post(`/collaborative-docs/${id}/comments`, req)
+}
+
+/** Edit a comment body or resolved flag. */
+export async function updateCollabDocComment(
+  id: string,
+  commentID: number,
+  patch: UpdateCollabDocCommentRequest,
+): Promise<CollabDocComment> {
+  return post(`/collaborative-docs/${id}/comments/${commentID}`, patch)
+}
+
+/** Delete a comment (replies cascade via FK). */
+export async function deleteCollabDocComment(
+  id: string,
+  commentID: number,
+): Promise<void> {
+  return del(`/collaborative-docs/${id}/comments/${commentID}`)
+}

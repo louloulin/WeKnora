@@ -97,6 +97,13 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresInit: true }
     },
     {
+      // v0.7.26 - public read-only share view (no auth).
+      path: "/collab-documents/share/:token",
+      name: "collabDocShare",
+      component: () => import("../views/collab/CollabDocShareView.vue"),
+      meta: { requiresAuth: false }
+    },
+    {
       path: "/join",
       name: "joinOrganization",
       // 重定向到组织列表页，并将 code 参数转换为 invite_code

@@ -9,12 +9,18 @@ import { onBeforeUnmount, ref, shallowRef } from 'vue'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { openCollabDocRealtimeURL } from '@/api/collabDoc'
+import { useYjsCollabDocPersistence } from './useYjsCollabDocPersistence'
 
 export interface YjsCollabDocOptions {
   docId: string
   token: string
   displayName: string
   color?: string
+  /** When true (default), wire IndexedDB-backed offline persistence. */
+  enableOffline?: boolean
+  /** Tenant id; required when enableOffline is true so the IDB key
+   *  includes a tenant discriminator (defense in depth). */
+  tenantId?: number | string
 }
 
 export interface YjsCollabDocHandle {
@@ -23,6 +29,10 @@ export interface YjsCollabDocHandle {
   connected: ReturnType<typeof ref<boolean>>
   peers: ReturnType<typeof ref<Array<{ clientId: number; displayName: string; color: string }>>>
   error: ReturnType<typeof ref<string | null>>
+  /** Reactive offline status; null when persistence is disabled. */
+  offline: ReturnType<
+    typeof import('./useYjsCollabDocPersistence').useYjsCollabDocPersistence
+  > | null
   destroy: () => void
 }
 
@@ -72,12 +82,24 @@ export function useYjsCollabDoc(options: YjsCollabDocOptions): YjsCollabDocHandl
   awareness.on('change', refreshPeers)
   refreshPeers()
 
+  // v0.7.27 — IndexedDB-backed offline buffer. Edits made while the
+  // websocket is down keep accumulating locally; y-websocket merges the
+  // local state with remote on reconnect (CRDT, no manual replay).
+  // Default-on so every editor that uses this composable gets the
+  // behavior; pass `enableOffline: false` to opt out (e.g. for
+  // share-token read-only viewers).
+  const offline =
+    options.enableOffline === false
+      ? null
+      : useYjsCollabDocPersistence({ docId: options.docId, ydoc, tenantId: options.tenantId })
+
   const destroy = () => {
     provider.awareness.setLocalState(null)
     provider.disconnect()
     provider.destroy()
+    offline?.destroy()
   }
 
   onBeforeUnmount(destroy)
-  return { ydoc, provider, connected, peers, error, destroy }
+  return { ydoc, provider, connected, peers, error, offline, destroy }
 }

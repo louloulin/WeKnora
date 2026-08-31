@@ -40,6 +40,7 @@
             <td>{{ d.visibility }}</td>
             <td>{{ formatTime(d.updated_at) }}</td>
             <td>
+              <button class="collab-doc-list__share" @click="onShare(d.id, d.share_token)">分享</button>
               <button class="collab-doc-list__del" @click="onDelete(d.id)">删除</button>
             </td>
           </tr>
@@ -96,6 +97,21 @@ const onCreate = async () => {
     MessagePlugin.error(`创建失败：${e?.message || e}`)
   } finally {
     creating.value = false
+  }
+}
+
+const onShare = async (id: string, token: string) => {
+  if (!token) {
+    MessagePlugin.warning('该文档尚未生成分享令牌，请先保存后再分享')
+    return
+  }
+  const url = `${window.location.origin}/collab-documents/share/${encodeURIComponent(token)}`
+  try {
+    await navigator.clipboard.writeText(url)
+    MessagePlugin.success('分享链接已复制到剪贴板')
+  } catch (e) {
+    // Fallback for browsers without clipboard API: show the link.
+    prompt('分享链接：', url)
   }
 }
 

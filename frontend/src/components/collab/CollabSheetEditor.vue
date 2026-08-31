@@ -24,6 +24,8 @@
       </span>
       <button class="collab-sheet-editor__add-col" @click="addColumn" type="button">+ 列</button>
       <button class="collab-sheet-editor__add-row" @click="addRow" type="button">+ 行</button>
+      <button class="collab-sheet-editor__add-col" @click="delLastColumn" type="button" :disabled="cols.length <= 1">- 列</button>
+      <button class="collab-sheet-editor__add-row" @click="delLastRow" type="button" :disabled="rows.length <= 1">- 行</button>
       <button class="collab-sheet-editor__upload" :disabled="uploading" @click="triggerUpload" type="button">
         {{ uploading ? '上传中...' : '上传 .xlsx' }}
       </button>
@@ -47,7 +49,34 @@
         >{{ initialOf(p.displayName) }}</span>
       </span>
     </div>
+    <!-- Sheet tabs (multi-sheet support) -->
+    <div v-if="!loading && sheets.length > 1" class="collab-sheet-editor__tabs">
+      <button
+        v-for="(sh, si) in sheets"
+        :key="si"
+        class="collab-sheet-editor__tab"
+        :class="{ active: si === activeSheet }"
+        @click="switchSheet(si)"
+      >
+        {{ sh.name }}
+      </button>
+      <button class="collab-sheet-editor__tab collab-sheet-editor__add-col" @click="addSheet" type="button" title="新增 sheet">+ 新 sheet</button>
+    </div>
     <div v-if="loading" class="collab-sheet-editor__loading">加载表格中...</div>
+    <!-- Formula bar -->
+    <div v-if="!loading" class="collab-sheet-editor__formula">
+      <span class="collab-sheet-editor__cellref">{{ selectedRef || '选单元格' }}</span>
+      <span class="collab-sheet-editor__fx">fx</span>
+      <input
+        class="collab-sheet-editor__formula-input"
+        :value="formulaValue"
+        @input="formulaValue = ($event.target as HTMLInputElement).value; formulaError = null"
+        @keydown.enter="commitFormula"
+        placeholder="输入公式 (例: =SUM(A1:A10))"
+      />
+      <span v-if="formulaError" class="collab-sheet-editor__formula-error">⚠ {{ formulaError }}</span>
+      <span v-else-if="formulaValue" class="collab-sheet-editor__formula-hint">= {{ formulaResult }}</span>
+    </div>
     <div v-else class="collab-sheet-editor__table-wrap">
       <table class="collab-sheet-editor__grid">
         <thead>
@@ -68,7 +97,15 @@
             <td v-for="(col, ci) in cols" :key="ci">
               <input
                 class="collab-sheet-editor__cell-input"
-                :value="cellText(ri, ci)"
+                :class="{
+                  'is-formula': !!cellFormula(ri, ci),
+                  'is-percent': cellPercent(ri, ci),
+                  'collab-sheet-editor__cell--selected': selectedRi === ri && selectedCi === ci,
+                }"
+                :value="cellFormula(ri, ci) || cellText(ri, ci)"
+                :title="cellFormula(ri, ci) || ''"
+                @focus="onCellSelect(ri, ci)"
+                @click="onCellSelect(ri, ci)"
                 @input="setCell(ri, ci, ($event.target as HTMLInputElement).value)"
               />
             </td>
@@ -90,6 +127,7 @@ import {
   saveXlsxBytes,
   newXlsxWorkbook,
   type XlsxAdapterWorkbook,
+  type XlsxAdapterCell,
 } from '@/editor/adapters/xlsxAdapter'
 import {
   downloadCollabDocBytes,
@@ -107,6 +145,135 @@ const connected = ref(false)
 const peers = ref<Array<{ clientId: number; displayName: string; color: string }>>([])
 const error = ref<string | null>(null)
 const cols = ref<string[]>(['A', 'B', 'C'])
+const sheets = ref<Array<{ name: string; rows: string[][] }>>([])
+const activeSheet = ref(0)
+// Selected cell tracking for the formula bar
+const selectedRi = ref(-1)
+const selectedCi = ref(-1)
+const formulaValue = ref('')
+const formulaError = ref<string | null>(null)
+const selectedRef = computed(() =>
+  selectedRi.value >= 0 && selectedCi.value >= 0
+    ? `${colName(selectedCi.value)}${selectedRi.value + 1}`
+    : '',
+)
+const formulaResult = computed(() => {
+  if (!formulaValue.value.startsWith('=')) return ''
+  try {
+    return evaluateFormula(formulaValue.value, rows.value)
+  } catch (e: any) {
+    return ''
+  }
+})
+const onCellSelect = (ri: number, ci: number) => {
+  selectedRi.value = ri
+  selectedCi.value = ci
+  const raw = rows.value[ri]?.[ci]
+  formulaValue.value = raw && raw.startsWith('=') ? raw : ''
+  formulaError.value = null
+}
+const commitFormula = () => {
+  if (selectedRi.value < 0 || selectedCi.value < 0) return
+  setCell(selectedRi.value, selectedCi.value, formulaValue.value)
+  formulaError.value = null
+}
+const colNameToIndex = (name: string): number => {
+  let n = 0
+  for (const ch of name.toUpperCase()) n = n * 26 + (ch.charCodeAt(0) - 64)
+  return n - 1
+}
+const resolveCellRef = (ref: string, grid: string[][]): number => {
+  const m = /^([A-Z]+)(d+)$/i.exec(ref.trim())
+  if (!m) return NaN
+  const ci = colNameToIndex(m[1])
+  const ri = Number(m[2]) - 1
+  const v = Number(grid[ri]?.[ci])
+  return Number.isNaN(v) ? 0 : v
+}
+const parseRangeArgs = (args: string, grid: string[][]): number[][] => {
+  const parts = args.split(/[,;]/).map((s) => s.trim()).filter(Boolean)
+  const out: number[][] = []
+  for (const p of parts) {
+    const range = /^([A-Z]+d+):([A-Z]+d+)$/i.exec(p)
+    if (range) {
+      const ca = colNameToIndex(range[1].replace(/d+/g, ''))
+      const cb = colNameToIndex(range[2].replace(/d+/g, ''))
+      const ra = Number(range[1].replace(/[A-Z]+/g, '')) - 1
+      const rb = Number(range[2].replace(/[A-Z]+/g, '')) - 1
+      for (let r = ra; r <= rb; r++) {
+        const row: number[] = []
+        for (let c = ca; c <= cb; c++) row.push(Number(grid[r]?.[c]) || 0)
+        out.push(row)
+      }
+    } else {
+      const v = resolveCellRef(p, grid)
+      if (!Number.isNaN(v)) out.push([v])
+    }
+  }
+  return out
+}
+const evaluateFormula = (expr: string, grid: string[][]): string => {
+  const cleaned = expr.replace(/^=/, '').trim()
+  if (!cleaned) return ''
+  const fnMatch = /^([A-Z]+)((.*))$/i.exec(cleaned)
+  if (fnMatch) {
+    const fn = fnMatch[1].toUpperCase()
+    const args = parseRangeArgs(fnMatch[2], grid)
+    const flat = args.flat()
+    if (!flat.length) throw new Error('empty range')
+    switch (fn) {
+      case 'SUM': return String(flat.reduce((a, b) => a + b, 0))
+      case 'AVERAGE': return String(flat.reduce((a, b) => a + b, 0) / flat.length)
+      case 'COUNT': return String(flat.length)
+      case 'MIN': return String(Math.min(...flat))
+      case 'MAX': return String(Math.max(...flat))
+      default: throw new Error('unknown function: ' + fn)
+    }
+  }
+  const tokens = cleaned.split(/([+*\-])/).map((s) => s.trim()).filter(Boolean)
+  let acc: number | null = null
+  let op = '+'
+  for (const tok of tokens) {
+    if (tok === '+' || tok === '-' || tok === '*' || tok === '/') { op = tok; continue }
+    const v = Number(tok)
+    const refV = Number.isNaN(v) ? resolveCellRef(tok, grid) : v
+    if (Number.isNaN(refV)) throw new Error('bad token: ' + tok)
+    acc = acc == null ? refV : op === '+' ? acc + refV : op === '-' ? acc - refV : op === '*' ? acc * refV : acc / refV
+  }
+  return acc == null ? '' : String(acc)
+}
+const switchSheet = (i: number) => {
+  if (i < 0 || i >= sheets.value.length) return
+  // Persist current edits into sheets[]
+  if (sheets.value[activeSheet.value]) {
+    sheets.value[activeSheet.value] = {
+      name: sheets.value[activeSheet.value].name,
+      rows: rows.value.map((r) => r.slice()),
+    }
+  }
+  activeSheet.value = i
+  rows.value = sheets.value[i].rows.map((r) => r.slice())
+  cols.value = Array.from({ length: Math.max(rows.value[0]?.length || 0, 1) }, (_, k) => colName(k))
+  selectedRi.value = -1
+  selectedCi.value = -1
+  formulaValue.value = ''
+}
+const addSheet = () => {
+  if (sheets.value[activeSheet.value]) {
+    sheets.value[activeSheet.value] = {
+      name: sheets.value[activeSheet.value].name,
+      rows: rows.value.map((r) => r.slice()),
+    }
+  }
+  const name = 'Sheet' + (sheets.value.length + 1)
+  sheets.value.push({ name, rows: [Array.from({ length: cols.value.length }, () => '')] })
+  activeSheet.value = sheets.value.length - 1
+  rows.value = sheets.value[activeSheet.value].rows.map((r) => r.slice())
+  selectedRi.value = -1
+  selectedCi.value = -1
+  formulaValue.value = ''
+  scheduleSave()
+}
 const rows = ref<string[][]>(
   Array.from({ length: 5 }, () => Array.from({ length: cols.value.length }, () => '')),
 )
@@ -167,18 +334,22 @@ const setup = async () => {
     }
     if (bytes) {
       wb = await openXlsx(bytes)
-      const first = wb.sheets[0]
+      sheets.value = wb.sheets.map((sh) => ({ name: sh.name, rows: sh.rows.map((r) => r.map((c) => String(c.v ?? ''))) }))
+      activeSheet.value = 0
+      const first = sheets.value[0]
       if (first) {
         const maxCol = first.rows.reduce((m, r) => Math.max(m, r.length), 0)
-        cols.value = Array.from({ length: maxCol }, (_, i) => colName(i))
+        cols.value = Array.from({ length: Math.max(maxCol, 1) }, (_, i) => colName(i))
         rows.value = first.rows.map((r) => {
-          const padded = r.map((c) => String(c.v ?? ''))
-          while (padded.length < maxCol) padded.push('')
+          const padded = r.slice()
+          while (padded.length < cols.value.length) padded.push('')
           return padded
         })
         if (rows.value.length === 0) {
           rows.value = [Array.from({ length: cols.value.length }, () => '')]
         }
+      } else {
+        sheets.value = [{ name: 'Sheet1', rows: [Array.from({ length: cols.value.length }, () => '')] }]
       }
     }
   } catch (e: any) {
@@ -235,6 +406,39 @@ const syncFromY = () => {
 }
 
 const cellText = (ri: number, ci: number) => rows.value[ri]?.[ci] ?? ''
+
+/** A cell may be a raw string (from Yjs) or an XlsxAdapterCell (after
+ *  openXlsx). Normalize to one shape so the helpers below stay symmetric. */
+const normalizeCell = (raw: unknown): XlsxAdapterCell => {
+  if (raw == null || raw === '') return { v: '' }
+  if (typeof raw === 'object') return raw as XlsxAdapterCell
+  return { v: String(raw) }
+}
+const cellFormula = (ri: number, ci: number) => {
+  const c = normalizeCell(rows.value[ri]?.[ci])
+  if (c.f) return c.f
+  const v = c.v
+  return typeof v === 'string' && v.startsWith('=') ? v.slice(1) : ''
+}
+const cellPercent = (ri: number, ci: number) => {
+  const c = normalizeCell(rows.value[ri]?.[ci])
+  return (c.z ?? '').includes('%')
+}
+
+/** Build an XlsxAdapterCell from a raw string cell. Strings starting with
+ *  '=' become formulas (cell.f = the right-hand side); pure numerics become
+ *  number cells with no format. Anything else becomes a text cell. */
+const buildCell = (raw: string | undefined): XlsxAdapterCell => {
+  const v = raw ?? ''
+  if (typeof v === 'string' && v.startsWith('=') && v.length > 1) {
+    return { v: '', f: v.slice(1) }
+  }
+  if (typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v)) {
+    return { v: Number(v) }
+  }
+  return { v }
+}
+
 const setCell = (ri: number, ci: number, value: string) => {
   rows.value[ri][ci] = value
   if (!ymap || !handle) return
@@ -262,6 +466,33 @@ const addRow = () => {
   scheduleSave()
 }
 
+const delLastColumn = () => {
+  if (cols.value.length <= 1) return
+  if (!ycols || !handle) return
+  handle!.ydoc.transact(() => {
+    const localCols = ycols!
+    localCols.delete(localCols.length - 1, 1)
+  })
+  rows.value = rows.value.map((r) => r.slice(0, -1))
+  if (ymap) {
+    handle!.ydoc.transact(() => {
+      ymap!.forEach((yrow, key) => {
+        const lastKey = String(cols.value.length)
+        yrow.delete(lastKey)
+        if (yrow.size === 0) ymap!.delete(key)
+      })
+    })
+  }
+  scheduleSave()
+}
+
+const delLastRow = () => {
+  if (rows.value.length <= 1) return
+  rows.value = rows.value.slice(0, -1)
+  if (ymap) ymap!.delete(String(rows.value.length))
+  scheduleSave()
+}
+
 const renameColumn = (ci: number, name: string) => {
   if (!ycols || !handle) return
   handle!.ydoc.transact(() => ycols!.delete(ci, 1))
@@ -282,10 +513,14 @@ const flushSave = async () => {
   }
   saveLabel.value = '保存中...'
   try {
-    wb.sheets = [{
-      name: 'Sheet1',
-      rows: rows.value.map((r) => r.map((v) => ({ v }))),
-    }]
+    sheets.value[activeSheet.value] = {
+      name: sheets.value[activeSheet.value]?.name || ('Sheet' + (activeSheet.value + 1)),
+      rows: rows.value.map((r) => r.slice()),
+    }
+    wb.sheets = sheets.value.map((sh) => ({
+      name: sh.name,
+      rows: sh.rows.map((r) => r.map((v) => buildCell(v))),
+    }))
     const bytes = await saveXlsxBytes(wb)
     await uploadCollabDocBytes(props.docId, bytes, `${props.title || 'collab-doc'}.xlsx`)
     saveLabel.value = '已保存'
@@ -302,10 +537,14 @@ const flushSave = async () => {
 const exportXlsx = async () => {
   downloading.value = true
   try {
-    wb.sheets = [{
-      name: 'Sheet1',
-      rows: rows.value.map((r) => r.map((v) => ({ v }))),
-    }]
+    sheets.value[activeSheet.value] = {
+      name: sheets.value[activeSheet.value]?.name || ('Sheet' + (activeSheet.value + 1)),
+      rows: rows.value.map((r) => r.slice()),
+    }
+    wb.sheets = sheets.value.map((sh) => ({
+      name: sh.name,
+      rows: sh.rows.map((r) => r.map((v) => buildCell(v))),
+    }))
     const bytes = await saveXlsxBytes(wb)
     const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
     const blob = new Blob([ab], {
@@ -420,5 +659,74 @@ onBeforeUnmount(teardown)
 .collab-sheet-editor__grid td { border: 1px solid var(--td-component-stroke); padding: 0; }
 .collab-sheet-editor__cell-input, .collab-sheet-editor__header-input { width: 100%; padding: 6px 8px; border: none; outline: none; background: transparent; }
 .collab-sheet-editor__cell-input:focus, .collab-sheet-editor__header-input:focus { background: var(--td-brand-color-1); }
-.collab-sheet-editor__error { color: var(--td-error-color-7); padding: 8px 12px; }
+
+/* v0.7.28 — sheet tabs + formula bar */
+.collab-sheet-editor__tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--td-component-stroke);
+  background: var(--td-bg-color-container);
+  overflow-x: auto;
+}
+.collab-sheet-editor__tab {
+  padding: 4px 12px;
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  color: var(--td-text-color-secondary);
+}
+.collab-sheet-editor__tab.active {
+  background: var(--td-bg-color-container);
+  border-color: var(--td-component-stroke);
+  border-bottom-color: var(--td-bg-color-container);
+  color: var(--td-text-color-primary);
+  font-weight: 600;
+  margin-bottom: -1px;
+}
+.collab-sheet-editor__formula {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--td-component-stroke);
+  background: var(--td-bg-color-container);
+}
+.collab-sheet-editor__cellref {
+  min-width: 56px;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+}
+.collab-sheet-editor__fx {
+  font-style: italic;
+  font-weight: 700;
+  color: var(--td-brand-color-7);
+}
+.collab-sheet-editor__formula-input {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 13px;
+}
+.collab-sheet-editor__formula-error {
+  color: var(--td-error-color-7);
+  font-size: 12px;
+}
+.collab-sheet-editor__formula-hint {
+  color: var(--td-brand-color-7);
+  font-size: 12px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+.collab-sheet-editor__cell--selected {
+  outline: 2px solid var(--td-brand-color-7);
+  outline-offset: -2px;
+}
 </style>
+.collab-sheet-editor__cell-input.is-formula { color: var(--td-brand-color-7); font-family: 'JetBrains Mono', ui-monospace, monospace; }
+.collab-sheet-editor__cell-input.is-percent { text-align: right; }

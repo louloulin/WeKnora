@@ -7,7 +7,7 @@
  * This module only handles reading and metadata.
  */
 import JSZip from 'jszip'
-import { createHash } from 'node:crypto'
+import { sha256Hex } from './polyfills'
 import { XMLParser } from 'fast-xml-parser'
 import type { SlideSize } from './types'
 import { asXmlNode, xmlArray } from './xml-utils'
@@ -34,7 +34,7 @@ export class PackageArchive {
   ) {}
 
   static async open(bytes: Uint8Array): Promise<PackageArchive> {
-    const originalHash = createHash('sha256').update(bytes).digest('hex')
+    const originalHash = sha256Hex(bytes)
     const zip = await JSZip.loadAsync(bytes)
     const entries = new Map<string, Uint8Array>()
     const names = Object.keys(zip.files)

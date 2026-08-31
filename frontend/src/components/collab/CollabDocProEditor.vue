@@ -36,6 +36,12 @@
       <button class="collab-doc-pro__btn" :disabled="uploading" @click="onForceSave">
         {{ uploading ? '保存中...' : '立即保存' }}
       </button>
+      <button class="collab-doc-pro__btn collab-doc-pro__btn--ai" :disabled="!aiOriginal" @click="onOpenAi" type="button">
+        问 AI
+      </button>
+      <button class="collab-doc-pro__btn" :disabled="!doc" @click="onToggleHistory" type="button">
+        {{ historyOpen ? '关闭历史' : '版本历史' }}
+      </button>
       <span class="collab-doc-pro__peers">
         <span
           v-for="p in peers"
@@ -48,25 +54,99 @@
     </div>
     <div v-if="loading" class="collab-doc-pro__loading">加载文档中…</div>
     <div v-else-if="loadError" class="collab-doc-pro__error">加载失败：{{ loadError }}</div>
-    <div v-else class="collab-doc-pro__surface-wrap">
+    <template v-else>
+      <div class="collab-doc-pro__formatbar" v-if="editor">
+        <button class="collab-doc-pro__fmt" :class="{ active: isMarkActive('bold') }" @click="runMark('bold')" type="button" title="粗体 (Ctrl+B)"><b>B</b></button>
+        <button class="collab-doc-pro__fmt" :class="{ active: isMarkActive('italic') }" @click="runMark('italic')" type="button" title="斜体 (Ctrl+I)"><i>I</i></button>
+        <button class="collab-doc-pro__fmt" :class="{ active: isMarkActive('strike') }" @click="runMark('strike')" type="button" title="删除线"><s>S</s></button>
+        <button class="collab-doc-pro__fmt" :class="{ active: isMarkActive('code') }" @click="runMark('code')" type="button" title="行内代码"><code>&lt;/&gt;</code></button>
+        <button class="collab-doc-pro__fmt" :class="{ active: isMarkActive('underline') }" @click="runMark('underline')" type="button" title="下划线"><u>U</u></button>
+        <span class="collab-doc-pro__sep"></span>
+        <button class="collab-doc-pro__fmt" :class="{ active: isNodeActive('heading', { level: 1 }) }" @click="runHeading(1)" type="button" title="一级标题">H1</button>
+        <button class="collab-doc-pro__fmt" :class="{ active: isNodeActive('heading', { level: 2 }) }" @click="runHeading(2)" type="button" title="二级标题">H2</button>
+        <button class="collab-doc-pro__fmt" :class="{ active: isNodeActive('heading', { level: 3 }) }" @click="runHeading(3)" type="button" title="三级标题">H3</button>
+        <span class="collab-doc-pro__sep"></span>
+        <button class="collab-doc-pro__fmt" :class="{ active: isNodeActive('bulletList') }" @click="runNode('toggleBulletList')" type="button" title="无序列表">• 列表</button>
+        <button class="collab-doc-pro__fmt" :class="{ active: isNodeActive('orderedList') }" @click="runNode('toggleOrderedList')" type="button" title="有序列表">1. 列表</button>
+        <button class="collab-doc-pro__fmt" :class="{ active: isNodeActive('taskList') }" @click="runNode('toggleTaskList')" type="button" title="任务列表">☑</button>
+        <button class="collab-doc-pro__fmt" :class="{ active: isNodeActive('blockquote') }" @click="runNode('toggleBlockquote')" type="button" title="引用">❝</button>
+        <button class="collab-doc-pro__fmt" :class="{ active: isNodeActive('codeBlock') }" @click="runNode('toggleCodeBlock')" type="button" title="代码块">{}</button>
+        <span class="collab-doc-pro__sep"></span>
+        <button class="collab-doc-pro__fmt" :class="{ active: isMarkActive('link') }" @click="onSetLink" type="button" title="链接">🔗</button>
+        <button class="collab-doc-pro__fmt" @click="onInsertTable" type="button" title="插入表格">⊞</button>
+        <button class="collab-doc-pro__fmt" @click="onInsertImageUrl" type="button" title="插入图片">🖼</button>
+      <button class="collab-doc-pro__btn" @click="onInsertImageFile" type="button" title="插入本地图片">📁 图片</button>
+      <input ref="fileImageInput" type="file" accept="image/*" style="display:none" @change="onImageFileChosen" />
+        <button class="collab-doc-pro__fmt" @click="onAlign('left')" type="button" title="左对齐">⇤</button>
+        <button class="collab-doc-pro__fmt" @click="onAlign('center')" type="button" title="居中">≡</button>
+        <button class="collab-doc-pro__fmt" @click="onAlign('right')" type="button" title="右对齐">⇥</button>
+        <span class="collab-doc-pro__sep"></span>
+        <button class="collab-doc-pro__fmt" @click="runNode('undo')" type="button" title="撤销 (Ctrl+Z)">↶</button>
+        <button class="collab-doc-pro__fmt" @click="runNode('redo')" type="button" title="重做 (Ctrl+Y)">↷</button>
+      </div>
+      <div class="collab-doc-pro__surface-wrap">
       <EditorContent :editor="editor" class="collab-doc-pro__surface" />
+      <CollabAiPolishDialog
+        v-if="aiOpen"
+        :open="aiOpen"
+        :anchor="aiAnchor"
+        :original="aiOriginal"
+        @close="aiOpen = false"
+        @accept="onAcceptAi"
+      />
+      <div v-if="historyOpen" class="collab-doc-pro__history">
+        <div class="collab-doc-pro__history-head">版本历史</div>
+        <div v-if="versions.length === 0" class="collab-doc-pro__history-empty">暂无历史版本</div>
+        <div v-for="v in versions" :key="v.version" class="collab-doc-pro__history-row">
+          <div class="collab-doc-pro__history-meta">
+            <strong>v{{ v.version }}</strong>
+            <span>{{ formatBytes(v.size_bytes) }}</span>
+            <span>{{ formatTime(v.created_at) }}</span>
+          </div>
+          <div class="collab-doc-pro__history-actions">
+            <button class="collab-doc-pro__btn" @click="onDownloadVersion(v.version)">下载</button>
+            <button class="collab-doc-pro__btn primary" @click="onRestoreVersion(v.version)">恢复</button>
+          </div>
+        </div>
+      </div>
     </div>
+    </template>
+    <!-- v0.7.29 — comments side panel -->
+    <CollabCommentsPanel
+      :doc-id="docId"
+      :token="token"
+      :anchor="commentAnchor"
+      anchor-label="段落选区"
+      placeholder="对选中的段落添加评论…"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
-import { EditorContent } from '@tiptap/vue-3'
-import type { Editor } from '@tiptap/core'
+import { Editor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
+import Table from '@tiptap/extension-table'
+import TableRow from '@tiptap/extension-table-row'
+import TableCell from '@tiptap/extension-table-cell'
+import TableHeader from '@tiptap/extension-table-header'
+import Image from '@tiptap/extension-image'
+import TaskList from '@tiptap/extension-task-list'
+import TaskItem from '@tiptap/extension-task-item'
+import Underline from '@tiptap/extension-underline'
+import TextAlign from '@tiptap/extension-text-align'
+import Highlight from '@tiptap/extension-highlight'
+import Color from '@tiptap/extension-color'
 import { Collaboration } from '@tiptap/extension-collaboration'
 import { CollaborationCursor } from '@tiptap/extension-collaboration-cursor'
 import * as Y from 'yjs'
 import { useYjsCollabDoc } from '@/composables/useYjsCollabDoc'
+import CollabCommentsPanel from '@/components/collab/CollabCommentsPanel.vue'
 import {
   openDocx,
   saveDocxBytes,
+  saveDocxBytesWithImages,
   patchParagraphText,
   buildBlankDocxDoc,
   type DocxAdapterDocument,
@@ -77,6 +157,7 @@ import {
   uploadCollabDocBytes,
 } from '@/api/collabDoc'
 import { MessagePlugin } from 'tdesign-vue-next'
+import CollabAiPolishDialog from './CollabAiPolishDialog.vue'
 
 const props = defineProps<{
   docId: string
@@ -95,6 +176,12 @@ const downloading = ref(false)
 const uploading = ref(false)
 const saveLabel = ref('未修改')
 const saveError = ref<string | null>(null)
+const aiOpen = ref(false)
+const aiAnchor = ref({ x: 0, y: 0 })
+const aiOriginal = ref('')
+let aiTargetIndex: number | null = null
+const historyOpen = ref(false)
+const versions = ref<Array<{ version: number; size_bytes: number; created_at: string }>>([])
 
 let handle: ReturnType<typeof useYjsCollabDoc> | null = null
 let ydoc: Y.Doc | null = null
@@ -126,12 +213,14 @@ const downloadAsUint8Array = async (): Promise<Uint8Array> => {
 
 const onDownload = async () => {
   if (!doc) return
+  if (!doc) return
+  const curDoc = doc
   downloading.value = true
   try {
     const patched = Array.from(patchedMap.entries()).map(([docxIndex, xml]) => ({
-      docxIndex, xml, text: doc.paragraphs[docxIndex]?.text || '',
+      docxIndex, xml, text: curDoc.paragraphs[docxIndex]?.text || '',
     }))
-    const bytes = await saveDocxBytes(doc, patched)
+    const bytes = await saveDocxBytes(curDoc, patched)
     const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
     const blob = new Blob([ab], {
       type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -151,6 +240,240 @@ const onDownload = async () => {
 
 const onForceSave = () => {
   flushSave(true)
+}
+
+const isMarkActive = (name: string): boolean => {
+  if (!editor.value) return false
+  return editor.value.isActive(name)
+}
+const isNodeActive = (name: string, attrs?: Record<string, unknown>): boolean => {
+  if (!editor.value) return false
+  return editor.value.isActive(name, attrs)
+}
+const runMark = (name: string) => {
+  if (!editor.value) return
+  const chain = editor.value.chain().focus()
+  if (name === 'bold') chain.toggleBold().run()
+  else if (name === 'italic') chain.toggleItalic().run()
+  else if (name === 'strike') chain.toggleStrike().run()
+  else if (name === 'code') chain.toggleCode().run()
+  else if (name === 'link') chain.toggleLink({ href: '' }).run()
+  else chain.run()
+}
+const runNode = (cmd: string) => {
+  if (!editor.value) return
+  const chain = editor.value.chain().focus()
+  if (cmd === 'toggleBulletList') chain.toggleBulletList().run()
+  else if (cmd === 'toggleOrderedList') chain.toggleOrderedList().run()
+  else if (cmd === 'toggleBlockquote') chain.toggleBlockquote().run()
+  else if (cmd === 'toggleCodeBlock') chain.toggleCodeBlock().run()
+  else if (cmd === 'undo') chain.undo().run()
+  else if (cmd === 'redo') chain.redo().run()
+  else chain.run()
+}
+const runHeading = (level: 1 | 2 | 3) => {
+  if (!editor.value) return
+  editor.value.chain().focus().toggleHeading({ level }).run()
+}
+const onSetLink = () => {
+  if (!editor.value) return
+  const prev = editor.value.getAttributes('link').href as string | undefined
+  const url = window.prompt('链接地址（留空取消）', prev || 'https://')
+  if (url === null) return
+  if (url === '') {
+    editor.value.chain().focus().extendMarkRange('link').unsetLink().run()
+    return
+  }
+  editor.value.chain().focus().extendMarkRange('link').setLink({ href: url }).run()
+}
+
+const onInsertTable = () => {
+  if (!editor.value) return
+  const rowsStr = window.prompt('行数（含表头，默认 3）', '3')
+  const colsStr = window.prompt('列数（默认 3）', '3')
+  if (rowsStr === null || colsStr === null) return
+  const rows = Math.max(1, Math.min(20, Number(rowsStr) || 3))
+  const cols = Math.max(1, Math.min(10, Number(colsStr) || 3))
+  editor.value
+    .chain()
+    .focus()
+    .insertTable({ rows, cols, withHeaderRow: true })
+    .run()
+}
+
+// --- v0.7.29 — comments anchor (set when the user selects a range) ---
+const commentAnchor = ref<{ type: 'doc' | 'slide' | 'sheet'; ref: string } | null>(null)
+
+const onInsertImageUrl = () => {
+  if (!editor.value) return
+  const url = window.prompt('图片 URL（留空取消）', 'https://')
+  if (!url) return
+  editor.value.chain().focus().setImage({ src: url }).run()
+}
+
+const onInsertImageFile = () => {
+  fileImageInput.value?.click()
+}
+
+const fileImageInput = ref<HTMLInputElement | null>(null)
+const onImageFileChosen = async (e: Event) => {
+  if (!editor.value) return
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    MessagePlugin.error('请选择图片文件 (PNG/JPEG/GIF/WebP)')
+    return
+  }
+  // Convert to dataURL (TipTap image extension accepts it; the
+  // saveDocxBytesWithImages flow will then write the bytes into the .docx).
+  const reader = new FileReader()
+  reader.onload = () => {
+    const dataUrl = String(reader.result || '')
+    if (!dataUrl.startsWith('data:')) return
+    const img = new window.Image()
+    img.onload = () => {
+      editor.value!
+        .chain()
+        .focus()
+        .setImage({ src: dataUrl, alt: file.name })
+        .run()
+    }
+    img.src = dataUrl
+  }
+  reader.readAsDataURL(file)
+  if (fileImageInput.value) fileImageInput.value.value = ''
+}
+
+const onAlign = (align: 'left' | 'center' | 'right') => {
+  if (!editor.value) return
+  ;(editor.value.chain().focus() as any)[`setTextAlign`](align).run()
+}
+
+const onToggleHistory = async () => {
+  historyOpen.value = !historyOpen.value
+  if (historyOpen.value) await loadVersions()
+}
+
+const loadVersions = async () => {
+  try {
+    const r = await fetch(`/api/v1/collaborative-docs/${encodeURIComponent(props.docId)}/files`, {
+      headers: { Authorization: `Bearer ${props.token}` },
+    })
+    if (!r.ok) return
+    const json = await r.json()
+    versions.value = (json.data || []) as Array<{ version: number; size_bytes: number; created_at: string }>
+  } catch {
+    versions.value = []
+  }
+}
+
+const formatBytes = (n: number) => {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`
+}
+
+const formatTime = (s: string) => (s ? new Date(s).toLocaleString() : '—')
+
+const onDownloadVersion = async (v: number) => {
+  try {
+    const r = await fetch(`/api/v1/collaborative-docs/${encodeURIComponent(props.docId)}/download/${v}`, {
+      headers: { Authorization: `Bearer ${props.token}` },
+    })
+    if (!r.ok) throw new Error(`status ${r.status}`)
+    const blob = await r.blob()
+    const ab = await blob.arrayBuffer()
+    const buf = new Uint8Array(ab)
+    const url = URL.createObjectURL(new Blob([buf], {
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${props.title || 'collab-doc'}-v${v}.docx`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e: any) {
+    MessagePlugin.error(`下载失败：${e?.message || e}`)
+  }
+}
+
+const onRestoreVersion = async (v: number) => {
+  if (!confirm(`确认将文档恢复到 v${v}？当前未保存的修改会丢失。`)) return
+  try {
+    const r = await fetch(`/api/v1/collaborative-docs/${encodeURIComponent(props.docId)}/download/${v}`, {
+      headers: { Authorization: `Bearer ${props.token}` },
+    })
+    if (!r.ok) throw new Error(`status ${r.status}`)
+    const blob = await r.blob()
+    const bytes = new Uint8Array(await blob.arrayBuffer())
+    doc = await openDocx(bytes)
+    if (editor.value) {
+      editor.value.commands.setContent(paragraphsToContent(doc.paragraphs), false)
+    }
+    patchedMap.clear()
+    MessagePlugin.success(`已恢复到 v${v}`)
+    scheduleSave()
+  } catch (e: any) {
+    MessagePlugin.error(`恢复失败：${e?.message || e}`)
+  }
+}
+
+const refreshAiSelection = () => {
+  // Capture the current TipTap selection's text + position so the AI popover
+  // can show the selected paragraph and we know which block.docxIndex to
+  // patch when the user accepts.
+  if (!editor.value) {
+    aiOriginal.value = ''
+    return
+  }
+  const { from, to } = editor.value.state.selection
+  if (from === to) {
+    aiOriginal.value = ''
+    aiTargetIndex = null
+    return
+  }
+  const text = editor.value.state.doc.textBetween(from, to, '\n')
+  if (!text.trim()) {
+    aiOriginal.value = ''
+    aiTargetIndex = null
+    return
+  }
+  aiOriginal.value = text
+  // Walk back to find the closest paragraph's docx-index attribute.
+  const $from = editor.value.state.doc.resolve(from)
+  for (let d = $from.depth; d >= 0; d--) {
+    const node = $from.node(d)
+    if (node?.type?.name === 'paragraph' || node?.type?.name === 'heading') {
+      const idx = node.attrs?.['data-docx-index']
+      aiTargetIndex = typeof idx === 'number' ? idx : idx ? Number(idx) : null
+      break
+    }
+  }
+}
+
+const onOpenAi = () => {
+  refreshAiSelection()
+  if (!aiOriginal.value) {
+    MessagePlugin.warning('请先在文档中选中要润色的段落')
+    return
+  }
+  aiAnchor.value = { x: window.innerWidth / 2 - 240, y: 120 }
+  aiOpen.value = true
+}
+
+const onAcceptAi = (replacement: string) => {
+  aiOpen.value = false
+  if (!editor.value || aiTargetIndex == null || !doc) return
+  // Apply the replacement to the matching docx-engine block and re-sync
+  // the editor's underlying paragraph via editor.commands.
+  const targetIdx: number = aiTargetIndex
+  patchedMap.set(targetIdx, replacement)
+  doc.paragraphs[targetIdx].text = replacement
+  // Replace selection text in TipTap.
+  const ed = editor.value
+  const { from, to } = ed.state.selection
+  ed.chain().focus().insertContentAt({ from, to }, replacement).run()
+  scheduleSave()
 }
 
 const setup = async () => {
@@ -193,6 +516,17 @@ const initEditor = (paragraphs: DocxAdapterParagraph[]) => {
     extensions: [
       StarterKit.configure({ history: false }),
       Link,
+      Underline,
+      Highlight.configure({ multicolor: true }),
+      Color,
+      TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      Table.configure({ resizable: true, HTMLAttributes: { class: 'collab-doc-pro__table' } }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      Image.configure({ inline: false, allowBase64: true, HTMLAttributes: { class: 'collab-doc-pro__image' } }),
+      TaskList,
+      TaskItem.configure({ nested: true }),
       ...(ydoc ? [Collaboration.configure({ document: ydoc, field: 'docx-body' })] : []),
       ...(ydoc && handle ? [CollaborationCursor.configure({
         provider: handle.provider,
@@ -201,6 +535,12 @@ const initEditor = (paragraphs: DocxAdapterParagraph[]) => {
     ],
     content: paragraphsToContent(paragraphs),
     onUpdate: ({ editor: ed }) => onEditorUpdate(ed),
+    onSelectionUpdate: ({ editor: ed }) => {
+      // ed is the tiptap core Editor which exposes the same .state API
+      // as the vue-3 wrapper we hold in editor.value.
+      void ed
+      refreshAiSelection()
+    },
   })
 }
 
@@ -238,7 +578,7 @@ const paragraphsToContent = (paragraphs: DocxAdapterParagraph[]) => {
   return { type: 'doc', content: nodes }
 }
 
-const onEditorUpdate = (ed: Editor) => {
+const onEditorUpdate = (ed: import('@tiptap/core').Editor) => {
   if (!doc) {
     // First-time empty edit: we don't yet have a parsed.docx, so the save
     // path will fall back to building a blank docx from TipTap text.
@@ -315,12 +655,15 @@ const flushSave = async (immediate: boolean) => {
       return
     }
   }
+  const curDoc = doc
   saveLabel.value = '保存中...'
   try {
     const patched = Array.from(patchedMap.entries()).map(([docxIndex, xml]) => ({
-      docxIndex, xml, text: doc.paragraphs[docxIndex]?.text || '',
+      docxIndex, xml, text: curDoc.paragraphs[docxIndex]?.text || '',
     }))
-    const bytes = await saveDocxBytes(doc, patched)
+    const bytes = editor.value
+      ? await saveDocxBytesWithImages(curDoc, editor.value.getJSON() as any)
+      : await saveDocxBytes(curDoc, patched)
     patchedMap.clear()
     await uploadCollabDocBytes(props.docId, bytes, `${props.title || 'collab-doc'}.docx`)
     saveLabel.value = immediate ? '已保存' : '自动保存'
@@ -398,3 +741,14 @@ onBeforeUnmount(teardown)
 .collab-doc-pro__loading, .collab-doc-pro__error { padding: 24px; }
 .collab-doc-pro__error { color: var(--td-error-color-7); }
 </style>
+.collab-doc-pro__table { border-collapse: collapse; margin: 12px 0; width: 100%; table-layout: fixed; }
+.collab-doc-pro__table th, .collab-doc-pro__surface :deep(table th),
+.collab-doc-pro__surface :deep(table td) { border: 1px solid var(--td-component-stroke, #e7e7e7); padding: 6px 10px; vertical-align: top; min-width: 60px; }
+.collab-doc-pro__surface :deep(table th) { background: var(--td-bg-color-container, #f7f7f7); font-weight: 600; }
+.collab-doc-pro__surface :deep(.selectedCell) { background: rgba(88, 166, 255, 0.12); }
+.collab-doc-pro__image, .collab-doc-pro__surface :deep(img) { max-width: 100%; height: auto; border-radius: 4px; margin: 8px 0; }
+.collab-doc-pro__surface :deep(ul[data-type="taskList"]) { list-style: none; padding-left: 0; }
+.collab-doc-pro__surface :deep(ul[data-type="taskList"] li) { display: flex; gap: 6px; align-items: flex-start; }
+.collab-doc-pro__surface :deep(ul[data-type="taskList"] li > label) { flex: 0 0 auto; margin-top: 4px; }
+.collab-doc-pro__surface :deep(ul[data-type="taskList"] li > div) { flex: 1 1 auto; }
+.collab-doc-pro__surface :deep(mark) { background: #fff3a3; padding: 0 2px; border-radius: 2px; }
