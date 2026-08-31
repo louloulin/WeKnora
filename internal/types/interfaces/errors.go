@@ -18,3 +18,10 @@ var (
 var (
 	ErrInlineAIUnavailable = errors.New("inline ai: model unavailable")
 )
+
+// Audit export sentinels. The service translates "row not found"
+// into ErrAuditExportNotFound so the handler maps to 404 cleanly.
+var (
+	ErrAuditExportNotFound = errors.New("audit export not found")
+	ErrAuditExportForbidden = errors.New("audit export forbidden")
+)

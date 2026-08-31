@@ -2867,6 +2867,67 @@ export default {
       tooLong: 'Selection is too long (max 16 KB)',
       applyFailed: 'Could not apply the result to the document'
     },
+    auditExport: {
+      title: 'Audit export',
+      description: 'Generate CSV / JSON exports of the tenant audit trail. Owner / Admin only.',
+      createBtn: 'New export',
+      formatLabel: 'Format',
+      format: {
+        csv: 'CSV (Excel-friendly)',
+        json: 'JSON (jq / scripts)'
+      },
+      filterLabel: 'Filter',
+      filter: {
+        startTime: 'Start time',
+        endTime: 'End time',
+        action: 'Action',
+        actionPlaceholder: 'e.g. rbac.member_added',
+        outcome: 'Outcome',
+        actor: 'Actor user ID',
+        scopeType: 'Scope type',
+        scopeID: 'Scope ID'
+      },
+      maxRowsLabel: 'Max rows',
+      maxRowsHint: 'Cap rows to keep the payload small. Default 100,000.',
+      run: 'Generate export',
+      running: 'Generating...',
+      listTitle: 'Recent exports',
+      empty: 'No exports yet. Generate one to begin.',
+      columns: {
+        id: 'ID',
+        format: 'Format',
+        status: 'Status',
+        rowCount: 'Rows',
+        byteSize: 'Bytes',
+        createdAt: 'Created',
+        expiresAt: 'Expires'
+      },
+      status: {
+        pending: 'pending',
+        running: 'running',
+        succeeded: 'succeeded',
+        failed: 'failed'
+      },
+      downloadAgain: 'Re-download',
+      invalidFormat: 'Format must be csv or json',
+      invalidTimeRange: 'End time must be after start time',
+      report: {
+        title: 'Compliance summary',
+        windowLabel: 'Window (days)',
+        run: 'Generate report',
+        totalEvents: 'Total events',
+        success: 'Success',
+        denied: 'Denied',
+        failed: 'Failed',
+        uniqueActors: 'Unique actors',
+        topActions: 'Top actions',
+        topActors: 'Top actors',
+        complianceStatus: 'Compliance status',
+        statusOk: 'OK',
+        statusReview: 'Needs review',
+        statusViolation: 'Potential violation'
+      }
+    },
     wikiBrowser: {
       editBtn: 'Edit',
       historyBtn: 'History',

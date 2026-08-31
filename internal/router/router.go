@@ -100,6 +100,7 @@ type RouterParams struct {
 	WikiSearchV2Handler          *handler.WikiSearchV2Handler
 	WikiCommentHandler            *handler.WikiCommentHandler
 	InlineAIHandler              *handler.InlineAIHandler
+	AuditExportHandler          *handler.AuditExportHandler
 	MemoryHandler                *handler.MemoryHandler
 	// CitationLogHandler — Build #30 B4. Wired optionally so the
 	// citation-log route is registered when the handler is present.
@@ -313,6 +314,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterChunkerDebugRoutes(v1, rbacGuards)
 
 		RegisterInlineAIRoutes(v1, params.InlineAIHandler)
+		RegisterAuditExportRoutes(v1, params.AuditExportHandler, rbacGuards)
 		// Fail fast if any declared API-key policy points at a route
 		// template that does not actually exist (typo / path drift). A
 		// stale template would silently 403 every API key on that route,

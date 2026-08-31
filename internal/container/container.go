@@ -354,6 +354,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		return checker
 	}))
 	must(container.Provide(service.NewAuditLogService))
+	// Audit exports (v0.7.25 Build #24 / G04) — on-demand CSV/JSON
+	// exports of the audit_logs table + monthly compliance summary.
+	// Owner / Admin only — guarded by the route group's rbac chain.
+	must(container.Provide(repository.NewAuditExportRepository))
+	must(container.Provide(service.NewAuditExportService))
+	must(container.Provide(handler.NewAuditExportHandler))
 	must(container.Provide(service.NewAuditLogRetentionRunner))
 	must(container.Provide(service.NewKnowledgeBaseService))
 	must(container.Provide(service.NewOrganizationService))

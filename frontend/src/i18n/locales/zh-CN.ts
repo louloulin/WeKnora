@@ -3743,6 +3743,67 @@ export default {
       tooLong: '选中文本过长（最大 16 KB）',
       applyFailed: '结果无法应用到文档'
     },
+    auditExport: {
+      title: '审计导出',
+      description: '生成 CSV / JSON 格式的租户审计轨迹导出。仅 Owner / Admin 可用。',
+      createBtn: '新建导出',
+      formatLabel: '格式',
+      format: {
+        csv: 'CSV（Excel 友好）',
+        json: 'JSON（jq / 脚本）'
+      },
+      filterLabel: '过滤条件',
+      filter: {
+        startTime: '开始时间',
+        endTime: '结束时间',
+        action: '操作',
+        actionPlaceholder: '例如 rbac.member_added',
+        outcome: '结果',
+        actor: '操作用户 ID',
+        scopeType: '作用域类型',
+        scopeID: '作用域 ID'
+      },
+      maxRowsLabel: '最大行数',
+      maxRowsHint: '限制导出行数以保持负载可控，默认 100,000。',
+      run: '生成导出',
+      running: '生成中...',
+      listTitle: '最近导出',
+      empty: '暂无导出任务，先生成一个吧。',
+      columns: {
+        id: 'ID',
+        format: '格式',
+        status: '状态',
+        rowCount: '行数',
+        byteSize: '字节数',
+        createdAt: '创建时间',
+        expiresAt: '过期时间'
+      },
+      status: {
+        pending: '等待中',
+        running: '运行中',
+        succeeded: '成功',
+        failed: '失败'
+      },
+      downloadAgain: '重新下载',
+      invalidFormat: '格式必须为 csv 或 json',
+      invalidTimeRange: '结束时间必须晚于开始时间',
+      report: {
+        title: '合规摘要',
+        windowLabel: '时间窗口（天）',
+        run: '生成报告',
+        totalEvents: '事件总数',
+        success: '成功',
+        denied: '拒绝',
+        failed: '失败',
+        uniqueActors: '独立操作者',
+        topActions: '高频操作',
+        topActors: '高频操作者',
+        complianceStatus: '合规状态',
+        statusOk: '正常',
+        statusReview: '需关注',
+        statusViolation: '潜在违规'
+      }
+    },
     wikiBrowser: {
       editBtn: '编辑',
       historyBtn: '历史',
