@@ -2671,6 +2671,11 @@ export default {
       boardEmpty: 'No groupable property exists in the current page set yet.',
       boardColEmpty: 'Empty',
       boardUngrouped: 'Ungrouped',
+          viewCalendar: 'Calendar',
+      calendarDateLabel: 'Date field:',
+      calendarDatePlaceholder: 'Choose a date property',
+      calendarEmpty: 'Pick a date property above to populate the calendar.',
+      calendarMore: 'more',
     },
     activity: {
       title: 'Activity',

@@ -35,6 +35,10 @@
             <t-icon name="kanban" size="14px" />
             <span>{{ $t('knowledgeEditor.wikiDatabaseView.viewBoard') }}</span>
           </t-radio-button>
+          <t-radio-button value="calendar">
+            <t-icon name="calendar" size="14px" />
+            <span>{{ $t('knowledgeEditor.wikiDatabaseView.viewCalendar') }}</span>
+          </t-radio-button>
         </t-radio-group>
       </div>
     </header>
@@ -114,6 +118,57 @@
         </tbody>
       </table>
     </div>
+    </div>
+    <div v-else-if="viewMode === 'calendar'" class="wiki-database-view__calendar-wrap">
+      <div class="wiki-database-view__calendar-toolbar">
+        <span class="wiki-database-view__calendar-label">{{ $t('knowledgeEditor.wikiDatabaseView.calendarDateLabel') }}</span>
+        <t-select
+          v-model="calendarDateProp"
+          size="small"
+          :placeholder="$t('knowledgeEditor.wikiDatabaseView.calendarDatePlaceholder')"
+          clearable
+        >
+          <t-option
+            v-for="prop in calendarDateProps"
+            :key="prop.id"
+            :value="prop.id"
+            :label="prop.name"
+          />
+        </t-select>
+        <div class="wiki-database-view__calendar-nav">
+          <t-button size="small" variant="text" @click="shiftCalendarMonth(-1)">
+            <t-icon name="chevron-left" />
+          </t-button>
+          <span class="wiki-database-view__calendar-month">{{ calendarMonthLabel }}</span>
+          <t-button size="small" variant="text" @click="shiftCalendarMonth(1)">
+            <t-icon name="chevron-right" />
+          </t-button>
+        </div>
+      </div>
+      <div v-if="!calendarDateProp" class="wiki-database-view__calendar-empty">
+        {{ $t('knowledgeEditor.wikiDatabaseView.calendarEmpty') }}
+      </div>
+      <div v-else class="wiki-database-view__calendar-grid">
+        <div v-for="cell in calendarCells" :key="cell.key" class="wiki-database-view__calendar-cell" :class="{ 'wiki-database-view__calendar-cell--outside': cell.outside }">
+          <div class="wiki-database-view__calendar-cell-header">
+            <span class="wiki-database-view__calendar-cell-date">{{ cell.day }}</span>
+            <span v-if="cell.pages.length > 0" class="wiki-database-view__calendar-cell-count">{{ cell.pages.length }}</span>
+          </div>
+          <div class="wiki-database-view__calendar-cell-body">
+            <article
+              v-for="page in cell.pages.slice(0, 3)"
+              :key="page.id"
+              class="wiki-database-view__calendar-card"
+              @click="$emit('select', page.slug)"
+            >
+              <h5 class="wiki-database-view__calendar-card-title">{{ page.title }}</h5>
+            </article>
+            <div v-if="cell.pages.length > 3" class="wiki-database-view__calendar-cell-more">
+              +{{ cell.pages.length - 3 }} {{ $t('knowledgeEditor.wikiDatabaseView.calendarMore') }}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
     <div v-else-if="viewMode === 'board'" class="wiki-database-view__board-wrap">
       <div class="wiki-database-view__board-toolbar">
@@ -206,7 +261,7 @@ const sortKey = ref<string>('title')
 const sortDir = ref<SortDir>('asc')
 
 // View mode: 'table' (rows × cols) or 'board' (grouped by select property)
-const viewMode = ref<'table' | 'board'>('table')
+const viewMode = ref<'table' | 'board' | 'calendar'>('table')
 // Selectable properties for board grouping: must be 'select' or 'multi-select'
 const boardGroupBy = ref<string>('status')
 
@@ -352,6 +407,70 @@ const boardColumns = computed<BoardColumn[]>(() => {
     })
   }
   return columns
+})
+
+interface CalendarCell {
+  key: string
+  day: number
+  outside: boolean
+  date: Date
+  pages: WikiPage[]
+}
+
+const calendarDateProp = ref<string>('')
+const calendarCursor = ref<Date>(new Date())
+
+const calendarDateProps = computed(() =>
+  propertyColumns.value.filter(p => p.type === 'date')
+)
+
+const calendarMonthLabel = computed(() => {
+  const d = calendarCursor.value
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+})
+
+function shiftCalendarMonth(delta: number): void {
+  const next = new Date(calendarCursor.value)
+  next.setMonth(next.getMonth() + delta)
+  calendarCursor.value = next
+}
+
+const calendarCells = computed<CalendarCell[]>(() => {
+  const propId = calendarDateProp.value
+  const cursor = calendarCursor.value
+  const year = cursor.getFullYear()
+  const month = cursor.getMonth()
+  // First day of the month, then back up to Monday (ISO).
+  const first = new Date(year, month, 1)
+  const offset = (first.getDay() + 6) % 7  // Monday = 0
+  const gridStart = new Date(year, month, 1 - offset)
+  const cells: CalendarCell[] = []
+  const filtered = props.pages.filter(matchesFilter)
+  // Bucket pages by their date string (yyyy-mm-dd). Only include pages
+  // where the date is set; pages without a date are excluded.
+  const buckets: Record<string, WikiPage[]> = {}
+  if (propId) {
+    for (const p of filtered) {
+      const raw = readPropertyValues(propertyColumns.value, p.page_metadata || {})[propId]
+      if (typeof raw !== 'string' || !raw) continue
+      const key = raw.slice(0, 10)  // yyyy-mm-dd
+      if (!buckets[key]) buckets[key] = []
+      buckets[key].push(p)
+    }
+  }
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(gridStart)
+    d.setDate(gridStart.getDate() + i)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    cells.push({
+      key,
+      day: d.getDate(),
+      outside: d.getMonth() !== month,
+      date: d,
+      pages: buckets[key] || [],
+    })
+  }
+  return cells
 })
 
 function formatRelativeTime(value: string | number | Date | null | undefined): string {
@@ -594,5 +713,103 @@ function formatRelativeTime(value: string | number | Date | null | undefined): s
 }
 .wiki-database-view__board-card-time {
   white-space: nowrap;
+}
+.wiki-database-view__calendar-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 2px 10px;
+}
+.wiki-database-view__calendar-label {
+  font-size: 12px;
+  color: var(--td-text-color-secondary, #666);
+}
+.wiki-database-view__calendar-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.wiki-database-view__calendar-month {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 80px;
+  text-align: center;
+}
+.wiki-database-view__calendar-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--td-text-color-placeholder, #999);
+  font-size: 13px;
+}
+.wiki-database-view__calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  border-top: 1px solid var(--td-component-stroke, #e7e7e7);
+  border-left: 1px solid var(--td-component-stroke, #e7e7e7);
+}
+.wiki-database-view__calendar-cell {
+  background: var(--td-bg-color-container, #fff);
+  border-right: 1px solid var(--td-component-stroke, #e7e7e7);
+  border-bottom: 1px solid var(--td-component-stroke, #e7e7e7);
+  min-height: 90px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.wiki-database-view__calendar-cell--outside {
+  background: var(--td-bg-color-secondarycontainer, #fafbfc);
+  color: var(--td-text-color-placeholder, #999);
+}
+.wiki-database-view__calendar-cell-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+}
+.wiki-database-view__calendar-cell-date {
+  font-weight: 700;
+}
+.wiki-database-view__calendar-cell-count {
+  background: var(--td-brand-color-light, #e6f4ff);
+  color: var(--td-brand-color, #1677ff);
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 10px;
+}
+.wiki-database-view__calendar-cell-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  overflow: hidden;
+}
+.wiki-database-view__calendar-card {
+  background: var(--td-bg-color-secondarycontainer, #f3f3f3);
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  border-left: 3px solid var(--td-brand-color, #1677ff);
+}
+.wiki-database-view__calendar-card:hover {
+  background: var(--td-brand-color-light, #e6f4ff);
+}
+.wiki-database-view__calendar-card-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.wiki-database-view__calendar-cell-more {
+  font-size: 10px;
+  color: var(--td-text-color-secondary, #666);
+  padding: 2px 6px;
 }
 </style>
