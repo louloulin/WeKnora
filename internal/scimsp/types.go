@@ -24,9 +24,9 @@ const ContentType = "application/scim+json"
 // tenant, and case-sensitive in the RFC — we mirror that.
 type Name struct {
 	Formatted       string `json:"formatted,omitempty"`
-	FamilyName     string `json:"familyName,omitempty"`
-	GivenName      string `json:"givenName,omitempty"`
-	MiddleName     string `json:"middleName,omitempty"`
+	FamilyName      string `json:"familyName,omitempty"`
+	GivenName       string `json:"givenName,omitempty"`
+	MiddleName      string `json:"middleName,omitempty"`
 	HonorificPrefix string `json:"honorificPrefix,omitempty"`
 	HonorificSuffix string `json:"honorificSuffix,omitempty"`
 }
@@ -46,14 +46,14 @@ type Email struct {
 // from the wire shape — emitting empty arrays signals "supported,
 // empty" to enterprise IdPs and we do not yet support them.
 type User struct {
-	Schemas      []string `json:"schemas"`
-	ID           string    `json:"id"`
-	ExternalID   string    `json:"externalId,omitempty"`
-	UserName     string    `json:"userName"`
-	Name         *Name     `json:"name,omitempty"`
-	DisplayName  string    `json:"displayName,omitempty"`
-	Emails       []Email   `json:"emails,omitempty"`
-	Active       bool      `json:"active"`
+	Schemas     []string `json:"schemas"`
+	ID          string   `json:"id"`
+	ExternalID  string   `json:"externalId,omitempty"`
+	UserName    string   `json:"userName"`
+	Name        *Name    `json:"name,omitempty"`
+	DisplayName string   `json:"displayName,omitempty"`
+	Emails      []Email  `json:"emails,omitempty"`
+	Active      bool     `json:"active"`
 	// Meta is required by RFC 7643 §4.1; Location points at the
 	// canonical URL so Okta/Azure AD can resolve the resource.
 	Meta *Meta `json:"meta"`
@@ -66,10 +66,10 @@ type User struct {
 // members == tenant memberships.
 type Group struct {
 	Schemas     []string `json:"schemas"`
-	ID          string    `json:"id"`
-	DisplayName string    `json:"displayName"`
-	Members     []Member  `json:"members"`
-	Meta        *Meta     `json:"meta"`
+	ID          string   `json:"id"`
+	DisplayName string   `json:"displayName"`
+	Members     []Member `json:"members"`
+	Meta        *Meta    `json:"meta"`
 }
 
 // Member references a User inside a Group.
@@ -130,15 +130,15 @@ var ErrUnsupportedFilterOp = errors.New("scim: unsupported filter operator")
 
 // PatchOp is one operation in a PATCH request body (RFC 7644 §3.5.2).
 type PatchOp struct {
-	Op    string `json:"op"`          // "add" | "remove" | "replace"
+	Op    string `json:"op"` // "add" | "remove" | "replace"
 	Path  string `json:"path,omitempty"`
 	Value any    `json:"value,omitempty"`
 }
 
 // PatchRequest is the full PATCH body.
 type PatchRequest struct {
-	Schemas      []string  `json:"schemas"`
-	Operations   []PatchOp `json:"Operations"`
+	Schemas    []string  `json:"schemas"`
+	Operations []PatchOp `json:"Operations"`
 }
 
 // ServiceProviderConfig is the discovery document exposed at

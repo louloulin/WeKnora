@@ -19,14 +19,14 @@ import (
 
 // SCIM errors surfaced to the handler.
 var (
-	ErrSCIMUserNotFound       = errors.New("scim: user not found")
+	ErrSCIMUserNotFound      = errors.New("scim: user not found")
 	ErrSCIMUserAlreadyExists = errors.New("scim: user already exists")
 )
 
 // SCIM errors mapped from the auth hot path. The handler translates
 // each into a 401 response with the matching scimType.
 var (
-	ErrSCIMTokenInvalid     = errors.New("scim: token invalid")
+	ErrSCIMTokenInvalid      = errors.New("scim: token invalid")
 	ErrSCIMTokenUnauthorized = errors.New("scim: token missing or malformed")
 )
 
@@ -181,8 +181,8 @@ func (s *SCIMSyncLogService) List(ctx context.Context, tenantID uint64, limit in
 // the existing userService. We bridge the SCIM wire model to the
 // local types.User by reusing the same JIT/lookup helpers.
 type SCIMUserService struct {
-	users   *userService
-	logSvc  *SCIMSyncLogService
+	users  *userService
+	logSvc *SCIMSyncLogService
 }
 
 // NewSCIMUserService constructs the service.
