@@ -1,0 +1,776 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WeKnora v0.7.20 全量对标差距分析 — 飞书/Notion/Confluence/Loop/Glean/Coda</title>
+<style>
+:root{--bg:#0e1117;--panel:#161b22;--line:#30363d;--ink:#e6edf3;--mute:#9da7b3;--accent:#58a6ff;--good:#3fb950;--warn:#d29922;--bad:#f85149;--p0:#f85149;--p1:#d29922;--p2:#58a6ff;--p3:#9da7b3;}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Roboto,sans-serif;font-size:14px;line-height:1.65}
+.wrap{max-width:1340px;margin:0 auto;padding:32px 28px 96px}
+header.hero{padding:24px 0 18px;border-bottom:1px solid var(--line);margin-bottom:24px}
+header.hero h1{font-size:28px;margin:0 0 6px;font-weight:700}
+header.hero p{margin:0;color:var(--mute);font-size:13px}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:var(--line);color:var(--ink);margin-left:8px}
+.badge.p0{background:rgba(248,81,73,.15);color:var(--p0)}
+.badge.p1{background:rgba(210,153,34,.15);color:var(--p1)}
+.badge.p2{background:rgba(88,166,255,.15);color:var(--p2)}
+.badge.p3{background:rgba(157,167,179,.15);color:var(--p3)}
+h2{font-size:21px;margin:36px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+h3{font-size:16px;margin:22px 0 8px;color:var(--ink)}
+h4{font-size:14px;margin:16px 0 6px;color:var(--mute);font-weight:600}
+.muted{color:var(--mute)}
+.cards{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.card .label{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em}
+.card .value{font-size:24px;font-weight:700;margin:4px 0 2px}
+.card .delta{font-size:12px;color:var(--mute)}
+.card .value.good{color:var(--good)}
+.card .value.warn{color:var(--warn)}
+.card .value.bad{color:var(--bad)}
+.card .value.accent{color:var(--accent)}
+table.matrix{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0 16px}
+table.matrix th,table.matrix td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+table.matrix th{background:#1c2128;font-weight:600}
+table.matrix tr:hover td{background:rgba(88,166,255,.04)}
+table.matrix td.center,table.matrix th.center{text-align:center}
+table.matrix td.num{text-align:right;font-variant-numeric:tabular-nums}
+.yes{color:var(--good);font-weight:600}
+.no{color:var(--bad);font-weight:600}
+.partial{color:var(--warn);font-weight:600}
+.bar{background:var(--line);border-radius:4px;overflow:hidden;height:10px}
+.bar>span{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--good))}
+.bar-cell{display:flex;align-items:center;gap:6px;min-width:130px}
+.bar-cell .num{font-variant-numeric:tabular-nums;font-size:11px;min-width:34px}
+.phase{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:0 8px 8px 0;padding:12px 16px;margin:12px 0}
+.phase.p0{border-left-color:var(--p0)}
+.phase.p1{border-left-color:var(--p1)}
+.phase.p2{border-left-color:var(--p2)}
+.phase .label{font-size:11px;color:var(--mute);margin-bottom:4px;letter-spacing:.04em}
+.phase h3{margin:0 0 6px}
+ul.tight,ol.tight{margin:6px 0;padding-left:18px}
+ul.tight li,ol.tight li{margin:2px 0}
+code,kbd,pre{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;font-size:12.5px}
+code{background:rgba(110,118,129,.3);padding:1px 5px;border-radius:4px}
+pre{background:#0b0f14;border:1px solid var(--line);border-radius:6px;padding:10px 12px;overflow-x:auto}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.callout{background:rgba(88,166,255,.08);border-left:3px solid var(--accent);padding:8px 12px;border-radius:0 6px 6px 0;margin:10px 0;font-size:13px}
+.callout.warn{background:rgba(210,153,34,.08);border-left-color:var(--warn)}
+.callout.bad{background:rgba(248,81,73,.08);border-left-color:var(--bad)}
+.callout.good{background:rgba(63,185,80,.08);border-left-color:var(--good)}
+footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--line);color:var(--mute);font-size:12px}
+.heat-good{background:rgba(63,185,80,.18)}
+.heat-warn{background:rgba(210,153,34,.15)}
+.heat-bad{background:rgba(248,81,73,.18)}
+.heat-mut{background:rgba(110,118,129,.18)}
+.toc{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:16px 0}
+.toc ol{margin:6px 0;padding-left:20px}
+.toc a{color:var(--ink)}
+.tag{display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-left:4px;background:var(--line);color:var(--mute)}
+.tag.p0{background:rgba(248,81,73,.2);color:var(--p0)}
+.tag.p1{background:rgba(210,153,34,.2);color:var(--p1)}
+.tag.p2{background:rgba(88,166,255,.2);color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hero">
+<h1>WeKnora v0.7.20 全量对标差距分析<span class="badge p1">完整对标 · 6 大产品</span></h1>
+<p>对标 Notion / 飞书文档 / Confluence / Microsoft Loop / Glean / Coda · 生成于 2026-08-31 · 数据采集口径：当前分支 + 13 个 worktree + v0.7.20 已合并</p>
+</header>
+
+<div class="toc">
+<strong>目录</strong>
+<ol>
+<li><a href="#summary">执行摘要 · 综合对标完成度</a></li>
+<li><a href="#codebase">代码规模（实数据）</a></li>
+<li><a href="#products">六大顶级产品能力矩阵</a></li>
+<li><a href="#gaps">Top 10 关键差距（P0/P1/P2）</a></li>
+<li><a href="#depth">深度差距分析（飞书文档对标）</a></li>
+<li><a href="#modules">22 模块进度条</a></li>
+<li><a href="#plan">90 天路线图（v0.7.21 → v0.7.25）</a></li>
+<li><a href="#v0721">v0.7.21 详细设计：Custom Agents</a></li>
+<li><a href="#v0722">v0.7.22 详细设计：DLP + AuthZ Admin UI</a></li>
+<li><a href="#v0723">v0.7.23 详细设计：WeKnora Base 多维表</a></li>
+<li><a href="#v0724-v25">v0.7.24-v25 SDK + 多地域</a></li>
+<li><a href="#risk">风险与缓解</a></li>
+<li><a href="#kpi">KPI 验收</a></li>
+</ol>
+</div>
+
+<section id="summary">
+<h2>一、执行摘要</h2>
+<div class="callout">
+<b>WeKnora v0.7.20 + worktree 已实现能力综合对标顶级 KB 产品（Notion / 飞书 / Confluence / Loop / Glean / Coda）约 91%</b>。
+最大缺口是 <b>AI Custom Agents（飞书妙搭 / Notion Custom Agents）</b>、<b>多维表（飞书多维表格 / Notion Database 13 types）</b>、<b>DLP 数据安全</b>、<b>SDK + 插件签名生态</b>、<b>多地域容灾</b>。
+本报告基于六大产品公开产品页、定价页、安全白皮书与 changelog 摘要，给出 v0.7.21-v0.7.25 的完整 5 个月路线图和 v0.7.21 的代码级详细设计。
+</div>
+
+<div class="cards">
+<div class="card"><div class="label">综合对标完成度</div><div class="value accent">91%</div><div class="delta">v0.7.20 Synced Blocks 合并后</div></div>
+<div class="card"><div class="label">核心产品能力</div><div class="value good">92%</div><div class="delta">RAG/Wiki/Agent/MCP/IM/Eval</div></div>
+<div class="card"><div class="label">企业级 IAM + AuthZ</div><div class="value warn">82%</div><div class="delta">SAML/LDAP/SCIM/MFA/CA/GeoIP/AuthZ-3</div></div>
+<div class="card"><div class="label">协作实时态</div><div class="value warn">70%</div><div class="delta">Yjs 100% + 同步块 40%（待 Tiptap）</div></div>
+<div class="card"><div class="label">AI 自动化</div><div class="value bad">30%</div><div class="delta">Custom Agents 待 v0.7.21</div></div>
+<div class="card"><div class="label">数据安全 (DLP)</div><div class="value bad">15%</div><div class="delta">DLP 待 v0.7.22</div></div>
+<div class="card"><div class="label">多维表 / Database</div><div class="value bad">20%</div><div class="delta">基础版 v0.7.5，完整版 v0.7.23</div></div>
+<div class="card"><div class="label">SDK + Plugin 生态</div><div class="value bad">25%</div><div class="delta">JS SDK 待 v0.7.24</div></div>
+<div class="card"><div class="label">多地域 / 容灾</div><div class="value bad">15%</div><div class="delta">Helm 单 region · v0.7.25</div></div>
+<div class="card"><div class="label">前端 UI 成熟度</div><div class="value warn">80%</div><div class="delta">100 Vue 组件 + 4 语言 i18n</div></div>
+</div>
+
+<h3>关键结论</h3>
+<ol class="tight">
+<li><b>飞书文档是 WeKnora 最接近的对标对象</b>：同样定位"知识管理 + AI 助手 + 协作"的一体化平台；WeKnora 在 RAG 与企业级方面领先，差距在 <b>多维表格（Bitable）</b> 与 <b>妙搭（低代码 Agents）</b>。</li>
+<li><b>v0.7.20 Synced Blocks 已落地</b>（commit <code>287e1960</code>），后端 100%、前端 40%；Tiptap 渲染待 v0.7.20.x。</li>
+<li><b>v0.7.21 是 P1 优先级</b>：Custom Agents / Workers 是飞书妙搭、Notion Custom Agents、Glean Agents、Coda Packs 的通用对标，预计 30 天 / +3,000 行。</li>
+<li><b>v0.7.22 解决企业安全合规</b>：DLP（数据丢失防护）+ AuthZ Admin UI 是金融/医疗/政企的硬性要求。</li>
+<li><b>v0.7.23 完善多维表</b>：飞书多维表格（Bitable）是飞书增长最快的功能；WeKnora 现有 WikiDatabaseView 只有 5 视图，需要升级到 formula / rollup / linked record / automation。</li>
+<li><b>v0.7.24-v25 完善生态与基础设施</b>：JS/Python/Go SDK + 插件签名 + 多地域容灾。</li>
+</ol>
+</section>
+
+<section id="codebase">
+<h2>二、代码规模（实数据）</h2>
+<table class="matrix">
+<tr><th>维度</th><th class="num">当前分支 + worktree</th></tr>
+<tr><td>Go 文件数 / 代码行</td><td class="num">2,056 / 541,588</td></tr>
+<tr><td>Vue / TS 文件 / 行</td><td class="num">542 / 236,108</td></tr>
+<tr><td>Service 文件</td><td class="num">306</td></tr>
+<tr><td>Handler 文件</td><td class="num">125</td></tr>
+<tr><td>迁移文件</td><td class="num">226 (Postgres) + 39 (SQLite) · 最新 113</td></tr>
+<tr><td>API 路由</td><td class="num">460+</td></tr>
+<tr><td>单元测试</td><td class="num">~1,800 / 90%+ 通过</td></tr>
+<tr><td>i18n locales</td><td class="num">zh-CN / en-US / ko-KR / ru-RU（待补 ja-JP / zh-TW）</td></tr>
+<tr><td>Git 总 commits</td><td class="num">2,939</td></tr>
+<tr><td>worktree</td><td class="num">13 个（含 v0.7.20-synced-blocks）</td></tr>
+</table>
+</section>
+
+<section id="products">
+<h2>三、六大顶级产品能力矩阵（公开资料 · 2026-08）</h2>
+<table class="matrix">
+<thead><tr>
+<th class="num">#</th><th>能力域</th>
+<th class="center">WeKnora<br><span class="muted">v0.7.20</span></th>
+<th class="center">Notion</th>
+<th class="center">飞书<br>文档</th>
+<th class="center">Confluence</th>
+<th class="center">MS Loop</th>
+<th class="center">Glean</th>
+<th class="center">Coda</th>
+</tr></thead>
+<tbody>
+<tr><td class="num">1</td><td>RAG 检索 + 多向量库</td><td class="center"><span class="yes">✅ 10 driver</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="yes">✅ 妙搭 AI</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="no">❌</span></td><td class="center"><span class="yes">✅ 跨 100+</span></td><td class="center"><span class="partial">◐</span></td></tr>
+<tr><td class="num">2</td><td>Wiki 模式 / Pages</td><td class="center"><span class="yes">✅ 54 svc</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅ Spaces</span></td><td class="center"><span class="yes">✅ Loop pages</span></td><td class="center"><span class="no">❌ 只读</span></td><td class="center"><span class="yes">✅ Docs</span></td></tr>
+<tr><td class="num">3</td><td>实时多人协作</td><td class="center"><span class="yes">✅ Yjs</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅ Fluid</span></td><td class="center"><span class="no">❌</span></td><td class="center"><span class="partial">◐</span></td></tr>
+<tr><td class="num">4</td><td>同步块 / Synced Blocks</td><td class="center"><span class="partial">◐ 40%</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅ 同步块</span></td><td class="center"><span class="partial">◐ Macros</span></td><td class="center"><span class="yes">✅ Fluid comp.</span></td><td class="center"><span class="no">❌</span></td><td class="center"><span class="no">❌</span></td></tr>
+<tr><td class="num">5</td><td>Backlinks / 双向链接</td><td class="center"><span class="yes">✅ v0.7.13</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅ 关联文档</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="partial">◐ via index</span></td><td class="center"><span class="partial">◐</span></td></tr>
+<tr><td class="num">6</td><td>多维表 / Database</td><td class="center"><span class="partial">◐ 5 视图</span></td><td class="center"><span class="yes">✅ 13 type</span></td><td class="center"><span class="yes">✅ Bitable</span></td><td class="center"><span class="partial">◐ DB</span></td><td class="center"><span class="no">❌</span></td><td class="center"><span class="no">❌</span></td><td class="center"><span class="yes">✅ Tables</span></td></tr>
+<tr><td class="num">7</td><td>公式 / Rollup / Link</td><td class="center"><span class="bad">0%</span></td><td class="center"><span class="yes">✅ formula2.0</span></td><td class="center"><span class="yes">✅ 智能公式</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="no">❌</span></td><td class="center"><span class="no">❌</span></td><td class="center"><span class="yes">✅</span></td></tr>
+<tr><td class="num">8</td><td>Automation / Buttons</td><td class="center"><span class="bad">0%</span></td><td class="center"><span class="yes">✅ Buttons</span></td><td class="center"><span class="yes">✅ 自动化</span></td><td class="center"><span class="yes">✅ Automation</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="no">❌</span></td><td class="center"><span class="yes">✅ Buttons</span></td></tr>
+<tr><td class="num">9</td><td>AI Custom Agents</td><td class="center"><span class="bad">0%</span></td><td class="center"><span class="yes">✅ 2.5</span></td><td class="center"><span class="yes">✅ 妙搭</span></td><td class="center"><span class="yes">✅ Rovo</span></td><td class="center"><span class="partial">◐ Copilot</span></td><td class="center"><span class="yes">✅ Agents</span></td><td class="center"><span class="yes">✅ Packs</span></td></tr>
+<tr><td class="num">10</td><td>跨应用搜索 (Enterprise Search)</td><td class="center"><span class="bad">20%</span></td><td class="center"><span class="partial">◐ Notion Search</span></td><td class="center"><span class="yes">✅ 搜索</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="yes">✅ 跨 100+</span></td><td class="center"><span class="no">❌</span></td></tr>
+<tr><td class="num">11</td><td>实时 AI 助手 / Q&A</td><td class="center"><span class="yes">✅ AI Assistant</span></td><td class="center"><span class="yes">✅ Notion AI</span></td><td class="center"><span class="yes">✅ 智能伙伴</span></td><td class="center"><span class="yes">✅ Atlassian AI</span></td><td class="center"><span class="yes">✅ Copilot</span></td><td class="center"><span class="yes">✅ Chat</span></td><td class="center"><span class="yes">✅ Cody AI</span></td></tr>
+<tr><td class="num">12</td><td>SAML 2.0 SSO</td><td class="center"><span class="yes">✅ v0.7.6</span></td><td class="center"><span class="yes">✅ Business+</span></td><td class="center"><span class="yes">✅ 旗舰</span></td><td class="center"><span class="yes">✅ via Guard</span></td><td class="center"><span class="yes">✅ Entra</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td></tr>
+<tr><td class="num">13</td><td>SCIM 用户/组同步</td><td class="center"><span class="yes">✅ worktree</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅ Entra</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td></tr>
+<tr><td class="num">14</td><td>LDAP 集成</td><td class="center"><span class="yes">✅ worktree</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td></tr>
+<tr><td class="num">15</td><td>MFA (TOTP)</td><td class="center"><span class="yes">✅ worktree</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅ Entra</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td></tr>
+<tr><td class="num">16</td><td>Conditional Access</td><td class="center"><span class="yes">✅ worktree</span></td><td class="center"><span class="no">❌</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="yes">✅ CA</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="no">❌</span></td></tr>
+<tr><td class="num">17</td><td>GeoIP 访问控制</td><td class="center"><span class="yes">✅ worktree</span></td><td class="center"><span class="no">❌</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="no">❌</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="no">❌</span></td><td class="center"><span class="no">❌</span></td></tr>
+<tr><td class="num">18</td><td>AuthZ 关系元组 (ReBAC)</td><td class="center"><span class="yes">✅ phase-3</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="partial">◐</span></td></tr>
+<tr><td class="num">19</td><td>DLP 数据丢失防护</td><td class="center"><span class="bad">0%</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅ DLP</span></td><td class="center"><span class="yes">✅ Purview</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="no">❌</span></td></tr>
+<tr><td class="num">20</td><td>Legal Hold / 审计追溯</td><td class="center"><span class="bad">0%</span></td><td class="center"><span class="yes">✅ Enterprise</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="no">❌</span></td></tr>
+<tr><td class="num">21</td><td>白标 / Embed</td><td class="center"><span class="yes">✅ 85%</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td></tr>
+<tr><td class="num">22</td><td>Webhooks / API</td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅ 开放平台</span></td><td class="center"><span class="yes">✅ REST</span></td><td class="center"><span class="yes">✅ Graph</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td></tr>
+<tr><td class="num">23</td><td>MCP / 工具生态</td><td class="center"><span class="yes">✅ 90%</span></td><td class="center"><span class="yes">✅ MCP</span></td><td class="center"><span class="yes">✅ 妙搭</span></td><td class="center"><span class="yes">✅ Forge</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅ Packs</span></td></tr>
+<tr><td class="num">24</td><td>插件签名 / Marketplace</td><td class="center"><span class="bad">0%</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅ 应用市场</span></td><td class="center"><span class="yes">✅ Marketplace</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="no">❌</span></td><td class="center"><span class="yes">✅ Gallery</span></td></tr>
+<tr><td class="num">25</td><td>SDK (JS/Py/Go)</td><td class="center"><span class="bad">0%</span></td><td class="center"><span class="yes">✅ JS</span></td><td class="center"><span class="yes">✅ 多语言</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td></tr>
+<tr><td class="num">26</td><td>Mini Program / Mobile</td><td class="center"><span class="partial">◐ 小程序</span></td><td class="center"><span class="yes">✅ Mobile</span></td><td class="center"><span class="yes">✅ 原生 App</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅ Mobile</span></td><td class="center"><span class="yes">✅</span></td></tr>
+<tr><td class="num">27</td><td>Chrome Extension / Web Clipper</td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅ Web Clipper</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="partial">◐</span></td></tr>
+<tr><td class="num">28</td><td>IM 集成（企微/飞书/钉钉）</td><td class="center"><span class="yes">✅ 9 平台</span></td><td class="center"><span class="yes">✅ Slack/Teams</span></td><td class="center"><span class="yes">✅ 自家</span></td><td class="center"><span class="yes">✅ Slack/Teams</span></td><td class="center"><span class="yes">✅ Teams</span></td><td class="center"><span class="yes">✅ Slack/Teams</span></td><td class="center"><span class="yes">✅ Slack</span></td></tr>
+<tr><td class="num">29</td><td>多语言 i18n</td><td class="center"><span class="warn">4 语言</span></td><td class="center"><span class="yes">✅ 30+</span></td><td class="center"><span class="yes">✅ 多</span></td><td class="center"><span class="yes">✅ 12+</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td></tr>
+<tr><td class="num">30</td><td>多地域 / 数据驻留</td><td class="center"><span class="bad">0%</span></td><td class="center"><span class="yes">✅ EU/US</span></td><td class="center"><span class="yes">✅ 全球</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td></tr>
+<tr><td class="num">31</td><td>故障切换 / 灾备</td><td class="center"><span class="bad">0%</span></td><td class="center"><span class="yes">✅ 99.99%</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td></tr>
+<tr><td class="num">32</td><td>SSO Group / Workspace 隔离</td><td class="center"><span class="yes">✅ tenant_id</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td></tr>
+<tr><td class="num">33</td><td>Pub/Sub Webhook</td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td></tr>
+<tr><td class="num">34</td><td>Eval / Benchmark</td><td class="center"><span class="warn">70%</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="no">❌</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="no">❌</span></td></tr>
+<tr><td class="num">35</td><td>可观测性（SLO / Tracing）</td><td class="center"><span class="warn">85%</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td></tr>
+</tbody>
+</table>
+<p class="muted">来源：Notion / Feishu / Confluence / Loop / Glean / Coda 官方产品页、定价页、安全白皮书、2026-08 changelog 摘要。</p>
+</section>
+
+<section id="gaps">
+<h2>四、Top 10 关键差距</h2>
+<table class="matrix">
+<thead><tr>
+<th class="num">#</th><th>差距</th><th>对标产品</th><th>优先级</th><th>预计解决版本</th><th>行数</th></tr></thead>
+<tbody>
+<tr><td class="num">1</td><td><b>Custom Agents / Workers</b><br>触发器、计划任务、工具矩阵、凭据、配额</td><td>飞书妙搭、Notion Custom Agents、Glean Agents、Coda Packs</td><td><span class="tag p0">P0</span></td><td>v0.7.21</td><td class="num">~3,000</td></tr>
+<tr><td class="num">2</td><td><b>DLP 数据丢失防护</b><br>敏感字段识别、policy 版本化、violation 追溯</td><td>飞书安全中心、Microsoft Purview、Confluence DLP</td><td><span class="tag p0">P0</span></td><td>v0.7.22</td><td class="num">~3,000</td></tr>
+<tr><td class="num">3</td><td><b>AuthZ Admin UI</b><br>可视化策略、模拟器、版本管理</td><td>OPA Playground、Styra、Auth0 FGA</td><td><span class="tag p0">P0</span></td><td>v0.7.22</td><td class="num">~1,500</td></tr>
+<tr><td class="num">4</td><td><b>WeKnora Base 多维表</b><br>formula 2.0、rollup、linked record、自动化按钮</td><td>飞书多维表格（Bitable）、Notion Database</td><td><span class="tag p1">P1</span></td><td>v0.7.23</td><td class="num">~4,000</td></tr>
+<tr><td class="num">5</td><td><b>SDK 多语言</b><br>JS/TS、Python、Go + OpenAPI Generator</td><td>Notion SDK、飞书开放平台、Confluence SDK</td><td><span class="tag p1">P1</span></td><td>v0.7.24</td><td class="num">~3,500</td></tr>
+<tr><td class="num">6</td><td><b>插件签名 + Marketplace</b><br>Ed25519 签名、capability 矩阵、兼容矩阵</td><td>VSCode Marketplace、JetBrains Marketplace</td><td><span class="tag p1">P1</span></td><td>v0.7.24</td><td class="num">~2,000</td></tr>
+<tr><td class="num">7</td><td><b>多地域 / 数据驻留</b><br>跨区复制、租户数据驻留标记、故障切换</td><td>Notion EU、AWS 多 region</td><td><span class="tag p2">P2</span></td><td>v0.7.25</td><td class="num">~2,500</td></tr>
+<tr><td class="num">8</td><td><b>同步块前端渲染</b><br>Tiptap SyncBlock 节点、锁定 chip、实时联动</td><td>Notion Synced Block UI、飞书同步块 UI</td><td><span class="tag p0">P0</span></td><td>v0.7.20.x</td><td class="num">~1,100</td></tr>
+<tr><td class="num">9</td><td><b>worktree 批量合入</b><br>10 个 worktree +991 commits / +4,750 files</td><td>—</td><td><span class="tag p0">P0</span></td><td>v0.7.19.x</td><td class="num">—</td></tr>
+<tr><td class="num">10</td><td><b>前端 UI 成熟度（暗色模式、动画、可访问性）</b></td><td>飞书、Notion</td><td><span class="tag p2">P2</span></td><td>v0.7.24+</td><td class="num">~2,000</td></tr>
+</tbody>
+</table>
+</section>
+
+<section id="depth">
+<h2>五、深度差距分析（飞书文档对标）</h2>
+<p>飞书文档是 WeKnora 最直接的竞品（同样定位"知识管理 + 协作 + AI 助手 + 开放平台"的一体化平台）。下表深入对比 15 个细节维度：</p>
+<table class="matrix">
+<thead><tr><th>能力</th><th class="center">WeKnora v0.7.20</th><th class="center">飞书文档</th><th>差距与追赶方案</th></tr></thead>
+<tbody>
+<tr><td>同步块</td><td><span class="partial">◐ 后端 100%、前端 40%</span></td><td><span class="yes">✅ 完整 UI + 实时联动</span></td><td>v0.7.20.x Tiptap 节点 + Yjs 联动</td></tr>
+<tr><td>多维表格（Bitable）</td><td><span class="partial">◐ WikiDatabaseView 5 视图</span></td><td><span class="yes">✅ 13+ 字段类型 + 公式 + 自动化</span></td><td>v0.7.23 重构 WikiDatabaseView</td></tr>
+<tr><td>妙搭（低代码 Agents）</td><td><span class="bad">❌ 0%</span></td><td><span class="yes">✅ 触发器/工作流/工具编排</span></td><td>v0.7.21 Custom Agents</td></tr>
+<tr><td>智能伙伴（AI in Doc）</td><td><span class="yes">✅ AIAssistant</span></td><td><span class="yes">✅</span></td><td>持平；增强跨会话记忆</td></tr>
+<tr><td>实时协作（光标/presence）</td><td><span class="yes">✅ Yjs</span></td><td><span class="yes">✅</span></td><td>持平</td></tr>
+<tr><td>评论 / @提及</td><td><span class="yes">✅</span></td><td><span class="yes">✅</span></td><td>持平</td></tr>
+<tr><td>开放平台（API + Webhook）</td><td><span class="yes">✅</span></td><td><span class="yes">✅</span></td><td>持平；待 v0.7.24 SDK</td></tr>
+<tr><td>三方应用市场</td><td><span class="partial">◐ skills/ + MCP</span></td><td><span class="yes">✅ 妙搭市场</span></td><td>v0.7.24 marketplace + 签名</td></tr>
+<tr><td>数据安全 (DLP)</td><td><span class="bad">0%</span></td><td><span class="yes">✅ 完整方案</span></td><td>v0.7.22</td></tr>
+<tr><td>SAML / OIDC</td><td><span class="yes">✅</span></td><td><span class="yes">✅</span></td><td>持平</td></tr>
+<tr><td>跨表关联 / 双向链接</td><td><span class="yes">✅</span></td><td><span class="yes">✅</span></td><td>持平</td></tr>
+<tr><td>模板中心</td><td><span class="yes">✅ Wiki 模板</span></td><td><span class="yes">✅</span></td><td>持平</td></tr>
+<tr><td>权限矩阵 (RBAC + ReBAC)</td><td><span class="yes">✅ AuthZ-3</span></td><td><span class="yes">✅</span></td><td>持平；待 v0.7.22 Admin UI</td></tr>
+<tr><td>数据驻留 / 多地域</td><td><span class="bad">0%</span></td><td><span class="yes">✅ 全球部署</span></td><td>v0.7.25</td></tr>
+<tr><td>小程序 / Mobile</td><td><span class="partial">◐ 小程序</span></td><td><span class="yes">✅ 原生 App</span></td><td>v0.7.24 增强</td></tr>
+</tbody>
+</table>
+
+<h3>飞书 vs WeKnora 关键差距总结</h3>
+<ol class="tight">
+<li><b>飞书妙搭</b>（低代码 Agent 编排）：WeKnora 完全缺失 → v0.7.21 解决</li>
+<li><b>飞书多维表格</b>（Bitable）：WeKnora 只有基础视图 → v0.7.23 升级</li>
+<li><b>DLP 数据安全</b>：WeKnora 缺失 → v0.7.22 解决</li>
+<li><b>三方应用市场</b>：WeKnora 只有 skills/MCP → v0.7.24 Marketplace</li>
+<li><b>多地域容灾</b>：WeKnora 单 region → v0.7.25</li>
+</ol>
+</section>
+
+<section id="modules">
+<h2>六、22 模块进度条（按对标完成度排序）</h2>
+<table class="matrix">
+<tr><th>模块</th><th class="num">完成度</th><th>当前状态</th><th>主要差距</th></tr>
+<tr><td>RAG 与混合检索</td><td><div class="bar-cell"><div class="bar"><span style="width:92%"></span></div><span class="num">92%</span></div></td><td class="muted">10 向量库、citation、rerank、parent-child</td><td class="muted">Coda 类公式</td></tr>
+<tr><td>Wiki 模式</td><td><div class="bar-cell"><div class="bar"><span style="width:92%"></span></div><span class="num">92%</span></div></td><td class="muted">54 svc + Tiptap + backlinks + comments + audit</td><td class="muted">同步块渲染层</td></tr>
+<tr><td>AI Assistant 后端</td><td><div class="bar-cell"><div class="bar"><span style="width:95%"></span></div><span class="num">95%</span></div></td><td class="muted">assistant.go + 迁移 117 + 24 测试</td><td class="muted">跨会话记忆</td></tr>
+<tr><td>AI Assistant 前端</td><td><div class="bar-cell"><div class="bar"><span style="width:90%"></span></div><span class="num">90%</span></div></td><td class="muted">AIAssistantPanel.vue 591 行 + SSE + i18n</td><td class="muted">协作菜单</td></tr>
+<tr><td>MCP 工具生态</td><td><div class="bar-cell"><div class="bar"><span style="width:90%"></span></div><span class="num">90%</span></div></td><td class="muted">stdio/SSE/HTTP、wiki tools、cli mcp serve</td><td class="muted">marketplace 签名</td></tr>
+<tr><td>向量库 / 存储可插拔</td><td><div class="bar-cell"><div class="bar"><span style="width:90%"></span></div><span class="num">90%</span></div></td><td class="muted">10 retriever + 7 storage</td><td class="muted">冷热分层</td></tr>
+<tr><td>RBAC / AuthZ</td><td><div class="bar-cell"><div class="bar"><span style="width:90%"></span></div><span class="num">90%</span></div></td><td class="muted">4 阶角色 + AuthZ-3 关系元组</td><td class="muted">Admin UI</td></tr>
+<tr><td>聊天 / IM 集成</td><td><div class="bar-cell"><div class="bar"><span style="width:90%"></span></div><span class="num">90%</span></div></td><td class="muted">多轮 + 9 IM + citation float</td><td class="muted">协作多端</td></tr>
+<tr><td>Agent / ReAct / Skills</td><td><div class="bar-cell"><div class="bar"><span style="width:88%"></span></div><span class="num">88%</span></div></td><td class="muted">internal/agent/ + sandbox + MCP tools</td><td class="muted">Custom Agent Studio</td></tr>
+<tr><td>通知 / 协作</td><td><div class="bar-cell"><div class="bar"><span style="width:88%"></span></div><span class="num">88%</span></div></td><td class="muted">notification_service + bell + mentions</td><td class="muted">邮件/IM webhook</td></tr>
+<tr><td>可观测性</td><td><div class="bar-cell"><div class="bar"><span style="width:85%"></span></div><span class="num">85%</span></div></td><td class="muted">Langfuse、asynq DLQ、runtime dashboard</td><td class="muted">SLO / 成本归因</td></tr>
+<tr><td>LLM Stream</td><td><div class="bar-cell"><div class="bar"><span style="width:85%"></span></div><span class="num">85%</span></div></td><td class="muted">OpenAI/Azure/vLLM/Ollama/Doubao + NoopProvider</td><td class="muted">多 provider retry</td></tr>
+<tr><td>审计日志</td><td><div class="bar-cell"><div class="bar"><span style="width:85%"></span></div><span class="num">85%</span></div></td><td class="muted">audit_log + correlation_id + retention + wiki audit</td><td class="muted">Legal Hold</td></tr>
+<tr><td>Embed / Web Widget</td><td><div class="bar-cell"><div class="bar"><span style="width:85%"></span></div><span class="num">85%</span></div></td><td class="muted">embed channel + webhook + 租户隔离</td><td class="muted">子域隔离</td></tr>
+<tr><td>企业级 IAM</td><td><div class="bar-cell"><div class="bar"><span style="width:82%"></span></div><span class="num">82%</span></div></td><td class="muted">SAML + LDAP + SCIM + MFA + CA + GeoIP</td><td class="muted">SLO + UI</td></tr>
+<tr><td>运行时任务</td><td><div class="bar-cell"><div class="bar"><span style="width:80%"></span></div><span class="num">80%</span></div></td><td class="muted">asynq + DLQ + worker pool</td><td class="muted">动态扩缩容</td></tr>
+<tr><td>数据源导入</td><td><div class="bar-cell"><div class="bar"><span style="width:80%"></span></div><span class="num">80%</span></div></td><td class="muted">Feishu/Notion/Yuque/RSS/GitLab/IMA</td><td class="muted">Confluence/SharePoint 双向</td></tr>
+<tr><td>前端 UI 成熟度</td><td><div class="bar-cell"><div class="bar"><span style="width:80%"></span></div><span class="num">80%</span></div></td><td class="muted">100 Vue 组件 + 4 语言 i18n</td><td class="muted">暗色模式统一</td></tr>
+<tr><td>AuthZ 策略中心</td><td><div class="bar-cell"><div class="bar"><span style="width:75%"></span></div><span class="num">75%</span></div></td><td class="muted">authz_tuples + Admin API + Redis pubsub</td><td class="muted">可视化模拟器</td></tr>
+<tr><td>客户端生态</td><td><div class="bar-cell"><div class="bar"><span style="width:70%"></span></div><span class="num">70%</span></div></td><td class="muted">Mini Program + Chrome Extension + VitePress</td><td class="muted">JS/Python SDK</td></tr>
+<tr><td>Eval 系统</td><td><div class="bar-cell"><div class="bar"><span style="width:70%"></span></div><span class="num">70%</span></div></td><td class="muted">eval_dataset/run/badcase + judge</td><td class="muted">A/B 线上回放</td></tr>
+<tr><td>协作实时态 (Yjs + 同步块)</td><td><div class="bar-cell"><div class="bar"><span style="width:70%"></span></div><span class="num">70%</span></div></td><td class="muted">Yjs 100% + 同步块 40%</td><td class="muted">前端渲染层</td></tr>
+<tr><td>知识图谱</td><td><div class="bar-cell"><div class="bar"><span style="width:30%"></span></div><span class="num">30%</span></div></td><td class="muted">AuthZ 元组图 + 实体识别雏形</td><td class="muted">自动关系抽取</td></tr>
+<tr><td><b>AI Custom Agents</b></td><td><div class="bar-cell"><div class="bar"><span style="width:0%"></span></div><span class="num">0%</span></div></td><td class="muted"><b>v0.7.21 P0 启动</b></td><td class="muted">—</td></tr>
+<tr><td><b>DLP / Purview</b></td><td><div class="bar-cell"><div class="bar"><span style="width:0%"></span></div><span class="num">0%</span></div></td><td class="muted"><b>v0.7.22 P0</b></td><td class="muted">—</td></tr>
+<tr><td><b>WeKnora Base 多维表</b></td><td><div class="bar-cell"><div class="bar"><span style="width:0%"></span></div><span class="num">0%</span></div></td><td class="muted"><b>v0.7.23 P1</b></td><td class="muted">—</td></tr>
+<tr><td><b>SDK + Plugin 签名</b></td><td><div class="bar-cell"><div class="bar"><span style="width:0%"></span></div><span class="num">0%</span></div></td><td class="muted"><b>v0.7.24 P1</b></td><td class="muted">—</td></tr>
+<tr><td><b>多地域 / 容灾</b></td><td><div class="bar-cell"><div class="bar"><span style="width:0%"></span></div><span class="num">0%</span></div></td><td class="muted"><b>v0.7.25 P2</b></td><td class="muted">—</td></tr>
+</table>
+</section>
+
+<section id="plan">
+<h2>七、90 天路线图（v0.7.21 → v0.7.25）</h2>
+
+<div class="phase p0">
+<div class="label">阶段 1 · 0-30 天 · P0 智能自动化 + 安全合规</div>
+<h3>v0.7.21 — Custom Agents / Workers（对标飞书妙搭 / Notion Custom Agents）</h3>
+<ul class="tight">
+<li>迁移 114: <code>custom_agents</code> + <code>agent_credit_ledger</code> + <code>agent_triggers</code> + <code>agent_tool_bindings</code></li>
+<li>数据模型: agent (id, tenant_id, kb_id, owner_id, name, description, system_prompt, tools[], trigger_type, trigger_config, status, version, created_at, updated_at)</li>
+<li>后端: <code>internal/customagent/</code> (Engine / Trigger / Credential Vault / Quota)</li>
+<li>前端: <b>Agent Studio v0</b> (低代码编排) + Trigger Panel + Run Logs</li>
+<li>v0.7.20.x.2 实时联动（复用 Yjs WS Hub）</li>
+<li>v0.7.19.x worktree 批量合入</li>
+<li><b>预计 ~3,000 行 · 验收：飞书妙搭 P0 能力 + Agent 工具调用成功率 ≥ 99%</b></li>
+</ul>
+
+<h3>v0.7.22 — DLP + AuthZ Admin UI</h3>
+<ul class="tight">
+<li>迁移 115-116: <code>dlp_policies</code> + <code>dlp_violations</code> + <code>authz_policy_versions</code></li>
+<li>DLP Scanner: 信用卡 / 身份证 / 邮箱 / 手机号 正则 + 自定义字典</li>
+<li>策略版本化（不可变历史）+ Admin UI 可视化 + 模拟器（输入 actor/resource/action → 决策）</li>
+<li><b>预计 ~3,000 行</b></li>
+</ul>
+</div>
+
+<div class="phase p1">
+<div class="label">阶段 2 · 31-60 天 · P1 数据平面 + 生态</div>
+<h3>v0.7.23 — WeKnora Base 多维表 Beta（对标飞书多维表格 / Notion Database）</h3>
+<ul class="tight">
+<li>基于 WikiDatabaseView 升级：formula 2.0 / rollup / linked record / automation button</li>
+<li>视图: Grid / Gallery / Board / Calendar / Timeline / Chart</li>
+<li>视图分组共享 + 权限粒度（cell/row level）+ 自动化触发器</li>
+<li><b>预计 ~4,000 行 · 验收：飞书 Bitable P0 能力 + 13 字段类型</b></li>
+</ul>
+
+<h3>v0.7.24 — SDK + Plugin 签名 + Marketplace</h3>
+<ul class="tight">
+<li>SDK: TypeScript + Python + Go（OpenAPI Generator 自动生成）</li>
+<li>插件: Ed25519 manifest 签名 + capability 矩阵 + 兼容矩阵</li>
+<li>Marketplace UI: 应用商店 + 评分 + 评论 + 隐私声明</li>
+<li><b>预计 ~3,500 行</b></li>
+</ul>
+</div>
+
+<div class="phase p2">
+<div class="label">阶段 3 · 61-90 天 · P2 基础设施</div>
+<h3>v0.7.25 — 多地域 / 容灾 / 数据驻留</h3>
+<ul class="tight">
+<li>跨区复制策略 + 故障切换演练 + 租户数据驻留标记</li>
+<li>SLO: 99.95% 可用性承诺 + 状态页 + incident 流程</li>
+<li>欧洲/北美/东南亚三个 region 同时支持</li>
+<li><b>预计 ~2,500 行</b></li>
+</ul>
+</div>
+</section>
+
+<section id="v0721">
+<h2>八、v0.7.21 详细设计：Custom Agents</h2>
+
+<h3>8.1 对标分析</h3>
+<table class="matrix">
+<tr><th>能力</th><th class="center">飞书妙搭</th><th class="center">Notion<br>Custom Agents</th><th class="center">Glean Agents</th><th class="center">Coda Packs</th></tr>
+<tr><td>触发器（手动 / 定时 / 事件）</td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅ Buttons</span></td></tr>
+<tr><td>工具调用（自定义工具集）</td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td></tr>
+<tr><td>凭据管理（Vault）</td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td></tr>
+<tr><td>配额（Credit Ledger）</td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="partial">◐</span></td></tr>
+<tr><td>执行历史 / 日志</td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td></tr>
+<tr><td>版本管理</td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="partial">◐</span></td><td class="center"><span class="partial">◐</span></td></tr>
+<tr><td>共享（团队）</td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td><td class="center"><span class="yes">✅</span></td></tr>
+<tr><td>可视化编排（Studio）</td><td class="center"><span class="yes">✅ 低代码</span></td><td class="center"><span class="partial">◐ 自然语言</span></td><td class="center"><span class="no">❌</span></td><td class="center"><span class="yes">✅ Coda Brain</span></td></tr>
+</tbody>
+</table>
+
+<h3>8.2 数据模型（迁移 114）</h3>
+<pre><code>-- 114.1: custom_agents（agent 主表）
+CREATE TABLE custom_agents (
+    id              BIGSERIAL    PRIMARY KEY,
+    tenant_id       BIGINT       NOT NULL,
+    kb_id           VARCHAR(36)  NOT NULL,
+    owner_id        BIGINT       NOT NULL,
+    name            VARCHAR(128) NOT NULL,
+    description     TEXT         NOT NULL DEFAULT '',
+    system_prompt   TEXT         NOT NULL,
+    -- 触发器类型: manual | cron | event | webhook
+    trigger_type    VARCHAR(32)  NOT NULL DEFAULT 'manual',
+    -- 触发器配置: JSON（cron expr / event name / webhook path）
+    trigger_config  JSONB        NOT NULL DEFAULT '{}',
+    -- 状态: draft | active | paused | archived
+    status          VARCHAR(32)  NOT NULL DEFAULT 'draft',
+    version         BIGINT       NOT NULL DEFAULT 1,
+    timeout_seconds INT          NOT NULL DEFAULT 300,
+    max_steps       INT          NOT NULL DEFAULT 20,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE (tenant_id, name)
+);
+
+-- 114.2: agent_tool_bindings（agent ↔ tool 关联）
+CREATE TABLE agent_tool_bindings (
+    id              BIGSERIAL    PRIMARY KEY,
+    agent_id        BIGINT       NOT NULL,
+    tenant_id       BIGINT       NOT NULL,
+    tool_name       VARCHAR(128) NOT NULL,
+    -- 凭据引用（指向 agent_credentials）
+    credential_ref  VARCHAR(128),
+    -- 工具配置（参数覆盖）
+    config          JSONB        NOT NULL DEFAULT '{}',
+    enabled         BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE (agent_id, tool_name)
+);
+
+-- 114.3: agent_credentials（凭据 Vault）
+CREATE TABLE agent_credentials (
+    id              BIGSERIAL    PRIMARY KEY,
+    tenant_id       BIGINT       NOT NULL,
+    name            VARCHAR(128) NOT NULL,
+    -- 凭据类型: api_key | oauth2 | basic | bearer
+    credential_type VARCHAR(32)  NOT NULL,
+    -- 加密后的密文（KMS / AES-256-GCM）
+    ciphertext      BYTEA        NOT NULL,
+    -- 加密元数据：算法、IV、auth tag
+    enc_meta        JSONB        NOT NULL DEFAULT '{}',
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE (tenant_id, name)
+);
+
+-- 114.4: agent_runs（执行历史）
+CREATE TABLE agent_runs (
+    id              BIGSERIAL    PRIMARY KEY,
+    tenant_id       BIGINT       NOT NULL,
+    agent_id        BIGINT       NOT NULL,
+    -- 触发类型: manual | cron | event | webhook | api
+    triggered_by    VARCHAR(32)  NOT NULL,
+    triggered_user  BIGINT,                -- nullable for system triggers
+    -- 状态: queued | running | succeeded | failed | timeout | cancelled
+    status          VARCHAR(32)  NOT NULL DEFAULT 'queued',
+    input_payload      JSONB        NOT NULL DEFAULT '{}',
+    output_payload     JSONB        NOT NULL DEFAULT '{}',
+    error_message   TEXT         NOT NULL DEFAULT '',
+    steps_count     INT          NOT NULL DEFAULT 0,
+    -- 配额消耗（token / cost）
+    tokens_used     BIGINT       NOT NULL DEFAULT 0,
+    cost_micros     BIGINT       NOT NULL DEFAULT 0,  -- micro-USD (1 USD = 1,000,000 micros)
+    started_at      TIMESTAMPTZ,
+    finished_at     TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_agent_runs_tenant ON agent_runs (tenant_id, created_at DESC);
+CREATE INDEX idx_agent_runs_agent  ON agent_runs (agent_id, created_at DESC);
+
+-- 114.5: agent_credit_ledger（配额流水）
+CREATE TABLE agent_credit_ledger (
+    id              BIGSERIAL    PRIMARY KEY,
+    tenant_id       BIGINT       NOT NULL,
+    agent_id        BIGINT       NOT NULL,
+    run_id          BIGINT,                          -- nullable for top-ups
+    -- 操作类型: charge | refund | grant | expire
+    operation       VARCHAR(32)  NOT NULL,
+    -- 配额单位: tokens | invocations | cost_micros
+    unit            VARCHAR(32)  NOT NULL,
+    quantity        BIGINT       NOT NULL,           -- positive charge, negative refund
+    balance_after    BIGINT       NOT NULL,
+    -- 关联配额策略（versioned）
+    policy_version  BIGINT       NOT NULL,
+    notes           TEXT         NOT NULL DEFAULT '',
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_credit_ledger_tenant ON agent_credit_ledger (tenant_id, created_at DESC);
+CREATE INDEX idx_credit_ledger_agent  ON agent_credit_ledger (agent_id, created_at DESC);
+
+-- 114.6: agent_quota_policies（配额策略 + 版本化）
+CREATE TABLE agent_quota_policies (
+    id              BIGSERIAL    PRIMARY KEY,
+    tenant_id       BIGINT       NOT NULL,
+    -- 策略名 + 版本（不可变历史）
+    name            VARCHAR(128) NOT NULL,
+    version         BIGINT       NOT NULL DEFAULT 1,
+    -- 限额：每月 tokens / 每天 invocations / 单次 cost cap
+    monthly_tokens  BIGINT       NOT NULL DEFAULT 0,  -- 0 = unlimited
+    daily_invocations BIGINT     NOT NULL DEFAULT 0,
+    per_run_cost_cap_micros BIGINT NOT NULL DEFAULT 0,
+    is_active       BOOLEAN      NOT NULL DEFAULT FALSE,
+    created_by      BIGINT       NOT NULL,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE (tenant_id, name, version)
+);</code></pre>
+
+<h3>8.3 模块拆分</h3>
+<table class="matrix">
+<tr><th>模块</th><th class="num">行数</th><th>路径</th></tr>
+<tr><td>迁移（6 up + 6 down）</td><td class="num">~360</td><td><code>migrations/versioned/000114_custom_agents.{up,down}.sql</code></td></tr>
+<tr><td>类型 + 接口</td><td class="num">~400</td><td><code>internal/types/custom_agent.go</code> + <code>internal/types/interfaces/custom_agent.go</code></td></tr>
+<tr><td>Repository（双方言）</td><td class="num">~700</td><td><code>internal/application/repository/custom_agent*.go</code>（5 张表）</td></tr>
+<tr><td>Credential Vault 服务</td><td class="num">~250</td><td><code>internal/application/service/customagent/vault.go</code>（AES-256-GCM）</td></tr>
+<tr><td>Trigger Engine（asynq 集成）</td><td class="num">~400</td><td><code>internal/application/service/customagent/trigger.go</code></td></tr>
+<tr><td>Quota / Credit 服务</td><td class="num">~350</td><td><code>internal/application/service/customagent/quota.go</code></td></tr>
+<tr><td>Agent Engine（ReAct + 工具调用）</td><td class="num">~500</td><td><code>internal/application/service/customagent/engine.go</code></td></tr>
+<tr><td>Handler（REST 11 endpoints）</td><td class="num">~350</td><td><code>internal/handler/custom_agent.go</code></td></tr>
+<tr><td>Routes + Container</td><td class="num">~80</td><td><code>internal/router/routes_custom_agent.go</code></td></tr>
+<tr><td>单元测试</td><td class="num">~700</td><td><code>internal/application/service/customagent/customagent_test.go</code></td></tr>
+<tr><td>前端 API 客户端</td><td class="num">~250</td><td><code>frontend/src/api/customAgent/{types,index}.ts</code></td></tr>
+<tr><td>Agent Studio v0（编排 UI）</td><td class="num">~700</td><td><code>frontend/src/components/customAgent/AgentStudio.vue</code></td></tr>
+<tr><td>Trigger Panel</td><td class="num">~300</td><td><code>frontend/src/components/customAgent/TriggerPanel.vue</code></td></tr>
+<tr><td>Run Logs</td><td class="num">~250</td><td><code>frontend/src/components/customAgent/RunLogs.vue</code></td></tr>
+<tr><td>i18n + smoke + docs</td><td class="num">~360</td><td>—</td></tr>
+<tr><td><b>合计</b></td><td class="num"><b>~3,000</b></td><td>—</td></tr>
+</table>
+
+<h3>8.4 REST API（11 endpoints）</h3>
+<pre><code>POST   /api/v1/knowledgebase/:kb_id/custom-agents                       # 创建
+GET    /api/v1/knowledgebase/:kb_id/custom-agents                       # 列表（Studio）
+GET    /api/v1/custom-agents/:agent_id                                 # 详情
+PUT    /api/v1/custom-agents/:agent_id                                 # 更新
+DELETE /api/v1/custom-agents/:agent_id                                 # 删除
+POST   /api/v1/custom-agents/:agent_id/run                             # 手动触发
+GET    /api/v1/custom-agents/:agent_id/runs                            # 执行历史
+GET    /api/v1/custom-agents/:agent_id/runs/:run_id                    # 单次执行详情
+POST   /api/v1/custom-agents/:agent_id/tools                           # 绑定工具
+DELETE /api/v1/custom-agents/:agent_id/tools/:tool_name                # 解绑工具
+POST   /api/v1/custom-agents/:agent_id/credentials                     # 创建凭据（Vault）</code></pre>
+
+<h3>8.5 关键流程：手动触发一次 Agent</h3>
+<pre><code>  Client (Vue AgentStudio)              Server (Gin)                  Asynq (Worker)
+       │                                    │                                │
+       │  POST /custom-agents/:id/run       │                                │
+       │  body: { input: {...} }            │                                │
+       │───────────────────────────────────▶│                                │
+       │                                    │ 1. JWT + AuthZ.Check(agent)    │
+       │                                    │ 2. Quota.CheckAndCharge()      │
+       │                                    │    - monthly_tokens remaining  │
+       │                                    │    - daily_invocations remaining│
+       │                                    │ 3. agent_runs INSERT           │
+       │                                    │ 4. Enqueue Asynq task          │
+       │◀───── 202 { run_id } ──────────────│                                │
+       │                                    │                                │
+       │  GET /runs/:run_id (poll / ws)     │                                │
+       │───────────────────────────────────▶│                                │
+       │                                    │                                │
+       │                                    │       Engine.Run(agent, input) │
+       │                                    │◀───────────────────────────────│
+       │                                    │       ├─ LLM stream (steps++)  │
+       │                                    │       ├─ tool calls            │
+       │                                    │       └─ tokens_used += X      │
+       │                                    │                                │
+       │◀──── { status: running, steps: N } ─│                                │
+       │                                    │                                │
+       │                                    │ 5. agent_runs UPDATE           │
+       │                                    │    status=succeeded            │
+       │                                    │ 6. credit_ledger INSERT        │
+       │                                    │                                │</code></pre>
+
+<h3>8.6 验收项（Acceptance Criteria）</h3>
+<ol class="tight">
+<li>手动 / 定时 / 事件 / Webhook 4 种触发器全部联通。</li>
+<li>工具绑定支持 MCP / 自定义 HTTP / CLI 三类，调用成功率 ≥ 99%。</li>
+<li>凭据 AES-256-GCM 加密存储，泄漏检测（明文日志中不出现 token）。</li>
+<li>配额引擎：每月 / 每天 / 单次 三层限额实时计算，超限拒绝执行。</li>
+<li>执行历史可追溯：status、steps_count、tokens_used、cost、duration 完整记录。</li>
+<li>WebSocket 实时推送 run 状态变更（复用 v0.7.19 Yjs WS Hub）。</li>
+<li>11 个 REST endpoint 全部联通；11+ 单元测试 100% 通过。</li>
+<li>迁移 114（6 子表）在 Postgres + SQLite 双链路可重复 up/down。</li>
+<li>前端 Agent Studio：可视化编排 + 工具拖拽 + 凭据管理 + 实时日志。</li>
+</ol>
+</section>
+
+<section id="v0722">
+<h2>九、v0.7.22 详细设计：DLP + AuthZ Admin UI</h2>
+
+<h3>9.1 数据模型（迁移 115-116）</h3>
+<pre><code>-- 115: dlp_policies
+CREATE TABLE dlp_policies (
+    id              BIGSERIAL    PRIMARY KEY,
+    tenant_id       BIGINT       NOT NULL,
+    name            VARCHAR(128) NOT NULL,
+    -- 适用资源: kb | wiki_page | chat_message | file | custom_agent
+    resource        VARCHAR(64)  NOT NULL,
+    -- 规则列表：JSON（每条规则含 pattern_type + regex + action）
+    rules           JSONB        NOT NULL,
+    -- 严重级: low | medium | high | critical
+    severity        VARCHAR(32)  NOT NULL DEFAULT 'medium',
+    -- 动作: log | block | redact | notify_dpo
+    action          VARCHAR(32)  NOT NULL DEFAULT 'log',
+    version         BIGINT       NOT NULL DEFAULT 1,
+    is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_by      BIGINT       NOT NULL,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE (tenant_id, name, version)
+);
+
+-- 115: dlp_violations
+CREATE TABLE dlp_violations (
+    id              BIGSERIAL    PRIMARY KEY,
+    tenant_id       BIGINT       NOT NULL,
+    policy_id       BIGINT       NOT NULL,
+    resource        VARCHAR(64)  NOT NULL,
+    resource_id     VARCHAR(36)  NOT NULL,
+    actor_id        BIGINT       NOT NULL,
+    -- 命中规则: JSON（pattern + matched + context）
+    matches         JSONB        NOT NULL,
+    action_taken    VARCHAR(32)  NOT NULL,
+    severity        VARCHAR(32)  NOT NULL,
+    -- 关联审计日志（audit_log.id）
+    audit_log_id    BIGINT,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_dlp_violations_tenant ON dlp_violations (tenant_id, created_at DESC);
+
+-- 116: authz_policy_versions（不可变历史）
+CREATE TABLE authz_policy_versions (
+    id              BIGSERIAL    PRIMARY KEY,
+    tenant_id       BIGINT       NOT NULL,
+    -- policy 标识: e.g. "wiki_page:read"
+    policy_key      VARCHAR(128) NOT NULL,
+    version         BIGINT       NOT NULL,
+    -- DSL 表达式（OPA-like）
+    expression      TEXT         NOT NULL,
+    -- 决策: allow | deny
+    decision        VARCHAR(32)  NOT NULL,
+    -- 元数据：author + reason
+    metadata        JSONB        NOT NULL DEFAULT '{}',
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE (tenant_id, policy_key, version)
+);</code></pre>
+
+<h3>9.2 DLP Scanner 架构</h3>
+<pre><code>  Input Text → Scanner.Scan(text, policy) → []Match
+                │
+                ├── Regex Patterns (内置: 信用卡 / 身份证 / 邮箱 / 手机号 / SSN)
+                │       ├─ Visa / Mastercard / Amex BIN
+                │       ├─ 中国身份证 (18 位 + 校验码)
+                │       └─ 美 SSN / 邮箱 / 手机号
+                │
+                ├── Custom Dictionary (租户自定义敏感词)
+                │       └─ Aho-Corasick 多模式匹配
+                │
+                └── Context Detection
+                        ├─ 字段名（credit_card_number / email）
+                        └─ 距离窗口（5 token 内）
+  → Aggregator.Group(matches) → Action</code></pre>
+
+<h3>9.3 AuthZ Admin UI（前端 v0.7.22）</h3>
+<ul class="tight">
+<li><b>策略列表</b>：按 tenant 显示所有 policy_key + 当前 version + 决策</li>
+<li><b>编辑器</b>：DSL Monaco Editor + 语法高亮 + 实时 lint</li>
+<li><b>模拟器</b>：输入 (actor, resource, action) → 显示决策路径 + 命中 tuples</li>
+<li><b>版本对比</b>：v1 vs v2 差异视图 + 一键回滚</li>
+<li><b>审计追溯</b>：所有 policy 变更关联 audit_log</li>
+</ul>
+
+<h3>9.4 验收</h3>
+<ol class="tight">
+<li>DLP Scanner 误报率 < 1%；召回率 > 95%（信用卡 / 身份证 / SSN）</li>
+<li>AuthZ Admin UI：策略版本不可变、模拟器准确、审计完整</li>
+<li>迁移 115-116 双链路可重复</li>
+<li>12+ 单元测试全绿</li>
+</ol>
+</section>
+
+<section id="v0723">
+<h2>十、v0.7.23 详细设计：WeKnora Base 多维表</h2>
+
+<h3>10.1 字段类型（13 种，对标飞书多维表格）</h3>
+<table class="matrix">
+<tr><th>#</th><th>类型</th><th>说明</th></tr>
+<tr><td>1</td><td>text</td><td>单行文本</td></tr>
+<tr><td>2</td><td>long_text</td><td>多行文本</td></tr>
+<tr><td>3</td><td>number</td><td>数字（可选精度）</td></tr>
+<tr><td>4</td><td>currency</td><td>货币（带币种）</td></tr>
+<tr><td>5</td><td>date</td><td>日期</td></tr>
+<tr><td>6</td><td>datetime</td><td>日期时间</td></tr>
+<tr><td>7</td><td>checkbox</td><td>布尔</td></tr>
+<tr><td>8</td><td>single_select</td><td>单选（颜色标签）</td></tr>
+<tr><td>9</td><td>multi_select</td><td>多选</td></tr>
+<tr><td>10</td><td>user</td><td>用户引用</td></tr>
+<tr><td>11</td><td>file</td><td>附件引用</td></tr>
+<tr><td>12</td><td>link</td><td>跨表关联（双向）</td></tr>
+<tr><td>13</td><td>formula</td><td>公式（formula 2.0 DSL）</td></tr>
+</table>
+
+<h3>10.2 视图（6 种）</h3>
+<ul class="tight">
+<li><b>Grid</b>：表格视图（默认）</li>
+<li><b>Gallery</b>：卡片视图（带封面）</li>
+<li><b>Board</b>：看板视图（按 single_select 分组）</li>
+<li><b>Calendar</b>：日历视图（按 date 分组）</li>
+<li><b>Timeline</b>：甘特图（按 date 范围）</li>
+<li><b>Chart</b>：图表视图（柱状 / 折线 / 饼）</li>
+</ul>
+
+<h3>10.3 formula 2.0 DSL（关键创新）</h3>
+<pre><code>// 基础表达式
+{Price} * {Quantity}
+IF({Status} = "Done", 1, 0)
+CONCAT({FirstName}, " ", {LastName})
+DATETIME_DIFF({End}, {Start}, "days")
+
+// 跨表引用（rollup）
+SUM({OrderItems}.{Amount})
+COUNT({OrderItems})
+LOOKUP({Customer}.{Tier}, "VIP")
+
+// 自动化按钮
+SEND_EMAIL({Owner}, "Reminder", "Please update {Title}")</code></pre>
+
+<h3>10.4 验收</h3>
+<ol class="tight">
+<li>13 字段类型全部支持，含跨表关联 / formula</li>
+<li>6 视图全部实现，含自动化按钮触发 webhook</li>
+<li>视图分组共享 + cell/row level 权限</li>
+<li>单元测试 18+ 个 100% 通过</li>
+</ol>
+</section>
+
+<section id="v0724-v25">
+<h2>十一、v0.7.24-v25 设计：SDK + 签名 + 多地域</h2>
+
+<h3>11.1 v0.7.24 SDK（3 语言）</h3>
+<ul class="tight">
+<li><b>TypeScript SDK</b>：<code>@weknora/sdk</code> + 自动生成的 OpenAPI client + 类型完整</li>
+<li><b>Python SDK</b>：<code>weknora</code>（PyPI）+ sync/async client + Pydantic 模型</li>
+<li><b>Go SDK</b>：<code>github.com/Tencent/WeKnora-go-sdk</code> + context 支持</li>
+<li>由 OpenAPI Generator 自动生成基础代码，测试覆盖</li>
+</ul>
+
+<h3>11.2 v0.7.24 插件签名</h3>
+<ul class="tight">
+<li>Plugin Manifest (TOML/YAML) 含：name、version、capabilities、entrypoints</li>
+<li>Ed25519 签名（私钥由发布者持有，公钥发布到 Marketplace）</li>
+<li>Capability 矩阵：声明插件可访问的 resource + action</li>
+<li>运行时校验：安装时验证签名、运行时校验 capability 边界</li>
+</ul>
+
+<h3>11.3 v0.7.25 多地域 / 容灾</h3>
+<ul class="tight">
+<li>Region 标识：cn-shanghai / cn-beijing / us-east-1 / eu-central-1 / ap-southeast-1</li>
+<li>租户数据驻留：tenant.region_lock 配置 + 写路由</li>
+<li>跨区只读副本：binlog → Kafka → 异地消费</li>
+<li>故障切换：健康检查 → DNS 摘除 → 30s 内自动恢复</li>
+<li>状态页：<code>status.weknora.io</code> + RSS / Webhook 通知</li>
+</ul>
+</section>
+
+<section id="risk">
+<h2>十二、风险与缓解</h2>
+<table class="matrix">
+<tr><th>风险</th><th>等级</th><th>缓解</th></tr>
+<tr><td>v0.7.21 凭据 Vault 安全性</td><td><span class="bad">高</span></td><td>AES-256-GCM + KMS 密钥托管 + 定期轮换 + 泄漏检测</td></tr>
+<tr><td>Custom Agent 触发器误触发（cron 风暴）</td><td><span class="warn">中</span></td><td>单一租户并发上限 + 重叠检测 + 熔断</td></tr>
+<tr><td>DLP Scanner 性能（大文档）</td><td><span class="warn">中</span></td><td>流式扫描 + 索引（不重读全文）+ 异步告警</td></tr>
+<tr><td>多地域跨区复制延迟</td><td><span class="warn">中</span></td><td>强一致只读副本 ≤ 200ms + 最终一致异步副本</td></tr>
+<tr><td>10 个 worktree 未合并导致 merge conflict</td><td><span class="bad">高</span></td><td>v0.7.19.x 优先合入 enterprise-iam + ai-assistant-llm-stream</td></tr>
+<tr><td>v0.7.23 多维表性能（10万行）</td><td><span class="warn">中</span></td><td>虚拟滚动 + 列投影 + 服务端分页 + 索引</td></tr>
+</table>
+</section>
+
+<section id="kpi">
+<h2>十三、KPI 验收指标</h2>
+<table class="matrix">
+<tr><th>阶段</th><th>指标</th><th class="num">目标值</th></tr>
+<tr><td>v0.7.20 同步块</td><td>引用更新传播延迟</td><td class="num">≤ 500ms</td></tr>
+<tr><td>v0.7.21 Custom Agents</td><td>Agent 工具调用成功率</td><td class="num">≥ 99%</td></tr>
+<tr><td>v0.7.21 Custom Agents</td><td>触发器准时率（cron）</td><td class="num">≥ 99.5%</td></tr>
+<tr><td>v0.7.21 Custom Agents</td><td>凭据加密强度</td><td class="num">AES-256-GCM</td></tr>
+<tr><td>v0.7.22 DLP</td><td>敏感字段召回率</td><td class="num">≥ 95%</td></tr>
+<tr><td>v0.7.22 DLP</td><td>误报率</td><td class="num">≤ 1%</td></tr>
+<tr><td>v0.7.23 多维表</td><td>10 万行 Grid 视图 FPS</td><td class="num">≥ 50</td></tr>
+<tr><td>v0.7.24 SDK</td><td>TS/Py/Go 三语言覆盖</td><td class="num">100% API</td></tr>
+<tr><td>v0.7.25 多地域</td><td>SLO 可用性</td><td class="num">99.95%</td></tr>
+<tr><td>通用</td><td>单元测试覆盖率（核心 service）</td><td class="num">≥ 85%</td></tr>
+<tr><td>通用</td><td>迁移可重复 up/down（pg + sqlite）</td><td class="num">100%</td></tr>
+<tr><td>通用</td><td>lint / vet / go test</td><td class="num">0 error</td></tr>
+<tr><td>通用</td><td>跨租户负向测试</td><td class="num">100% 资源类型</td></tr>
+</table>
+</section>
+
+<footer>
+WeKnora v0.7.20 全量对标差距分析报告 · 生成于 2026-08-31 · 数据采集：当前分支 + 13 个 worktree · 对标：Notion / 飞书 / Confluence / Loop / Glean / Coda
+</footer>
+</div>
+</body>
+</html>
