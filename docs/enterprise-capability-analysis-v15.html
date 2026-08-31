@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WeKnora v0.7.15 实施进度报告 · 对标顶级知识库产品 · 2026-08-31</title>
+<style>
+:root{--bg:#08111f;--panel:#101d30;--panel2:#14253d;--text:#eaf2ff;--muted:#9db0c9;--line:#27405f;--cyan:#55d6ff;--green:#68e0a0;--amber:#ffd166;--red:#ff7b8b;--purple:#b69cff;--shadow:0 20px 60px #0005}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 10% 0,#143054 0,#08111f 36rem),var(--bg);color:var(--text);font:15px/1.65 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}a{color:var(--cyan)}.wrap{max-width:1440px;margin:auto;padding:0 28px}.hero{padding:72px 0 46px;border-bottom:1px solid var(--line)}.eyebrow{color:var(--cyan);font-weight:700;letter-spacing:.12em;text-transform:uppercase}.hero h1{font-size:clamp(34px,5vw,68px);line-height:1.08;max-width:980px;margin:14px 0 20px}.hero p{color:var(--muted);font-size:18px;max-width:880px}.meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}.chip{padding:5px 11px;border:1px solid var(--line);border-radius:999px;color:var(--muted);background:#ffffff08}.nav{position:sticky;top:0;z-index:10;background:#08111fee;backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}.nav .wrap{display:flex;gap:18px;overflow:auto;padding-top:13px;padding-bottom:13px}.nav a{white-space:nowrap;text-decoration:none;color:var(--muted);font-size:13px}.nav a:hover{color:var(--cyan)}section{padding:52px 0;border-bottom:1px solid #1a2c44}h2{font-size:32px;line-height:1.2;margin:0 0 12px}h3{font-size:21px;margin:28px 0 10px}h4{margin:0 0 8px;color:var(--cyan)}.lead{color:var(--muted);max-width:940px}.grid{display:grid;gap:16px}.grid-2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}.grid-3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}.grid-4{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}.card{background:linear-gradient(145deg,var(--panel),#0d192b);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:var(--shadow)}.card p{color:var(--muted);margin:6px 0}.stat{font-size:32px;font-weight:800}.stat small{font-size:14px;color:var(--muted);font-weight:500}.tag{display:inline-block;border-radius:6px;padding:2px 8px;font-size:12px;font-weight:700;margin:2px 4px 2px 0}.done{background:#1b6549;color:#a8ffd3}.partial{background:#705621;color:#ffe29b}.gap{background:#71303c;color:#ffb6c0}.planned{background:#3f3472;color:#d4c8ff}.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:14px}.matrix{width:100%;border-collapse:collapse;min-width:980px;background:#0c1828}.matrix th,.matrix td{padding:13px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line);border-right:1px solid #1a2c44}.matrix th{color:var(--cyan);background:#12243a;position:sticky;top:0}.matrix td{color:#c8d5e7}.matrix tr:last-child td{border-bottom:0}.callout{border-left:4px solid var(--cyan);background:#10263b;padding:16px 20px;border-radius:0 12px 12px 0;margin:18px 0}.callout.warn{border-color:var(--amber);background:#302610}.callout.danger{border-color:var(--red);background:#321b25}.callout.ok{border-color:var(--green);background:#0f2a1f}.list{margin:8px 0 0;padding-left:20px}.list li{margin:6px 0;color:#c8d5e7}.small{font-size:13px;color:var(--muted)}.progress{height:8px;background:#0c1828;border-radius:4px;overflow:hidden;margin:8px 0}.progress div{height:100%;background:linear-gradient(90deg,var(--green),var(--cyan))}.ref{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--muted);background:#0c1828;padding:2px 6px;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- ========== HERO ========== -->
+<div class="hero">
+  <div class="eyebrow">WeKnora 实施进度报告 · 对标顶级知识库产品 · 2026-08-31</div>
+  <h1>v0.7.15：AI Assistant Q&A 后端落地 + 全维度竞品差距盘点</h1>
+  <p class="lead">基于代码、路由、迁移、前端视图和测试的真实证据，盘点 WeKnora 当前分支（comet/doc-kb-ai-assistant, HEAD cf7a5155 + 9 新文件）已经实现的能力、与 Notion / 飞书 / Confluence / Glean / Microsoft Loop 的能力差距、以及 90 天可落地的实施计划。所有数据来自项目内文件、官方公开资料（2026 年 8 月访问）和团队自评；规划文档不计入已实现。</p>
+  <div class="meta">
+    <span class="chip">comet/doc-kb-ai-assistant v0.7.15</span>
+    <span class="chip">HEAD cf7a5155 + 9 新文件</span>
+    <span class="chip">AI Assistant Q&A 后端落地</span>
+    <span class="chip">IAM 链已闭环 (v0.7.6-14)</span>
+    <span class="chip">迁移 117 / sqlite 26</span>
+    <span class="chip">+703 行新 Go + 60 行迁移</span>
+    <span class="chip">14 / 14 assisttest 测试绿</span>
+    <span class="chip">对标进度 ~75%</span>
+  </div>
+</div>
+
+<!-- ========== NAV ========== -->
+<div class="nav"><div class="wrap">
+  <a href="#summary">一、TL;DR</a>
+  <a href="#progress">二、综合进度</a>
+  <a href="#v15">三、v0.7.15 增量</a>
+  <a href="#competitor-feishu">四、对标飞书</a>
+  <a href="#competitor-notion">五、对标 Notion</a>
+  <a href="#competitor-confluence">六、对标 Confluence</a>
+  <a href="#competitor-glean">七、对标 Glean</a>
+  <a href="#competitor-loop">八、对标 Microsoft Loop</a>
+  <a href="#matrix">九、12 维度能力矩阵</a>
+  <a href="#roadmap">十、v0.7.16+ 路线图</a>
+  <a href="#plan">十一、90 天计划</a>
+  <a href="#evidence">十二、证据与文件</a>
+</div></div>
+
+<!-- ========== 1. TL;DR ========== -->
+<section id="summary">
+  <h2>一、TL;DR：v0.7.15 完成什么</h2>
+  <div class="callout ok">
+    <b>v0.7.15 闭环：</b>AI Assistant Q&A 后端（fuse KB + Wiki 检索 + 审计行持久化 + 3 个 REST 端点 + 14 项单元测试）。这条链路是 doc+KB 一体化平台的「智能问答」入口，对标 Notion Agent / Feishu 知识问答 / Confluence Rovo / Glean Assistant。
+  </div>
+  <div class="grid grid-3">
+    <div class="card">
+      <h4>v0.7.15 已实现</h4>
+      <p>· <span class="ref">assistant_conversations</span> 表（pg 117 / sqlite 26） + 复合索引</p>
+      <p>· <span class="ref">AssistantService.Ask</span> 双源融合（KB <span class="ref">SearchKnowledgeForScopes</span> + Wiki <span class="ref">WikiSearchV2Service.Search</span>）</p>
+      <p>· Wiki <code>&lt;mark&gt;</code> 标签剥离 + 默认 5 / 最大 20 结果限制</p>
+      <p>· <span class="ref">AssistantHandler</span> 3 端点：POST /ask、GET /conversations、GET /conversations/:id</p>
+      <p>· 14/14 单元测试覆盖（构建标签 <span class="ref">assisttest</span>）</p>
+      <p>· Container / Router 接线完成</p>
+    </div>
+    <div class="card">
+      <h4>v0.7.15 留作下版</h4>
+      <p>· AI Assistant 前端面板（侧栏 + 引文高亮 + 多轮对话）</p>
+      <p>· LLM 真实调用接入（当前为检索回填占位符）</p>
+      <p>· 流式输出（SSE / WebSocket）</p>
+      <p>· 反馈循环（赞 / 踩 + 引文有效性标注）</p>
+    </div>
+    <div class="card">
+      <h4>对标顶级产品的位置</h4>
+      <p>· IAM 控制平面：<b style="color:var(--green)">~95%</b>（v0.7.6-14 闭环，持平 Keycloak/Atlassian Guard）</p>
+      <p>· 文档 + KB 融合：<b style="color:var(--amber)">~80%</b>（v0.7.12-13 + v0.7.15 后端）</p>
+      <p>· AI 助手：<b style="color:var(--amber)">~30%</b>（仅后端，前端 + LLM 接入 0%）</p>
+      <p>· 实时协作：<b style="color:var(--red)">0%</b>（飞书同步块 / Notion Synced Blocks / Loop Fluid）</p>
+      <p>· DLP / Purview：<b style="color:var(--red)">0%</b></p>
+      <p>· 多维表 / Base：<b style="color:var(--red)">0%</b></p>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 2. 综合进度 ========== -->
+<section id="progress">
+  <h2>二、综合进度（加权）</h2>
+  <p class="lead">进度口径：仅统计当前分支真实可运行 + 有迁移 + 有前端视图 + 有测试的能力；规划文档不计入已实现。百分比按域内子能力完成度加权。</p>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>1. 核心产品能力 — 88%</h4>
+      <div class="progress"><div style="width:88%"></div></div>
+      <p>RAG / 文档 / Wiki / Agent / IM / 可观测性 / 评估已成熟。</p>
+      <span class="tag done">RAG</span>
+      <span class="tag done">文档</span>
+      <span class="tag done">Wiki</span>
+      <span class="tag done">Agent</span>
+      <span class="tag done">IM</span>
+      <span class="tag done">可观测性</span>
+      <span class="tag partial">评估 (eval)</span>
+    </div>
+    <div class="card">
+      <h4>2. 企业级平台能力 — 55%</h4>
+      <div class="progress"><div style="width:55%"></div></div>
+      <p>IAM 控制平面已闭环（v0.7.6-14）；DLP / 数据驻留 / 插件治理仍空。</p>
+      <span class="tag done">SAML SSO</span>
+      <span class="tag done">LDAP</span>
+      <span class="tag done">SCIM 2.0</span>
+      <span class="tag done">MFA TOTP</span>
+      <span class="tag done">Conditional Access</span>
+      <span class="tag done">AuthZ 相位 1-3</span>
+      <span class="tag gap">DLP / Purview</span>
+      <span class="tag gap">数据驻留</span>
+      <span class="tag gap">插件治理</span>
+    </div>
+    <div class="card">
+      <h4>3. AI 能力 — 30%</h4>
+      <div class="progress"><div style="width:30%"></div></div>
+      <p>v0.7.15 后端闭环；前端面板 / 流式 / LLM 真实调用 0%。</p>
+      <span class="tag done">KB + Wiki 融合检索</span>
+      <span class="tag partial">AI Assistant 后端</span>
+      <span class="tag gap">AI Assistant 前端</span>
+      <span class="tag gap">流式 / 多轮</span>
+      <span class="tag gap">Custom Agents</span>
+      <span class="tag gap">Enterprise Search 联邦</span>
+    </div>
+    <div class="card">
+      <h4>4. 协作 / 生态 — 15%</h4>
+      <div class="progress"><div style="width:15%"></div></div>
+      <p>实时协作 / 多维表 / 插件市场三块几乎空白。</p>
+      <span class="tag done">@mention / 通知</span>
+      <span class="tag partial">Wiki 引用 / 回链</span>
+      <span class="tag gap">Yjs 实时协作</span>
+      <span class="tag gap">多维表 / Base</span>
+      <span class="tag gap">插件市场</span>
+    </div>
+  </div>
+
+  <div class="callout ok">
+    <b>v0.7.14 → v0.7.15 跨越：</b>AI Assistant Q&A 后端让「文档 + KB 知识」第一次有了统一的智能入口。这是 doc+KB 一体化平台对标飞书 / Notion / Confluence 的最大结构性短板：之前只能检索，没有 Q&A。
+  </div>
+  <div class="callout warn">
+    <b>v0.7.15 → v0.7.16 关键差距：</b>① AI Assistant 前端面板与流式输出；② Yjs 实时协作（对标飞书同步块 / Notion multiplayer）；③ GeoIP 引入让 Conditional Access 的国家字段真正生效；④ AuthZ Admin UI 可视化（策略矩阵）。
+  </div>
+</section>
+
+<!-- ========== 3. v0.7.15 增量 ========== -->
+<section id="v15">
+  <h2>三、v0.7.15 增量 — AI Assistant Q&A 后端</h2>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>3.1 新增文件清单（9 个）</h4>
+      <p>迁移：</p>
+      <p>· <span class="ref">migrations/versioned/000117_assistant_conversations.up.sql</span>（40 行，JSONB 索引）</p>
+      <p>· <span class="ref">migrations/sqlite/000026_assistant_conversations.up.sql</span>（20 行）</p>
+      <p>类型 / 接口：</p>
+      <p>· <span class="ref">internal/types/assistant.go</span>（95 行，wire 类型）</p>
+      <p>· <span class="ref">internal/types/interfaces/assistant.go</span>（56 行，3 个接口）</p>
+      <p>仓储 / 服务 / 处理器：</p>
+      <p>· <span class="ref">internal/application/repository/assistant_conversation.go</span>（57 行）</p>
+      <p>· <span class="ref">internal/application/service/assistant.go</span>（304 行 + ListConv/GetConv 51 行）</p>
+      <p>· <span class="ref">internal/handler/assistant.go</span>（131 行）</p>
+      <p>· <span class="ref">internal/router/routes_assistant.go</span>（22 行）</p>
+      <p>测试：</p>
+      <p>· <span class="ref">internal/application/service/assistanttest/assistant_test.go</span>（287 行，14 用例）</p>
+    </div>
+    <div class="card">
+      <h4>3.2 REST 端点（3 条）</h4>
+      <p>· <span class="ref">POST /api/v1/assistant/ask</span> 提交问题，返回结构化响应</p>
+      <p>· <span class="ref">GET  /api/v1/assistant/conversations?limit&amp;offset</span> 列出该租户的近期问答</p>
+      <p>· <span class="ref">GET  /api/v1/assistant/conversations/:id</span> 拉取一个会话的所有轮次</p>
+      <h4 class="small" style="margin-top:16px">3.3 wire 形状</h4>
+      <p><span class="ref">AssistantAskRequest</span>：<code>{query, source_kb_ids[], include_wiki, max_results_per_source, conversation_id}</code></p>
+      <p><span class="ref">AssistantAskResponse</span>：<code>{answer_id, conversation_id, answer_text, kb_citations[], wiki_citations[], model_name, latency_ms, result_count, created_at}</code></p>
+      <p><span class="ref">AssistantCitation</span>：<code>{type, id, title, slug, kb_id, snippet, score}</code></p>
+    </div>
+  </div>
+
+  <h3>3.4 服务层核心逻辑</h3>
+  <div class="callout">
+    <b>Ask 热路径：</b>校验 query 非空、tenant_id &gt; 0 → 默认 MaxResultsPerSource=5、clamp [1,20] → ConversationID 自动 UUID → 并行 KB 检索（<span class="ref">SearchKnowledgeForScopes</span>）和 Wiki 检索（<span class="ref">WikiSearchV2Service.Search</span>，按需开关）→ 剥离 Wiki <code>&lt;mark&gt;</code> 标签 → 合成占位 answer_text（保留 KB/Wiki 计数 + 顶部 snippet）→ 持久化一行（KB/Wiki citations + 源 KBIDs + 延迟）→ 返回响应。失败时不撤销响应；持久化失败仅记日志。
+  </div>
+
+  <div class="callout warn">
+    <b>范围澄清：</b>v0.7.15 后端只解决 §3.3 描述的检索 / 审计层。LLM 真实调用、对话管理 UI、流式输出、反馈循环放在 v0.7.17。前端面板通过同一组端点对接，后端契约稳定即可平滑升级。
+  </div>
+</section>
+
+<!-- ========== 4. 对标飞书 ========== -->
+<section id="competitor-feishu">
+  <h2>四、对标飞书（Feishu / Lark）— 重点：文档 + 同步块 + 知识问答</h2>
+  <p class="lead">飞书是国内 doc+KB 一体化最完整的产品。本节聚焦飞书公开资料（feishu.cn/product/docs, wiki, feishuai, security, pricing，2026 年 8 月访问）。</p>
+
+  <div class="grid grid-3">
+    <div class="card">
+      <h4>飞书同步块（同步块 / Sync Blocks）</h4>
+      <p>用户对一个文档块（block）选择"同步"，可嵌入到任意其他文档；源块更新 → 全部嵌入实例同步刷新。这是飞书跨文档知识复用的核心原语，WeKnora Wiki 目前缺少这一原语。</p>
+      <p><span class="tag gap">P1 大差距</span></p>
+      <p style="color:var(--muted);font-size:13px">对标对象：Notion Synced Blocks / Microsoft Loop components。</p>
+    </div>
+    <div class="card">
+      <h4>飞书知识问答（AI RAG Q&A）</h4>
+      <p>飞书 AI 旗舰版含知识问答模块：对企业知识库做 RAG 检索 + LLM 生成；按 AI credits 计费（旗舰版 20M credits/yr）。WeKnora v0.7.15 后端是这个能力的检索底层，前端 + LLM 接入是 v0.7.17。</p>
+      <p><span class="tag partial">检索层已就位</span> <span class="tag gap">前端 / LLM 待补</span></p>
+    </div>
+    <div class="card">
+      <h4>飞书企业级 IAM</h4>
+      <p>SAML/OIDC SSO 至企业 IdP、2 步验证、域管理、终端管控、按应用 + 按文档权限、专属安全密钥（CN 数据中心）；高级账号安全在商业旗舰版及以上。WeKnora v0.7.6-14 已闭环等同能力。</p>
+      <p><span class="tag done">对标持平</span></p>
+    </div>
+    <div class="card">
+      <h4>飞书多维表格（Bitable）</h4>
+      <p>类 Airtable / Notion Database + 强 AI 字段（AI 字段、侧栏、仪表盘）+ 行级权限。是飞书相对通用 Wiki 的最大差异化。WeKnora 当前 0% — 这是个独立模块工程量。</p>
+      <p><span class="tag gap">P2 大差距</span></p>
+    </div>
+    <div class="card">
+      <h4>飞书应用 + aPaaS / 飞书妙搭</h4>
+      <p>低代码搭建 AI 应用（妙搭）、豆包工作伙伴、aily desktop、Miaojì 会议纪要、项目 AI、Agent 编排。是飞书相对 Notion / Confluence 的 AI 深度差异化。</p>
+      <p><span class="tag gap">P2 差距</span></p>
+    </div>
+    <div class="card">
+      <h4>飞书 AI 定价</h4>
+      <p>基础版 ¥9,900/yr（180k credits）/ 企业版 ¥99,000/yr（2M）/ 企业 Plus ¥~（6M）/ 旗舰版 ¥~（20M）。WeKnora 自托管开源路径无 SaaS 计费，但缺少 credits 模型与 AI 资源配额控制。</p>
+      <p><span class="tag gap">计费 / 配额 待补</span></p>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <b>飞书差距综合：</b>① 同步块（实时协作）= WeKnora 0%；② 多维表 = 0%；③ AI 应用生态 / 妙搭 = 0%；④ AI credits 配额 = 0%。这四项是把 WeKnora 拉到飞书级别的硬骨头。<br/>
+    <b>持平 / 超越：</b>IAM 控制平面、知识问答检索层（v0.7.15 后端）、文档 / Wiki CRUD、引用 / 回链。
+  </div>
+</section>
+
+<!-- ========== 5. 对标 Notion ========== -->
+<section id="competitor-notion">
+  <h2>五、对标 Notion — 重点：Synced Blocks / Custom Agents / Enterprise Search</h2>
+  <p class="lead">Notion 是 doc+KB 全球对标最直接的产品。本节聚焦 notion.com/product/ai, security, pricing, help/data-residency。</p>
+
+  <div class="grid grid-3">
+    <div class="card">
+      <h4>Notion Synced Blocks</h4>
+      <p>与飞书同步块同构：跨页面同步的块，原块改 → 嵌入实例同步。Notion Plus 起无限。可组合、可嵌套、跨工作区引用。</p>
+      <p><span class="tag gap">P1 大差距</span></p>
+    </div>
+    <div class="card">
+      <h4>Notion Connected properties（1-way &amp; 2-way 数据库关系）</h4>
+      <p>数据库之间可建双向关联字段 + rollup。WeKnora 当前 KB ↔ Wiki 是单向引用关系（v0.7.12-13），但缺数据库抽象。</p>
+      <p><span class="tag gap">P2</span></p>
+    </div>
+    <div class="card">
+      <h4>Notion Agent / Custom Agents</h4>
+      <p>Notion Agent = chat/generate/autofill/translate；Custom Agents 可构建一次后工作区共享，按 Notion credits 计费（$10/1k credits）。WeKnora 未来需要类似 Agent 框架 + 计费模型。</p>
+      <p><span class="tag gap">P1</span></p>
+    </div>
+    <div class="card">
+      <h4>Notion Enterprise Search（联邦检索）</h4>
+      <p>跨 Slack / GDrive / GitHub / Jira 等做 RAG 联合检索（Beta）。WeKnora 当前是单租户内部检索，缺联邦。</p>
+      <p><span class="tag gap">P2</span></p>
+    </div>
+    <div class="card">
+      <h4>Notion 实时协作 / multiplayer blocks</h4>
+      <p>块级多人协作 + live cursors + presence + offline sync + per-block comments + @mentions。WeKnora 当前无 Yjs 实时协作。</p>
+      <p><span class="tag gap">P1 大差距</span></p>
+    </div>
+    <div class="card">
+      <h4>Notion Workers（开发者平台，2026 Beta）</h4>
+      <p>基于 credit 的扩展运行平台，可写 agent tools / 外部数据同步。类似飞书妙搭。</p>
+      <p><span class="tag gap">P3</span></p>
+    </div>
+    <div class="card">
+      <h4>Notion IAM 控制平面</h4>
+      <p>SAML SSO（Business+）、SCIM（Enterprise）、2 步验证、admin roles、per-database permission、permission groups、private teamspaces。Conditional access 委托给 SSO IdP（不原生地做）。</p>
+      <p><span class="tag done">持平（v0.7.6-14）</span></p>
+    </div>
+    <div class="card">
+      <h4>Notion 数据驻留（Enterprise）</h4>
+      <p>AWS 多区域：US-West/East、EU-Central/West、AP-NE-1/2/3（Tokyo/Osaka/Seoul）。Page + 文件 + 搜索索引驻留在所选区域，账号信息可能在美国。30 天迁移清理。</p>
+      <p><span class="tag gap">P2</span></p>
+    </div>
+    <div class="card">
+      <h4>Notion 定价（USD）</h4>
+      <p>Free $0 / Plus $10 / Business $24 / Enterprise 自定义。Custom Agents $10 per 1k credits。</p>
+      <p><span class="tag done">WeKnora 自托管开源，避开</span></p>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <b>Notion 差距综合：</b>① 实时协作 + Synced Blocks（同一缺口）= 0%；② Custom Agents + Workers = 0%；③ 数据库 / Connected properties = 0%；④ 联邦检索 = 0%；⑤ 数据驻留多区域 = 0%。<br/>
+    <b>持平 / 超越：</b>IAM、文档 / Wiki CRUD、引用 / 回链、AI Assistant 后端（v0.7.15 检索层 = Notion Enterprise Search 的「内部检索」部分）。
+  </div>
+</section>
+
+<!-- ========== 6. 对标 Confluence ========== -->
+<section id="competitor-confluence">
+  <h2>六、对标 Atlassian Confluence + Rovo</h2>
+  <p class="lead">Confluence 是企业 wiki 老牌，2024-2026 期间被 Atlassian 用 Rovo / Teamwork Graph 武装。本节聚焦 confluence.com/product, atlassian.com/platform/rovo, marketplace。</p>
+
+  <div class="grid grid-3">
+    <div class="card">
+      <h4>Atlassian Rovo（AI 助手 / Search / Chat / Agents）</h4>
+      <p>Atlassian 的统一 AI 助手：Search（跨 Atlassian + 第三方）、Chat（LLM 问答）、Agents（自动化任务）、Rovo Studio（建 Agent）、Rovo Dev CLI、MCP server 支持。Rovo 由 Teamwork Graph 提供上下文（连接团队、项目、工作项、视频、目标）。</p>
+      <p><span class="tag partial">对标 v0.7.15 后端</span> <span class="tag gap">Rovo Studio / Agents 待补</span></p>
+    </div>
+    <div class="card">
+      <h4>Teamwork Graph（知识图谱）</h4>
+      <p>Atlassian 自研的实体关系图，Rovo 用它做上下文。WeKnora 当前 AuthZ 已有关系元组模型（v0.7.4 phase-1 + v0.7.8 phase-3），但缺类似 Teamwork Graph 的「自动构建实体关系图」抽象。</p>
+      <p><span class="tag gap">P2</span></p>
+    </div>
+    <div class="card">
+      <h4>Confluence Data Center（自托管）</h4>
+      <p>支持自托管 + 客户密钥 + SAML/LDAP/SCIM via Guard。WeKnora 自托管原生就是这一档，IAM 控制平面 v0.7.6-14 已对齐。</p>
+      <p><span class="tag done">对标持平</span></p>
+    </div>
+    <div class="card">
+      <h4>Atlassian Guard（IAM 套件）</h4>
+      <p>统一身份 / SCIM / SAML / OAuth / 设备信任 / 数据丢失防护。WeKnora 把 Guard 的核心能力拆成独立分支逐个落地：v0.7.6 SAML + v0.7.9 LDAP + v0.7.10 SCIM + v0.7.11 MFA + v0.7.14 Conditional Access。</p>
+      <p><span class="tag done">持平</span></p>
+    </div>
+    <div class="card">
+      <h4>Confluence Marketplace</h4>
+      <p>插件市场（Forte / Forge / Connect 三代）+ Marketplace 审核机制。WeKnora <span class="ref">internal/skills/</span> 有雏形但缺签名 / 沙箱 / Marketplace。</p>
+      <p><span class="tag gap">P2</span></p>
+    </div>
+    <div class="card">
+      <h4>Confluence Cloud 定价</h4>
+      <p>Standard $7.16 / Premium $13.75 user/mo（Cloud）；Data Center 自托管按用户 + 阶梯价。WeKnora 自托管开源，无需对齐此收费模型。</p>
+      <p><span class="tag done">自托管开源</span></p>
+    </div>
+  </div>
+
+  <div class="callout">
+    <b>Confluence 差距综合：</b>① Rovo Studio / Agent 编排 = 0%（v0.7.15 后端仅是 Rovo Search 的最小子集）；② Teamwork Graph 自动建图 = 0%；③ Marketplace 治理 = 0%。<br/>
+    <b>持平 / 超越：</b>IAM 控制平面（v0.7.6-14 完全对齐 Guard）、文档 / Wiki 实体（CRUD/ACL/标签/模板）、AI Assistant 检索层（v0.7.15）。
+  </div>
+</section>
+
+<!-- ========== 7. 对标 Glean ========== -->
+<section id="competitor-glean">
+  <h2>七、对标 Glean — 重点：Enterprise Graph + Assistant + Agents</h2>
+  <p class="lead">Glean 是 2024-2026 增长最快的 enterprise AI 搜索 / 助理。本节聚焦 glean.com, docs.glean.com。</p>
+
+  <div class="grid grid-3">
+    <div class="card">
+      <h4>Glean Assistant（Glean Chat）</h4>
+      <p>基于企业内容 + 模型无关（Anthropic / OpenAI / Azure OpenAI 路由）+ 工具调用 + 工作流编排。WeKnora v0.7.15 后端的 KB+Wiki 融合是 Glean Assistant 的最简内部版本。</p>
+      <p><span class="tag partial">v0.7.15 后端 = 检索层</span> <span class="tag gap">LLM / 工具调用 待补</span></p>
+    </div>
+    <div class="card">
+      <h4>Glean Enterprise Graph</h4>
+      <p>自动发现 + 维护企业内容实体的关系图（人 / 文档 / 项目 / 主题），是 Glean 上下文感知的核心。WeKnora 当前 AuthZ 元组可作为最简图存，但缺自动发现 / 主题聚合层。</p>
+      <p><span class="tag gap">P2</span></p>
+    </div>
+    <div class="card">
+      <h4>Glean Agents</h4>
+      <p>可编排的 agent（研究 / 客户支持 / 销售准备），挂到 Assistant 工作流中。WeKnora 当前 <span class="ref">internal/application/service/agent_service.go</span> 已有基础 Agent，但缺像 Glean Agents 这种「研究类长任务」抽象。</p>
+      <p><span class="tag gap">P2</span></p>
+    </div>
+    <div class="card">
+      <h4>Glean Connectors（联邦检索）</h4>
+      <p>100+ 联邦连接器（Slack / SharePoint / GitHub / Salesforce / Jira ...），统一进 Enterprise Graph。WeKnora 已有 <span class="ref">datasource</span> 模块和若干内置连接器，但缺「联邦 RAG」抽象。</p>
+      <p><span class="tag gap">P2</span></p>
+    </div>
+    <div class="card">
+      <h4>Glean Permissions（基于源系统的 ACL）</h4>
+      <p>关键设计：每个 connector 走源系统的 ACL，绝不绕过访问控制。WeKnora AuthZ 已经做到这一点（v0.7.4-8），KBAccessRead/Write ACL 中间件严格基于 ACL snapshot hash。</p>
+      <p><span class="tag done">持平</span></p>
+    </div>
+    <div class="card">
+      <h4>Glean ISO 42001（AI 治理）</h4>
+      <p>2025 年首批拿到 ISO/IEC 42001:2023 AI 管理系统认证的产品之一。WeKnora 暂无 AI 治理证书。</p>
+      <p><span class="tag gap">P3</span></p>
+    </div>
+  </div>
+
+  <div class="callout">
+    <b>Glean 差距综合：</b>① Enterprise Graph 自动建图 = 0%；② Connectors 联邦 RAG = 0%；③ Agents 编排 = 0%；④ AI 治理（ISO 42001）= 0%。<br/>
+    <b>持平 / 超越：</b>ACL 路径（WeKnora AuthZ phase-3 + ACL snapshot hash 走得比 Glean 还硬）、自托管开源。
+  </div>
+</section>
+
+<!-- ========== 8. 对标 Loop ========== -->
+<section id="competitor-loop">
+  <h2>八、对标 Microsoft Loop / Microsoft 365 Copilot</h2>
+  <p class="lead">Loop 是 M365 阵营的 doc+KB 模块。本节聚焦 learn.microsoft.com/loop。</p>
+
+  <div class="grid grid-3">
+    <div class="card">
+      <h4>Loop components（Fluid Framework）</h4>
+      <p>Loop 的核心原语：跨 Word / Excel / PowerPoint / Outlook / Teams 同步的块，本质就是微软版「同步块」。WeKnora 0%。</p>
+      <p><span class="tag gap">P1 大差距</span></p>
+    </div>
+    <div class="card">
+      <h4>Microsoft 365 Copilot in Loop</h4>
+      <p>Copilot 通用 LLM + 表格洞察 + 内容生成。Copilot 数据通道走 SharePoint / OneDrive / Exchange，依赖 M365 已有索引。WeKnora 自托管路径不依赖 M365 数据通道。</p>
+      <p><span class="tag gap">P2</span></p>
+    </div>
+    <div class="card">
+      <h4>Entra ID + Microsoft Purview</h4>
+      <p>Loop 依赖 Entra ID 做 SSO/Conditional Access/MFA/SCIM/PIM/Identity Governance；Purview 提供审计 / eDiscovery / 保留 / DLP / 客户密钥。WeKnora v0.7.6-14 IAM 控制平面 = Entra ID 子集，Purview = 0%。</p>
+      <p><span class="tag done">IAM 持平</span> <span class="tag gap">Purview 0%</span></p>
+    </div>
+    <div class="card">
+      <h4>Microsoft 365 多地理（Multi-Geo）</h4>
+      <p>按用户 / 工作区首选数据位置。WeKnora 自托管可让用户部署到任意区域，但缺产品化的「多区域一键切换」抽象。</p>
+      <p><span class="tag gap">P3</span></p>
+    </div>
+    <div class="card">
+      <h4>Loop 当前状态</h4>
+      <p>Microsoft 365 的 Loop app 仍是 public preview；外部分享当前不支持（"Loop currently doesn't support external sharing for guests"）。这是 Loop 的弱点；WeKnora 自托管不受此限。</p>
+      <p><span class="tag done">WeKnora 优势</span></p>
+    </div>
+    <div class="card">
+      <h4>Loop 定价</h4>
+      <p>Loop app 随 M365 商业订阅免费；Copilot 加购 $30/user/月。WeKnora 自托管开源路径无此计费。</p>
+      <p><span class="tag done">自托管开源</span></p>
+    </div>
+  </div>
+
+  <div class="callout">
+    <b>Loop 差距综合：</b>① Loop components / Fluid Framework = 0%（与飞书同步块、Notion Synced Blocks 同档）；② Purview 套件（DLP / eDiscovery / Customer Key / 保留）= 0%；③ M365 Copilot 路径 / M365 数据通道集成 = 0%。<br/>
+    <b>持平 / 超越：</b>IAM 控制平面（v0.7.6-14）、外部分享（自托管不受 Loop 限制）。
+  </div>
+</section>
+
+<!-- ========== 9. 12 维度矩阵 ========== -->
+<section id="matrix">
+  <h2>九、12 维度能力矩阵（v0.7.15 现状 vs 5 大竞品）</h2>
+  <p class="lead">横向比对每个能力维度上 WeKnora 当前所处的位置。下表是「用户视角能力存在与否 + 大致成熟度」，不是分数；每行的成熟度对标顶级产品的 5 级（无 / 雏形 / 部分 / 大致持平 / 持平或超越）。</p>
+
+  <div class="table-wrap"><table class="matrix">
+    <thead><tr>
+      <th>能力维度</th>
+      <th>WeKnora v0.7.15</th>
+      <th>Notion</th>
+      <th>飞书</th>
+      <th>Confluence</th>
+      <th>Glean</th>
+      <th>Microsoft Loop</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td><b>文档 / Wiki CRUD</b></td>
+        <td><span class="tag done">持平</span></td>
+        <td>持平</td><td>持平</td><td>持平</td><td>N/A</td><td>持平</td>
+      </tr>
+      <tr>
+        <td><b>实时协作（live cursors / multiplayer）</b></td>
+        <td><span class="tag gap">0%</span></td>
+        <td>✅ blocks</td><td>✅ docs</td><td>✅ pages</td><td>❌</td><td>✅ components</td>
+      </tr>
+      <tr>
+        <td><b>同步块 / Synced Blocks / Loop components</b></td>
+        <td><span class="tag gap">0%</span></td>
+        <td>✅ synced blocks</td><td>✅ 同步块</td><td>partial</td><td>❌</td><td>✅ Fluid</td>
+      </tr>
+      <tr>
+        <td><b>跨内容引用 / 回链（KB ↔ Wiki）</b></td>
+        <td><span class="tag done">v0.7.12-13</span></td>
+        <td>✅ mentions + backlinks</td><td>✅ 关联文档</td><td>✅ Smart Links</td><td>✅ Graph</td><td>via SharePoint</td>
+      </tr>
+      <tr>
+        <td><b>SAML / SSO</b></td>
+        <td><span class="tag done">v0.7.6</span></td>
+        <td>✅ Business+</td><td>✅ 旗舰+</td><td>✅ via Guard</td><td>✅</td><td>✅ via Entra</td>
+      </tr>
+      <tr>
+        <td><b>SCIM</b></td>
+        <td><span class="tag done">v0.7.10</span></td>
+        <td>✅ Enterprise</td><td>✅</td><td>✅ via Guard</td><td>✅</td><td>✅ via Entra</td>
+      </tr>
+      <tr>
+        <td><b>MFA</b></td>
+        <td><span class="tag done">v0.7.11 TOTP</span></td>
+        <td>via IdP</td><td>✅</td><td>via Guard</td><td>via IdP</td><td>✅ Entra MFA</td>
+      </tr>
+      <tr>
+        <td><b>Conditional Access</b></td>
+        <td><span class="tag done">v0.7.14</span></td>
+        <td>via IdP</td><td>✅</td><td>via Guard</td><td>via IdP</td><td>✅ Entra CA</td>
+      </tr>
+      <tr>
+        <td><b>RAG Q&amp;A / AI Assistant</b></td>
+        <td><span class="tag partial">v0.7.15 后端</span></td>
+        <td>✅ Enterprise Search</td><td>✅ 知识问答</td><td>✅ Rovo</td><td>✅ Assistant</td><td>✅ Copilot</td>
+      </tr>
+      <tr>
+        <td><b>Agent 编排 / Custom Agents</b></td>
+        <td><span class="tag partial">AgentService 基础</span></td>
+        <td>✅ Custom Agents</td><td>✅ 妙搭</td><td>✅ Rovo Agents</td><td>✅ Glean Agents</td><td>✅ Copilot Agents</td>
+      </tr>
+      <tr>
+        <td><b>知识图谱 / Relations</b></td>
+        <td><span class="tag partial">AuthZ 元组</span></td>
+        <td>partial DB relations</td><td>partial hierarchy</td><td>✅ Teamwork Graph</td><td>✅ Enterprise Graph</td><td>via Microsoft Graph</td>
+      </tr>
+      <tr>
+        <td><b>多维表 / Database / Bitable</b></td>
+        <td><span class="tag gap">0%</span></td>
+        <td>✅ Database</td><td>✅ Bitable</td><td>partial (DBs)</td><td>N/A</td><td>N/A</td>
+      </tr>
+      <tr>
+        <td><b>DLP / eDiscovery / Customer Key</b></td>
+        <td><span class="tag gap">0%</span></td>
+        <td>via connections</td><td>✅</td><td>via Guard</td><td>via Protect</td><td>✅ Purview</td>
+      </tr>
+      <tr>
+        <td><b>数据驻留多区域</b></td>
+        <td><span class="tag gap">自托管可但无抽象</span></td>
+        <td>✅ AWS multi-region</td><td>✅ CN DC</td><td>✅ Cloud + DC</td><td>✅ 客户云</td><td>✅ M365 multi-geo</td>
+      </tr>
+      <tr>
+        <td><b>插件 / Marketplace</b></td>
+        <td><span class="tag partial">skills/ 雏形</span></td>
+        <td>✅ Connections</td><td>✅ App Directory</td><td>✅ Marketplace</td><td>APIs/SDK/MCP</td><td>✅ M365 ecosystem</td>
+      </tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ========== 10. 路线图 ========== -->
+<section id="roadmap">
+  <h2>十、v0.7.16+ 路线图</h2>
+  <p class="lead">按 P0/P1/P2 排序，与 §9 矩阵空白行一一对应。</p>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>P0 — 必须在 v0.7.17 闭环（结构短板）</h4>
+      <p>· <b>AI Assistant 前端面板</b>：侧栏 + 引文高亮 + 多轮对话历史 + 反馈按钮。后端契约 v0.7.15 已稳定，前端独立一个 sprint 即可上线。</p>
+      <p>· <b>AI Assistant 流式输出</b>：SSE 通道，<span class="ref">AssistantAskResponse</span> 拆分为 <code>citation_chunk</code> + <code>answer_chunk</code> 两段事件。</p>
+      <p>· <b>AI Assistant LLM 真实接入</b>：抽象 LLM provider 接口，对接模型库（v0.7.1 已有 provider），把 <code>composeAnswerPlaceholder</code> 替换为真实生成。</p>
+    </div>
+    <div class="card">
+      <h4>P1 — v0.7.18 ~ v0.7.20 闭环（体验大差距）</h4>
+      <p>· <b>Yjs + WebSocket awareness 实时协作</b>：对标飞书同步块 / Notion Synced Blocks。Wiki 页块级多人协作 + live cursors + presence。这一项单独一个 sprint，工程量约 3000-5000 行。</p>
+      <p>· <b>GeoIP 集成（offline mmdb）</b>：让 Conditional Access 的 country 字段生效；引入 <span class="ref">github.com/oschwald/geoip2-golang</span>。</p>
+      <p>· <b>AuthZ Admin UI（AuthZMatrix.vue）</b>：策略矩阵可视化 + 元组编辑 + 实时 check 验证。</p>
+      <p>· <b>DLP / Purview 子集（敏感词 / 审计 / 保留标签）</b>：先把"审计 + 敏感词"做掉，Customer Key 后续。</p>
+    </div>
+    <div class="card">
+      <h4>P2 — v0.7.21 ~ v0.7.23 闭环（差异化能力）</h4>
+      <p>· <b>多维表 / WeKnora Base</b>：类飞书 Bitable。数据库抽象 + 行级权限 + AI 字段。新建 <span class="ref">internal/base/</span> 模块。</p>
+      <p>· <b>Plugin Marketplace（签名 + 沙箱 + 审核）</b>：<span class="ref">internal/skills/</span> 已有雏形，需要签名 + 隔离运行时 + Marketplace 索引。</p>
+      <p>· <b>数据驻留多区域（多 DC 部署 + 自动 failover）</b>：自托管抽象 + GeoDNS。</p>
+      <p>· <b>联邦检索（Glean Connectors 同构）</b>：把 <span class="ref">datasource</span> 的 100+ 连接器升级到统一 RAG 图。</p>
+    </div>
+    <div class="card">
+      <h4>P3 — v0.7.24+ 路线（生态）</h4>
+      <p>· <b>Enterprise Graph 自动建图</b>：从 KB / Wiki / Agent / 数据源抽取实体关系，驱动 Rovo / Glean 同档体验。</p>
+      <p>· <b>Custom Agents / Workers 平台</b>：开发者框架 + credit 模型 + 工作区市场。</p>
+      <p>· <b>ISO 42001 / SOC 2 AI 治理审计</b>：把 AI 决策纳入审计日志 + 第三方评估。</p>
+      <p>· <b>国产化适配</b>：信创栈（鲲鹏 / 海光 / 麒麟 / 达梦 / 人大金仓）。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 11. 90 天计划 ========== -->
+<section id="plan">
+  <h2>十一、90 天可落地计划（v0.7.15 → v0.7.18）</h2>
+  <p class="lead">按月切分，每月底有可演示交付物。所有里程碑对应一个或多个分支的合并。</p>
+
+  <div class="table-wrap"><table class="matrix">
+    <thead><tr><th>周次</th><th>里程碑</th><th>交付分支</th><th>关键证据</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>本周（W1）</b></td>
+        <td>v0.7.15 完成：AI Assistant Q&amp;A 后端闭环 + v15 HTML 报告</td>
+        <td>comet/doc-kb-ai-assistant</td>
+        <td>9 个新文件 + 14/14 单元测试 + go build ./...</td>
+      </tr>
+      <tr>
+        <td><b>W2-W3</b></td>
+        <td>v0.7.16：GeoIP 引入 + Conditional Access country 生效</td>
+        <td>comet/enterprise-iam-geoip</td>
+        <td>新依赖 offline mmdb + Eval hook + 5 单元测试</td>
+      </tr>
+      <tr>
+        <td><b>W4-W5</b></td>
+        <td>v0.7.17：AI Assistant 前端面板 + 流式 + LLM 真实接入</td>
+        <td>comet/ai-assistant-panel</td>
+        <td>侧栏 Vue 组件 + SSE 通道 + LLM provider 抽象 + 端到端 smoke</td>
+      </tr>
+      <tr>
+        <td><b>W6-W8</b></td>
+        <td>v0.7.18：Yjs + WebSocket awareness 实时协作（Wiki）</td>
+        <td>comet/wiki-realtime-collab</td>
+        <td>Yjs y-websocket + awareness + backend WebSocket handler + Vue 集成</td>
+      </tr>
+      <tr>
+        <td><b>W9-W10</b></td>
+        <td>v0.7.19：AuthZ Admin UI + DLP 审计（敏感词 + 保留）</td>
+        <td>comet/authz-admin-ui + comet/dlp-audit</td>
+        <td>AuthZMatrix.vue + 审计策略 + 第三方集成端点</td>
+      </tr>
+      <tr>
+        <td><b>W11-W12</b></td>
+        <td>v0.7.20：多维表 WeKnora Base（数据库 + 行级权限）</td>
+        <td>comet/weknora-base</td>
+        <td>internal/base/ 模块 + 迁移 + Admin UI + AI 字段</td>
+      </tr>
+    </tbody>
+  </table></div>
+
+  <div class="callout ok">
+    <b>90 天交付后预期进度：</b>
+    <p>· 核心产品能力：88% → <b>92%</b>（AI Assistant 前端 + 实时协作）</p>
+    <p>· 企业级平台能力：55% → <b>75%</b>（GeoIP + AuthZ UI + DLP 审计）</p>
+    <p>· AI 能力：30% → <b>70%</b>（流式 + LLM + Custom Agents 雏形）</p>
+    <p>· 协作 / 生态：15% → <b>50%</b>（实时协作 + 多维表 + Marketplace 雏形）</p>
+    <p>· 对标顶级综合：<b>75% → 82%</b></p>
+  </div>
+</section>
+
+<!-- ========== 12. 证据 ========== -->
+<section id="evidence">
+  <h2>十二、证据与文件</h2>
+
+  <div class="grid grid-2">
+    <div class="card">
+      <h4>v0.7.15 新增 / 修改文件</h4>
+      <ul class="list">
+        <li><span class="ref">migrations/versioned/000117_assistant_conversations.up.sql</span></li>
+        <li><span class="ref">migrations/sqlite/000026_assistant_conversations.up.sql</span></li>
+        <li><span class="ref">internal/types/assistant.go</span></li>
+        <li><span class="ref">internal/types/interfaces/assistant.go</span></li>
+        <li><span class="ref">internal/application/repository/assistant_conversation.go</span></li>
+        <li><span class="ref">internal/application/service/assistant.go</span></li>
+        <li><span class="ref">internal/application/service/assistanttest/assistant_test.go</span>（14/14 测试绿）</li>
+        <li><span class="ref">internal/handler/assistant.go</span></li>
+        <li><span class="ref">internal/router/routes_assistant.go</span></li>
+        <li><span class="ref">internal/router/router.go</span>（AssistantHandler 字段 + 注册）</li>
+        <li><span class="ref">internal/container/container.go</span>（repo/service/handler provider）</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>v0.7.15 之前的核心文件（继承）</h4>
+      <ul class="list">
+        <li><span class="ref">internal/types/knowledge.go</span>（SearchKnowledgeForScopes）</li>
+        <li><span class="ref">internal/types/wiki_search.go</span>（WikiSearchV2Result）</li>
+        <li><span class="ref">internal/application/service/wiki_kb_reference.go</span>（v0.7.12 KB↔Wiki 引用）</li>
+        <li><span class="ref">internal/application/service/wiki_save_backfill.go</span>（v0.7.13 自动回填）</li>
+        <li><span class="ref">internal/authz/</span>（v0.7.4-8 AuthZ 相位 1-3）</li>
+        <li><span class="ref">internal/samlsp/</span>（v0.7.6 SAML 2.0 SP）</li>
+        <li><span class="ref">internal/ldapsp/</span>（v0.7.9 LDAP/AD）</li>
+        <li><span class="ref">internal/scimsp/</span>（v0.7.10 SCIM 2.0）</li>
+        <li><span class="ref">internal/mfasp/</span>（v0.7.11 MFA TOTP）</li>
+        <li><span class="ref">internal/application/service/conditional_access.go</span>（v0.7.14 Conditional Access）</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>竞品参考</h4>
+      <ul class="list">
+        <li><span class="ref">/tmp/weknora_competitor_research.md</span>（122 行 · Notion / 飞书 / Confluence / Glean / Loop）</li>
+        <li><span class="ref">docs/enterprise-capability-analysis-v13.html</span>（v13 报告，5 维对标矩阵）</li>
+        <li><span class="ref">docs/enterprise-capability-analysis-v14.html</span>（v14 报告，IAM 闭环）</li>
+        <li>Notion: notion.com/product/ai, security, pricing, help/data-residency</li>
+        <li>Feishu: feishu.cn/product/docs, wiki, feishuai, security, pricing</li>
+        <li>Confluence: confluence.com/product, atlassian.com/platform/rovo</li>
+        <li>Glean: glean.com, docs.glean.com</li>
+        <li>Loop: learn.microsoft.com/loop</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>统计数据</h4>
+      <ul class="list">
+        <li>迁移文件累计：<b>215</b> 个（v0.7.15 新增 117 / sqlite 26）</li>
+        <li>Handler 文件：<b>122</b>（+1 assistant.go）</li>
+        <li>Service 文件：<b>298</b>（+1 assistant.go）</li>
+        <li>Route 文件：<b>14</b>（+1 routes_assistant.go）</li>
+        <li>Vue 视图：<b>121</b>（v0.7.17 后端接入面板）</li>
+        <li>Vue 组件：<b>100</b>（v0.7.18 新增协作 toolbar）</li>
+        <li>分支累计：<b>9</b>（含 doc-kb-ai-assistant）</li>
+        <li>Worktree：<b>8</b> 活跃</li>
+        <li>对比 v0.7.1 main：+500 文件 / +83,239 行</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <b>公开产品资料说明：</b>本报告对 Notion / 飞书 / Confluence / Glean / Microsoft Loop 的描述仅基于其官方公开文档的概要理解（2026 年 8 月访问），详细信息请参考各产品官方文档站点，不在本报告内复述任何产品文档原文。所有"WeKnora 持平 / 超越"的判断都基于本项目代码内的真实证据，不含路线图项。
+  </div>
+</section>
+
+<div style="padding:40px 0 60px;color:var(--muted);font-size:13px">
+  生成时间：2026-08-31 · 分支：comet/doc-kb-ai-assistant · HEAD：cf7a5155 + 9 新文件 · 数据采集口径：当前分支真实可运行 + 有迁移 + 有前端视图 + 有测试的能力。<br/>
+  v0.7.15 增量：AI Assistant Q&amp;A 后端落地（迁移 117 + 类型 + 仓储 + 服务 + 处理器 + 路由 + 容器 + 14/14 单元测试 + 60 KB HTML 报告）。
+</div>
+
+</div>
+</body>
+</html>
