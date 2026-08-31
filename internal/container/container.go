@@ -204,6 +204,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewTenantAPIKeyService))
 	must(container.Provide(service.NewTenantMemberService))
 	must(container.Provide(service.NewTenantInvitationService))
+	must(container.Provide(repository.NewNotificationRepository))
+	must(container.Provide(service.NewNotificationService))
 	must(container.Provide(service.NewAuditLogService))
 	must(container.Provide(service.NewAuditLogRetentionRunner))
 	must(container.Provide(service.NewKnowledgeBaseService))

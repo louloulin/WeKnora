@@ -7105,6 +7105,26 @@ export default {
       applyOk: 'Generated {count} new page(s)',
       applyFailed: 'Apply failed · {error}',
       emptySkeleton: 'Please add at least one child page or section.',
-    }
+    },
+    notifications: {
+      bellAriaLabel: 'Notifications',
+      dropdownAriaLabel: 'Notification list',
+      title: 'Notifications',
+      markAllRead: 'Mark all as read',
+      filterAll: 'All',
+      filterUnread: 'Unread',
+      loading: 'Loading notifications...',
+      empty: 'No notifications',
+      loadMore: 'Load more',
+      dismissAriaLabel: 'Dismiss this notification',
+      kind: {
+        'wiki.comment.created': 'Wiki comment',
+        'wiki.comment.reply': 'Comment reply',
+        'wiki.mentioned': 'Mention',
+        'agent.shared': 'Agent shared',
+        'kb.shared': 'Knowledge base shared',
+        'system.alert': 'System alert'
+      }
+    },
   }
 }

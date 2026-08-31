@@ -40,6 +40,7 @@ type RouterParams struct {
 	EvaluationService            interfaces.EvaluationService
 	KBShareService               interfaces.KBShareService
 	AgentShareService            interfaces.AgentShareService
+	NotificationHandler          *handler.NotificationHandler
 	KBHandler                    *handler.KnowledgeBaseHandler
 	KnowledgeHandler             *handler.KnowledgeHandler
 	TenantHandler                *handler.TenantHandler
@@ -280,7 +281,9 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterSandboxConfigRoutes(v1, params.SandboxConfigHandler, params.SandboxSkillHandler, rbacGuards)
 		RegisterMyEnvVarRoutes(v1, params.MeEnvVarHandler)
 		RegisterEvaluationRoutes(v1, params.EvaluationHandler, rbacGuards)
-		RegisterEvalRoutes(v1, params.EvalDatasetHandler, params.EvalRunHandler, params.EvalBadcaseHandler, rbacGuards)
+		if params.NotificationHandler != nil {
+			RegisterNotificationRoutes(v1, params.NotificationHandler, rbacGuards)
+		}
 		RegisterInitializationRoutes(v1, params.InitializationHandler, rbacGuards)
 		params.SystemHandler.BindDeploymentCapabilities(deploymentCapabilitiesFromRouter(params))
 		RegisterSystemRoutes(v1, params.SystemHandler, params.FeaturesHandler, rbacGuards)

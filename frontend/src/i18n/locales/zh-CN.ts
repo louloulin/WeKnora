@@ -7112,6 +7112,26 @@ export default {
     logoutSuccess: '已退出登录',
     myChats: '我的对话',
     apiChats: 'API 会话',
-    noSessions: '暂无对话'
+    noSessions: '暂无对话',
+    notifications: {
+      bellAriaLabel: '通知',
+      dropdownAriaLabel: '通知列表',
+      title: '通知',
+      markAllRead: '全部标为已读',
+      filterAll: '全部',
+      filterUnread: '未读',
+      loading: '正在加载通知...',
+      empty: '暂无通知',
+      loadMore: '加载更多',
+      dismissAriaLabel: '忽略该通知',
+      kind: {
+        'wiki.comment.created': 'Wiki 评论',
+        'wiki.comment.reply': '评论回复',
+        'wiki.mentioned': '@ 提及',
+        'agent.shared': '智能体共享',
+        'kb.shared': '知识库共享',
+        'system.alert': '系统提醒'
+      }
+    },
   }
 }

@@ -7105,6 +7105,26 @@ export default {
       applyOk: '{count}개의 새 페이지를 생성했습니다',
       applyFailed: '적용 실패 · {error}',
       emptySkeleton: '최소 하나의 하위 페이지 또는 섹션을 추가하세요.',
-    }
+    },
+    notifications: {
+      bellAriaLabel: '알림',
+      dropdownAriaLabel: '알림 목록',
+      title: '알림',
+      markAllRead: '모두 읽음 처리',
+      filterAll: '전체',
+      filterUnread: '안 읽음',
+      loading: '알림을 불러오는 중...',
+      empty: '알림이 없습니다',
+      loadMore: '더 보기',
+      dismissAriaLabel: '이 알림 무시',
+      kind: {
+        'wiki.comment.created': 'Wiki 댓글',
+        'wiki.comment.reply': '댓글 답글',
+        'wiki.mentioned': '언급',
+        'agent.shared': '에이전트 공유',
+        'kb.shared': '지식 베이스 공유',
+        'system.alert': '시스템 알림'
+      }
+    },
   }
 }

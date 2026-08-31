@@ -7105,6 +7105,26 @@ export default {
       applyOk: 'Создано {count} новых страниц(ы)',
       applyFailed: 'Не удалось применить · {error}',
       emptySkeleton: 'Добавьте хотя бы одну дочернюю страницу или раздел.',
-    }
+    },
+    notifications: {
+      bellAriaLabel: 'Уведомления',
+      dropdownAriaLabel: 'Список уведомлений',
+      title: 'Уведомления',
+      markAllRead: 'Отметить все как прочитанные',
+      filterAll: 'Все',
+      filterUnread: 'Непрочитанные',
+      loading: 'Загрузка уведомлений...',
+      empty: 'Нет уведомлений',
+      loadMore: 'Загрузить ещё',
+      dismissAriaLabel: 'Скрыть это уведомление',
+      kind: {
+        'wiki.comment.created': 'Комментарий Wiki',
+        'wiki.comment.reply': 'Ответ на комментарий',
+        'wiki.mentioned': 'Упоминание',
+        'agent.shared': 'Агент расшарен',
+        'kb.shared': 'База знаний расшарена',
+        'system.alert': 'Системное уведомление'
+      }
+    },
   }
 }
