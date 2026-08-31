@@ -112,3 +112,69 @@ export async function transformWorkbook(
   if (!dirty) return bytes
   return zip.generateAsync({ type: 'uint8array' })
 }
+
+// ============================================================
+// v0.7.46 — multi-file PackageTransform (notes / tables / hyperlinks).
+// ============================================================
+
+/** Mutable OOXML package — abstraction over JSZip used by the vendored
+ *  adapters (xlsxNotes, xlsxTableAdd, xlsxDrawingAdd). All paths are
+ *  zip-absolute (no leading slash). */
+export interface MutablePackage {
+  paths(): Promise<readonly string[]>
+  has(path: string): Promise<boolean>
+  readText(path: string): Promise<string>
+  write(path: string, content: string): void
+  add(path: string, content: string): void
+  remove(path: string): void
+}
+
+/** Apply a multi-file package transform that may read/write/create/delete
+ *  arbitrary zip parts in addition to worksheet XML. The `transformer`
+ *  callback runs with a `MutablePackage` view over a JSZip instance;
+ *  returning without throwing commits all writes.
+ *
+ *  Returns the original bytes when the transformer is a no-op (no
+ *  writes happen), preserving identity short-circuit for cheap paths.
+ */
+export async function transformPackage(
+  bytes: Uint8Array,
+  transformer: (pkg: MutablePackage) => Promise<void> | void,
+): Promise<Uint8Array> {
+  const zip = await JSZip.loadAsync(bytes)
+  const dirty = { value: false }
+  const pkg: MutablePackage = {
+    async paths() {
+      const out: string[] = []
+      zip.forEach((p) => out.push(p))
+      return out.sort()
+    },
+    async has(path) {
+      return zip.file(path) !== null
+    },
+    async readText(path) {
+      return (await zip.file(path)?.async('text')) ?? ''
+    },
+    write(path, content) {
+      const existing = zip.file(path)
+      if (existing && typeof existing === 'object' && '_data' in existing) {
+        // Update in place to preserve lastModified / binary mode.
+        zip.file(path, content)
+      } else {
+        zip.file(path, content)
+      }
+      dirty.value = true
+    },
+    add(path, content) {
+      zip.file(path, content)
+      dirty.value = true
+    },
+    remove(path) {
+      zip.remove(path)
+      dirty.value = true
+    },
+  }
+  await transformer(pkg)
+  if (!dirty.value) return bytes
+  return zip.generateAsync({ type: 'uint8array' })
+}
