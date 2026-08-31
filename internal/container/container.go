@@ -48,6 +48,7 @@ import (
 	tencentVectorDBRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/tencentvectordb"
 	weaviateRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/weaviate"
 	"github.com/Tencent/WeKnora/internal/application/service"
+	"github.com/Tencent/WeKnora/internal/samlsp"
 	"github.com/Tencent/WeKnora/internal/authz"
 	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
 	"github.com/Tencent/WeKnora/internal/application/service/file"
@@ -207,6 +208,14 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewTenantInvitationService))
 	must(container.Provide(repository.NewNotificationRepository))
 	must(container.Provide(service.NewNotificationService))
+	// SAML 2.0 SP — repository + service. The SPConfig singleton
+	// (cert + entity ID + ACS URL) is registered as a value; today
+	// it reads from env (SAML_SP_ENTITY_ID, SAML_SP_CERT_PEM,
+	// SAML_SP_KEY_PEM) and a follow-up commit moves it to the
+	// admin-managed settings table.
+	must(container.Provide(repository.NewSAMLIdPRepository))
+	must(container.Provide(service.NewSAMLIdPService))
+	must(container.Provide(newSAMLSPConfig))
 	// AuthZ composite checker — built lazily so the notification
 	// service can be a dependency. The closure pattern avoids the
 	// chicken-and-egg problem (the authz package cannot import the
@@ -608,6 +617,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewEvalBadcaseHandler))
 	must(container.Provide(handler.NewInitializationHandler))
 	must(container.Provide(handler.NewAuthHandler))
+	must(container.Provide(handler.NewSAMLHandler))
 	must(container.Provide(handler.NewSystemHandler))
 	must(container.Provide(handler.NewFeaturesHandler))
 	must(container.Provide(handler.NewMCPServiceHandler))
@@ -2231,4 +2241,54 @@ func (r *kbAuditTenantResolver) ResolveTenantID(ctx context.Context, kbID string
 		return 0, nil
 	}
 	return kb.TenantID, nil
+}
+
+
+// newSAMLSPConfig reads the SP-side SAML configuration from the
+// process environment. The cert + key are PEM-encoded; we generate
+// a self-signed pair on first boot when neither env var is set so
+// the SP works out of the box for local development. Production
+// deployments must provision SAML_SP_CERT_PEM + SAML_SP_KEY_PEM.
+//
+// TODO: read the SP cert from the admin-managed settings table
+// once the SAML admin UI lands (today the admin can only manage
+// the IdP-side config; the SP side is operator-managed).
+func newSAMLSPConfig() (*samlsp.SPConfig, error) {
+	cfg := &samlsp.SPConfig{
+		EntityID:    envOr("SAML_SP_ENTITY_ID", "urn:weknora:saml:sp"),
+		ACSURL:      envOr("SAML_SP_ACS_URL", "http://localhost:8080/api/v1/auth/saml/acs"),
+		SLOURL:      envOr("SAML_SP_SLO_URL", "http://localhost:8080/api/v1/auth/saml/slo"),
+		MetadataURL: envOr("SAML_SP_METADATA_URL", "http://localhost:8080/api/v1/auth/saml/metadata"),
+	}
+	certPEM := os.Getenv("SAML_SP_CERT_PEM")
+	keyPEM := os.Getenv("SAML_SP_KEY_PEM")
+	if certPEM != "" && keyPEM != "" {
+		cert, err := decodePEMCertificate(certPEM)
+		if err != nil {
+			return nil, err
+		}
+		key, err := decodePEMPrivateKey(keyPEM)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Certificate = cert
+		cfg.Key = key
+	} else {
+		// Dev fallback: ephemeral self-signed cert. The key never
+		// leaves the process so this is acceptable for local dev.
+		cert, key, err := generateDevCert()
+		if err != nil {
+			return nil, err
+		}
+		cfg.Certificate = cert
+		cfg.Key = key
+	}
+	return cfg, nil
+}
+
+func envOr(key, fallback string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
+	}
+	return fallback
 }
