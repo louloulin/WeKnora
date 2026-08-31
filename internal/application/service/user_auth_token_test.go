@@ -207,12 +207,13 @@ func TestValidateTokenRejectsExchangeWithoutActiveTenantMembership(t *testing.T)
 		"oidc_subject":       "subject",
 		"casdoor_tenant":     "tenant-a",
 		"tenant_id":          1,
-		"token_type":         "weknora_exchange",
-		"session_id":         "session-1",
-		"membership_version": "version-1",
-		"jti":                "jti-1",
-		"iat":                time.Now().Unix(),
-		"exp":                time.Now().Add(time.Minute).Unix(),
+		"token_type":           "weknora_exchange",
+		"session_id":           "session-1",
+		"membership_version":   "version-1",
+		"authorization_version": 1,
+		"jti":                  "jti-1",
+		"iat":                  time.Now().Unix(),
+		"exp":                  time.Now().Add(time.Minute).Unix(),
 	})
 	signed, err := token.SignedString([]byte("exchange-secret-for-tests"))
 	if err != nil {
@@ -233,7 +234,7 @@ func TestValidateTokenRejectsExchangeWithoutActiveTenantMembership(t *testing.T)
 			t.Errorf("introspection Authorization header was not forwarded")
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ok","data":{"active":true,"subject":"subject","casdoor_tenant":"tenant-a","tenant_id":1,"session_id":"session-1","membership_version":"version-1","jti":"jti-1"}}`))
+		_, _ = w.Write([]byte(`{"status":"ok","data":{"active":true,"subject":"subject","casdoor_tenant":"tenant-a","tenant_id":1,"session_id":"session-1","membership_version":"version-1","authorization_version":1,"jti":"jti-1"}}`))
 	}))
 	defer introspection.Close()
 	svc.config.OIDCAuth.GatewayExchangeIntrospectionURL = introspection.URL
@@ -248,8 +249,92 @@ func TestValidateTokenRejectsExchangeWithoutActiveTenantMembership(t *testing.T)
 	}))
 	defer failedIntrospection.Close()
 	svc.config.OIDCAuth.GatewayExchangeIntrospectionURL = failedIntrospection.URL
-	if _, _, err := svc.ValidateToken(ctx, signed); err == nil || err.Error() != "gateway exchange token is no longer active" {
-		t.Fatalf("ValidateToken() err = %v, want fail-closed introspection rejection", err)
+	if _, _, err := svc.ValidateToken(ctx, signed); err == nil || err.Error() != "gateway exchange introspection HTTP 503: gateway returned non-2xx" {
+		t.Fatalf("ValidateToken() err = %v, want fail-closed introspection rejection with HTTP 503", err)
+	}
+}
+
+func TestGatewayExchangeTokenRejectsStaleAuthorizationVersion(t *testing.T) {
+	ctx := context.Background()
+	tokenRepo := &stubAuthTokenRepo{tokens: map[string]*types.AuthToken{}}
+	svc := newAuthTestUserService(tokenRepo)
+	svc.oidcIdentityRepo = &stubOIDCIdentityRepoForAuth{identity: &types.OIDCIdentity{UserID: "user-1", Issuer: "http://issuer", Subject: "subject"}}
+	svc.memberService = &membershipLookupService{byTenant: map[uint64]*types.TenantMember{1: {UserID: "user-1", TenantID: 1, Status: types.TenantMemberStatusActive}}}
+	svc.config = &config.Config{OIDCAuth: &config.OIDCAuthConfig{
+		GatewayExchangeSecret:   "exchange-secret-for-tests",
+		GatewayExchangeIssuer:   "http://gateway",
+		GatewayExchangeAudience: "weknora",
+		GatewayTenantMap:        map[string]uint64{"tenant-a": 1},
+	}}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"iss":                  "http://gateway",
+		"aud":                  "weknora",
+		"sub":                  "subject",
+		"oidc_issuer":          "http://issuer",
+		"oidc_subject":         "subject",
+		"casdoor_tenant":       "tenant-a",
+		"tenant_id":            1,
+		"token_type":           "weknora_exchange",
+		"session_id":           "session-1",
+		"membership_version":   "version-1",
+		"authorization_version": 1,
+		"jti":                  "jti-1",
+		"iat":                  time.Now().Unix(),
+		"exp":                  time.Now().Add(time.Minute).Unix(),
+	})
+	signed, err := token.SignedString([]byte("exchange-secret-for-tests"))
+	if err != nil {
+		t.Fatalf("sign exchange token: %v", err)
+	}
+	introspection := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Gateway reports authorization_version=2 because a webhook has bumped it
+		// since the exchange token was minted.
+		_, _ = w.Write([]byte(`{"status":"ok","data":{"active":true,"subject":"subject","casdoor_tenant":"tenant-a","tenant_id":1,"session_id":"session-1","membership_version":"version-1","authorization_version":2,"jti":"jti-1"}}`))
+	}))
+	defer introspection.Close()
+	svc.config.OIDCAuth.GatewayExchangeIntrospectionURL = introspection.URL
+	if _, _, err := svc.ValidateToken(ctx, signed); err == nil || err.Error() != "gateway exchange token claim mismatch" {
+		t.Fatalf("ValidateToken() err = %v, want stale-authorization-version rejection with claim mismatch", err)
+	}
+}
+
+func TestGatewayExchangeTokenRejectsIntrospectionNetworkFailure(t *testing.T) {
+	ctx := context.Background()
+	tokenRepo := &stubAuthTokenRepo{tokens: map[string]*types.AuthToken{}}
+	svc := newAuthTestUserService(tokenRepo)
+	svc.oidcIdentityRepo = &stubOIDCIdentityRepoForAuth{identity: &types.OIDCIdentity{UserID: "user-1", Issuer: "http://issuer", Subject: "subject"}}
+	svc.memberService = &membershipLookupService{byTenant: map[uint64]*types.TenantMember{1: {UserID: "user-1", TenantID: 1, Status: types.TenantMemberStatusActive}}}
+	svc.config = &config.Config{OIDCAuth: &config.OIDCAuthConfig{
+		GatewayExchangeSecret:   "exchange-secret-for-tests",
+		GatewayExchangeIssuer:   "http://gateway",
+		GatewayExchangeAudience: "weknora",
+		GatewayTenantMap:        map[string]uint64{"tenant-a": 1},
+	}}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"iss":                  "http://gateway",
+		"aud":                  "weknora",
+		"sub":                  "subject",
+		"oidc_issuer":          "http://issuer",
+		"oidc_subject":         "subject",
+		"casdoor_tenant":       "tenant-a",
+		"tenant_id":            1,
+		"token_type":           "weknora_exchange",
+		"session_id":           "session-1",
+		"membership_version":   "version-1",
+		"authorization_version": 1,
+		"jti":                  "jti-1",
+		"iat":                  time.Now().Unix(),
+		"exp":                  time.Now().Add(time.Minute).Unix(),
+	})
+	signed, err := token.SignedString([]byte("exchange-secret-for-tests"))
+	if err != nil {
+		t.Fatalf("sign exchange token: %v", err)
+	}
+	// Use a URL that points at an unreachable endpoint to simulate Casdoor/Gateway outage.
+	svc.config.OIDCAuth.GatewayExchangeIntrospectionURL = "http://127.0.0.1:1/v1/token-exchange/weknora/introspect"
+	if _, _, err := svc.ValidateToken(ctx, signed); err == nil || !strings.Contains(err.Error(), "gateway exchange introspection failed") {
+		t.Fatalf("ValidateToken() err = %v, want network-failure classification (should mention introspection failed)", err)
 	}
 }
 

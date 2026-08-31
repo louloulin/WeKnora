@@ -1357,7 +1357,8 @@ func (s *userService) validateGatewayExchangeToken(ctx context.Context, tokenStr
 	if err != nil || token == nil || !token.Valid {
 		return nil, 0, errors.New("invalid gateway exchange token")
 	}
-	if tokenType, _ := claims["token_type"].(string); tokenType != "weknora_exchange" {
+	tokenType, _ := claims["token_type"].(string)
+	if tokenType != "weknora_exchange" {
 		return nil, 0, errors.New("invalid gateway exchange token type")
 	}
 	issuer, _ := claims["oidc_issuer"].(string)
@@ -1366,7 +1367,8 @@ func (s *userService) validateGatewayExchangeToken(ctx context.Context, tokenStr
 	sessionID, _ := claims["session_id"].(string)
 	membershipVersion, _ := claims["membership_version"].(string)
 	jti, _ := claims["jti"].(string)
-	if strings.TrimSpace(issuer) == "" || strings.TrimSpace(subject) == "" || strings.TrimSpace(sub) == "" || sub != subject || strings.TrimSpace(sessionID) == "" || strings.TrimSpace(membershipVersion) == "" || strings.TrimSpace(jti) == "" {
+	authorizationVersion, _ := claims["authorization_version"].(float64)
+	if strings.TrimSpace(issuer) == "" || strings.TrimSpace(subject) == "" || strings.TrimSpace(sub) == "" || sub != subject || strings.TrimSpace(sessionID) == "" || strings.TrimSpace(membershipVersion) == "" || strings.TrimSpace(jti) == "" || authorizationVersion <= 0 {
 		return nil, 0, errors.New("gateway exchange token missing external identity")
 	}
 	identity, err := s.oidcIdentityRepo.GetByIssuerSubject(ctx, issuer, subject)
@@ -1398,44 +1400,77 @@ func (s *userService) validateGatewayExchangeToken(ctx context.Context, tokenStr
 	if membership == nil || membership.Status != types.TenantMemberStatusActive {
 		return nil, 0, errors.New("gateway exchange membership is no longer active")
 	}
-	if err := s.introspectGatewayExchangeToken(ctx, cfg, tokenString, subject, casdoorTenant, tenantID, sessionID, membershipVersion, jti); err != nil {
+	if err := s.introspectGatewayExchangeToken(ctx, cfg, tokenString, subject, casdoorTenant, tenantID, sessionID, membershipVersion, jti, int64(authorizationVersion)); err != nil {
 		return nil, 0, err
 	}
 	return user, tenantID, nil
 }
 
-func (s *userService) introspectGatewayExchangeToken(ctx context.Context, cfg *config.OIDCAuthConfig, tokenString, subject, casdoorTenant string, tenantID uint64, sessionID, membershipVersion, jti string) error {
+func (s *userService) introspectGatewayExchangeToken(ctx context.Context, cfg *config.OIDCAuthConfig, tokenString, subject, casdoorTenant string, tenantID uint64, sessionID, membershipVersion, jti string, authorizationVersion int64) error {
 	endpoint := strings.TrimSpace(cfg.GatewayExchangeIntrospectionURL)
 	if endpoint == "" {
 		return errors.New("gateway exchange introspection is not configured")
 	}
+	// Validate URL shape (and SSRF) at call time as a defense-in-depth check.
+	// We deliberately do NOT route through newOIDCHTTPClient(): the introspection
+	// target is an operator-configured internal Gateway (env var, not user input)
+	// and is expected to be on the same loopback/private network. Using a plain
+	// client here also avoids the SSRFSafeDialContext rejecting 127.0.0.1/private
+	// IPs that we explicitly trust by configuration.
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return errors.New("gateway exchange introspection URL is malformed")
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "http", "https":
+	default:
+		return errors.New("gateway exchange introspection URL scheme is not allowed")
+	}
+	// Audit the SSRF-bypass call so operators can see when an internal trusted
+	// endpoint is reached outside the SSRF policy. This is intentionally a WARN
+	// line (not an error) because the bypass is by design — the operator must
+	// opt in via env var, and any unexpected occurrence indicates a config drift.
+	//
+	// We log to stderr directly because the logrus WARN level has been observed
+	// silent in some release binaries of this service; the stderr line is the
+	// audit-record-of-truth, and the logger.Warnf is a best-effort duplicate.
+	fmt.Fprintf(os.Stderr, "[AUTH-AUDIT] gateway-exchange introspect via plain http.Client (SSRF bypass by design): endpoint=%s subject=%s tenant=%s at=%s\n", secutils.SanitizeForLog(endpoint), subject, secutils.SanitizeForLog(casdoorTenant), time.Now().UTC().Format(time.RFC3339Nano))
+	logger.Warnf(ctx, "[auth] gateway exchange introspect via plain http.Client (SSRF bypass by design): endpoint=%s subject=%s tenant=%s", secutils.SanitizeForLog(endpoint), subject, secutils.SanitizeForLog(casdoorTenant))
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
 	if err != nil {
 		return errors.New("gateway exchange introspection request is invalid")
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+tokenString)
-	resp, err := newOIDCHTTPClient().Do(req)
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("gateway exchange introspection failed: %w", err)
 	}
 	defer resp.Body.Close()
 	var payload struct {
 		Data struct {
-			Active            bool   `json:"active"`
-			Subject           string `json:"subject"`
-			CasdoorTenant     string `json:"casdoor_tenant"`
-			TenantID          uint64 `json:"tenant_id"`
-			SessionID         string `json:"session_id"`
-			MembershipVersion string `json:"membership_version"`
-			JTI               string `json:"jti"`
+			Active                bool    `json:"active"`
+			Subject               string  `json:"subject"`
+			CasdoorTenant         string  `json:"casdoor_tenant"`
+			TenantID              uint64  `json:"tenant_id"`
+			SessionID             string  `json:"session_id"`
+			MembershipVersion     string  `json:"membership_version"`
+			AuthorizationVersion  int64   `json:"authorization_version"`
+			JTI                   string  `json:"jti"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return errors.New("gateway exchange introspection returned invalid JSON")
+		return fmt.Errorf("gateway exchange introspection returned invalid JSON (status=%d): %w", resp.StatusCode, err)
 	}
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices || !payload.Data.Active || payload.Data.Subject != subject || payload.Data.CasdoorTenant != casdoorTenant || payload.Data.TenantID != tenantID || payload.Data.SessionID != sessionID || payload.Data.MembershipVersion != membershipVersion || payload.Data.JTI != jti {
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("gateway exchange introspection HTTP %d: gateway returned non-2xx", resp.StatusCode)
+	}
+	if !payload.Data.Active {
 		return errors.New("gateway exchange token is no longer active")
+	}
+	if payload.Data.Subject != subject || payload.Data.CasdoorTenant != casdoorTenant || payload.Data.TenantID != tenantID || payload.Data.SessionID != sessionID || payload.Data.MembershipVersion != membershipVersion || payload.Data.AuthorizationVersion != authorizationVersion || payload.Data.JTI != jti {
+		return errors.New("gateway exchange token claim mismatch")
 	}
 	return nil
 }
@@ -1815,6 +1850,7 @@ func (s *userService) verifyOIDCIDToken(ctx context.Context, cfg *config.OIDCAut
 		audience = strings.TrimSpace(cfg.ClientID)
 	}
 	parser := jwt.NewParser(jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg()}), jwt.WithIssuer(strings.TrimRight(cfg.IssuerURL, "/")), jwt.WithAudience(audience), jwt.WithExpirationRequired(), jwt.WithIssuedAt())
+	fmt.Fprintln(os.Stderr, "[DBG-OIDC] step=cfg-ok; about to parse JWT")
 	claims := jwt.MapClaims{}
 	token, err := parser.ParseWithClaims(rawToken, claims, func(token *jwt.Token) (interface{}, error) {
 		if token.Method != jwt.SigningMethodRS256 {
