@@ -1258,13 +1258,15 @@ type WikiIndexResponse struct {
 // included so dead-link cleanup can determine which pages reference a
 // given dead slug without a second query.
 type WikiPageLite struct {
-	Slug      string      `json:"slug"`
-	Title     string      `json:"title"`
-	PageType  string      `json:"page_type"`
-	Status    string      `json:"status"`
-	Aliases   StringArray `json:"aliases,omitempty"`
-	OutLinks  StringArray `json:"out_links,omitempty"`
-	UpdatedAt time.Time   `json:"updated_at,omitempty"`
+	Slug           string      `json:"slug"`
+	Title          string      `json:"title"`
+	PageType       string      `json:"page_type"`
+	Status         string      `json:"status"`
+	Aliases        StringArray `json:"aliases,omitempty"`
+	OutLinks       StringArray `json:"out_links,omitempty"`
+	UpdatedAt      time.Time   `json:"updated_at,omitempty"`
+	// KnowledgeBaseID is added by Build #28 (Cross-KB Backlinks).
+	KnowledgeBaseID string     `json:"knowledge_base_id,omitempty"`
 }
 
 // WikiPageBacklink is the resolved-row shape returned by
@@ -1306,6 +1308,38 @@ type WikiBacklinkIndirect struct {
 type WikiPageBacklinkRelated struct {
 	*WikiPageBacklink
 	Jaccard float64 `json:"jaccard"`
+}
+
+// WikiBacklinkCrossKB is a backlink whose source page lives in a
+// different knowledge base than the current page. KnowledgeBaseID
+// powers the KB badge in the panel and lets the click handler route
+// through the cross-KB read flow (kb_id + slug). Build #28 — Cross-KB
+// Backlinks Visualization.
+type WikiBacklinkCrossKB struct {
+	Slug           string    `json:"slug"`
+	Title          string    `json:"title"`
+	PageType       string    `json:"page_type"`
+	Status         string    `json:"status"`
+	UpdatedAt      time.Time `json:"updated_at"`
+	KnowledgeBaseID string   `json:"knowledge_base_id"`
+}
+
+// WikiBacklinkCrossKBGroup aggregates cross-KB backlinks by their source
+// knowledge base so the panel can render a per-KB accordion. KBName is
+// resolved at the service layer (the repo only knows the kb_id).
+type WikiBacklinkCrossKBGroup struct {
+	KnowledgeBaseID string                  `json:"knowledge_base_id"`
+	KBName          string                  `json:"kb_name"`
+	Backlinks       []*WikiBacklinkCrossKB   `json:"backlinks"`
+	Total           int                     `json:"total"`
+}
+
+// WikiBacklinkCrossKBResponse is the full cross-KB backlinks payload.
+// `Total` is the sum across groups so the panel can render a global
+// chip without iterating.
+type WikiBacklinkCrossKBResponse struct {
+	Groups []*WikiBacklinkCrossKBGroup `json:"groups"`
+	Total  int                         `json:"total"`
 }
 
 // WikiBacklinkBroken represents a target slug in the current page's

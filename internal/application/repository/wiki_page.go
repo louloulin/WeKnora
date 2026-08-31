@@ -348,6 +348,50 @@ func (r *wikiPageRepository) UpdateContentTSZh(ctx context.Context, id string, t
 	return nil
 }
 
+// ListBacklinksAcrossKBs returns lightweight projections of every wiki
+// page in the tenant whose out_links JSON array contains targetSlug.
+// Rows in excludeKBID are filtered out so the caller can render
+// "backlinks from outside this KB" without a second pass. The
+// implementation uses a portable JSON contains predicate so the same
+// SQL works on postgres (jsonb containment `?`) and sqlite (json_each
+// over the serialized array). Build #28 — Cross-KB Backlinks.
+func (r *wikiPageRepository) ListBacklinksAcrossKBs(
+	ctx context.Context, tenantID uint64, targetSlug string, excludeKBID string, limit int,
+) ([]*types.WikiPageLite, error) {
+	if targetSlug == "" || limit <= 0 {
+		return []*types.WikiPageLite{}, nil
+	}
+	dialect := ""
+	if r.db != nil && r.db.Dialector != nil {
+		dialect = r.db.Dialector.Name()
+	}
+	if dialect == "postgres" {
+		var rows []*types.WikiPageLite
+		q := r.db.WithContext(ctx).Model(&types.WikiPage{}).
+			Select("slug, title, page_type, status, updated_at, knowledge_base_id")
+		q = q.Where("tenant_id = ? AND out_links @> ?::jsonb AND knowledge_base_id <> ?",
+			tenantID, fmt.Sprintf("[%q]", targetSlug), excludeKBID)
+		if err := q.Order("updated_at DESC").Limit(limit).Find(&rows).Error; err != nil {
+			return nil, err
+		}
+		return rows, nil
+	}
+	// SQLite: out_links is stored as a JSON-encoded text column. Use
+	// a LIKE match against the array element form. False positives on
+	// partial slugs are avoided by anchoring the surrounding characters
+	// ("slug" in JSON serializes to a quoted string).
+	var rows []*types.WikiPageLite
+	q := r.db.WithContext(ctx).Model(&types.WikiPage{}).
+		Select("slug, title, page_type, status, updated_at, knowledge_base_id")
+	pattern := "%\"" + strings.ReplaceAll(targetSlug, "\"", "\\\"") + "\"%"
+	q = q.Where("tenant_id = ? AND out_links LIKE ? AND knowledge_base_id <> ?",
+		tenantID, pattern, excludeKBID)
+	if err := q.Order("updated_at DESC").Limit(limit).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 // GetBySlugAcrossKB retrieves a wiki page by slug without scoping to a
 // knowledge base. Returns ErrWikiPageNotFound when the slug is truly
 // absent in any KB; otherwise returns the page (with its

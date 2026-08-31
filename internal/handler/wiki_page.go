@@ -1189,6 +1189,59 @@ func (h *WikiPageHandler) GetPageBacklinks(c *gin.Context) {
 	c.JSON(http.StatusOK, backlinks)
 }
 
+// GetPageBacklinksCrossKB godoc
+// @Summary      List cross-KB backlinks for this wiki page
+// @Description  Build #28 — Cross-KB Backlinks. Returns every page in any
+// @Description  other knowledge base owned by the caller's tenant whose
+// @Description  body contains a [[<slug>]] reference to this page.
+// @Description  Results are grouped by source knowledge base so the panel
+// @Description  can render a per-KB accordion; each row carries the
+// @Description  source kb_id so the click handler can route through the
+// @Description  cross-KB read flow.
+// @Tags         Wiki
+// @Produce      json
+// @Param        kb_id  path  string  true  "Knowledge base ID"
+// @Param        slug   path  string  true  "Page slug"
+// @Param        limit  query  int    false  "Max backlinks (default 50)"
+// @Success      200  {object}  types.WikiBacklinkCrossKBResponse
+// @Failure      400  {object}  errors.AppError
+// @Failure      404  {object}  errors.AppError
+// @Security     Bearer
+// @Router       /knowledgebase/{kb_id}/wiki/pages/{slug}/backlinks/cross-kb [get]
+func (h *WikiPageHandler) GetPageBacklinksCrossKB(c *gin.Context) {
+	kbID, tenantID, err := h.validateWikiKB(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	slug := getSlugParam(c)
+	if slug == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Page slug is required"})
+		return
+	}
+	limit := 50
+	if v := c.Query("limit"); v != "" {
+		if parsed, perr := strconv.Atoi(v); perr == nil && parsed > 0 && parsed <= 200 {
+			limit = parsed
+		}
+	}
+	resp, err := h.wikiService.ListBacklinksAcrossKBs(
+		c.Request.Context(), tenantID, kbID, slug, limit,
+	)
+	if err != nil {
+		if stderrors.Is(err, repository.ErrWikiPageNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Wiki page not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if resp == nil {
+		resp = &types.WikiBacklinkCrossKBResponse{Groups: []*types.WikiBacklinkCrossKBGroup{}}
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
 // GetPageBacklinksCacheStatus godoc
 // @Summary      Return slim cache metadata for a page's backlink graph
 // @Description  Returns `computed_at`, `updated_at`, and (when set)

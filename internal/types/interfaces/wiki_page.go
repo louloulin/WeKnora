@@ -142,6 +142,13 @@ type WikiPageService interface {
 	// excluded. Build #11.
 	ListPageBacklinks(ctx context.Context, kbID string, slug string) ([]*types.WikiPageBacklink, error)
 
+	// ListBacklinksAcrossKBs returns the cross-KB backlinks for the page
+	// at `slug` — every page in any other knowledge base owned by the
+	// given tenant whose `out_links` JSON contains the target slug.
+	// Results are grouped by source KB and ordered by total backlink
+	// count DESC. Build #28.
+	ListBacklinksAcrossKBs(ctx context.Context, tenantID uint64, excludeKBID, slug string, limit int) (*types.WikiBacklinkCrossKBResponse, error)
+
 	// ListBacklinkGraph bundles the four-section backlinks graph for
 	// `slug` (direct / indirect / related / broken) + stats into one
 	// payload so the panel renders the full picture in a single round
@@ -484,6 +491,15 @@ type WikiPageRepository interface {
 	// ErrWikiPageNotFound. Used by the Build #12 batch endpoints to surface
 	// `kb_mismatch` per the brief's D2 (cross-KB → 400).
 	GetBySlugAcrossKB(ctx context.Context, slug string) (*types.WikiPage, error)
+
+	// ListBacklinksAcrossKBs returns lightweight projections of every wiki
+	// page in any knowledge base owned by the given tenant whose
+	// out_links contains `targetSlug`, grouped per source KB. Rows where
+	// knowledge_base_id matches `excludeKBID` are filtered out so callers
+	// can compute "backlinks from outside this KB" without an extra
+	// post-filter. Returns up to `limit` rows total, ordered by updated_at
+	// DESC. Used by Build #28 (Cross-KB Backlinks Visualization, v0.7.25).
+	ListBacklinksAcrossKBs(ctx context.Context, tenantID uint64, targetSlug string, excludeKBID string, limit int) ([]*types.WikiPageLite, error)
 
 	// List retrieves wiki pages with filtering and pagination.
 	List(ctx context.Context, req *types.WikiPageListRequest) ([]*types.WikiPage, int64, error)

@@ -1255,6 +1255,71 @@ func (s *wikiPageService) ListPageBacklinks(
 }
 
 // -----------------------------------------------------------------------------
+// ListBacklinksAcrossKBs (Build #28) returns the cross-KB backlinks
+// for a wiki page — every page in any other knowledge base owned by
+// the same tenant whose `out_links` JSON contains the target slug.
+// Results are grouped by source KB so the panel can render a per-KB
+// accordion. KB names are resolved via the existing KB service in the
+// container so the panel can label each group with a real title rather
+// than the opaque kb_id. Results are sorted by updated_at DESC within
+// each group; groups themselves are ordered by total backlink count
+// DESC so the most-referenced KBs surface first.
+func (s *wikiPageService) ListBacklinksAcrossKBs(
+	ctx context.Context, tenantID uint64, excludeKBID, slug string, limit int,
+) (*types.WikiBacklinkCrossKBResponse, error) {
+	if s.repo == nil || slug == "" {
+		return &types.WikiBacklinkCrossKBResponse{Groups: []*types.WikiBacklinkCrossKBGroup{}}, nil
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.repo.ListBacklinksAcrossKBs(ctx, tenantID, slug, excludeKBID, limit)
+	if err != nil {
+		return nil, err
+	}
+	resp := &types.WikiBacklinkCrossKBResponse{Groups: []*types.WikiBacklinkCrossKBGroup{}}
+	grouped := make(map[string][]*types.WikiBacklinkCrossKB)
+	for _, row := range rows {
+		if row == nil {
+			continue
+		}
+		kbID := row.KnowledgeBaseID
+		grouped[kbID] = append(grouped[kbID], &types.WikiBacklinkCrossKB{
+			Slug:           row.Slug,
+			Title:          row.Title,
+			PageType:       row.PageType,
+			Status:         row.Status,
+			UpdatedAt:      row.UpdatedAt,
+			KnowledgeBaseID: kbID,
+		})
+	}
+	for kbID, items := range grouped {
+		kbName := kbID
+		if s.kbService != nil {
+			if kb, err := s.kbService.GetKnowledgeBaseByID(ctx, kbID); err == nil && kb != nil && kb.Name != "" {
+				kbName = kb.Name
+			}
+		}
+		resp.Groups = append(resp.Groups, &types.WikiBacklinkCrossKBGroup{
+			KnowledgeBaseID: kbID,
+			KBName:          kbName,
+			Backlinks:       items,
+			Total:           len(items),
+		})
+	}
+	sort.SliceStable(resp.Groups, func(i, j int) bool {
+		if resp.Groups[i].Total == resp.Groups[j].Total {
+			return resp.Groups[i].KnowledgeBaseID < resp.Groups[j].KnowledgeBaseID
+		}
+		return resp.Groups[i].Total > resp.Groups[j].Total
+	})
+	for _, g := range resp.Groups {
+		resp.Total += g.Total
+	}
+	return resp, nil
+}
+
+
 // Build #21 — backlinks graph cache payload helpers.
 //
 // WikiPageBacklink + WikiBacklinkIndirect + WikiPageBacklinkRelated are the
