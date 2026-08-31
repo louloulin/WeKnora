@@ -13,6 +13,10 @@
 //   GET    /api/v1/collaborative-docs/:id/download     — v0.7.26 latest bytes
 //   GET    /api/v1/collaborative-docs/:id/download/:v  — v0.7.26 historical version
 //   GET    /api/v1/collaborative-docs/:id/realtime     — Yjs WS upgrade
+//   POST   /api/v1/collaborative-docs/:id/comments     — v0.7.29 add comment
+//   GET    /api/v1/collaborative-docs/:id/comments     — v0.7.29 list comments
+//   PATCH  /api/v1/collaborative-docs/:id/comments/:commentID — v0.7.29 edit
+//   DELETE /api/v1/collaborative-docs/:id/comments/:commentID — v0.7.29 remove
 package router
 
 import (
@@ -26,6 +30,7 @@ func RegisterCollabDocRoutes(
 	h *handler.CollabDocHandler,
 	bytesH *handler.CollabDocBytesHandler,
 	ws *handler.CollabDocRealtimeWSHandler,
+	commentH *handler.CollabDocCommentHandler,
 	g *rbacGuards,
 ) {
 	if h != nil {
@@ -45,5 +50,8 @@ func RegisterCollabDocRoutes(
 			g.KBAccessWrite("id"),
 			ws.Handle,
 		)
+	}
+	if commentH != nil {
+		commentH.Register(rg)
 	}
 }

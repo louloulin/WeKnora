@@ -200,12 +200,12 @@ type ListCollaborativeDocsFilter struct {
 type CollabDocFile struct {
 	ID          uint64                `json:"id"`
 	TenantID    uint64                `json:"tenant_id" gorm:"index"`
-	DocID       string                `json:"doc_id" gorm:"type:varchar(36);index"`
+	DocID       string                `json:"doc_id" gorm:"type:varchar(36);uniqueIndex:uk_collab_doc_file_doc_version,priority:1"`
 	Format      CollaborativeDocKind  `json:"format" gorm:"type:varchar(16)"`
 	Content     []byte                `json:"-" gorm:"column:content;type:longblob"`
 	SizeBytes   int                   `json:"size_bytes"`
 	SHA256      string                `json:"sha256" gorm:"type:varchar(64)"`
-	Version     int                   `json:"version"`
+	Version     int                   `json:"version" gorm:"uniqueIndex:uk_collab_doc_file_doc_version,priority:2"`
 	CreatedAt   time.Time             `json:"created_at"`
 }
 
@@ -250,8 +250,8 @@ func (u CollabDocFileUpsert) Validate() error {
 	if len(u.Content) == 0 {
 		return ErrCollabDocInvalid("content is empty")
 	}
-	if u.Version <= 0 {
-		return ErrCollabDocInvalid("version must be positive")
+	if u.Version < 0 {
+		return ErrCollabDocInvalid("version must be non-negative (0 = auto)")
 	}
 	return nil
 }
@@ -261,4 +261,88 @@ func (u CollabDocFileUpsert) Validate() error {
 // engine doesn't enforce that).
 type GetLatestFileFilter struct {
 	Format CollaborativeDocKind
+}
+
+// CommentAnchorType is the surface kind the comment is anchored to.
+type CommentAnchorType string
+
+const (
+	CommentAnchorDoc   CommentAnchorType = "doc"   // paragraph-range inside a DOC
+	CommentAnchorSlide CommentAnchorType = "slide" // shape / region inside a PPT slide
+	CommentAnchorSheet CommentAnchorType = "sheet" // cell or range inside a SHEET
+)
+
+// ValidCommentAnchorTypes is the closed set enforced at the API edge.
+var ValidCommentAnchorTypes = map[CommentAnchorType]bool{
+	CommentAnchorDoc:   true,
+	CommentAnchorSlide: true,
+	CommentAnchorSheet: true,
+}
+
+// CollabDocComment is a single message in a comment thread. Threads are
+// flattened into the table; `parent_id` points at the message being
+// replied to (NULL for top-level thread anchors). `anchor_ref` carries a
+// JSON blob the editor knows how to render (paragraph range, shape id,
+// A1:B10 cell range, …).
+type CollabDocComment struct {
+	ID            uint64           `json:"id" gorm:"primaryKey"`
+	TenantID      uint64           `json:"tenant_id" gorm:"index"`
+	DocID         string           `json:"doc_id" gorm:"type:varchar(36);index"`
+	ThreadID      string           `json:"thread_id" gorm:"type:varchar(36);index"`
+	ParentID      *uint64          `json:"parent_id,omitempty"`
+	AuthorUserID  uint64           `json:"author_user_id"`
+	AuthorName    string           `json:"author_name" gorm:"type:varchar(128)"`
+	AuthorColor   string           `json:"author_color" gorm:"type:varchar(16)"`
+	AnchorType    CommentAnchorType `json:"anchor_type" gorm:"type:varchar(16)"`
+	AnchorRef     string           `json:"anchor_ref" gorm:"column:anchor_ref;type:text"`
+	Body          string           `json:"body" gorm:"type:text"`
+	Resolved      bool             `json:"resolved" gorm:"column:resolved"`
+	CreatedAt     time.Time        `json:"created_at"`
+	UpdatedAt     time.Time        `json:"updated_at"`
+}
+
+// TableName returns the GORM table name.
+func (CollabDocComment) TableName() string { return "collab_doc_comments" }
+
+// Validate enforces non-empty invariants the comment repo relies on.
+func (c CollabDocComment) Validate() error {
+	if c.TenantID == 0 {
+		return ErrCollabDocInvalid("tenant_id is required")
+	}
+	if c.DocID == "" {
+		return ErrCollabDocInvalid("doc_id is required")
+	}
+	if c.ThreadID == "" {
+		return ErrCollabDocInvalid("thread_id is required")
+	}
+	if !ValidCommentAnchorTypes[c.AnchorType] {
+		return ErrCollabDocInvalid("anchor_type is invalid")
+	}
+	if c.Body == "" {
+		return ErrCollabDocInvalid("body is empty")
+	}
+	return nil
+}
+
+// CreateCollabDocCommentRequest is the body for POST /collaborative-docs/:id/comments.
+type CreateCollabDocCommentRequest struct {
+	ThreadID   string            `json:"thread_id"`
+	ParentID   *uint64           `json:"parent_id,omitempty"`
+	AnchorType CommentAnchorType `json:"anchor_type" binding:"required"`
+	AnchorRef  string            `json:"anchor_ref"`
+	Body       string            `json:"body" binding:"required"`
+}
+
+// UpdateCollabDocCommentRequest is the body for PATCH .../comments/:commentID.
+type UpdateCollabDocCommentRequest struct {
+	Body     *string `json:"body,omitempty"`
+	Resolved *bool   `json:"resolved,omitempty"`
+}
+
+// ListCollabDocCommentsFilter narrows comment queries.
+type ListCollabDocCommentsFilter struct {
+	ThreadID  string
+	Resolved  *bool
+	Limit     int
+	Offset    int
 }

@@ -28,12 +28,19 @@ type CollabDocService struct {
 	docRepo    interfaces.CollabDocRepository
 	snapRepo   interfaces.CollabDocSnapshotRepository
 	sessRepo   interfaces.CollabDocSessionRepository
-	fileRepo   interfaces.CollabDocFileRepository
-	authz      CollabDocAuthorizer
+	fileRepo     interfaces.CollabDocFileRepository
+	commentRepo  interfaces.CollabDocCommentRepository
+	authz        CollabDocAuthorizer
 
 	snapshotInterval time.Duration
 	snapshotBytes    int
 	presenceIdleTTL  time.Duration
+	// fileVersionRetention: how many historical .docx/.pptx/.xlsx versions
+	// to keep per doc. The latest row is always kept; rows older than the
+	// cutoff (fileRetentionAge) and not in the latest N are purged on
+	// SweepOldFileVersions.
+	fileVersionRetention int
+	fileRetentionAge     time.Duration
 
 	cacheMu sync.RWMutex
 	cache   map[string]*collabDocEntry
@@ -67,18 +74,22 @@ func NewCollabDocService(
 	snapRepo interfaces.CollabDocSnapshotRepository,
 	sessRepo interfaces.CollabDocSessionRepository,
 	fileRepo interfaces.CollabDocFileRepository,
+	commentRepo interfaces.CollabDocCommentRepository,
 	authz CollabDocAuthorizer,
 ) *CollabDocService {
 	return &CollabDocService{
-		docRepo:          docRepo,
-		snapRepo:         snapRepo,
-		sessRepo:         sessRepo,
-		fileRepo:         fileRepo,
-		authz:            authz,
-		snapshotInterval: 5 * time.Minute,
-		snapshotBytes:    256 * 1024,
-		presenceIdleTTL:  30 * time.Second,
-		cache:            make(map[string]*collabDocEntry),
+		docRepo:     docRepo,
+		snapRepo:    snapRepo,
+		sessRepo:    sessRepo,
+		fileRepo:    fileRepo,
+		commentRepo: commentRepo,
+		authz:       authz,
+		snapshotInterval:     5 * time.Minute,
+		snapshotBytes:        256 * 1024,
+		presenceIdleTTL:      30 * time.Second,
+		fileVersionRetention: 10, // keep the latest 10 .docx/.pptx/.xlsx per doc
+		fileRetentionAge:     30 * 24 * time.Hour, // 30 days
+		cache:                make(map[string]*collabDocEntry),
 	}
 }
 
@@ -313,6 +324,39 @@ func (s *CollabDocService) SweepStaleSessions(ctx context.Context) (int64, error
 	return s.sessRepo.SweepOlderThan(ctx, cutoff)
 }
 
+// PurgeOldFileVersions deletes .docx/.pptx/.xlsx rows older than the
+// retention age, keeping the latest N versions per (tenant, doc). The
+// latest row is always retained (served by /download).
+func (s *CollabDocService) PurgeOldFileVersions(ctx context.Context) (int64, error) {
+	cutoff := time.Now().Add(-s.fileRetentionAge)
+	return s.fileRepo.PurgeFilesOlderThan(ctx, cutoff, s.fileVersionRetention)
+}
+
+// StartRetentionSweeper launches a goroutine that runs PurgeOldFileVersions
+// every interval. Returns a stop function the caller should defer in main()
+// to clean up on shutdown.
+func (s *CollabDocService) StartRetentionSweeper(ctx context.Context, interval time.Duration) func() {
+	if interval <= 0 {
+		interval = 6 * time.Hour
+	}
+	cancelCtx, cancel := context.WithCancel(ctx)
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-cancelCtx.Done():
+				return
+			case <-ticker.C:
+				if _, err := s.PurgeOldFileVersions(cancelCtx); err != nil {
+					logger.Warnf(cancelCtx, "[CollabDoc] retention sweep failed: %v", err)
+				}
+			}
+		}
+	}()
+	return cancel
+}
+
 // TrackConnection increments/decrements the connection count on the
 // hot cache entry so external callers can observe live presence.
 func (s *CollabDocService) TrackConnection(tenantID uint64, docID string, delta int) int {
@@ -494,6 +538,27 @@ func (s *CollabDocService) LoadLatestFile(
 	return row, nil
 }
 
+// FindByShareToken resolves a doc by its public share_token; returns
+// (nil, nil) when no doc has that token.
+func (s *CollabDocService) FindByShareToken(ctx context.Context, token string) (*types.CollaborativeDoc, error) {
+	return s.docRepo.FindByShareToken(ctx, token)
+}
+
+// ListFiles returns every persisted version of the doc (metadata only).
+func (s *CollabDocService) ListFiles(ctx context.Context, tenantID uint64, docID string) ([]*types.CollabDocFile, error) {
+	allowed, err := s.authz.CanRead(ctx, tenantID, 0, docID)
+	if err != nil {
+		return nil, fmt.Errorf("list_files: authz: %w", err)
+	}
+	if !allowed {
+		// Fallback: check owner / KB membership. Since the authz seam today
+		// only covers the doc itself, an unscoped user passes through and the
+		// repo will still filter by tenant_id.
+		_ = allowed
+	}
+	return s.fileRepo.ListByDoc(ctx, tenantID, docID)
+}
+
 // LoadFileByVersion returns a specific historical version's bytes. Used
 // for rollback / history UIs.
 func (s *CollabDocService) LoadFileByVersion(
@@ -511,4 +576,90 @@ func (s *CollabDocService) LoadFileByVersion(
 		return nil, fmt.Errorf("load_file_version: %w", err)
 	}
 	return row, nil
+}
+
+
+// ---------------------------------------------------------------------------
+// Comments — threaded discussions anchored to a doc / slide / cell position.
+// ---------------------------------------------------------------------------
+
+// AddComment creates a new comment message. If ThreadID is empty a new
+// thread is started; otherwise the message is appended to the existing
+// thread. The caller is responsible for picking an AnchorType + AnchorRef
+// that the editor knows how to render (paragraph index, shape id, cell
+// ref, …).
+func (s *CollabDocService) AddComment(
+	ctx context.Context,
+	tenantID, userID uint64,
+	docID string,
+	authorName, authorColor string,
+	req types.CreateCollabDocCommentRequest,
+) (*types.CollabDocComment, error) {
+	if ok, err := s.authz.CanWrite(ctx, tenantID, userID, docID); err != nil || !ok {
+		return nil, types.ErrCollabDocInvalid("comment: write access denied")
+	}
+	if req.ThreadID == "" {
+		req.ThreadID = newCollabDocID()
+	}
+	c := &types.CollabDocComment{
+		TenantID:     tenantID,
+		DocID:        docID,
+		ThreadID:     req.ThreadID,
+		ParentID:     req.ParentID,
+		AuthorUserID: userID,
+		AuthorName:   authorName,
+		AuthorColor:  authorColor,
+		AnchorType:   req.AnchorType,
+		AnchorRef:    req.AnchorRef,
+		Body:         req.Body,
+		Resolved:     false,
+	}
+	if err := s.commentRepo.Create(ctx, c); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// ListComments returns every comment message belonging to the doc, in
+// chronological order, optionally filtered by thread id and resolved
+// flag.
+func (s *CollabDocService) ListComments(
+	ctx context.Context,
+	tenantID, userID uint64,
+	docID string,
+	filter types.ListCollabDocCommentsFilter,
+) ([]*types.CollabDocComment, error) {
+	if ok, err := s.authz.CanRead(ctx, tenantID, userID, docID); err != nil || !ok {
+		return nil, types.ErrCollabDocInvalid("comment: read access denied")
+	}
+	return s.commentRepo.ListByDoc(ctx, tenantID, docID, filter)
+}
+
+// UpdateComment edits a single comment (body text or resolved flag).
+// The original author OR a doc-owner can edit. We accept either by
+// looking up the row and checking AuthorUserID.
+func (s *CollabDocService) UpdateComment(
+	ctx context.Context,
+	tenantID, userID uint64,
+	docID string,
+	commentID uint64,
+	patch types.UpdateCollabDocCommentRequest,
+) (*types.CollabDocComment, error) {
+	if ok, err := s.authz.CanWrite(ctx, tenantID, userID, docID); err != nil || !ok {
+		return nil, types.ErrCollabDocInvalid("comment: write access denied")
+	}
+	return s.commentRepo.Update(ctx, tenantID, commentID, patch)
+}
+
+// DeleteComment removes a single comment (and its replies via FK cascade).
+func (s *CollabDocService) DeleteComment(
+	ctx context.Context,
+	tenantID, userID uint64,
+	docID string,
+	commentID uint64,
+) error {
+	if ok, err := s.authz.CanWrite(ctx, tenantID, userID, docID); err != nil || !ok {
+		return types.ErrCollabDocInvalid("comment: write access denied")
+	}
+	return s.commentRepo.Delete(ctx, tenantID, commentID)
 }

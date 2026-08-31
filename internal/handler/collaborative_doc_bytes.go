@@ -42,6 +42,10 @@ func (h *CollabDocBytesHandler) Mount(rg *gin.RouterGroup) {
 	rg.POST("/collaborative-docs/:id/upload", h.Upload)
 	rg.GET("/collaborative-docs/:id/download", h.Download)
 	rg.GET("/collaborative-docs/:id/download/:version", h.DownloadVersion)
+	rg.GET("/collaborative-docs/:id/files", h.ListFiles)
+	rg.POST("/collaborative-docs/:id/sync-to-kb", h.SyncToKB)
+	// Public read-only download by share token (no auth).
+	rg.GET("/collaborative-docs/share/:token/download", h.ShareDownload)
 }
 
 // Upload handles POST /collaborative-docs/:id/upload.
@@ -239,4 +243,82 @@ func sanitizeFilename(s string) string {
 		return "collab-doc"
 	}
 	return string(out)
+}
+
+// ShareDownload handles GET /collaborative-docs/share/:token/download.
+//
+// Public read-only download gated on the doc's share_token. Returns 404
+// when the token does not resolve to any doc, 403 when the doc isn't
+// marked shareable, and the file bytes otherwise. The response sets
+// Content-Disposition: inline so browsers can preview without a forced
+// download dialog.
+func (h *CollabDocBytesHandler) ShareDownload(c *gin.Context) {
+	token := c.Param("token")
+	if token == "" {
+		c.Error(errors.NewBadRequestError("missing share token"))
+		return
+	}
+	doc, err := h.svc.FindByShareToken(c.Request.Context(), token)
+	if err != nil {
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
+	if doc == nil {
+		c.Error(errors.NewNotFoundError("share link not found"))
+		return
+	}
+	if doc.Visibility != "public" && doc.Visibility != "shared" {
+		c.Error(errors.NewForbiddenError("share link disabled"))
+		return
+	}
+	tenantID := doc.TenantID
+	userID := doc.OwnerUserID
+	file, err := h.svc.LoadLatestFile(c.Request.Context(), tenantID, userID, doc.ID)
+	if err != nil {
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
+	if file == nil {
+		c.Error(errors.NewNotFoundError("no file uploaded yet"))
+		return
+	}
+	filename := fmt.Sprintf("%s-v%d%s", sanitizeFilename(doc.Title), file.Version, extForKind(file.Format))
+	c.Header("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, filename))
+	c.Data(http.StatusOK, mimeForKind(file.Format), file.Content)
+}
+
+// ListFiles handles GET /collaborative-docs/:id/files.
+//
+// Returns a metadata-only list of every uploaded version (version number,
+// size, sha256, created_at) — no bytes. Drives the "版本历史" panel in
+// the DOC editor.
+func (h *CollabDocBytesHandler) ListFiles(c *gin.Context) {
+	tenantID, userID, ok := h.tenantAndUser(c)
+	if !ok {
+		return
+	}
+	docID := c.Param("id")
+	doc, err := h.svc.GetDoc(c.Request.Context(), tenantID, userID, docID)
+	if err != nil || doc == nil {
+		c.Error(errors.NewNotFoundError("collab doc not found"))
+		return
+	}
+	rows, err := h.svc.ListFiles(c.Request.Context(), tenantID, docID)
+	if err != nil {
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
+	out := make([]map[string]interface{}, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, map[string]interface{}{
+			"id":         r.ID,
+			"doc_id":     r.DocID,
+			"format":     r.Format,
+			"version":    r.Version,
+			"size_bytes": r.SizeBytes,
+			"sha256":     r.SHA256,
+			"created_at": r.CreatedAt,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": out})
 }

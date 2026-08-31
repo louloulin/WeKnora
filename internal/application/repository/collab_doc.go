@@ -89,6 +89,20 @@ func (r *collabDocRepository) Archive(ctx context.Context, tenantID uint64, id s
 	return nil
 }
 
+func (r *collabDocRepository) FindByShareToken(ctx context.Context, token string) (*types.CollaborativeDoc, error) {
+	var d types.CollaborativeDoc
+	err := r.db.WithContext(ctx).
+		Where("share_token = ?", token).
+		First(&d).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("collab_doc find_by_share_token: %w", err)
+	}
+	return &d, nil
+}
+
 func (r *collabDocRepository) Delete(ctx context.Context, tenantID uint64, id string) error {
 	return r.db.WithContext(ctx).
 		Where("tenant_id = ? AND id = ?", tenantID, id).
@@ -311,6 +325,13 @@ func (r *collabDocFileRepository) SaveFile(ctx context.Context, in types.CollabD
 	if err := in.Validate(); err != nil {
 		return nil, err
 	}
+	if in.Version <= 0 {
+		latest, err := r.CurrentVersion(ctx, in.TenantID, in.DocID)
+		if err != nil {
+			return nil, fmt.Errorf("collab_doc_file save: current_version: %w", err)
+		}
+		in.Version = latest + 1
+	}
 	row := &types.CollabDocFile{
 		TenantID:  in.TenantID,
 		DocID:     in.DocID,
@@ -376,3 +397,150 @@ func (r *collabDocFileRepository) DeleteByDoc(ctx context.Context, tenantID uint
 		Where("tenant_id = ? AND doc_id = ?", tenantID, docID).
 		Delete(&types.CollabDocFile{}).Error
 }
+
+func (r *collabDocFileRepository) ListByDoc(ctx context.Context, tenantID uint64, docID string) ([]*types.CollabDocFile, error) {
+	var rows []*types.CollabDocFile
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND doc_id = ?", tenantID, docID).
+		Order("version DESC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, fmt.Errorf("collab_doc_file list: %w", err)
+	}
+	return rows, nil
+}
+
+
+// PurgeFilesOlderThan deletes old version rows; keeps the latest `keepLatest`
+// versions per (tenant, doc) regardless of age. The latest row is the one
+// served by /download and is always retained. Implemented as a single
+// statement so GORM batches it.
+func (r *collabDocFileRepository) PurgeFilesOlderThan(ctx context.Context, cutoff time.Time, keepLatest int) (int64, error) {
+	if keepLatest < 1 {
+		keepLatest = 1
+	}
+	res := r.db.WithContext(ctx).
+		Exec(`
+			DELETE FROM collab_doc_files
+			WHERE created_at < ?
+			  AND version NOT IN (
+			    SELECT version FROM (
+			      SELECT version
+			      FROM collab_doc_files AS k
+			      WHERE k.tenant_id = collab_doc_files.tenant_id
+			        AND k.doc_id    = collab_doc_files.doc_id
+			      ORDER BY k.version DESC
+			      LIMIT ?
+			    ) AS keepers
+			  )
+		`, cutoff, keepLatest)
+	if res.Error != nil {
+		return 0, fmt.Errorf("collab_doc_file purge: %w", res.Error)
+	}
+	if n := res.RowsAffected; n > 0 && ctx != nil {
+		logger.Infof(ctx, "[CollabDoc] purged %d old file version rows (cutoff=%s, keepLatest=%d)", n, cutoff.Format(time.RFC3339), keepLatest)
+	}
+	return res.RowsAffected, nil
+}
+
+var _ interfaces.CollabDocFileRepository = (*collabDocFileRepository)(nil)
+
+// -----------------------------------------------------------------------------
+// Comment repo
+
+type collabDocCommentRepository struct {
+	db *gorm.DB
+}
+
+// NewCollabDocCommentRepository wires the comment repo to the GORM handle.
+func NewCollabDocCommentRepository(db *gorm.DB) interfaces.CollabDocCommentRepository {
+	return &collabDocCommentRepository{db: db}
+}
+
+func (r *collabDocCommentRepository) Create(ctx context.Context, c *types.CollabDocComment) error {
+	if err := c.Validate(); err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	if c.CreatedAt.IsZero() {
+		c.CreatedAt = now
+	}
+	c.UpdatedAt = now
+	return r.db.WithContext(ctx).Create(c).Error
+}
+
+func (r *collabDocCommentRepository) Get(ctx context.Context, tenantID uint64, id uint64) (*types.CollabDocComment, error) {
+	var c types.CollabDocComment
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND id = ?", tenantID, id).
+		First(&c).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("collab_doc_comment get: %w", err)
+	}
+	return &c, nil
+}
+
+func (r *collabDocCommentRepository) Update(ctx context.Context, tenantID uint64, id uint64, patch types.UpdateCollabDocCommentRequest) (*types.CollabDocComment, error) {
+	updates := map[string]interface{}{"updated_at": time.Now().UTC()}
+	if patch.Body != nil {
+		if *patch.Body == "" {
+			return nil, types.ErrCollabDocInvalid("body is empty")
+		}
+		updates["body"] = *patch.Body
+	}
+	if patch.Resolved != nil {
+		updates["resolved"] = *patch.Resolved
+	}
+	res := r.db.WithContext(ctx).
+		Model(&types.CollabDocComment{}).
+		Where("tenant_id = ? AND id = ?", tenantID, id).
+		Updates(updates)
+	if res.Error != nil {
+		return nil, fmt.Errorf("collab_doc_comment update: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return nil, types.ErrCollabDocInvalid("comment not found")
+	}
+	return r.Get(ctx, tenantID, id)
+}
+
+func (r *collabDocCommentRepository) Delete(ctx context.Context, tenantID uint64, id uint64) error {
+	return r.db.WithContext(ctx).
+		Where("tenant_id = ? AND id = ?", tenantID, id).
+		Delete(&types.CollabDocComment{}).Error
+}
+
+func (r *collabDocCommentRepository) ListByDoc(ctx context.Context, tenantID uint64, docID string, filter types.ListCollabDocCommentsFilter) ([]*types.CollabDocComment, error) {
+	q := r.db.WithContext(ctx).Where("tenant_id = ? AND doc_id = ?", tenantID, docID)
+	if filter.ThreadID != "" {
+		q = q.Where("thread_id = ?", filter.ThreadID)
+	}
+	if filter.Resolved != nil {
+		q = q.Where("resolved = ?", *filter.Resolved)
+	}
+	limit := filter.Limit
+	if limit <= 0 || limit > 500 {
+		limit = 200
+	}
+	q = q.Order("created_at ASC").Limit(limit).Offset(filter.Offset)
+	var rows []*types.CollabDocComment
+	if err := q.Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("collab_doc_comment list: %w", err)
+	}
+	return rows, nil
+}
+
+func (r *collabDocCommentRepository) DeleteByDoc(ctx context.Context, tenantID uint64, docID string) (int64, error) {
+	res := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND doc_id = ?", tenantID, docID).
+		Delete(&types.CollabDocComment{})
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	return res.RowsAffected, nil
+}
+
+var _ interfaces.CollabDocCommentRepository = (*collabDocCommentRepository)(nil)

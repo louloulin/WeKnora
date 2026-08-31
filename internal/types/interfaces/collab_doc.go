@@ -25,6 +25,7 @@ type CollabDocRepository interface {
 	Delete(ctx context.Context, tenantID uint64, id string) error
 	List(ctx context.Context, tenantID uint64, filter types.ListCollaborativeDocsFilter) ([]*types.CollaborativeDoc, error)
 	Count(ctx context.Context, tenantID uint64, filter types.ListCollaborativeDocsFilter) (int64, error)
+	FindByShareToken(ctx context.Context, token string) (*types.CollaborativeDoc, error)
 }
 
 // CollabDocSnapshotRepository persists Yjs document snapshots keyed by
@@ -59,4 +60,22 @@ type CollabDocFileRepository interface {
 	CurrentVersion(ctx context.Context, tenantID uint64, docID string) (int, error)
 	// DeleteByDoc removes every row for a doc (hard delete).
 	DeleteByDoc(ctx context.Context, tenantID uint64, docID string) error
+	ListByDoc(ctx context.Context, tenantID uint64, docID string) ([]*types.CollabDocFile, error)
+	// PurgeFilesOlderThan removes file rows whose created_at is before the
+	// cutoff AND whose version is not the latest per (tenant, doc). Used by
+	// the retention scheduler to bound the on-disk footprint of historical
+	// .docx/.pptx/.xlsx byte payloads. Returns the number of rows deleted.
+	PurgeFilesOlderThan(ctx context.Context, cutoff time.Time, keepLatest int) (int64, error)
+}
+
+// CollabDocCommentRepository persists threaded comments for collaborative
+// documents. Threads are flattened into rows; ParentID groups replies
+// under the thread anchor (the first row of the thread has ParentID=nil).
+type CollabDocCommentRepository interface {
+	Create(ctx context.Context, c *types.CollabDocComment) error
+	Get(ctx context.Context, tenantID uint64, id uint64) (*types.CollabDocComment, error)
+	Update(ctx context.Context, tenantID uint64, id uint64, patch types.UpdateCollabDocCommentRequest) (*types.CollabDocComment, error)
+	Delete(ctx context.Context, tenantID uint64, id uint64) error
+	ListByDoc(ctx context.Context, tenantID uint64, docID string, filter types.ListCollabDocCommentsFilter) ([]*types.CollabDocComment, error)
+	DeleteByDoc(ctx context.Context, tenantID uint64, docID string) (int64, error)
 }

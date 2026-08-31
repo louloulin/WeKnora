@@ -53,3 +53,28 @@ func TestValidCollaborativeDocKindsClosed(t *testing.T) {
 		}
 	}
 }
+
+func TestCollabDocFileUpsertValidate(t *testing.T) {
+	cases := []struct {
+		name string
+		in   CollabDocFileUpsert
+		ok   bool
+	}{
+		{"valid", CollabDocFileUpsert{TenantID: 1, DocID: "abc", Format: CollaborativeDocKindDoc, Content: []byte{1, 2, 3}, Version: 1}, true},
+		{"missing tenant", CollabDocFileUpsert{DocID: "abc", Format: CollaborativeDocKindDoc, Content: []byte{1}, Version: 1}, false},
+		{"missing doc id", CollabDocFileUpsert{TenantID: 1, Format: CollaborativeDocKindDoc, Content: []byte{1}, Version: 1}, false},
+		{"bad format", CollabDocFileUpsert{TenantID: 1, DocID: "abc", Format: "spreadsheet", Content: []byte{1}, Version: 1}, false},
+		{"empty content", CollabDocFileUpsert{TenantID: 1, DocID: "abc", Format: CollaborativeDocKindDoc, Version: 1}, false},
+		{"zero version auto-increment", CollabDocFileUpsert{TenantID: 1, DocID: "abc", Format: CollaborativeDocKindDoc, Content: []byte{1}}, true},
+		{"negative version rejected", CollabDocFileUpsert{TenantID: 1, DocID: "abc", Format: CollaborativeDocKindDoc, Content: []byte{1}, Version: -1}, false},
+		{"sheet kind", CollabDocFileUpsert{TenantID: 1, DocID: "abc", Format: CollaborativeDocKindSheet, Content: []byte{1}, Version: 1}, true},
+		{"slide kind", CollabDocFileUpsert{TenantID: 1, DocID: "abc", Format: CollaborativeDocKindSlide, Content: []byte{1}, Version: 1}, true},
+	}
+	for _, tc := range cases {
+		err := tc.in.Validate()
+		got := err == nil
+		if got != tc.ok {
+			t.Errorf("%s: got ok=%v want ok=%v (err=%v)", tc.name, got, tc.ok, err)
+		}
+	}
+}
