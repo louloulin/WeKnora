@@ -110,6 +110,7 @@ type RouterParams struct {
 	DLPAuthZHandler              *handler.DLPAuthZHandler
 	AssistantHandler             *handler.AssistantHandler
 	DockbHandler                 *handler.DockbHandler
+	ConnectorHandler             *handler.ConnectorHandler
 	MemoryHandler                *handler.MemoryHandler
 	// CitationLogHandler — Build #30 B4. Wired optionally so the
 	// citation-log route is registered when the handler is present.
@@ -261,6 +262,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		registerConditionalAccessRoutes(v1.Group("/api/v1"), params.ConditionalAccessHandler)
 		registerAssistantRoutes(v1.Group("/api/v1"), params.AssistantHandler)
 		RegisterDockbRoutes(v1.Group("/api/v1"), params.DockbHandler)
+		RegisterConnectorRoutes(v1.Group("/api/v1"), params.ConnectorHandler)
 		RegisterTenantRoutes(v1, params.TenantHandler, params.TenantMemberHandler, params.TenantInvitationHandler, params.AuditLogHandler, rbacGuards)
 		RegisterMyInvitationRoutes(v1, params.TenantInvitationHandler)
 		RegisterKnowledgeBaseRoutes(v1, params.KBHandler, rbacGuards)

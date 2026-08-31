@@ -49,6 +49,7 @@ import (
 	weaviateRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/weaviate"
 	asvc "github.com/Tencent/WeKnora/internal/application/service/agentstudio"
 	authzsvc "github.com/Tencent/WeKnora/internal/application/service/authzadmin"
+	connsvc "github.com/Tencent/WeKnora/internal/application/service/connector"
 	databasesvc "github.com/Tencent/WeKnora/internal/application/service/database"
 	dockbsvc "github.com/Tencent/WeKnora/internal/application/service/dockb"
 	dlpsvc "github.com/Tencent/WeKnora/internal/application/service/dlp"
@@ -511,6 +512,18 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		return databasesvc.NewService(repo)
 	}))
 	must(container.Provide(handler.NewDockbHandler))
+
+	// v0.7.24 — AI Connector framework.
+	must(container.Provide(repository.NewConnectorRepository))
+	must(container.Provide(func() connsvc.KnowledgeIngester { return nil })) // ingester wired separately if knowledge pipeline available
+	must(container.Provide(func(repo interfaces.IngestConnectorRepository, jobs interfaces.IngestJobRepository, ingester connsvc.KnowledgeIngester) *connsvc.Service {
+		svc := connsvc.NewService(repo, jobs, ingester)
+		svc.Register(connsvc.SlackConnector{})
+		svc.Register(connsvc.EmailConnector{})
+		svc.Register(connsvc.WebhookConnector{})
+		return svc
+	}))
+	must(container.Provide(handler.NewConnectorHandler))
 
 	must(container.Provide(repository.NewWikiSyncBlockRepository))
 	must(container.Provide(repository.NewWikiSyncBlockRefRepository))
