@@ -12,6 +12,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"github.com/Tencent/WeKnora/internal/utils"
 )
 
 // regThinkIndex matches <think>...</think> blocks for stripping from KB index content.
@@ -29,6 +30,11 @@ type messageService struct {
 	knowService    interfaces.KnowledgeService     // Service for knowledge operations (index/delete passages)
 	modelService   interfaces.ModelService         // Service for model operations (rerank model)
 	suggestionRepo interfaces.MessageSuggestionRepository
+	// notifSvc optionally emits notification rows when a chat message
+	// contains @user mentions. It is injected as a setter via the
+	// container so unit tests can leave it nil. When nil, mentions
+	// are parsed but no notifications are emitted.
+	notifSvc interfaces.NotificationService
 }
 
 // NewMessageService creates a new message service instance with the required repositories
@@ -49,6 +55,13 @@ func NewMessageService(messageRepo interfaces.MessageRepository,
 		modelService:   modelService,
 		suggestionRepo: suggestionRepo,
 	}
+}
+
+// SetNotificationService wires the notification emitter. Called by the
+// container after both providers are constructed; tests may skip this
+// to keep messageService focused on persistence behavior.
+func (s *messageService) SetNotificationService(svc interfaces.NotificationService) {
+	s.notifSvc = svc
 }
 
 // sessionTenantIDForLookup returns the tenant ID to use for session lookup.
@@ -97,8 +110,81 @@ func (s *messageService) CreateMessage(ctx context.Context, message *types.Messa
 		return nil, err
 	}
 
+	// Best-effort: emit notifications for any @user mentions in the
+	// message body. Failures here are logged but never fail the
+	// message write — the message itself is already persisted.
+	s.emitMentionNotifications(ctx, createdMessage)
+
 	logger.Infof(ctx, "Message created successfully, ID: %s", createdMessage.ID)
 	return createdMessage, nil
+}
+
+// emitMentionNotifications parses @-mentions from the message body
+// and creates a notification row for every @user mention. @agent
+// and @task mentions are skipped at this layer (they will be wired
+// to scope badges on the rendered message in a follow-up); @here
+// broadcast is intentionally not supported on chat messages today
+// because the bell dropdown does not yet have a "broadcast to all
+// session collaborators" affordance.
+func (s *messageService) emitMentionNotifications(ctx context.Context, msg *types.Message) {
+	if s.notifSvc == nil || msg == nil {
+		return
+	}
+	mentions := utils.ParseMentions(msg.Content, utils.MentionParseConfig{
+		AllowedKinds: map[utils.MentionKind]bool{
+			utils.MentionKindUser: true,
+		},
+	})
+	if len(mentions) == 0 {
+		return
+	}
+	tenantID := types.MustTenantIDFromContext(ctx)
+	actorID, _ := types.UserIDFromContext(ctx)
+	sessionID := msg.SessionID
+	for _, m := range mentions {
+		if m.ID == "" {
+			continue
+		}
+		// Skip self-mentions: notifying yourself is noise.
+		if actorID != "" && m.ID == actorID {
+			continue
+		}
+		n := &types.Notification{
+			TenantID:        tenantID,
+			RecipientUserID: m.ID,
+			Kind:            types.NotificationKindWikiMentioned,
+			Title:           "@" + string(m.Kind) + ":" + m.ID + " mentioned you",
+			Body:            truncateForPreview(msg.Content, 240),
+			Payload: types.JSONMap{
+				"mention_kind":   string(m.Kind),
+				"mention_id":     m.ID,
+				"session_id":     sessionID,
+				"message_id":     msg.ID,
+				"source":         "chat.message",
+			},
+			Status:       types.NotificationStatusUnread,
+			ActorUserID:  stringPtr(actorID),
+			ResourceType: "chat_message",
+			ResourceID:   msg.ID,
+		}
+		if err := s.notifSvc.Create(ctx, n); err != nil {
+			logger.Warnf(ctx, "failed to emit mention notification for user %s: %v", m.ID, err)
+		}
+	}
+}
+
+func stringPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func truncateForPreview(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "…"
 }
 
 // GetMessage retrieves a specific message by its ID within a session

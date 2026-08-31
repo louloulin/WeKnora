@@ -263,6 +263,17 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewKnowledgeAutoTagService, dig.Name("knowledgeAutoTag")))
 
 	must(container.Provide(service.NewMessageService))
+	// Wire the notification emitter onto the message service so chat
+	// messages containing @user mentions create notification rows.
+	// Both providers must be registered above this line for dig to
+	// resolve the dependency graph correctly.
+	must(container.Invoke(func(msgSvc interfaces.MessageService, notifSvc interfaces.NotificationService) {
+		if setter, ok := msgSvc.(interface {
+			SetNotificationService(interfaces.NotificationService)
+		}); ok {
+			setter.SetNotificationService(notifSvc)
+		}
+	}))
 	must(container.Provide(service.NewMessageSuggestionService))
 	must(container.Provide(service.NewMCPServiceService))
 	must(container.Provide(service.NewMCPToolApprovalService))
