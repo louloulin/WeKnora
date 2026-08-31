@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/louloulin/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types"
 )
 
 // fakeSearchV2Repo is a programmable in-memory stand-in for
