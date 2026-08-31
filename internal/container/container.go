@@ -49,6 +49,8 @@ import (
 	weaviateRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/weaviate"
 	connsvc "github.com/Tencent/WeKnora/internal/application/service/connector"
 	asvc "github.com/Tencent/WeKnora/internal/application/service/agentstudio"
+	authzsvc "github.com/Tencent/WeKnora/internal/application/service/authzadmin"
+	dlpsvc "github.com/Tencent/WeKnora/internal/application/service/dlp"
 	"github.com/Tencent/WeKnora/internal/application/service"
 	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
 	dbsvc "github.com/Tencent/WeKnora/internal/application/service/database"
@@ -498,6 +500,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewAgentStudioHandler))
 
 	// v0.7.20 — wiki sync blocks wiring (Notion Synced Blocks / 飞书同步块 parity).
+	// v0.7.22 — DLP + AuthZ Admin UI wiring.
+	must(container.Provide(repository.NewDLPAuthZRepository))
+	must(container.Provide(dlpsvc.NewDLPScanner))
+	must(container.Provide(authzsvc.NewAuthZAdmin))
+	must(container.Provide(handler.NewDLPAuthZHandler))
+
 	must(container.Provide(repository.NewWikiSyncBlockRepository))
 	must(container.Provide(repository.NewWikiSyncBlockRefRepository))
 	must(container.Provide(func(
