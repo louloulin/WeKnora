@@ -6521,6 +6521,33 @@ export default {
       docsFailedSummary: '{n} document(s) failed to sync'
     },
     connector: {
+      title: 'AI Connectors',
+      newConnector: 'New Connector',
+      createTitle: 'Create Connector',
+      namePlaceholder: 'Connector name, e.g. slack-prod',
+      configPlaceholder: 'Connector-specific JSON config',
+      kbIdPlaceholder: 'Target knowledge base ID',
+      cancel: 'Cancel',
+      submit: 'Create',
+      noConnectors: 'No connectors yet. Click "New Connector" to add one.',
+      enabled: 'enabled',
+      disabled: 'disabled',
+      lastSync: 'Last sync',
+      syncNow: 'Sync now',
+      delete: 'Delete',
+      lastJob: 'Last sync job',
+      ingested: 'Ingested',
+      lastError: 'Last error',
+      confirmDelete: 'Delete connector "{name}"? This cannot be undone.',
+      kinds: {
+        slack: 'Slack',
+        email: 'Email',
+        webhook: 'Webhook',
+        rss: 'RSS / Atom',
+        confluence: 'Confluence',
+        notion: 'Notion',
+        jira: 'Jira'
+      },
       feishu: 'Feishu',
       lark: 'Lark',
       feishu_drive: 'Feishu Drive',
@@ -6531,6 +6558,7 @@ export default {
       ima: 'Tencent IMA',
       gitlab: 'GitLab'
     },
+
     connectorDesc: {
       feishu: 'Sync documents, spreadsheets and files from Feishu Wiki',
       lark: 'Sync documents, spreadsheets and files from Lark Wiki (Feishu international)',

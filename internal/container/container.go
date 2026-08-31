@@ -449,13 +449,24 @@ func BuildContainer(container *dig.Container) *dig.Container {
 
 
 	// v0.7.24 — AI Connector framework.
+	// Build #25 (G05) wires the real KnowledgeIngester into the
+	// KnowledgeService.CreateKnowledgeFromManual path so connector
+	// messages go through the same draft → publish → chunk →
+	// embed pipeline as user-authored manual knowledge.
 	must(container.Provide(repository.NewConnectorRepository))
-	must(container.Provide(func() connsvc.KnowledgeIngester { return nil })) // ingester wired separately if knowledge pipeline available
+	must(container.Provide(func(ks interfaces.KnowledgeService) connsvc.KnowledgeIngester {
+		return connsvc.NewKnowledgeIngester(ks)
+	}))
 	must(container.Provide(func(repo interfaces.IngestConnectorRepository, jobs interfaces.IngestJobRepository, ingester connsvc.KnowledgeIngester) *connsvc.Service {
 		svc := connsvc.NewService(repo, jobs, ingester)
-		svc.Register(connsvc.SlackConnector{})
+		// Build #25 (G05) real implementations. Stub-mode fallbacks
+		// are still wired so legacy v0.7.24 configs (no token, no
+		// queue_url) keep working in tests and offline dev.
+		svc.Register(connsvc.NewSlackConnector())
 		svc.Register(connsvc.EmailConnector{})
-		svc.Register(connsvc.WebhookConnector{})
+		svc.Register(connsvc.NewWebhookConnector())
+		svc.Register(connsvc.NewRSSConnector())
+		svc.Register(connsvc.NewConfluenceConnector())
 		return svc
 	}))
 	must(container.Provide(handler.NewConnectorHandler))

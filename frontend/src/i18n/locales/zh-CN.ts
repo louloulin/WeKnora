@@ -719,6 +719,33 @@ export default {
       gitlab: '同步 GitLab 项目中的文件'
     },
     connector: {
+      title: 'AI 连接器',
+      newConnector: '新建连接器',
+      createTitle: '创建连接器',
+      namePlaceholder: '连接器名称，例如 slack-prod',
+      configPlaceholder: '连接器特定的 JSON 配置',
+      kbIdPlaceholder: '目标知识库 ID',
+      cancel: '取消',
+      submit: '创建',
+      noConnectors: '暂无连接器，点击"新建连接器"添加。',
+      enabled: '已启用',
+      disabled: '已停用',
+      lastSync: '上次同步',
+      syncNow: '立即同步',
+      delete: '删除',
+      lastJob: '上次同步任务',
+      ingested: '已摄入',
+      lastError: '上次错误',
+      confirmDelete: '确定删除连接器"{name}"吗？此操作不可撤销。',
+      kinds: {
+        slack: 'Slack',
+        email: '邮箱',
+        webhook: 'Webhook',
+        rss: 'RSS / Atom',
+        confluence: 'Confluence',
+        notion: 'Notion',
+        jira: 'Jira'
+      },
       feishu: '飞书',
       lark: 'Lark（飞书国际版）',
       feishu_drive: "飞书云盘",
@@ -729,6 +756,7 @@ export default {
       rss: 'RSS / Atom 订阅',
       gitlab: 'GitLab'
     },
+
     logDetail: {
       startTime: '开始时间',
       endTime: '结束时间',

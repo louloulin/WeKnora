@@ -123,7 +123,7 @@ func (s *stubIngester) Ingest(_ context.Context, _, _, title, content, _, _ stri
 
 func TestService_Create_HappyPath(t *testing.T) {
 	svc := newServiceForTest()
-	svc.Register(SlackConnector{})
+	svc.Register(&SlackConnector{})
 
 	conn := &types.IngestConnector{
 		TenantID: "t1", Name: "team-eng",
@@ -152,7 +152,7 @@ func TestService_Create_RejectsUnknownKind(t *testing.T) {
 
 func TestService_Create_RejectsEmptyName(t *testing.T) {
 	svc := newServiceForTest()
-	svc.Register(SlackConnector{})
+	svc.Register(&SlackConnector{})
 	err := svc.Create(context.Background(), &types.IngestConnector{
 		TenantID: "t1", Name: "  ",
 		Kind: types.ConnectorSlack,
@@ -164,7 +164,7 @@ func TestService_Create_RejectsEmptyName(t *testing.T) {
 
 func TestService_Trigger_FetchesSlackMessages(t *testing.T) {
 	svc, ing := newServiceForTestWithIngester()
-	svc.Register(SlackConnector{})
+	svc.Register(&SlackConnector{})
 	conn := &types.IngestConnector{
 		TenantID: "t1", Name: "team", Kind: types.ConnectorSlack,
 		Config: `{"channel":"C01234567","messages":[{"ts":"1700000001.000100","text":"hello","user":"U123"}]}`,
@@ -213,7 +213,7 @@ func TestService_Trigger_FetchesEmailMessages(t *testing.T) {
 
 func TestService_Trigger_FailsOnDisabled(t *testing.T) {
 	svc, _ := newServiceForTestWithIngester()
-	svc.Register(SlackConnector{})
+	svc.Register(&SlackConnector{})
 	conn := &types.IngestConnector{
 		TenantID: "t1", Name: "x", Kind: types.ConnectorSlack,
 		Config: `{}`, CreatedBy: "u1", Enabled: false,
@@ -227,7 +227,7 @@ func TestService_Trigger_FailsOnDisabled(t *testing.T) {
 
 func TestService_Trigger_RecordsFetchError(t *testing.T) {
 	svc, _ := newServiceForTestWithIngester()
-	svc.Register(SlackConnector{})
+	svc.Register(&SlackConnector{})
 	conn := &types.IngestConnector{
 		TenantID: "t1", Name: "x", Kind: types.ConnectorSlack,
 		Config: `{`, // invalid JSON
@@ -248,7 +248,7 @@ func TestService_Trigger_RecordsFetchError(t *testing.T) {
 
 func TestService_Kinds_ReflectRegisteredConnectors(t *testing.T) {
 	svc := newServiceForTest()
-	svc.Register(SlackConnector{})
+	svc.Register(&SlackConnector{})
 	svc.Register(EmailConnector{})
 	kinds := svc.Kinds()
 	if len(kinds) != 2 {
@@ -257,7 +257,8 @@ func TestService_Kinds_ReflectRegisteredConnectors(t *testing.T) {
 }
 
 func TestSlackConnector_RejectsEmptyConfig(t *testing.T) {
-	_, err := SlackConnector{}.Fetch(context.Background(), interfaces.ConnectorRuntimeConfig{})
+	slack := &SlackConnector{}
+	_, err := slack.Fetch(context.Background(), interfaces.ConnectorRuntimeConfig{})
 	if err == nil {
 		t.Error("expected error on empty config")
 	}
@@ -265,7 +266,8 @@ func TestSlackConnector_RejectsEmptyConfig(t *testing.T) {
 
 func TestSlackConnector_ParsesMessages(t *testing.T) {
 	cfg := `{"channel":"C01234567","messages":[{"ts":"1700000001.000100","text":"hello world","user":"U123"}]}`
-	got, err := SlackConnector{}.Fetch(context.Background(), interfaces.ConnectorRuntimeConfig{
+	slack := &SlackConnector{}
+	got, err := slack.Fetch(context.Background(), interfaces.ConnectorRuntimeConfig{
 		Kind: types.ConnectorSlack, ConfigJSON: cfg,
 	})
 	if err != nil {
@@ -303,7 +305,8 @@ func TestEmailConnector_ParsesMessages(t *testing.T) {
 
 func TestWebhookConnector_ParsesItems(t *testing.T) {
 	cfg := `{"token":"abc","items":[{"id":"e1","title":"Deploy","content":"v1.2","author":"ci"}]}`
-	got, err := WebhookConnector{}.Fetch(context.Background(), interfaces.ConnectorRuntimeConfig{
+	wh := &WebhookConnector{}
+	got, err := wh.Fetch(context.Background(), interfaces.ConnectorRuntimeConfig{
 		Kind: types.ConnectorWebhook, ConfigJSON: cfg,
 	})
 	if err != nil {
