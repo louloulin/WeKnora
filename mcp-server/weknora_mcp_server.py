@@ -608,6 +608,20 @@ class WeKnoraClient:
             params={"limit": limit},
         )
 
+    def wiki_get_backlinks(self, kb_id: str, slug: str) -> Dict:
+        """Get inbound links for a wiki page (which pages link TO this slug)."""
+        return self._request(
+            "GET",
+            f"/knowledgebase/{kb_id}/wiki/pages/{slug}/backlinks",
+        )
+
+    def wiki_list_folders(self, kb_id: str) -> Dict:
+        """List all wiki folders / directory structure in a knowledge base."""
+        return self._request(
+            "GET",
+            f"/knowledgebase/{kb_id}/wiki/folders",
+        )
+
 
 # Initialize MCP server instance (mcp 2.x high-level API).
 # MCPServer (formerly FastMCP) builds input schemas from function type hints
@@ -1010,6 +1024,26 @@ def wiki_index_view(kb_id: str, limit: int = 50) -> dict:
     summary, etc.).
     """
     return client.wiki_index_view(kb_id, limit)
+
+
+@mcp.tool()
+def wiki_get_backlinks(kb_id: str, slug: str) -> dict:
+    """Get inbound links for a wiki page.
+
+    Returns pages that link TO the given slug. Useful for "what references
+    this concept?" queries from external Agents (Claude / Cursor).
+    """
+    return client.wiki_get_backlinks(kb_id, slug)
+
+
+@mcp.tool()
+def wiki_list_folders(kb_id: str) -> dict:
+    """List wiki folders / directory structure.
+
+    Returns the folder tree of a knowledge base so an external Agent can
+    navigate the wiki hierarchically before drilling into specific pages.
+    """
+    return client.wiki_list_folders(kb_id)
 
 
 # ---------------------------------------------------------------------------

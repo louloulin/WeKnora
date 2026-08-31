@@ -2,220 +2,180 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-
+	"github.com/Tencent/WeKnora/internal/application/repository"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
-	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"github.com/google/uuid"
 )
 
-// NewWikiCommentService returns a service backed by the supplied repo.
-// The service is the single source of truth for tenant scoping,
-// validation, and access policy for wiki page comments.
-func NewWikiCommentService(repo interfaces.WikiCommentRepository) interfaces.WikiCommentService {
-	return &wikiCommentService{repo: repo}
+// WikiPageCommentService is the business logic layer for wiki page
+// comments. The handler stays thin and delegates here so the same
+// validation rules can be reused by future entry points (CLI, MCP tool,
+// batch backfill). It mirrors the layering used by wiki_template.go
+// and wiki_acl.go in this package.
+type WikiPageCommentService struct {
+	repo *repository.WikiCommentRepository
+	// pageLookup is a small interface so tests can stub the page
+	// existence check without spinning up the full wiki service.
+	pageLookup WikiPageExistenceLookup
 }
 
-type wikiCommentService struct {
-	repo interfaces.WikiCommentRepository
+// WikiPageExistenceLookup abstracts the page existence check so the
+// comment service can validate "the page exists and is in this KB"
+// without depending on the full WikiPageService.
+type WikiPageExistenceLookup interface {
+	PageExists(ctx context.Context, kbID, pageID string) (bool, error)
 }
 
-// Create validates the request, generates a UUID, and persists the row.
-// Reply semantics: parent_id may be omitted for a top-level thread, or
-// point to an existing comment in the same KB+slug to nest a reply.
-func (s *wikiCommentService) Create(
+// NewWikiPageCommentService wires the service.
+func NewWikiPageCommentService(repo *repository.WikiCommentRepository, pageLookup WikiPageExistenceLookup) *WikiPageCommentService {
+	return &WikiPageCommentService{repo: repo, pageLookup: pageLookup}
+}
+
+// ErrCommentNotFound surfaces the not-found case to the handler so it
+// can map to HTTP 404. We deliberately wrap the repository sentinel so
+// callers don't need to import the repository package.
+var ErrCommentNotFound = errors.New("comment not found")
+
+// ErrCommentForbidden is returned when the actor isn't allowed to edit
+// or delete the comment (i.e. not the author and not a KB admin).
+var ErrCommentForbidden = errors.New("comment edit/delete forbidden")
+
+// Create validates input, mints an ID + timestamps, and persists.
+// authorID comes from the auth context (handler resolves from JWT /
+// session); tenantID comes from the auth context too. KB / page IDs
+// come from the URL params. Mentions are normalized so empty input
+// never serializes as `null` on the wire.
+func (s *WikiPageCommentService) Create(
 	ctx context.Context,
+	kbID, pageID, authorID string,
 	tenantID uint64,
-	kbID string,
-	slug string,
-	authorID string,
-	authorName string,
-	authorAvatar string,
-	req types.WikiCommentCreateRequest,
-) (*types.WikiComment, error) {
+	req *types.CreateWikiCommentRequest,
+) (*types.WikiPageComment, error) {
 	body := strings.TrimSpace(req.Body)
 	if body == "" {
-		return nil, interfaces.ErrWikiCommentBadInput
+		return nil, errors.New("body is required")
 	}
-	if len(body) > types.WikiCommentMaxBodyBytes {
-		return nil, interfaces.ErrWikiCommentBadInput
+	if len(body) > 10000 {
+		return nil, errors.New("body too long (max 10000 chars)")
 	}
-	if authorID == "" || authorName == "" {
-		return nil, interfaces.ErrWikiCommentBadInput
+	if req.ParentCommentID != nil && *req.ParentCommentID == "" {
+		return nil, errors.New("parent_comment_id must not be empty when set")
 	}
-	if kbID == "" || slug == "" {
-		return nil, interfaces.ErrWikiCommentBadInput
+	// Validate the page exists in this KB before we accept a comment;
+	// prevents orphan comments if a stale pageID slips in via the URL.
+	if s.pageLookup != nil {
+		ok, err := s.pageLookup.PageExists(ctx, kbID, pageID)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, errors.New("wiki page not found in this knowledge base")
+		}
 	}
-
-	mentionsJSON, err := marshalMentions(req.Mentions)
-	if err != nil {
-		return nil, interfaces.ErrWikiCommentBadInput
-	}
-
-	c := &types.WikiComment{
+	now := time.Now().UTC()
+	c := &types.WikiPageComment{
 		ID:              uuid.NewString(),
 		TenantID:        tenantID,
 		KnowledgeBaseID: kbID,
-		PageSlug:        slug,
-		ParentID:        strings.TrimSpace(req.ParentID),
-		Body:            body,
-		Mentions:        mentionsJSON,
-		AnchorBlockID:   strings.TrimSpace(req.AnchorBlockID),
+		WikiPageID:      pageID,
+		ParentCommentID: req.ParentCommentID,
 		AuthorID:        authorID,
-		AuthorName:      authorName,
-		AuthorAvatarURL: authorAvatar,
-		CreatedAt:       time.Now(),
+		Body:            body,
+		Mentions:        normalizeMentions(req.Mentions),
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
-
 	if err := s.repo.Create(ctx, c); err != nil {
+		logger.Errorf(ctx, "wiki comment create failed: %v", err)
 		return nil, err
 	}
-
-	// If this is a reply, log it for observability.
-	if c.ParentID != "" {
-		logger.Infof(ctx, "wiki comment reply created: id=%s parent=%s kb=%s", c.ID, c.ParentID, kbID)
-	}
+	logger.Infof(ctx, "wiki comment created id=%s page=%s author=%s", c.ID, pageID, authorID)
 	return c, nil
 }
 
-// List returns the flattened thread + stats panel for a page.
-func (s *wikiCommentService) List(
-	ctx context.Context,
-	tenantID uint64,
-	kbID string,
-	slug string,
-) (*types.WikiCommentListResponse, error) {
-	if kbID == "" || slug == "" {
-		return nil, interfaces.ErrWikiCommentBadInput
-	}
-	rows, err := s.repo.ListByPage(ctx, kbID, slug)
-	if err != nil {
-		return nil, err
-	}
-	open, resolved, replies, err := s.repo.CountByPage(ctx, kbID, slug)
-	if err != nil {
-		return nil, err
-	}
-	if rows == nil {
-		rows = []types.WikiComment{}
-	}
-	return &types.WikiCommentListResponse{
-		Comments: rows,
-		Stats: types.WikiCommentListStats{
-			TotalOpen:     open,
-			TotalResolved: resolved,
-			TotalReplies:  replies,
-		},
-	}, nil
+// ListByPage returns the visible comment thread for a page.
+func (s *WikiPageCommentService) ListByPage(
+	ctx context.Context, pageID string, limit, offset int,
+) ([]*types.WikiPageComment, int64, error) {
+	return s.repo.ListByPage(ctx, pageID, limit, offset)
 }
 
-// Update applies a body + mentions patch. Only the original author may
-// edit; resolved threads remain editable so users can refine answers.
-func (s *wikiCommentService) Update(
-	ctx context.Context,
-	tenantID uint64,
-	kbID string,
-	commentID string,
-	authorID string,
-	req types.WikiCommentUpdateRequest,
-) (*types.WikiComment, error) {
-	body := strings.TrimSpace(req.Body)
-	if body == "" || len(body) > types.WikiCommentMaxBodyBytes {
-		return nil, interfaces.ErrWikiCommentBadInput
+// Update is the edit path; only the author (caller-resolved) may edit.
+func (s *WikiPageCommentService) Update(
+	ctx context.Context, commentID, actorID string, isAdmin bool, body string,
+) (*types.WikiPageComment, error) {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return nil, errors.New("body is required")
+	}
+	if len(body) > 10000 {
+		return nil, errors.New("body too long (max 10000 chars)")
 	}
 	existing, err := s.repo.GetByID(ctx, commentID)
 	if err != nil {
+		if errors.Is(err, repository.ErrWikiPageCommentNotFound) {
+			return nil, ErrCommentNotFound
+		}
 		return nil, err
 	}
-	if existing == nil {
-		return nil, interfaces.ErrWikiCommentNotFound
+	if existing.AuthorID != actorID && !isAdmin {
+		return nil, ErrCommentForbidden
 	}
-	if existing.KnowledgeBaseID != kbID {
-		return nil, interfaces.ErrWikiCommentNotFound
-	}
-	if existing.AuthorID != authorID {
-		return nil, interfaces.ErrWikiCommentForbidden
-	}
-	mentionsJSON, err := marshalMentions(req.Mentions)
-	if err != nil {
-		return nil, interfaces.ErrWikiCommentBadInput
-	}
-	return s.repo.Update(ctx, commentID, body, mentionsJSON)
-}
-
-// SetResolved toggles the resolve flag. KB members can resolve threads
-// they authored; KB owners / tenant admins can resolve any thread.
-func (s *wikiCommentService) SetResolved(
-	ctx context.Context,
-	tenantID uint64,
-	kbID string,
-	commentID string,
-	actorID string,
-	isOwnerOrAdmin bool,
-	resolved bool,
-) (*types.WikiComment, error) {
-	existing, err := s.repo.GetByID(ctx, commentID)
-	if err != nil {
+	existing.Body = body
+	existing.UpdatedAt = time.Now().UTC()
+	if err := s.repo.Update(ctx, existing); err != nil {
 		return nil, err
 	}
-	if existing == nil {
-		return nil, interfaces.ErrWikiCommentNotFound
-	}
-	if existing.KnowledgeBaseID != kbID {
-		return nil, interfaces.ErrWikiCommentNotFound
-	}
-	if !isOwnerOrAdmin && existing.AuthorID != actorID {
-		return nil, interfaces.ErrWikiCommentForbidden
-	}
-	resolvedBy := ""
-	if resolved {
-		resolvedBy = actorID
-	}
-	return s.repo.SetResolved(ctx, commentID, resolved, resolvedBy)
+	return existing, nil
 }
 
-// Delete removes a comment thread. Only the comment author, KB owner,
-// or tenant admin may delete.
-func (s *wikiCommentService) Delete(
-	ctx context.Context,
-	tenantID uint64,
-	kbID string,
-	commentID string,
-	actorID string,
-	isOwnerOrAdmin bool,
-) error {
+// SetResolved toggles the resolved state. Only KB admins / page authors
+// can resolve; we let the handler decide policy and just persist.
+func (s *WikiPageCommentService) SetResolved(
+	ctx context.Context, commentID, actorID string, isAdmin bool, resolved bool,
+) (*types.WikiPageComment, error) {
 	existing, err := s.repo.GetByID(ctx, commentID)
 	if err != nil {
+		if errors.Is(err, repository.ErrWikiPageCommentNotFound) {
+			return nil, ErrCommentNotFound
+		}
+		return nil, err
+	}
+	if existing.AuthorID != actorID && !isAdmin {
+		return nil, ErrCommentForbidden
+	}
+	if err := s.repo.SetResolved(ctx, commentID, resolved, actorID); err != nil {
+		return nil, err
+	}
+	return s.repo.GetByID(ctx, commentID)
+}
+
+// Delete soft-deletes the comment. Same authz rules as Update.
+func (s *WikiPageCommentService) Delete(ctx context.Context, commentID, actorID string, isAdmin bool) error {
+	existing, err := s.repo.GetByID(ctx, commentID)
+	if err != nil {
+		if errors.Is(err, repository.ErrWikiPageCommentNotFound) {
+			return ErrCommentNotFound
+		}
 		return err
 	}
-	if existing == nil {
-		return interfaces.ErrWikiCommentNotFound
+	if existing.AuthorID != actorID && !isAdmin {
+		return ErrCommentForbidden
 	}
-	if existing.KnowledgeBaseID != kbID {
-		return interfaces.ErrWikiCommentNotFound
-	}
-	if !isOwnerOrAdmin && existing.AuthorID != actorID {
-		return interfaces.ErrWikiCommentForbidden
-	}
-	return s.repo.Delete(ctx, commentID)
+	return s.repo.SoftDelete(ctx, commentID)
 }
 
-// marshalMentions normalises the mention slice into the JSON string
-// stored on the comment row.
-func marshalMentions(m []types.WikiCommentMention) (string, error) {
-	if m == nil {
-		m = []types.WikiCommentMention{}
+// normalizeMentions guarantees the persisted array is never nil.
+// `null` on the wire breaks the existing front-end chip renderer, which
+// assumes an array.
+func normalizeMentions(in types.StringArray) types.StringArray {
+	if in == nil {
+		return types.StringArray{}
 	}
-	b, err := json.Marshal(m)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
+	return in
 }
-
-// Compile-time assertion.
-var _ interfaces.WikiCommentService = (*wikiCommentService)(nil)

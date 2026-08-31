@@ -651,3 +651,107 @@ Provider 回调后端 `/auth/oidc/callback`，后端用 `code` 换 token、拉�
   - `internal/config/config.go`
 - Dex 本地示例：
   - `misc/dex-config.yaml`
+
+## 17. Gateway Exchange 登录（OpenBuddy / 桌面客户端）
+
+> 这是一条**与上述 /auth/oidc/callback 流程并列**的统一身份链路。它面向 Electron 桌面客户端（OpenBuddy），由 [Casdoor Resource Gateway](file:///Users/louloulin/appx/OpenBuddy) 签发短时 exchange token，再用交换后的 token 访问 WeKnora。Web 浏览器通常不会走这条路径，前端直接 OIDC 流程仍按本文前文。
+
+### 17.1 触发条件
+
+WeKnora 同时启用直接 OIDC（`OIDC_AUTH_ENABLE=true`）与 Gateway 交换（`OIDC_AUTH_GATEWAY_EXCHANGE_*`）即可启用。当 WeKnora `ValidateToken` 收到的 token 是 HS256 且 issuer/audience/type 符合 `weknora_exchange` 形态时，自动优先走 exchange 路径，否则降级为本地 JWT。
+
+### 17.2 调用链
+
+```
+┌───────────┐  PKCE  ┌───────────┐ Bearer/Casdoor JWT ┌────────────┐ HS256 exchange ┌─────────┐
+│OpenBuddy  │ ─────► │ Casdoor   │ ──────────────────► │  Gateway   │ ─────────────► │ WeKnora │
+│主进程     │ ◄───── │ Authorization│                │ /v1/token- │               │Validate │
+│(持 token) │  code  │ Endpoint   │                │ exchange/  │               │Token    │
+└───────────┘        └───────────┘                │   weknora  │               └─────────┘
+                                                   └────────────┘
+                                                            │
+                                                            ▼ introspection 每次
+                                                   ┌─────────────────────┐
+                                                   │ Gateway             │
+                                                   │ /v1/token-exchange/ │
+                                                   │   weknora/introspect│
+                                                   └─────────────────────┘
+```
+
+1. **OpenBuddy 主进程**用系统浏览器打开 `…/login/oauth/authorize?…&code_challenge=…&code_challenge_method=S256`，回调到 `casdoor://localhost/callback`。
+2. 主进程校验 callback 地址、`state`、`nonce`、issuer、audience、时间声明、JWKS（`kid=cert-built-in`，RSA RS256）。
+3. 主进程调用 Casdoor `POST /api/enforce?enforcerId=…` 做资源授权，subject/resourceId/action 三元组经 Basic Auth 提交。
+4. 主进程调用 Gateway `POST /v1/token-exchange/weknora`，携带 Casdoor bearer token + `{ tenant, weknoraTenantId, sessionId? }`。
+5. Gateway 校验 Casdoor JWT、issuer/audience、签名/过期、tenant mapping、**统一 WeKnora 权限词典**、成员撤销、租户 `authorization_version`，签发 HS256 exchange token（5 分钟）。
+6. OpenBuddy 收到 exchange token 后用它访问 WeKnora（前端 SSE/列表）。WeKnora `validateGatewayExchangeToken` 解析 HS256 claims，调用 Gateway `…/introspect` 重复校验 `active/subject/casdoor_tenant/tenant_id/session_id/membership_version/jti`。
+
+### 17.3 exchange token 的 claim 契约
+
+由 Gateway 签发，下列为必填 claim（`internal/application/service/user.go` 与 `services/casdoor-resource-gateway/src/index.ts` 共同定义）：
+
+```
+alg     = HS256
+typ     = JWT
+iss     = <GatewayExchangeIssuer>/gateway     # 由 Gateway 配置
+aud     = <GatewayExchangeAudience>           # WeKnora 预期 audience
+sub     = <Casdoor sub>
+oidc_issuer     = <Casdoor issuer>
+oidc_subject    = <Casdoor sub 与 sub 相同>
+casdoor_tenant  = <active tenant key>
+tenant_id       = <OIDC_AUTH_GATEWAY_TENANT_MAP[casdoor_tenant]>
+token_type      = "weknora_exchange"          # 强制 type=weknora_exchange，refresh 与 access 都被拒
+session_id      = 客户端传入或 Gateway UUID
+membership_version = 上述 claims 的 sha256 前 32 位 hex
+authorization_version = tenant 的版本（每次 webhook 自增）
+iat, exp        = 当前时间与 +300s
+jti             = UUID
+```
+
+任一字段缺失或值不匹配 → `gateway exchange token …` 类错误，回退到本地 JWT 校验。
+
+### 17.4 统一权限词典
+
+Gateway 在签发 exchange token 前必须看到 Casdoor claims 中至少一个：
+
+```
+weknora.platform.admin
+weknora.workspace.read
+weknora.workspace.contribute
+weknora.workspace.admin
+weknora.workspace.owner
+```
+
+Casdoor 端需建模为：
+- permission 名（Claims `permissions` 或 `capabilities` 即识别），或
+- Casbin resource/action：`object=weknora.workspace`、`action=read|contribute|admin|owner`。
+
+OpenBuddy 侧用 `weknora.workspace + read|contribute` 做粗粒度远程授权，Gateway 侧再做点号权限的精确放行。
+
+### 17.5 撤销与版本失效
+
+| 触发 | 路径 | 实际生效 |
+|---|---|---|
+| Casdoor 禁用用户 / 撤销租户成员 | OpenBuddy `PATCH /v1/tenants/{tenant}/member-revocations/{user}` → Gateway 持久化 | 下次 introspect 即 403 `TENANT_MEMBER_REVOKED` |
+| Casdoor 角色/权限/用户/组织/组 CRUD | Casdoor → Gateway `POST /v1/webhooks/casdoor`（HMAC 签名，type ∈ 上述 5 类，action ∈ add/create/update/delete/add-user/remove-user/add-role/remove-role） | `bumpAuthorizationVersion` 自增，旧 token 立即失效 `AUTHORIZATION_VERSION_REVOKED` |
+| 用户主动登出 | OpenBuddy 本地会话撤销 + Gateway 会话撤销 | 下次 token exchange 失败 |
+
+### 17.6 与直接 OIDC 流程的关键差异
+
+| 维度 | 直接 OIDC（章节 1-16） | Gateway Exchange（章节 17） |
+|---|---|---|
+| 触发入口 | 浏览器 `/auth/oidc/url` → `…/callback` | Electron 主进程系统浏览器 → `casdoor://localhost/callback` |
+| Token 类型 | WeKnora 自己的本地 HS256 JWT（可 refresh） | Gateway 签发的 5 分钟 HS256 exchange token（不可 refresh） |
+| 主体验证 | WeKnora 自己 JWT 解析 + 持久化 `OIDCIdentity` | Gateway 内 introspect 每次校验 `active/subject/casdoor_tenant/tenant_id/session_id/membership_version/authorization_version/jti` |
+| 撤销机制 | 撤销本地 token + 删除 `OIDCIdentity` | revocation / authorization_version 实时自增 |
+| 权限模型 | 基于 `tenant_role` / 本地 RBAC | 必须命中五项统一 WeKnora 权限词典之一 |
+| 谁持有 token | 前端（再走 cookie / Bearer） | OpenBuddy 主进程（renderer 永远不接触） |
+
+### 17.7 上线门禁（同步自审计文档）
+
+1. Casdoor 上 `admin/openbuddy` 必须登记 `redirectUris=[casdoor://localhost/callback]`、scopes=`openid profile email`（按需 `offline_access`）、`enableCodeSignin=true`、`grantTypes` 含 `authorization_code`，并绑定 SMS、WeChat Provider。
+2. OpenBuddy 生产必须设 `OPENBUDDY_CASDOOR_REQUIRE_REMOTE_ENFORCEMENT=true`、`OPENBUDDY_CASDOOR_CLIENT_SECRET` 与 `OPENBUDDY_CASDOOR_ENFORCER_ID` 同时存在。
+3. Gateway exchange secret 必须强随机（≥32 字符）、仅私网或受认证反向代理访问 introspection。
+4. Gateway 持久化升级 Postgres / MySQL 时一次性回填 `authorizationVersions`（`schemaVersion=13`）。
+5. 真实普通成员 E2E（PKCE → exchange → KB 列表 → SSE 问答 → 引用 → 撤销/版本失效 → 跨租户拒绝 → logout/backchannel/webhook）必须做完才能宣称“统一接入完成”。
+
+详细基线见 `docs/统一身份权限集成审计.md`。

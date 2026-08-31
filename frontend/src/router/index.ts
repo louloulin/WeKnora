@@ -169,6 +169,17 @@ const router = createRouter({
           meta: { requiresInit: true, requiresAuth: true, requiredCapability: 'agents' }
         },
         {
+          // Build #25: Agent Library — discovery-oriented grid view of all
+          // available agents (built-in + custom). Aligns with Notion Agent
+          // library / Glean Agent library / Slite Agent. Sits next to the
+          // personal AgentList so users can move between "my agents" and
+          // "what's available in this workspace" without losing context.
+          path: "agents/library",
+          name: "agentLibrary",
+          component: () => import("../views/agent/AgentLibrary.vue"),
+          meta: { requiresInit: true, requiresAuth: true, requiredCapability: 'agents' }
+        },
+        {
           path: "integrations",
           redirect: (to) => {
             const tab = typeof to.query.tab === 'string' ? to.query.tab : undefined

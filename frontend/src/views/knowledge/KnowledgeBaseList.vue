@@ -33,6 +33,19 @@
           <span>{{ $t('knowledgeList.uninitializedBanner') }}</span>
         </div>
 
+        <!-- 加载失败：集中展示错误归因 + 重试，避免 toast + 空列表让用户卡住 -->
+        <ErrorState
+          v-if="fetchError && !loading && kbs.length === 0"
+          icon-name="error-circle"
+          :title="$t('knowledgeList.messages.loadFailed')"
+          :description="fetchError.message"
+          :error-code="fetchError.code ?? undefined"
+          :last-synced-at="lastSyncedAt ?? undefined"
+          retry-label="$t('knowledgeList.retry')"
+          :retrying="loading"
+          @retry="fetchList(true)"
+        />
+
         <!-- 上传进度提示 -->
         <div v-if="uploadSummaries.length" class="upload-progress-panel">
           <div v-for="summary in uploadSummaries" :key="summary.kbId" class="upload-progress-item">
@@ -631,51 +644,53 @@
         </div>
 
         <!-- 全部空状态：保留「新建知识库」CTA，因为是空间没有任何 KB 的真空场景 -->
-        <div v-if="spaceSelection === 'all' && filteredKnowledgeBases.length === 0 && !loading" class="empty-state">
-          <img class="empty-img" src="@/assets/img/upload.svg" alt="">
-          <span class="empty-txt">{{ $t('knowledgeList.empty.title') }}</span>
-          <span class="empty-desc">{{ $t('knowledgeList.empty.description') }}</span>
-          <t-button v-if="authStore.hasRole('contributor')" class="kb-create-btn empty-state-btn"
-            data-guide="kb-list-create" @click="handleCreateKnowledgeBase">
-            <template #icon><t-icon name="folder-add" /></template>
-            {{ $t('knowledgeList.create') }}
-          </t-button>
-        </div>
+        <EmptyState
+          v-if="spaceSelection === 'all' && filteredKnowledgeBases.length === 0 && !loading"
+          image-src="@/assets/img/upload.svg"
+          :title="$t('knowledgeList.empty.title')"
+          :description="$t('knowledgeList.empty.description')"
+          :action-label="authStore.hasRole('contributor') ? $t('knowledgeList.create') : undefined"
+          action-icon="folder-add"
+          data-guide="kb-list-create"
+          @action="handleCreateKnowledgeBase"
+        />
 
         <!-- 收藏空状态：不放创建按钮——「没有收藏」 ≠ 「没有知识库」，
              正确引导是「去星标一下」，不是「再建一个」。 -->
-        <div v-if="spaceSelection === 'favorites' && filteredKnowledgeBases.length === 0 && !loading"
-          class="empty-state">
-          <t-icon name="star" size="48px" class="empty-icon" />
-          <span class="empty-txt">{{ $t('knowledgeList.empty.favoritesTitle') }}</span>
-          <span class="empty-desc">{{ $t('knowledgeList.empty.favoritesDescription') }}</span>
-        </div>
+        <EmptyState
+          v-if="spaceSelection === 'favorites' && filteredKnowledgeBases.length === 0 && !loading"
+          icon="star"
+          :title="$t('knowledgeList.empty.favoritesTitle')"
+          :description="$t('knowledgeList.empty.favoritesDescription')"
+        />
 
         <!-- 最近空状态：同理，引导是「去打开一个」。 -->
-        <div v-if="spaceSelection === 'recents' && filteredKnowledgeBases.length === 0 && !loading" class="empty-state">
-          <t-icon name="history" size="48px" class="empty-icon" />
-          <span class="empty-txt">{{ $t('knowledgeList.empty.recentsTitle') }}</span>
-          <span class="empty-desc">{{ $t('knowledgeList.empty.recentsDescription') }}</span>
-        </div>
+        <EmptyState
+          v-if="spaceSelection === 'recents' && filteredKnowledgeBases.length === 0 && !loading"
+          icon="history"
+          :title="$t('knowledgeList.empty.recentsTitle')"
+          :description="$t('knowledgeList.empty.recentsDescription')"
+        />
 
         <!-- 我的知识库空状态 -->
-        <div v-if="spaceSelection === 'mine' && kbs.length === 0 && !loading" class="empty-state">
-          <img class="empty-img" src="@/assets/img/upload.svg" alt="">
-          <span class="empty-txt">{{ $t('knowledgeList.empty.title') }}</span>
-          <span class="empty-desc">{{ $t('knowledgeList.empty.description') }}</span>
-          <t-button v-if="authStore.hasRole('contributor')" class="kb-create-btn empty-state-btn"
-            data-guide="kb-list-create" @click="handleCreateKnowledgeBase">
-            <template #icon><t-icon name="folder-add" /></template>
-            {{ $t('knowledgeList.create') }}
-          </t-button>
-        </div>
+        <EmptyState
+          v-if="spaceSelection === 'mine' && kbs.length === 0 && !loading"
+          image-src="@/assets/img/upload.svg"
+          :title="$t('knowledgeList.empty.title')"
+          :description="$t('knowledgeList.empty.description')"
+          :action-label="authStore.hasRole('contributor') ? $t('knowledgeList.create') : undefined"
+          action-icon="folder-add"
+          data-guide="kb-list-create"
+          @action="handleCreateKnowledgeBase"
+        />
 
         <!-- 空间下知识库空状态 -->
-        <div v-if="spaceSelectionOrgId && !spaceKbsLoading && spaceKbsList.length === 0" class="empty-state">
-          <img class="empty-img" src="@/assets/img/upload.svg" alt="">
-          <span class="empty-txt">{{ $t('knowledgeList.empty.sharedTitle') }}</span>
-          <span class="empty-desc">{{ $t('knowledgeList.empty.sharedDescription') }}</span>
-        </div>
+        <EmptyState
+          v-if="spaceSelectionOrgId && !spaceKbsLoading && spaceKbsList.length === 0"
+          image-src="@/assets/img/upload.svg"
+          :title="$t('knowledgeList.empty.sharedTitle')"
+          :description="$t('knowledgeList.empty.sharedDescription')"
+        />
       </div>
     </div>
 
@@ -795,6 +810,8 @@ import KnowledgeBaseEditorModal from './KnowledgeBaseEditorModal.vue'
 import KbWikiBadge from './components/KbWikiBadge.vue'
 import ShareKnowledgeBaseDialog from '@/components/ShareKnowledgeBaseDialog.vue'
 import ListSpaceSidebar from '@/components/ListSpaceSidebar.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import ErrorState from '@/components/ErrorState.vue'
 import ResourceOriginBadge from '@/components/ResourceOriginBadge.vue'
 import { shouldShowResourceOriginBadge } from '@/utils/card-list-badge'
 import ContextualGuide from '@/components/ContextualGuide.vue'
@@ -871,6 +888,16 @@ interface KB {
 
 const kbs = ref<KB[]>([])
 const loading = ref(false)
+
+// Track fetch failures so we can render ErrorState with retry + last-synced time
+// instead of silently emptying the list. fetchError is reset on each successful
+// load and on user-initiated retry.
+const fetchError = ref<{ code: string | number | null; message: string } | null>(null)
+const lastSyncedAt = ref<string | null>(null)
+const formatSyncTime = (d: Date) => {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
 const deleteVisible = ref(false)
 const deletingKb = ref<KB | null>(null)
 const currentMoreIndex = ref<number>(-1)
@@ -1226,6 +1253,7 @@ const applyKbListData = (data: any[]) => {
 
 const fetchList = (force = false) => {
   loading.value = true
+  fetchError.value = null
   // The creator filter only applies to the caller's own tenant KBs (the
   // first call). Shared KBs are inherently "not mine" so we don't filter
   // them server-side; the segmented control is also hidden whenever the
@@ -1234,11 +1262,22 @@ const fetchList = (force = false) => {
     chatResources.fetchKnowledgeBasesForList({ creator: creatorFilter.value }, force).then(applyKbListData),
     orgStore.fetchSharedKnowledgeBases({ force }),
     orgStore.fetchOrganizations({ force }),
-  ]).finally(() => { loading.value = false }).then(() => {
-    // 各空间知识库数量已由 GET /organizations 的 resource_counts 带回，存于 orgStore.resourceCounts
-    const counts = orgStore.resourceCounts?.knowledge_bases?.by_organization
-    if (counts) spaceCountByOrg.value = { ...counts }
-  })
+  ])
+    .then(() => {
+      lastSyncedAt.value = formatSyncTime(new Date())
+    })
+    .catch((err: any) => {
+      fetchError.value = {
+        code: err?.code ?? null,
+        message: err?.message || String(err),
+      }
+    })
+    .finally(() => {
+      loading.value = false
+      // Post-load: 各空间知识库数量已由 GET /organizations 的 resource_counts 带回
+      const counts = orgStore.resourceCounts?.knowledge_bases?.by_organization
+      if (counts) spaceCountByOrg.value = { ...counts }
+    })
 }
 
 // 选中空间时请求该空间内全部知识库（含我共享的）

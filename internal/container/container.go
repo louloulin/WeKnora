@@ -679,6 +679,19 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewWikiBatchAuditRepository))
 	must(container.Provide(repository.NewWikiBatchFailureRepository))
 	must(container.Provide(service.NewWikiBatchJobService))
+	// Wiki page comments (Sprint 1 §27 #4).
+	must(container.Provide(repository.NewWikiCommentRepository))
+	must(container.Provide(service.NewWikiPageCommentService))
+	// Adapter: wire WikiPageExistenceLookup to the wiki page repository.
+	// WikiPageExistenceLookup is required by NewWikiPageCommentService but
+	// was added without a matching container.Provide — the server refuses
+	// to start until this gap is closed. Wrap GetPageByID to satisfy the
+	// PageExists(ctx, kbID, pageID) contract; kbID is informational here
+	// because GetPageByID keys on the global page ID.
+	must(container.Provide(func(repo interfaces.WikiPageRepository) service.WikiPageExistenceLookup {
+		return wikiPageExistenceAdapter{repo: repo}
+	}))
+	must(container.Provide(handler.NewWikiCommentHandler))
 	// Wiki backlinks graph cache (Build #21). The repo persists the
 	// four-section payload as TEXT (json strings) for dialect
 	// portability; the invalidator service owns the slug-resolution
@@ -1411,14 +1424,17 @@ func initDatabase(cfg *config.Config) (*gorm.DB, error) {
 	switch os.Getenv("DB_DRIVER") {
 	case "postgres":
 		// DSN for GORM (key-value format)
+		// pgx v5 stdlib driver (used by gorm postgres v1.6) requires URL-form
+		// DSN — key=value pairs (e.g. dbname=) are silently ignored, causing
+		// the connection to default to the user-name database. Use a URL.
+		encodedDBPassword := url.QueryEscape(os.Getenv("DB_PASSWORD"))
 		gormDSN := fmt.Sprintf(
-			"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s TimeZone=UTC",
+			"postgres://%s:%s@%s:%s/%s?sslmode=disable&TimeZone=UTC",
+			os.Getenv("DB_USER"),
+			encodedDBPassword,
 			os.Getenv("DB_HOST"),
 			os.Getenv("DB_PORT"),
-			os.Getenv("DB_USER"),
-			os.Getenv("DB_PASSWORD"),
 			os.Getenv("DB_NAME"),
-			"disable",
 		)
 		dialector = postgres.Open(gormDSN)
 
@@ -2702,51 +2718,20 @@ func (r *kbAuditTenantResolver) ResolveTenantID(ctx context.Context, kbID string
 	return kb.TenantID, nil
 }
 
-// newSAMLSPConfig reads the SP-side SAML configuration from the
-// process environment. The cert + key are PEM-encoded; we generate
-// a self-signed pair on first boot when neither env var is set so
-// the SP works out of the box for local development. Production
-// deployments must provision SAML_SP_CERT_PEM + SAML_SP_KEY_PEM.
-//
-// TODO: read the SP cert from the admin-managed settings table
-// once the SAML admin UI lands (today the admin can only manage
-// the IdP-side config; the SP side is operator-managed).
-func newSAMLSPConfig() (*samlsp.SPConfig, error) {
-	cfg := &samlsp.SPConfig{
-		EntityID:    envOr("SAML_SP_ENTITY_ID", "urn:weknora:saml:sp"),
-		ACSURL:      envOr("SAML_SP_ACS_URL", "http://localhost:8080/api/v1/auth/saml/acs"),
-		SLOURL:      envOr("SAML_SP_SLO_URL", "http://localhost:8080/api/v1/auth/saml/slo"),
-		MetadataURL: envOr("SAML_SP_METADATA_URL", "http://localhost:8080/api/v1/auth/saml/metadata"),
-	}
-	certPEM := os.Getenv("SAML_SP_CERT_PEM")
-	keyPEM := os.Getenv("SAML_SP_KEY_PEM")
-	if certPEM != "" && keyPEM != "" {
-		cert, err := decodePEMCertificate(certPEM)
-		if err != nil {
-			return nil, err
-		}
-		key, err := decodePEMPrivateKey(keyPEM)
-		if err != nil {
-			return nil, err
-		}
-		cfg.Certificate = cert
-		cfg.Key = key
-	} else {
-		// Dev fallback: ephemeral self-signed cert. The key never
-		// leaves the process so this is acceptable for local dev.
-		cert, key, err := generateDevCert()
-		if err != nil {
-			return nil, err
-		}
-		cfg.Certificate = cert
-		cfg.Key = key
-	}
-	return cfg, nil
+// wikiPageExistenceAdapter implements service.WikiPageExistenceLookup by
+// delegating to the wiki page repository's GetPageByID. It exists only
+// to close the dig wiring gap introduced when WikiPageCommentService was
+// added; a fuller implementation could enforce kbID membership.
+type wikiPageExistenceAdapter struct {
+	repo interfaces.WikiPageRepository
 }
 
-func envOr(key, fallback string) string {
-	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
-		return v
+func (a wikiPageExistenceAdapter) PageExists(ctx context.Context, _, pageID string) (bool, error) {
+	if _, err := a.repo.GetByID(ctx, pageID); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, err
 	}
-	return fallback
+	return true, nil
 }

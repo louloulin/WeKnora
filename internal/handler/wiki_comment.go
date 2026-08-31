@@ -3,213 +3,171 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
-	"github.com/gin-gonic/gin"
-
+	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
-	"github.com/Tencent/WeKnora/internal/types/interfaces"
+	"github.com/gin-gonic/gin"
 )
 
-// WikiCommentHandler exposes the 5 REST endpoints documented in
-// docs/comet/changes/weknora-wiki-page-comments/spec.md §2.1. The
-// constructor takes the WikiCommentService interface so tests can wire
-// a fake.
-//
-// Build #22 (v0.7.25).
+// WikiCommentHandler exposes the wiki-page-comment HTTP endpoints.
+// Thin layer that pulls ids off the URL, hands them to the service, and
+// maps service errors to HTTP status codes. Same conventions as
+// WikiPageHandler / WikiAclHandler.
 type WikiCommentHandler struct {
-	svc interfaces.WikiCommentService
+	svc *service.WikiPageCommentService
 }
 
-// NewWikiCommentHandler constructs the handler. A nil service is
-// rejected so a missing DI wiring fails loudly at startup.
-func NewWikiCommentHandler(svc interfaces.WikiCommentService) *WikiCommentHandler {
-	if svc == nil {
-		panic("handler.NewWikiCommentHandler: svc is required")
-	}
+// NewWikiCommentHandler wires the handler.
+func NewWikiCommentHandler(svc *service.WikiPageCommentService) *WikiCommentHandler {
 	return &WikiCommentHandler{svc: svc}
 }
 
-// validateKB extracts the kb_id path param + tenant_id / user_id from
-// the gin context, returning typed values ready for the service layer.
-func (h *WikiCommentHandler) validate(c *gin.Context) (uint64, string, string, bool) {
-	kbID := c.Param("kb_id")
-	if kbID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "kb_id is required"})
-		return 0, "", "", false
+// commentActorIDs resolves (tenantID, userID, isAdmin) from the gin
+// context using the auth middleware conventions already used by
+// WikiPageHandler. Returns "" if auth context is missing.
+func commentActorIDs(c *gin.Context) (tenantID uint64, userID string, isAdmin bool) {
+	if v, ok := c.Get("tenant_id"); ok {
+		if n, ok := v.(uint64); ok {
+			tenantID = n
+		}
 	}
-	tenantID := c.GetUint64("tenant_id")
-	userID := c.GetString("user_id")
-	if tenantID == 0 || userID == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
-		return 0, "", "", false
+	if v, ok := c.Get("user_id"); ok {
+		if s, ok := v.(string); ok {
+			userID = s
+		}
 	}
-	return tenantID, kbID, userID, true
+	if v, ok := c.Get("is_admin"); ok {
+		if b, ok := v.(bool); ok {
+			isAdmin = b
+		}
+	}
+	return
 }
 
-// isOwnerOrAdmin inspects the gin context role marker set by the rbac
-// guard. It is a best-effort check: production deployments should also
-// pass through the wikiAclHandler.GetAcl response to confirm ownership.
-func (h *WikiCommentHandler) isOwnerOrAdmin(c *gin.Context) bool {
-	role := c.GetString("role")
-	return role == "owner" || role == "admin" || role == "super_admin"
-}
-
-// List — GET /api/v1/knowledgebase/:kb_id/wiki/pages/:slug/comments
+// List handles GET /knowledgebase/:kb_id/wiki/pages/:page_id/comments
 func (h *WikiCommentHandler) List(c *gin.Context) {
-	_, kbID, _, ok := h.validate(c)
-	if !ok {
-		return
-	}
-	slug := c.Param("slug")
-	if slug == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "slug is required"})
-		return
-	}
-	resp, err := h.svc.List(c.Request.Context(), 0, kbID, slug)
+	kbID := c.Param("kb_id")
+	pageID := c.Param("slug")
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	comments, total, err := h.svc.ListByPage(c.Request.Context(), pageID, limit, offset)
 	if err != nil {
-		logger.Errorf(c.Request.Context(), "wiki comment list failed: kb=%s slug=%s err=%v", kbID, slug, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logger.Errorf(c.Request.Context(), "list wiki comments failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list comments"})
 		return
 	}
-	c.JSON(http.StatusOK, resp)
+	c.JSON(http.StatusOK, gin.H{
+		"data": comments,
+		"total": total,
+		"limit": limit,
+		"offset": offset,
+		"kb_id": kbID,
+		"page_id": pageID,
+	})
 }
 
-// Create — POST /api/v1/knowledgebase/:kb_id/wiki/pages/:slug/comments
+// Create handles POST /knowledgebase/:kb_id/wiki/pages/:page_id/comments
 func (h *WikiCommentHandler) Create(c *gin.Context) {
-	tenantID, kbID, userID, ok := h.validate(c)
-	if !ok {
+	kbID := c.Param("kb_id")
+	pageID := c.Param("slug")
+	tenantID, userID, _ := commentActorIDs(c)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
 		return
 	}
-	slug := c.Param("slug")
-	if slug == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "slug is required"})
-		return
-	}
-	var req types.WikiCommentCreateRequest
+	var req types.CreateWikiCommentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	comment, err := h.svc.Create(
-		c.Request.Context(),
-		tenantID,
-		kbID,
-		slug,
-		userID,
-		c.GetString("user_name"),
-		c.GetString("user_avatar_url"),
-		req,
-	)
+	comment, err := h.svc.Create(c.Request.Context(), kbID, pageID, userID, tenantID, &req)
 	if err != nil {
-		switch {
-		case errors.Is(err, interfaces.ErrWikiCommentBadInput):
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		default:
-			logger.Errorf(c.Request.Context(), "wiki comment create failed: kb=%s slug=%s err=%v", kbID, slug, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, comment)
+	c.JSON(http.StatusCreated, gin.H{"data": comment})
 }
 
-// Update — PUT /api/v1/knowledgebase/:kb_id/wiki/pages/:slug/comments/:comment_id
+// Update handles PATCH /knowledgebase/:kb_id/wiki/comments/:comment_id
 func (h *WikiCommentHandler) Update(c *gin.Context) {
-	_, kbID, userID, ok := h.validate(c)
-	if !ok {
-		return
-	}
 	commentID := c.Param("comment_id")
-	if commentID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "comment_id is required"})
+	_, userID, isAdmin := commentActorIDs(c)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
 		return
 	}
-	var req types.WikiCommentUpdateRequest
+	var req types.UpdateWikiCommentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	comment, err := h.svc.Update(c.Request.Context(), 0, kbID, commentID, userID, req)
+	comment, err := h.svc.Update(c.Request.Context(), commentID, userID, isAdmin, req.Body)
 	if err != nil {
 		switch {
-		case errors.Is(err, interfaces.ErrWikiCommentNotFound):
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		case errors.Is(err, interfaces.ErrWikiCommentForbidden):
-			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
-		case errors.Is(err, interfaces.ErrWikiCommentBadInput):
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		case errors.Is(err, service.ErrCommentNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "comment not found"})
+		case errors.Is(err, service.ErrCommentForbidden):
+			c.JSON(http.StatusForbidden, gin.H{"error": "only the author or a KB admin can edit"})
 		default:
-			logger.Errorf(c.Request.Context(), "wiki comment update failed: comment=%s err=%v", commentID, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			logger.Errorf(c.Request.Context(), "update wiki comment failed: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update comment"})
 		}
 		return
 	}
-	c.JSON(http.StatusOK, comment)
+	c.JSON(http.StatusOK, gin.H{"data": comment})
 }
 
-// SetResolved — POST /api/v1/knowledgebase/:kb_id/wiki/pages/:slug/comments/:comment_id/resolve
+// SetResolved handles PATCH /knowledgebase/:kb_id/wiki/comments/:comment_id/resolve
 func (h *WikiCommentHandler) SetResolved(c *gin.Context) {
-	_, kbID, userID, ok := h.validate(c)
-	if !ok {
-		return
-	}
 	commentID := c.Param("comment_id")
-	if commentID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "comment_id is required"})
+	_, userID, isAdmin := commentActorIDs(c)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
 		return
 	}
-	var req types.WikiCommentResolveRequest
+	var req types.ResolveWikiCommentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	comment, err := h.svc.SetResolved(
-		c.Request.Context(),
-		0,
-		kbID,
-		commentID,
-		userID,
-		h.isOwnerOrAdmin(c),
-		req.Resolved,
-	)
+	comment, err := h.svc.SetResolved(c.Request.Context(), commentID, userID, isAdmin, req.Resolved)
 	if err != nil {
 		switch {
-		case errors.Is(err, interfaces.ErrWikiCommentNotFound):
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		case errors.Is(err, interfaces.ErrWikiCommentForbidden):
-			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		case errors.Is(err, service.ErrCommentNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "comment not found"})
+		case errors.Is(err, service.ErrCommentForbidden):
+			c.JSON(http.StatusForbidden, gin.H{"error": "only the author or a KB admin can resolve"})
 		default:
-			logger.Errorf(c.Request.Context(), "wiki comment resolve failed: comment=%s err=%v", commentID, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			logger.Errorf(c.Request.Context(), "resolve wiki comment failed: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve comment"})
 		}
 		return
 	}
-	c.JSON(http.StatusOK, comment)
+	c.JSON(http.StatusOK, gin.H{"data": comment})
 }
 
-// Delete — DELETE /api/v1/knowledgebase/:kb_id/wiki/pages/:slug/comments/:comment_id
+// Delete handles DELETE /knowledgebase/:kb_id/wiki/comments/:comment_id
 func (h *WikiCommentHandler) Delete(c *gin.Context) {
-	_, kbID, userID, ok := h.validate(c)
-	if !ok {
-		return
-	}
 	commentID := c.Param("comment_id")
-	if commentID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "comment_id is required"})
+	_, userID, isAdmin := commentActorIDs(c)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
 		return
 	}
-	if err := h.svc.Delete(c.Request.Context(), 0, kbID, commentID, userID, h.isOwnerOrAdmin(c)); err != nil {
+	err := h.svc.Delete(c.Request.Context(), commentID, userID, isAdmin)
+	if err != nil {
 		switch {
-		case errors.Is(err, interfaces.ErrWikiCommentNotFound):
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-		case errors.Is(err, interfaces.ErrWikiCommentForbidden):
-			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		case errors.Is(err, service.ErrCommentNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "comment not found"})
+		case errors.Is(err, service.ErrCommentForbidden):
+			c.JSON(http.StatusForbidden, gin.H{"error": "only the author or a KB admin can delete"})
 		default:
-			logger.Errorf(c.Request.Context(), "wiki comment delete failed: comment=%s err=%v", commentID, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			logger.Errorf(c.Request.Context(), "delete wiki comment failed: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to delete comment"})
 		}
 		return
 	}
-	c.JSON(http.StatusNoContent, nil)
+	c.Status(http.StatusNoContent)
 }

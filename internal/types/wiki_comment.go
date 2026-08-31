@@ -1,104 +1,55 @@
 package types
 
-import (
-	"time"
+import "time"
 
-	"gorm.io/gorm"
-)
+// WikiPageComment is a single comment on a wiki page.
+//
+// Comments are flat: a parent_comment_id can chain to create a thread,
+// but the schema stays simple. Soft-delete preserves audit trail. Resolved
+// comments stay visible; resolved_at / resolved_by are nullable so the
+// UI can show "Mark resolved" / "Reopen" affordances.
+type WikiPageComment struct {
+	ID                string     `json:"id" gorm:"type:varchar(36);primaryKey"`
+	TenantID          uint64     `json:"tenant_id" gorm:"index"`
+	KnowledgeBaseID   string     `json:"knowledge_base_id" gorm:"type:varchar(36);index"`
+	WikiPageID        string     `json:"wiki_page_id" gorm:"type:varchar(36);index"`
+	ParentCommentID   *string    `json:"parent_comment_id,omitempty" gorm:"type:varchar(36);index"`
+	AuthorID          string     `json:"author_id" gorm:"type:varchar(36);index"`
+	Body              string     `json:"body" gorm:"type:text"`
+	Mentions          StringArray `json:"mentions" gorm:"type:json"`
+	ResolvedAt        *time.Time `json:"resolved_at,omitempty" gorm:"index"`
+	ResolvedBy        *string    `json:"resolved_by,omitempty" gorm:"type:varchar(36)"`
+	DeletedAt         *time.Time `json:"deleted_at,omitempty" gorm:"index"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 
-// WikiCommentMaxBodyBytes caps the body length at 4 KB. Larger payloads
-// are rejected at the request level so a runaway client cannot flood the
-// wiki comment table with megabyte blobs.
-const WikiCommentMaxBodyBytes = 4096
-
-// WikiComment represents a single wiki page comment. The thread tree is
-// materialised by parent_id + replies; the API flattens replies when
-// serving the list view so the frontend renders a tree without extra
-// calls. Mentions are stored as a JSON array of {user_id, display_name,
-// handle?, avatar_url?} so a comment author can mention several users
-// inline.
-type WikiComment struct {
-	ID              string `json:"id" gorm:"type:varchar(36);primaryKey"`
-	TenantID        uint64 `json:"tenant_id" gorm:"index"`
-	KnowledgeBaseID string `json:"knowledge_base_id" gorm:"type:varchar(36);index"`
-	PageSlug       string `json:"page_slug" gorm:"type:text;index"`
-	ParentID       string `json:"parent_id,omitempty" gorm:"type:varchar(36);index"`
-	Body           string `json:"body" gorm:"type:text"`
-	Mentions       string `json:"mentions" gorm:"type:text"` // JSON-encoded array
-	AnchorBlockID  string `json:"anchor_block_id,omitempty" gorm:"type:varchar(64)"`
-	AuthorID       string `json:"author_id" gorm:"type:varchar(64);index"`
-	AuthorName     string `json:"author_name" gorm:"type:text"`
-	AuthorAvatarURL string `json:"author_avatar_url,omitempty" gorm:"type:text"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
-	ResolvedAt     *time.Time `json:"resolved_at,omitempty"`
-	ResolvedBy     string `json:"resolved_by,omitempty" gorm:"type:varchar(64)"`
+	// Optional join fields populated by ListByPage; never persisted.
+	AuthorName    string `json:"author_name,omitempty" gorm:"-"`
+	AuthorAvatar  string `json:"author_avatar,omitempty" gorm:"-"`
 }
 
-// TableName returns the underlying GORM table name.
-func (WikiComment) TableName() string { return "wiki_page_comments" }
-
-// BeforeCreate ensures the timestamps are populated before insert.
-func (c *WikiComment) BeforeCreate(tx *gorm.DB) error {
-	now := time.Now()
-	if c.CreatedAt.IsZero() {
-		c.CreatedAt = now
-	}
-	if c.UpdatedAt.IsZero() {
-		c.UpdatedAt = now
-	}
-	return nil
+// TableName overrides the default pluralized table so we keep the
+// singular noun for readability ("wiki_page_comments" reads better than
+// "wiki_page_commentses" that GORM would otherwise emit).
+func (WikiPageComment) TableName() string {
+	return "wiki_page_comments"
 }
 
-// BeforeUpdate refreshes UpdatedAt on every save.
-func (c *WikiComment) BeforeUpdate(tx *gorm.DB) error {
-	c.UpdatedAt = time.Now()
-	return nil
+// CreateWikiCommentRequest is the POST body for creating a comment.
+type CreateWikiCommentRequest struct {
+	Body            string      `json:"body" binding:"required,min=1,max=10000"`
+	ParentCommentID *string     `json:"parent_comment_id,omitempty"`
+	Mentions        StringArray `json:"mentions,omitempty"`
 }
 
-// WikiCommentMention is the embedded mention payload. The JSON shape is
-// shared with the frontend client (api/wiki/comments.ts).
-type WikiCommentMention struct {
-	UserID      string `json:"user_id"`
-	DisplayName string `json:"display_name"`
-	Handle      string `json:"handle,omitempty"`
-	AvatarURL   string `json:"avatar_url,omitempty"`
+// UpdateWikiCommentRequest is the PATCH body for editing a comment.
+// Only the author (or KB admin) may edit; the handler enforces this.
+type UpdateWikiCommentRequest struct {
+	Body string `json:"body" binding:"required,min=1,max=10000"`
 }
 
-// WikiCommentCreateRequest is the body accepted by POST /comments.
-type WikiCommentCreateRequest struct {
-	Body          string                `json:"body" binding:"required"`
-	ParentID      string                `json:"parent_id,omitempty"`
-	AnchorBlockID string                `json:"anchor_block_id,omitempty"`
-	Mentions      []WikiCommentMention  `json:"mentions,omitempty"`
-}
-
-// WikiCommentUpdateRequest is the body accepted by PUT /comments/:id.
-// Edits may rewrite the body and mentions; parent/anchor/resolve are
-// updated through dedicated endpoints so an edit can never accidentally
-// change a comment's threading.
-type WikiCommentUpdateRequest struct {
-	Body     string                `json:"body" binding:"required"`
-	Mentions []WikiCommentMention  `json:"mentions,omitempty"`
-}
-
-// WikiCommentResolveRequest is the body accepted by POST /comments/:id/resolve.
-type WikiCommentResolveRequest struct {
+// ResolveWikiCommentRequest is the PATCH body for the resolve toggle.
+// Reopen sets Resolved=false to undo.
+type ResolveWikiCommentRequest struct {
 	Resolved bool `json:"resolved"`
-}
-
-// WikiCommentListResponse is the API response for the list endpoint.
-// `comments` is the flattened thread (parents + replies interleaved by
-// created_at), and `stats` summarises open / resolved counts.
-type WikiCommentListResponse struct {
-	Comments []WikiComment        `json:"comments"`
-	Stats    WikiCommentListStats `json:"stats"`
-}
-
-// WikiCommentListStats is the meta panel the front-end renders above the
-// thread (e.g. "12 open · 4 resolved").
-type WikiCommentListStats struct {
-	TotalOpen     int `json:"total_open"`
-	TotalResolved int `json:"total_resolved"`
-	TotalReplies  int `json:"total_replies"`
 }

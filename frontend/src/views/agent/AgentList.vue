@@ -32,6 +32,24 @@
                 </template>
               </t-button>
             </t-tooltip>
+            <!-- Build #25: 跳转 Agent library（发现型视图,与个人 AgentList 互补） -->
+            <router-link to="/platform/agents/library" custom v-slot="{ navigate }">
+              <t-tooltip :content="$t('agent.library.title')" placement="bottom">
+                <t-button
+                  variant="text"
+                  theme="default"
+                  size="small"
+                  class="header-action-btn"
+                  data-guide="agent-library-open"
+                  style="--wails-draggable: no-drag"
+                  @click="navigate"
+                >
+                  <template #icon>
+                    <t-icon name="app" size="18px" />
+                  </template>
+                </t-button>
+              </t-tooltip>
+            </router-link>
           </div>
           <p class="header-subtitle" style="--wails-draggable: drag">{{ $t('agent.subtitle') }}</p>
         </div>
@@ -636,76 +654,85 @@
           </template>
         </div>
 
-        <!-- 空状态：全部（保留创建 CTA） -->
-        <div v-if="spaceSelection === 'all' && filteredAgents.length === 0 && !loading" class="empty-state">
-          <img class="empty-img" src="@/assets/img/upload.svg" alt="">
-          <span class="empty-txt">{{ $t('agent.empty.title') }}</span>
-          <span class="empty-desc">{{ $t('agent.empty.description') }}</span>
-          <t-button v-if="authStore.hasRole('contributor')" class="agent-create-btn empty-state-btn"
-            data-guide="agent-list-create" @click="handleCreateAgent">
-            <template #icon>
-              <span class="btn-icon-wrapper">
-                <svg class="sparkles-icon" width="18" height="18" viewBox="0 0 20 20" fill="none"
-                  xmlns="http://www.w3.org/2000/svg">
-                  <path
-                    d="M10 3L10.8 6.2C10.9 6.7 11.3 7.1 11.8 7.2L15 8L11.8 8.8C11.3 8.9 10.9 9.3 10.8 9.8L10 13L9.2 9.8C9.1 9.3 8.7 8.9 8.2 8.8L5 8L8.2 7.2C8.7 7.1 9.1 6.7 9.2 6.2L10 3Z"
-                    fill="currentColor" stroke="currentColor" stroke-width="0.8" stroke-linecap="round"
-                    stroke-linejoin="round" />
-                  <path
-                    d="M15.5 4L15.8 5.2C15.85 5.45 16.05 5.65 16.3 5.7L17.5 6L16.3 6.3C16.05 6.35 15.85 6.55 15.8 6.8L15.5 8L15.2 6.8C15.15 6.55 14.95 6.35 14.7 6.3L13.5 6L14.7 5.7C14.95 5.65 15.15 5.45 15.2 5.2L15.5 4Z"
-                    fill="currentColor" stroke="currentColor" stroke-width="0.6" stroke-linecap="round"
-                    stroke-linejoin="round" />
-                  <path
-                    d="M4.5 13L4.8 14.2C4.85 14.45 5.05 14.65 5.3 14.7L6.5 15L5.3 15.3C5.05 15.35 4.85 15.55 4.8 15.8L4.5 17L4.2 15.8C4.15 15.55 3.95 15.35 3.7 15.3L2.5 15L3.7 14.7C3.95 14.65 4.15 14.45 4.2 14.2L4.5 13Z"
-                    fill="currentColor" stroke="currentColor" stroke-width="0.6" stroke-linecap="round"
-                    stroke-linejoin="round" />
-                </svg>
-              </span>
-            </template>
-            <span>{{ $t('agent.createAgent') }}</span>
-          </t-button>
-        </div>
+        <!-- 空状态：全部（保留创建 CTA，使用 actions slot 保留 sparkles 按钮） -->
+        <EmptyState
+          v-if="spaceSelection === 'all' && filteredAgents.length === 0 && !loading"
+          image-src="@/assets/img/upload.svg"
+          :title="$t('agent.empty.title')"
+          :description="$t('agent.empty.description')"
+        >
+          <template v-if="authStore.hasRole('contributor')" #actions>
+            <t-button class="agent-create-btn empty-state-btn" data-guide="agent-list-create"
+              @click="handleCreateAgent">
+              <template #icon>
+                <span class="btn-icon-wrapper">
+                  <svg class="sparkles-icon" width="18" height="18" viewBox="0 0 20 20" fill="none"
+                    xmlns="http://www.w3.org/2000/svg">
+                    <path
+                      d="M10 3L10.8 6.2C10.9 6.7 11.3 7.1 11.8 7.2L15 8L11.8 8.8C11.3 8.9 10.9 9.3 10.8 9.8L10 13L9.2 9.8C9.1 9.3 8.7 8.9 8.2 8.8L5 8L8.2 7.2C8.7 7.1 9.1 6.7 9.2 6.2L10 3Z"
+                      fill="currentColor" stroke="currentColor" stroke-width="0.8" stroke-linecap="round"
+                      stroke-linejoin="round" />
+                    <path
+                      d="M15.5 4L15.8 5.2C15.85 5.45 16.05 5.65 16.3 5.7L17.5 6L16.3 6.3C16.05 6.35 15.85 6.55 15.8 6.8L15.5 8L15.2 6.8C15.15 6.55 14.95 6.35 14.7 6.3L13.5 6L14.7 5.7C14.95 5.65 15.15 5.45 15.2 5.2L15.5 4Z"
+                      fill="currentColor" stroke="currentColor" stroke-width="0.6" stroke-linecap="round"
+                      stroke-linejoin="round" />
+                    <path
+                      d="M4.5 13L4.8 14.2C4.85 14.45 5.05 14.65 5.3 14.7L6.5 15L5.3 15.3C5.05 15.35 4.85 15.55 4.8 15.8L4.5 17L4.2 15.8C4.15 15.55 3.95 15.35 3.7 15.3L2.5 15L3.7 14.7C3.95 14.65 4.15 14.45 4.2 14.2L4.5 13Z"
+                      fill="currentColor" stroke="currentColor" stroke-width="0.6" stroke-linecap="round"
+                      stroke-linejoin="round" />
+                  </svg>
+                </span>
+              </template>
+              <span>{{ $t('agent.createAgent') }}</span>
+            </t-button>
+          </template>
+        </EmptyState>
 
         <!-- 空状态：收藏 / 最近 — 不放创建按钮，参见 KnowledgeBaseList 的同处理由 -->
-        <div v-if="spaceSelection === 'favorites' && filteredAgents.length === 0 && !loading" class="empty-state">
-          <t-icon name="star" size="48px" class="empty-icon" />
-          <span class="empty-txt">{{ $t('agent.empty.favoritesTitle') }}</span>
-          <span class="empty-desc">{{ $t('agent.empty.favoritesDescription') }}</span>
-        </div>
-        <div v-if="spaceSelection === 'recents' && filteredAgents.length === 0 && !loading" class="empty-state">
-          <t-icon name="history" size="48px" class="empty-icon" />
-          <span class="empty-txt">{{ $t('agent.empty.recentsTitle') }}</span>
-          <span class="empty-desc">{{ $t('agent.empty.recentsDescription') }}</span>
-        </div>
+        <EmptyState
+          v-if="spaceSelection === 'favorites' && filteredAgents.length === 0 && !loading"
+          icon="star"
+          :title="$t('agent.empty.favoritesTitle')"
+          :description="$t('agent.empty.favoritesDescription')"
+        />
+        <EmptyState
+          v-if="spaceSelection === 'recents' && filteredAgents.length === 0 && !loading"
+          icon="history"
+          :title="$t('agent.empty.recentsTitle')"
+          :description="$t('agent.empty.recentsDescription')"
+        />
         <!-- 空状态：我的 -->
-        <div v-if="spaceSelection === 'mine' && agents.length === 0 && !loading" class="empty-state">
-          <img class="empty-img" src="@/assets/img/upload.svg" alt="">
-          <span class="empty-txt">{{ $t('agent.empty.title') }}</span>
-          <span class="empty-desc">{{ $t('agent.empty.description') }}</span>
-          <t-button v-if="authStore.hasRole('contributor')" class="agent-create-btn empty-state-btn"
-            @click="handleCreateAgent">
-            <template #icon>
-              <span class="btn-icon-wrapper">
-                <svg class="sparkles-icon" width="18" height="18" viewBox="0 0 20 20" fill="none"
-                  xmlns="http://www.w3.org/2000/svg">
-                  <path
-                    d="M10 3L10.8 6.2C10.9 6.7 11.3 7.1 11.8 7.2L15 8L11.8 8.8C11.3 8.9 10.9 9.3 10.8 9.8L10 13L9.2 9.8C9.1 9.3 8.7 8.9 8.2 8.8L5 8L8.2 7.2C8.7 7.1 9.1 6.7 9.2 6.2L10 3Z"
-                    fill="currentColor" stroke="currentColor" stroke-width="0.8" stroke-linecap="round"
-                    stroke-linejoin="round" />
-                  <path
-                    d="M15.5 4L15.8 5.2C15.85 5.45 16.05 5.65 16.3 5.7L17.5 6L16.3 6.3C16.05 6.35 15.85 6.55 15.8 6.8L15.5 8L15.2 6.8C15.15 6.55 14.95 6.35 14.7 6.3L13.5 6L14.7 5.7C14.95 5.65 15.15 5.45 15.2 5.2L15.5 4Z"
-                    fill="currentColor" stroke="currentColor" stroke-width="0.6" stroke-linecap="round"
-                    stroke-linejoin="round" />
-                  <path
-                    d="M4.5 13L4.8 14.2C4.85 14.45 5.05 14.65 5.3 14.7L6.5 15L5.3 15.3C5.05 15.35 4.85 15.55 4.8 15.8L4.5 17L4.2 15.8C4.15 15.55 3.95 15.35 3.7 15.3L2.5 15L3.7 14.7C3.95 14.65 4.15 14.45 4.2 14.2L4.5 13Z"
-                    fill="currentColor" stroke="currentColor" stroke-width="0.6" stroke-linecap="round"
-                    stroke-linejoin="round" />
-                </svg>
-              </span>
-            </template>
-            <span>{{ $t('agent.createAgent') }}</span>
-          </t-button>
-        </div>
+        <EmptyState
+          v-if="spaceSelection === 'mine' && agents.length === 0 && !loading"
+          image-src="@/assets/img/upload.svg"
+          :title="$t('agent.empty.title')"
+          :description="$t('agent.empty.description')"
+        >
+          <template v-if="authStore.hasRole('contributor')" #actions>
+            <t-button class="agent-create-btn empty-state-btn" @click="handleCreateAgent">
+              <template #icon>
+                <span class="btn-icon-wrapper">
+                  <svg class="sparkles-icon" width="18" height="18" viewBox="0 0 20 20" fill="none"
+                    xmlns="http://www.w3.org/2000/svg">
+                    <path
+                      d="M10 3L10.8 6.2C10.9 6.7 11.3 7.1 11.8 7.2L15 8L11.8 8.8C11.3 8.9 10.9 9.3 10.8 9.8L10 13L9.2 9.8C9.1 9.3 8.7 8.9 8.2 8.8L5 8L8.2 7.2C8.7 7.1 9.1 6.7 9.2 6.2L10 3Z"
+                      fill="currentColor" stroke="currentColor" stroke-width="0.8" stroke-linecap="round"
+                      stroke-linejoin="round" />
+                    <path
+                      d="M15.5 4L15.8 5.2C15.85 5.45 16.05 5.65 16.3 5.7L17.5 6L16.3 6.3C16.05 6.35 15.85 6.55 15.8 6.8L15.5 8L15.2 6.8C15.15 6.55 14.95 6.35 14.7 6.3L13.5 6L14.7 5.7C14.95 5.65 15.15 5.45 15.2 5.2L15.5 4Z"
+                      fill="currentColor" stroke="currentColor" stroke-width="0.6" stroke-linecap="round"
+                      stroke-linejoin="round" />
+                    <path
+                      d="M4.5 13L4.8 14.2C4.85 14.45 5.05 14.65 5.3 14.7L6.5 15L5.3 15.3C5.05 15.35 4.85 15.55 4.8 15.8L4.5 17L4.2 15.8C4.15 15.55 3.95 15.35 3.7 15.3L2.5 15L3.7 14.7C3.95 14.65 4.15 14.45 4.2 14.2L4.5 13Z"
+                      fill="currentColor" stroke="currentColor" stroke-width="0.6" stroke-linecap="round"
+                      stroke-linejoin="round" />
+                  </svg>
+                </span>
+              </template>
+              <span>{{ $t('agent.createAgent') }}</span>
+            </t-button>
+          </template>
+        </EmptyState>
         <!-- 空状态：空间下 -->
         <div v-if="spaceSelectionOrgId && !spaceAgentsLoading && spaceAgentsList.length === 0" class="empty-state">
           <img class="empty-img" src="@/assets/img/upload.svg" alt="">
@@ -817,6 +844,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { MessagePlugin, Icon as TIcon } from 'tdesign-vue-next'
 import { deleteAgent, copyAgent, type CustomAgent } from '@/api/agent'
 import { useChatResourcesStore } from '@/stores/chatResources'
+import EmptyState from '@/components/EmptyState.vue'
 import { formatStringDate } from '@/utils/index'
 import { useI18n } from 'vue-i18n'
 import { createSessions } from '@/api/chat/index'

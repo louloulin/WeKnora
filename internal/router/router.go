@@ -103,6 +103,7 @@ type RouterParams struct {
 	VerificationHandler          *handler.VerificationHandler
 	WikiAclHandler               *handler.WikiAclHandler
 	WikiTagHandler               *handler.WikiTagHandler
+	WikiCommentHandler            *handler.WikiCommentHandler
 	WikiTemplateHandler          *handler.WikiTemplateHandler
 	WikiSearchV2Handler          *handler.WikiSearchV2Handler
 	WikiCommentHandler            *handler.WikiCommentHandler
@@ -344,20 +345,6 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterDataSourceRoutes(v1, params.DataSourceHandler, params.DataSourceCredentialsHandler, rbacGuards)
 		RegisterWeKnoraCloudRoutes(v1, params.WeKnoraCloudHandler, rbacGuards)
 		RegisterWikiPageRoutes(v1, params.WikiPageHandler, params.WikiAclHandler, params.WikiTagHandler, params.WikiTemplateHandler, params.WikiSearchV2Handler, params.WikiCommentHandler, rbacGuards)
-		// AI Verification (Build #29) — per-page + per-KB scan routes.
-		// Same KBAccessRead guard as the page-level backlinks so KB members
-		// can introspect their own pages without Admin.
-		if params.VerificationHandler != nil {
-			RegisterVerificationRoutes(v1, params.VerificationHandler, rbacGuards)
-		}
-		RegisterWikiRealtimeRoutes(v1, params.WikiRealtimeWSHandler, rbacGuards)
-		if params.CollabDocHandler != nil {
-			RegisterCollabDocRoutes(v1, params.CollabDocHandler, params.CollabDocBytesHandler, params.CollabDocRealtimeWSHandler, params.CollabDocCommentHandler, params.CollabDocAuditHandler, rbacGuards)
-			RegisterMindMapRoutes(v1, params.MindMapHandler)
-		}
-		RegisterWikiSyncBlockRoutes(v1, params.WikiSyncBlockHandler)
-		RegisterAgentStudioRoutes(v1, params.AgentStudioHandler)
-		RegisterDLPAuthZRoutes(v1, params.DLPAuthZHandler)
 		RegisterMemoryRoutes(v1, params.MemoryHandler, rbacGuards)
 		RegisterChunkerDebugRoutes(v1, rbacGuards)
 

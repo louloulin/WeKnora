@@ -179,6 +179,29 @@
           </t-button>
         </div>
 
+        <!-- Build #21: 最近浏览 rail — 改进 IA,把用户高频访问的页面
+             放在侧栏顶部,与搜索/审计并列。selectPage/navigateToSlug
+             进入新页面时由 pushRecent() 推入,组件内部按 slug 去重并
+             截断到 5 条。 -->
+        <WikiRecentPages
+          v-if="!searchResults"
+          :pages="recentPages"
+          :active-slug="selectedPage?.slug || ''"
+          @select="onRecentSelect"
+        />
+
+        <!-- Build #23: 页面属性 — 与 Notion / Feishu 多维表格对齐。
+             读自 page.page_metadata,类型化字段。Save 触发
+             onPropertiesSave(),把合并后的新 metadata 发回父组件
+             写回 (父组件目前仅 console.log 占位,真实 PATCH 路由待
+             Sprint 1 后端联通时补)。 -->
+        <WikiPropertiesPanel
+          v-if="selectedPage"
+          :page-metadata="selectedPage.page_metadata"
+          :can-edit="!!props.canEdit"
+          @save="onPropertiesSave"
+        />
+
         <div class="wiki-sidebar-header">
           <div v-if="stats && (stats.pending_tasks > 0 || stats.is_active)" class="wiki-queue-status">
             <t-loading size="small" />
@@ -228,6 +251,31 @@
             @delete="onBulkDelete"
             @tag="onBulkTag"
           />
+
+          <!-- Build #24: 数据库视图 — 把所有页面以表格形式列出,
+               与 Notion table view / Feishu 多维表格对齐。
+               默认折叠,用户按需展开。select 触发后导航到对应页。 -->
+          <section class="wiki-db-view-toggle">
+            <button
+              type="button"
+              class="wiki-db-view-toggle__btn"
+              :aria-expanded="showDatabaseView"
+              :aria-controls="'wiki-db-view-panel'"
+              @click="showDatabaseView = !showDatabaseView"
+            >
+              <t-icon :name="showDatabaseView ? 'chevron-down' : 'chevron-right'" size="14px" />
+              <t-icon name="table" size="14px" />
+              <span>{{ $t('knowledgeEditor.wikiDatabaseView.title') }}</span>
+              <span class="wiki-db-view-toggle__count">{{ pages.length }}</span>
+            </button>
+            <div v-if="showDatabaseView" id="wiki-db-view-panel" class="wiki-db-view-toggle__panel">
+              <WikiDatabaseView
+                :pages="pages"
+                :loading="loading"
+                @select="onRecentSelect"
+              />
+            </div>
+          </section>
           <!-- Search mode: flat list of hits, no group chrome. Clearing
                the search snaps back to the bucketed view below. -->
           <template v-if="searchResults !== null">
@@ -243,9 +291,13 @@
                 <span>{{ formatDate(page.updated_at) }}</span>
               </div>
             </div>
-            <div v-if="searchResults.length === 0 && !loading" class="wiki-empty-state">
-              <p class="wiki-empty-desc">{{ $t('knowledgeEditor.wikiBrowser.searchNoResults') || '没有找到匹配的页面' }}</p>
-            </div>
+            <!-- 搜索无结果：unified EmptyState -->
+            <EmptyState
+              v-if="searchResults.length === 0 && !loading"
+              compact
+              icon="search"
+              :title="$t('knowledgeEditor.wikiBrowser.searchNoResults') || '没有找到匹配的页面'"
+            />
           </template>
 
           <template v-else>
@@ -422,14 +474,14 @@
               </template>
             </div>
 
-            <!-- Empty state -->
-            <div v-if="!hasContentPages && !loading" class="wiki-empty-state">
-              <div class="wiki-empty-icon">
-                <t-icon name="file-unknown" size="36px" />
-              </div>
-              <p class="wiki-empty-title">{{ $t('knowledgeEditor.wikiBrowser.emptyTitle') }}</p>
-              <p class="wiki-empty-desc">{{ $t('knowledgeEditor.wikiBrowser.emptyDesc') }}</p>
-            </div>
+            <!-- Empty state：unified EmptyState component (compact mode for sidebar) -->
+            <EmptyState
+              v-if="!hasContentPages && !loading"
+              compact
+              icon="file-unknown"
+              :title="$t('knowledgeEditor.wikiBrowser.emptyTitle')"
+              :description="$t('knowledgeEditor.wikiBrowser.emptyDesc')"
+            />
           </template>
         </div>
         <WikiTagPanel :kb-id="props.knowledgeBaseId" />
@@ -446,6 +498,26 @@
                   <t-icon name="arrow-left" size="14px" />
                   <span>{{ backLabel }}</span>
                 </a>
+              </div>
+
+              <!-- Build #22: 行内 AI 菜单 — 选中文字后弹出 summarize /
+                   translate / explain / improve / ask。当前 emit 仅交给
+                   控制台日志 + 占位提示,后端 Agent / Chat 接入后会替换
+                   onInlineAI() 实现。containerRef 指向 reader-body。 -->
+              <WikiInlineAIMenu
+                v-if="selectedPage && !editingPage"
+                :container-ref="readerBodyRef"
+                @ai="onInlineAI"
+              />
+
+              <!-- Breadcrumb: KB > categories > current page title -->
+              <div v-if="selectedPage" class="wiki-breadcrumb-row">
+                <WikiBreadcrumb
+                  :knowledge-base-name="knowledgeBaseName"
+                  :category-path="selectedPage.category_path || []"
+                  :current-title="selectedPage.title"
+                  @navigate="onBreadcrumbNavigate"
+                />
               </div>
 
               <!-- Page header -->
@@ -1010,6 +1082,8 @@
 import { ref, computed, reactive, onMounted, onUnmounted, watch, nextTick, defineAsyncComponent } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useMenuStore } from '@/stores/menu'
+import { useAuthStore } from '@/stores/auth'
+import { useCommandPaletteStore } from '@/stores/commandPalette'
 import { useSettingsStore } from '@/stores/settings'
 import { useI18n } from 'vue-i18n'
 import { marked } from 'marked'
@@ -1027,6 +1101,11 @@ import { useWikiShareLinksStore } from '@/stores/wikiShareLinks'
 import WikiAclDialog from '@/components/wiki/WikiAclDialog.vue'
 import WikiBatchAuditPanel from '@/components/wiki/WikiBatchAuditPanel.vue'
 import WikiAuditDrawer from '@/components/wiki/WikiAuditDrawer.vue'
+import WikiBreadcrumb from '@/components/WikiBreadcrumb.vue'
+import WikiRecentPages from '@/components/wiki/WikiRecentPages.vue'
+import WikiInlineAIMenu from '@/components/wiki/WikiInlineAIMenu.vue'
+import WikiPropertiesPanel from '@/components/wiki/WikiPropertiesPanel.vue'
+import WikiDatabaseView from '@/components/wiki/WikiDatabaseView.vue'
 import { useWikiPageAclStore } from '@/stores/wikiPageAcl'
 import { aclToolbarVisibility } from './wikiBrowserAclVisibility'
 import WikiBacklinksPanel from '@/components/wiki/WikiBacklinksPanel.vue'
@@ -1114,6 +1193,8 @@ const router = useRouter()
 const route = useRoute()
 const menuStore = useMenuStore()
 const settingsStore = useSettingsStore()
+const authStore = useAuthStore()
+const commandPaletteStore = useCommandPaletteStore()
 
 const { t } = useI18n()
 
@@ -1139,6 +1220,16 @@ const kbFileAccess = computed<ProtectedFileAccessContext>(() => ({
   mode: 'knowledgeBase',
   kbId: props.knowledgeBaseId,
 }))
+
+// KB display name for the breadcrumb root. Falls back to KB id string when
+// not available; the component handles the empty case by hiding the root.
+const knowledgeBaseName = computed(() => {
+  const orgId = String(props.knowledgeBaseId || '')
+  if (!orgId) return ''
+  // Pull from auth store resource counts when available.
+  const counts = (authStore.tenant as any)?.resource_counts
+  return (counts && counts.knowledge_base_name) || ''
+})
 const pages = ref<WikiPage[]>([])
 const selectedPage = ref<WikiPage | null>(null)
 
@@ -1416,6 +1507,48 @@ function fitGraphToView() {
 const graphDrawerVisible = ref(false)
 const graphDrawerPage = ref<WikiPage | null>(null)
 const navHistory = ref<WikiPage[]>([])
+const RECENT_PAGES_LIMIT = 5
+const recentPages = ref<WikiPage[]>([])
+
+// Build #24: 数据库视图折叠状态 (默认折叠,避免侧栏过长)
+const showDatabaseView = ref(false)
+
+function pushRecent(page: WikiPage | null | undefined) {
+  if (!page || !page.slug) return
+  // Drop any prior entry for the same slug (most-recent first invariant).
+  recentPages.value = [
+    page,
+    ...recentPages.value.filter((p) => p.slug !== page.slug),
+  ].slice(0, RECENT_PAGES_LIMIT)
+}
+
+function onRecentSelect(slug: string) {
+  void navigateToSlug(slug)
+}
+
+// Build #23 stub: forward property updates to console + local mutation.
+// Real implementation will PATCH the page via the wiki update API.
+function onPropertiesSave(newMetadata: Record<string, any>) {
+  if (selectedPage.value) {
+    selectedPage.value = { ...selectedPage.value, page_metadata: newMetadata }
+  }
+  console.info('[wiki-properties] saved', Object.keys(newMetadata))
+}
+
+// Build #22 stub: forward inline-AI actions to console + toast placeholder.
+// Real implementation will route to the chat panel / agent endpoint.
+function onInlineAI(payload: { action: string; text: string }) {
+  // Stub for now — the action is recorded but no LLM call yet.
+  console.info('[wiki-inline-ai] action queued', payload.action, 'len=', payload.text.length)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('weknora:toast', {
+      detail: {
+        type: 'info',
+        message: `AI ${payload.action} 即将上线（占位）`,
+      },
+    }))
+  }
+}
 // navFromSystemView remembers that the user was viewing the Index when they
 // clicked into a slug, so goBack can restore it
 // once the page-level history stack is empty. We keep this parallel to
@@ -4069,6 +4202,7 @@ async function selectPage(page: WikiPage) {
   try {
     if (selectedPage.value && selectedPage.value.id !== page.id) {
       navHistory.value.push(selectedPage.value)
+      pushRecent(selectedPage.value)
     } else if (!selectedPage.value && activeSystemView.value) {
       // Jumping out of a system view (Index / Log) onto a page.
       // navHistory only holds WikiPages, so we stash the origin
@@ -4089,8 +4223,17 @@ async function onBacklinkNavigate(slug: string): Promise<void> {
   // WikiBacklinksPanel emits `navigate(slug)` when the user clicks
   // a backlink row. We just forward to the existing reader-level
   // `navigateToSlug` so the click is indistinguishable from a
+
   // body `[[slug]]` click (D6 — same code path, same back-stack).
   await navigateToSlug(slug)
+}
+
+// Breadcrumb segment click: open the global command palette pre-filled
+// with the segment name. This is a safe default — a future iteration can
+// extend it to a true ancestor-page or folder fetch once the API surfaces
+// folder-id-by-name lookup.
+function onBreadcrumbNavigate(payload: { segment: string; index: number }) {
+  commandPaletteStore.openPalette(payload.segment)
 }
 
 // Build #20 — WikiBacklinksPanel "View full graph →" link. Reuses
@@ -4528,6 +4671,7 @@ async function navigateToSlug(slug: string) {
   try {
     if (selectedPage.value && selectedPage.value.slug !== slug) {
       navHistory.value.push(selectedPage.value)
+      pushRecent(selectedPage.value)
     } else if (!selectedPage.value && activeSystemView.value) {
       // Clicking a [[slug]] from inside Index / Log — same rationale
       // as selectPage above: record the system-view origin so the
@@ -4550,6 +4694,7 @@ function goBack() {
     loadPageIssues(prev.slug)
     return
   }
+
   // History stack is empty but we remember the page was opened from
   // a system view — restore that instead of leaving the reader empty.
   if (navFromSystemView.value) {
@@ -5958,6 +6103,41 @@ onUnmounted(() => {
   padding: 0 8px 12px 0;
   margin-left: -8px;
   padding-left: 8px;
+}
+
+.wiki-db-view-toggle {
+  border-top: 1px solid var(--td-component-stroke, #e7e7e7);
+  padding-top: 6px;
+  margin-top: 8px;
+}
+.wiki-db-view-toggle__btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--td-text-color-secondary, #666);
+}
+.wiki-db-view-toggle__btn:hover {
+  background: var(--td-bg-color-container-hover, #f5f5f5);
+}
+.wiki-db-view-toggle__count {
+  margin-left: auto;
+  background: var(--td-bg-color-secondarycontainer, #f3f3f3);
+  color: var(--td-text-color-secondary, #666);
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.wiki-db-view-toggle__panel {
+  margin-top: 6px;
 }
 
 .wiki-tree-list {

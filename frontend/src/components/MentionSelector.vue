@@ -265,7 +265,7 @@ import { getKnowledgeBaseById } from '@/api/knowledge-base';
 import { getKnowledgeDetails } from '@/api/knowledge-base';
 import { useOrganizationStore } from '@/stores/organization';
 import { useSettingsStore } from '@/stores/settings';
-import { SKILL_ICON, type MentionItem, type MentionItemType } from '@/types/mention';
+import { AGENT_ICON, SKILL_ICON, TASK_ICON, type MentionItem, type MentionItemType } from '@/types/mention';
 
 type DetailState = { loading: boolean; error?: string; data?: any };
 
@@ -318,6 +318,8 @@ const mentionGroupDefs = computed<Array<{ type: MentionItemType; label: string; 
   { type: 'tag', label: '标签', icon: 'tag' },
   { type: 'mcp', label: 'MCP', icon: 'tools' },
   { type: 'skill', label: t('common.skill'), icon: SKILL_ICON },
+  { type: 'agent', label: t('common.agent', 'Agent'), icon: AGENT_ICON },
+  { type: 'task', label: t('common.task', '任务'), icon: TASK_ICON },
   { type: 'file', label: t('common.file'), icon: 'file' },
 ]);
 
