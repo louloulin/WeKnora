@@ -203,7 +203,12 @@ func RegisterMyEnvVarRoutes(r *gin.RouterGroup, h *handler.MeEnvVarHandler) {
 }
 
 // RegisterAuthRoutes registers authentication routes
-func RegisterAuthRoutes(r *gin.RouterGroup, handler *handler.AuthHandler, g *rbacGuards) {
+//
+// SAML 2.0 endpoints are registered alongside OIDC. The metadata
+// + login + ACS trio is public; the IdP CRUD endpoints are
+// registered separately via RegisterSAMLRoutes with admin
+// guards at the call site.
+func RegisterAuthRoutes(r *gin.RouterGroup, handler *handler.AuthHandler, g *rbacGuards, samlHandler *handler.SAMLHandler) {
 	r.POST("/auth/register", handler.Register)
 	// Share-link surfaces are unauthenticated and accept a plaintext
 	// token from the caller; rate-limit by IP to bound brute-force /
@@ -231,6 +236,13 @@ func RegisterAuthRoutes(r *gin.RouterGroup, handler *handler.AuthHandler, g *rba
 	g.apiKeyRoute(r, http.MethodGet, "/auth/me", apiKeyAny(), handler.GetCurrentUser)
 	r.PUT("/auth/me/preferences", handler.UpdateMyPreferences)
 	r.POST("/auth/change-password", handler.ChangePassword)
+
+	// SAML 2.0 SSO — public flow endpoints. IdP CRUD sits behind
+	// admin guards in RegisterSAMLRoutes (called from the same
+	// router setup with an admin-scoped group).
+	if samlHandler != nil {
+		registerSAMLRoutes(r, nil, samlHandler)
+	}
 }
 
 // RegisterSystemRoutes registers system information routes
