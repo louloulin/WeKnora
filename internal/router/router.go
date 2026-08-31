@@ -101,6 +101,7 @@ type RouterParams struct {
 	WikiRealtimeWSHandler        *handler.WikiRealtimeWSHandler
 	WikiSyncBlockHandler         *handler.WikiSyncBlockHandler
 	AgentStudioHandler           *handler.AgentStudioHandler
+	DLPAuthZHandler              *handler.DLPAuthZHandler
 	MemoryHandler                *handler.MemoryHandler
 	// CitationLogHandler — Build #30 B4. Wired optionally so the
 	// citation-log route is registered when the handler is present.
@@ -313,6 +314,7 @@ func NewRouter(params RouterParams) *gin.Engine {
 		RegisterWikiRealtimeRoutes(v1, params.WikiRealtimeWSHandler, rbacGuards)
 		RegisterWikiSyncBlockRoutes(v1, params.WikiSyncBlockHandler)
 		RegisterAgentStudioRoutes(v1, params.AgentStudioHandler)
+		RegisterDLPAuthZRoutes(v1, params.DLPAuthZHandler)
 		RegisterMemoryRoutes(v1, params.MemoryHandler, rbacGuards)
 		RegisterChunkerDebugRoutes(v1, rbacGuards)
 

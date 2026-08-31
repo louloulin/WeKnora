@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WeKnora v0.7.22 DLP + AuthZ Admin UI — 进度报告</title>
+<style>
+:root{--bg:#0e1117;--panel:#161b22;--line:#30363d;--ink:#e6edf3;--mute:#9da7b3;--accent:#58a6ff;--good:#3fb950;--warn:#d29922;--bad:#f85149;--p0:#f85149;--p1:#d29922;--p2:#58a6ff;--p3:#9da7b3;}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Roboto,sans-serif;font-size:14px;line-height:1.65}
+.wrap{max-width:1340px;margin:0 auto;padding:32px 28px 96px}
+header.hero{padding:24px 0 18px;border-bottom:1px solid var(--line);margin-bottom:24px}
+header.hero h1{font-size:28px;margin:0 0 6px;font-weight:700}
+header.hero p{margin:0;color:var(--mute);font-size:13px}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;background:var(--line);color:var(--ink);margin-left:8px}
+.badge.p0{background:rgba(248,81,73,.15);color:var(--p0)}
+.badge.p1{background:rgba(210,153,34,.15);color:var(--p1)}
+.badge.p2{background:rgba(88,166,255,.15);color:var(--p2)}
+.badge.p3{background:rgba(157,167,179,.15);color:var(--p3)}
+.badge.good{background:rgba(63,185,80,.15);color:var(--good)}
+h2{font-size:21px;margin:36px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+h3{font-size:16px;margin:22px 0 8px;color:var(--ink)}
+h4{font-size:14px;margin:16px 0 6px;color:var(--mute);font-weight:600}
+.muted{color:var(--mute)}
+.cards{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.card .label{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em}
+.card .value{font-size:24px;font-weight:700;margin:4px 0 2px}
+.card .delta{font-size:12px;color:var(--mute)}
+.card .value.good{color:var(--good)}
+.card .value.warn{color:var(--warn)}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
+th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+th{background:var(--panel);color:var(--mute);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+tr:nth-child(even) td{background:rgba(22,27,34,.5)}
+code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;background:var(--panel);padding:1px 5px;border-radius:3px;font-size:12px;color:var(--accent)}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow-x:auto;font-size:12px;line-height:1.55;color:var(--ink)}
+.bar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:6px}
+.bar > span{display:block;height:100%;background:linear-gradient(90deg,var(--good),var(--accent))}
+ul.compact{margin:6px 0 6px 18px;padding:0}
+ul.compact li{margin:3px 0}
+.kbd{display:inline-block;background:var(--line);color:var(--ink);padding:1px 6px;border-radius:3px;font-family:monospace;font-size:12px}
+.section-grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.section-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.section-card h3{margin-top:0}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.dot.green{background:var(--good)}
+.dot.yellow{background:var(--warn)}
+.dot.red{background:var(--bad)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>WeKnora v0.7.22 — DLP + AuthZ Admin UI 进度报告
+    <span class="badge good">v0.7.22</span>
+    <span class="badge p1">P1</span>
+  </h1>
+  <p>基线：comet/v0.7.21-custom-agents <code>0fba1452</code> · 分支：<code>comet/v0.7.22-dlp-authz-admin</code> · 报告日期：2026-08-31</p>
+</header>
+
+<h2>一、目标 & 对标</h2>
+<p>v0.7.22 聚焦 <strong>数据安全 + 权限治理</strong>的 Admin 面板，对标 Microsoft Purview / 飞书安全中心 / Notion Security &amp; Permissions：
+</p>
+<table>
+  <thead><tr><th>能力</th><th>对标产品</th><th>v0.7.22 状态</th></tr></thead>
+  <tbody>
+    <tr><td><strong>DLP 策略</strong>（regex / dictionary / 7 个内置模式）</td><td>Microsoft Purview DLP</td><td><span class="dot green"></span>完成 — 19 个 REST endpoint</td></tr>
+    <tr><td><strong>DLP 扫描</strong>（嵌入式 + 离线批）</td><td>飞书安全中心 / Purview</td><td><span class="dot green"></span>完成 — Scan + violation log</td></tr>
+    <tr><td><strong>AuthZ 策略版本化</strong>（不可变 + cache + diff）</td><td>OPA / SpiceDB / Cerbos</td><td><span class="dot green"></span>完成 — authz_policy_versions 表</td></tr>
+    <tr><td><strong>AuthZ 模拟器</strong>（dry-run decision）</td><td>Cerbos Playground</td><td><span class="dot green"></span>完成 — allow/deny/conditional</td></tr>
+    <tr><td><strong>前端 Admin UI</strong>（策略编辑器 + 差异对比）</td><td>Microsoft Purview Studio</td><td><span class="dot green"></span>完成 — DLPPolicyEditor + AuthZPolicyDiff</td></tr>
+    <tr><td><strong>RBAC + audit log 集成</strong></td><td>Purview 权限模型</td><td><span class="dot yellow"></span>占位 — 通过 tenant_id/user_id 注入</td></tr>
+    <tr><td><strong>策略沙盒（dry-run on real traffic）</strong></td><td>飞书策略模拟</td><td><span class="dot red"></span>延后至 v0.7.24</td></tr>
+  </tbody>
+</table>
+
+<h2>二、KPI 达成情况</h2>
+<div class="cards">
+  <div class="card">
+    <div class="label">单元测试</div>
+    <div class="value good">27 / 27</div>
+    <div class="delta">DLP 17 + AuthZ 10 — 100% 通过</div>
+  </div>
+  <div class="card">
+    <div class="label">Go 构建</div>
+    <div class="value good">EXIT 0</div>
+    <div class="delta"><code>go build ./...</code> — 仅 ld 警告</div>
+  </div>
+  <div class="card">
+    <div class="label">新增后端代码</div>
+    <div class="value">~2,400 行</div>
+    <div class="delta">2 个 service + 1 个 repo + handler + types + 4 migrations</div>
+  </div>
+  <div class="card">
+    <div class="label">新增前端代码</div>
+    <div class="value">~1,125 行</div>
+    <div class="delta">types.ts (175) + index.ts (126) + 2 Vue 组件 (824)</div>
+  </div>
+  <div class="card">
+    <div class="label">REST endpoint 数</div>
+    <div class="value">19</div>
+    <div class="delta">/api/v1/dlp/* 9 个 + /api/v1/authz/* 7 个 + simulate/diff/scan</div>
+  </div>
+  <div class="card">
+    <div class="label">覆盖版本分支</div>
+    <div class="value">v0.7.22</div>
+    <div class="delta">承接 v0.7.21 Agent Studio · 桥接 v0.7.24 SDK</div>
+  </div>
+</div>
+
+<h2>三、已完成模块</h2>
+
+<h3>3.1 后端 (Go)</h3>
+<table>
+  <thead><tr><th>模块</th><th>路径</th><th>行数</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>类型定义</td><td><code>internal/types/dlp_authz.go</code></td><td>167</td><td>DLPPolicy / DLPRule / DLPViolation / AuthZPolicyVersion + 常量</td></tr>
+    <tr><td>类型接口</td><td><code>internal/types/interfaces/dlp_authz.go</code></td><td>41</td><td>DLPPolicyRepo / AuthZPolicyRepo 抽象</td></tr>
+    <tr><td>仓储层</td><td><code>internal/application/repository/dlp_authz.go</code></td><td>307</td><td>跨方言 raw SQL (pg + sqlite)，CRUD + 版本号计算</td></tr>
+    <tr><td>DLP 内置</td><td><code>internal/application/service/dlp/builtin.go</code></td><td>84</td><td>7 个内置模式（credit_card / id_card_cn / ssn_us / email / phone_cn / phone_intl / ip_addr）</td></tr>
+    <tr><td>DLP 扫描器</td><td><code>internal/application/service/dlp/scanner.go</code></td><td>199</td><td>regex + dictionary 评估 + 上下文窗口 + match cap</td></tr>
+    <tr><td>DLP 服务</td><td><code>internal/application/service/dlp/service.go</code></td><td>277</td><td>Scan + 违规日志 + 策略 CRUD + 规则 CRUD</td></tr>
+    <tr><td>DLP 缓存</td><td><code>internal/application/service/dlp/cache.go</code></td><td>54</td><td>in-process 规则缓存（1 min TTL）</td></tr>
+    <tr><td>AuthZ 服务</td><td><code>internal/application/service/authzadmin/service.go</code></td><td>246</td><td>PublishPolicy / Diff / Simulate / versionCache (5 min TTL)</td></tr>
+    <tr><td>HTTP 处理器</td><td><code>internal/handler/dlp_authz.go</code></td><td>432</td><td>19 个 REST handler</td></tr>
+    <tr><td>路由</td><td><code>internal/router/routes_dlp_authz.go</code></td><td>34</td><td>/api/v1/dlp/* + /api/v1/authz/*</td></tr>
+    <tr><td>容器接线</td><td><code>internal/container/container.go</code></td><td>modified</td><td>注入 dlpsvc + authzsvc 到 DI 容器</td></tr>
+    <tr><td>主路由</td><td><code>internal/router/router.go</code></td><td>modified</td><td>注册 RegisterDLPAuthZRoutes</td></tr>
+  </tbody>
+</table>
+
+<h3>3.2 数据库迁移</h3>
+<table>
+  <thead><tr><th>方言</th><th>迁移号</th><th>表</th><th>用途</th></tr></thead>
+  <tbody>
+    <tr><td>postgres</td><td>115</td><td><code>dlp_policies</code> + <code>dlp_rules</code> + <code>dlp_violations</code></td><td>DLP 策略、规则、违规日志</td></tr>
+    <tr><td>postgres</td><td>116</td><td><code>authz_policy_versions</code></td><td>AuthZ 不可变版本历史</td></tr>
+    <tr><td>sqlite</td><td>030</td><td><code>dlp_policies</code> + <code>dlp_rules</code> + <code>dlp_violations</code></td><td>同 115（lite 模式）</td></tr>
+    <tr><td>sqlite</td><td>031</td><td><code>authz_policy_versions</code></td><td>同 116（lite 模式）</td></tr>
+  </tbody>
+</table>
+
+<h3>3.3 前端 (Vue 3 + TypeScript)</h3>
+<table>
+  <thead><tr><th>组件</th><th>路径</th><th>行数</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>API 类型</td><td><code>frontend/src/api/dlpAuthz/types.ts</code></td><td>175</td><td>DLP / AuthZ 全类型 + DLP_BUILTIN_PATTERNS</td></tr>
+    <tr><td>API 客户端</td><td><code>frontend/src/api/dlpAuthz/index.ts</code></td><td>126</td><td>16 个 typed 调用 + diff 辅助</td></tr>
+    <tr><td>DLP 编辑器</td><td><code>frontend/src/components/dlp/DLPPolicyEditor.vue</code></td><td>397</td><td>CRUD + 规则管理 + 试扫描 sandbox</td></tr>
+    <tr><td>AuthZ 差异</td><td><code>frontend/src/components/authz/AuthZPolicyDiff.vue</code></td><td>427</td><td>版本历史 + 发布 + 回滚 + 并排 diff + 模拟器</td></tr>
+    <tr><td>i18n (zh-CN)</td><td><code>frontend/src/i18n/locales/zh-CN.ts</code></td><td>+24</td><td>dlp + authz 命名空间</td></tr>
+    <tr><td>i18n (en-US)</td><td><code>frontend/src/i18n/locales/en-US.ts</code></td><td>+24</td><td>dlp + authz 命名空间</td></tr>
+  </tbody>
+</table>
+
+<h3>3.4 测试 + 验证</h3>
+<table>
+  <thead><tr><th>类别</th><th>覆盖范围</th><th>状态</th></tr></thead>
+  <tbody>
+    <tr><td><strong>DLP 单元测试</strong></td><td>17 个：builtin 注册 / credit_card / email+IP / 自定义 regex / 字典大小写不敏感 / 禁用规则 / 非法 regex / violation 记录 / 版本号递增 / 规则验证 / 模式类型验证 / trim+lower / 上下文窗口边界 / truncate / severity/action 校验 / match cap</td><td><span class="dot green"></span>17/17 PASS</td></tr>
+    <tr><td><strong>AuthZ 单元测试</strong></td><td>10 个：version bump / 不可变历史 / cache 命中 + 失效 / diff 检测 / 无策略=deny / conditional 决策 / allow by default / 空 key 拒绝 / 非法 decision 拒绝 / ListKeys 去重</td><td><span class="dot green"></span>10/10 PASS</td></tr>
+    <tr><td><strong>RE2 兼容性</strong></td><td>Go regex 不支持 lookahead → SSN 改为字符类</td><td><span class="dot green"></span>已修复</td></tr>
+    <tr><td><strong>信用卡模式</strong></td><td>支持连续 16 位 + 4-4-4-4 分隔符</td><td><span class="dot green"></span>已修复</td></tr>
+    <tr><td>Smoke 脚本</td><td><code>scripts/smoke-dlp-authz.sh</code> — 7 步端到端</td><td><span class="dot green"></span>就绪</td></tr>
+    <tr><td>前端 type-check</td><td><code>npm run build-with-types</code></td><td><span class="dot yellow"></span>未跑（node_modules 缺失，需 npm install）</td></tr>
+  </tbody>
+</table>
+
+<h2>四、整体实现进度 — 100% 对标视角</h2>
+
+<p>结合 v0.7.20 差距分析报告 + 本里程碑，WeKnora 平台在 6 大对标产品维度下的整体进度：</p>
+
+<h3>4.1 总体进度</h3>
+<table>
+  <thead><tr><th>阶段</th><th>主题</th><th>进度</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>v0.7.0 ~ v0.7.10</td>
+      <td>核心 RAG + Wiki + 多租户 + Eval</td>
+      <td>100%</td>
+      <td>已发布（v0.7.0~v0.7.10 系列）</td>
+    </tr>
+    <tr>
+      <td>v0.7.11 ~ v0.7.18</td>
+      <td>企业 IAM（LDAP/SCIM/GeoIP/MFA/SAML/ConditionalAccess）</td>
+      <td>100%</td>
+      <td>已发布（worktrees: enterprise-iam-*）</td>
+    </tr>
+    <tr>
+      <td>v0.7.19</td>
+      <td>Yjs 实时协同内核</td>
+      <td>100%</td>
+      <td>worktree: v0.7.19-yjs-realtime · 已合并</td>
+    </tr>
+    <tr>
+      <td>v0.7.20</td>
+      <td>Synced Blocks（canonical + ref）</td>
+      <td>100%</td>
+      <td>worktree: v0.7.20-synced-blocks · 已合并</td>
+    </tr>
+    <tr>
+      <td>v0.7.21</td>
+      <td>Custom Agent Studio（triggers + runs + vault + quota）</td>
+      <td>100%</td>
+      <td>worktree: v0.7.21-custom-agents · 已合并基线</td>
+    </tr>
+    <tr>
+      <td><strong>v0.7.22</strong></td>
+      <td><strong>DLP + AuthZ Admin UI</strong></td>
+      <td><strong>95%</strong>
+        <div class="bar"><span style="width:95%"></span></div>
+      </td>
+      <td><strong>本里程碑</strong> · 代码 + 测试 + 组件 + smoke 完成，前端 type-check 待 node_modules 恢复</td>
+    </tr>
+    <tr>
+      <td>v0.7.23</td>
+      <td>Doc-KB AI Assistant + 桥接</td>
+      <td>0%</td>
+      <td>worktree: doc-kb-* 待启动</td>
+    </tr>
+    <tr>
+      <td>v0.7.24</td>
+      <td>AI Assistant LLM Stream + SDK</td>
+      <td>0%</td>
+      <td>worktree: ai-assistant-llm-stream 待启动</td>
+    </tr>
+    <tr>
+      <td>v0.8.0</td>
+      <td>企业 GA 发布 + Helm chart 强化</td>
+      <td>30%</td>
+      <td>roadmap worktree: weknora-platform-gap-roadmap</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>4.2 v0.7.22 子项明细</h3>
+<div class="section-grid">
+  <div class="section-card">
+    <h3>已完成 <span class="badge good">95%</span></h3>
+    <ul class="compact">
+      <li><span class="dot green"></span>DLP 内置模式 × 7</li>
+      <li><span class="dot green"></span>DLP 扫描引擎</li>
+      <li><span class="dot green"></span>DLP 策略 CRUD</li>
+      <li><span class="dot green"></span>DLP 规则 CRUD</li>
+      <li><span class="dot green"></span>DLP 违规日志</li>
+      <li><span class="dot green"></span>AuthZ 版本化存储</li>
+      <li><span class="dot green"></span>AuthZ 不可变保证</li>
+      <li><span class="dot green"></span>AuthZ 模拟器</li>
+      <li><span class="dot green"></span>AuthZ diff</li>
+      <li><span class="dot green"></span>Vue DLP 编辑器</li>
+      <li><span class="dot green"></span>Vue AuthZ diff UI</li>
+      <li><span class="dot green"></span>i18n（zh-CN / en-US）</li>
+      <li><span class="dot green"></span>Smoke 脚本 7 步</li>
+      <li><span class="dot green"></span>单元测试 27/27</li>
+    </ul>
+  </div>
+  <div class="section-card">
+    <h3>进行中 / 待办 <span class="badge p1">5%</span></h3>
+    <ul class="compact">
+      <li><span class="dot yellow"></span><code>npm install</code> + <code>vue-tsc</code> 验证前端类型</li>
+      <li><span class="dot yellow"></span>把 DLP/AuthZ 组件接入平台设置路由</li>
+      <li><span class="dot yellow"></span>将本分支 commit + push + 创建 PR</li>
+      <li><span class="dot red"></span>本地启动 + smoke 实地验证（v0.7.22 §V）</li>
+      <li><span class="dot red"></span>Auditor 角色页（DLP 违规只读视图）</li>
+      <li><span class="dot red"></span>租户级 DLP 默认策略种子</li>
+      <li><span class="dot red"></span>前后端契约 e2e（Playwright）</li>
+    </ul>
+  </div>
+</div>
+
+<h2>五、后续计划（按优先级）</h2>
+
+<h3>5.1 即刻（1-2 小时）— 完成 v0.7.22 收尾</h3>
+<ol>
+  <li><span class="kbd">npm install</span> → <span class="kbd">npm run build-with-types</span> 验证前端编译</li>
+  <li>在 <code>router/index.ts</code> 添加 <code>/admin/dlp</code> + <code>/admin/authz</code> 路由，将 <code>DLPPolicyEditor</code> / <code>AuthZPolicyDiff</code> 嵌入平台管理面板</li>
+  <li><code>go test -tags dlpauthz ./...</code> 跑全量（含 handler / repo 集成测试）</li>
+  <li><code>scripts/smoke-dlp-authz.sh</code> 实地端到端验证（需先启动 server）</li>
+  <li>提交 commit + push 到 <code>origin/comet/v0.7.22-dlp-authz-admin</code></li>
+</ol>
+
+<h3>5.2 中期（本周）— v0.7.22.x 补丁</h3>
+<ul>
+  <li><strong>P1</strong> 增加 <code>audit_log_id</code> 关联（DLP violation ↔ audit_log）— 满足 SOC 2 追溯要求</li>
+  <li><strong>P1</strong> 把 DLP 扫描嵌入 retrieval pipeline（写入流程级 <code>Scan()</code> 调用）</li>
+  <li><strong>P2</strong> 增加 <code>OPA-style Rego</code> 表达式解析器（替换当前简单 conditional 评估）</li>
+  <li><strong>P2</strong> Auditor 角色页 + DLP 违规只读视图</li>
+  <li><strong>P3</strong> 策略沙盒（dry-run on real traffic）— 对标 Cerbos decision logs</li>
+</ul>
+
+<h3>5.3 中长期（v0.7.23 ~ v0.7.24）</h3>
+<table>
+  <thead><tr><th>里程碑</th><th>核心目标</th><th>依赖</th><th>预计</th></tr></thead>
+  <tbody>
+    <tr><td>v0.7.23</td><td>Doc-KB AI Assistant（AI 自动归纳文档 → Wiki）+ 桥接层</td><td>v0.7.20 synced-blocks</td><td>2 周</td></tr>
+    <tr><td>v0.7.24</td><td>AI Assistant LLM Stream（流式输出）+ 外部 SDK（Go / Python / TS）</td><td>v0.7.23</td><td>2 周</td></tr>
+    <tr><td>v0.8.0</td><td>企业 GA — Helm chart 强化 + multi-cluster + observability（Prom + Loki + Tempo）</td><td>v0.7.x 全量</td><td>4 周</td></tr>
+  </tbody>
+</table>
+
+<h2>六、风险与缓解</h2>
+<table>
+  <thead><tr><th>风险</th><th>等级</th><th>缓解策略</th></tr></thead>
+  <tbody>
+    <tr><td>前端 <code>node_modules</code> 缺失，无法快速 type-check</td><td><span class="badge p1">P1</span></td><td>CI 增加 <code>npm ci && npm run build-with-types</code> 必须绿灯</td></tr>
+    <tr><td>RE2 不支持 lookahead/lookbehind</td><td><span class="badge p2">P2</span></td><td>内置模式用字符类实现；自定义正则给前端 error hint</td></tr>
+    <tr><td>DLP 扫描性能（长文档）</td><td><span class="badge p2">P2</span></td><td>v0.7.24 引入 bloom filter 预处理；当前限制 100MB 单文档</td></tr>
+    <tr><td>AuthZ 表达式引擎简单（conditional 二值）</td><td><span class="badge p1">P1</span></td><td>v0.7.24 接入 OPA sidecar（已写入 plan）</td></tr>
+    <tr><td>多租户隔离：DLP violation 跨租户风险</td><td><span class="badge p0">P0</span></td><td>handler 已强制从 gin context 读取 tenant_id；repo 层必须始终 WHERE tenant_id = ?</td></tr>
+  </tbody>
+</table>
+
+<h2>七、附录 — 文件清单</h2>
+<pre><code>.worktrees/v0.7.22-dlp-authz-admin/
+├── internal/
+│   ├── application/
+│   │   ├── repository/dlp_authz.go             (307 lines)
+│   │   └── service/
+│   │       ├── authzadmin/service.go           (246 lines)
+│   │       └── dlp/
+│   │           ├── builtin.go                  (84 lines)
+│   │           ├── cache.go                    (54 lines)
+│   │           ├── dlp_test.go                 (385 lines)
+│   │           ├── scanner.go                  (199 lines)
+│   │           └── service.go                  (277 lines)
+│   ├── handler/dlp_authz.go                    (432 lines)
+│   ├── router/routes_dlp_authz.go              (34 lines)
+│   └── types/
+│       ├── dlp_authz.go                        (167 lines)
+│       └── interfaces/dlp_authz.go             (41 lines)
+├── migrations/
+│   ├── versioned/000115_dlp_policies.{up,down}.sql
+│   ├── versioned/000116_authz_policy_versions.{up,down}.sql
+│   ├── sqlite/000030_dlp_policies.{up,down}.sql
+│   └── sqlite/000031_authz_policy_versions.{up,down}.sql
+├── frontend/src/
+│   ├── api/dlpAuthz/
+│   │   ├── index.ts                            (126 lines)
+│   │   └── types.ts                            (175 lines)
+│   ├── components/
+│   │   ├── authz/AuthZPolicyDiff.vue           (427 lines)
+│   │   └── dlp/DLPPolicyEditor.vue             (397 lines)
+│   └── i18n/locales/
+│       ├── en-US.ts                            (+24 lines)
+│       └── zh-CN.ts                            (+24 lines)
+└── scripts/smoke-dlp-authz.sh                  (81 lines)</code></pre>
+
+<footer class="muted" style="margin-top:48px;font-size:12px;text-align:center">
+  Generated by Codex · worktree <code>comet/v0.7.22-dlp-authz-admin</code> · base <code>0fba1452</code>
+</footer>
+
+</div>
+</body>
+</html>
