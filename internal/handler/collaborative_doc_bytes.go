@@ -13,6 +13,7 @@ package handler
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"time"
 	"encoding/hex"
 	"fmt"
@@ -201,7 +202,18 @@ func (h *CollabDocBytesHandler) download(c *gin.Context, version int) {
 
 func (h *CollabDocBytesHandler) tenantAndUser(c *gin.Context) (uint64, uint64, bool) {
 	t := c.GetUint64(types.TenantIDContextKey.String())
-	u := c.GetUint64(types.UserIDContextKey.String())
+	// v0.7.73 — UserIDContextKey is set by middleware to user.ID (string UUID);
+	// fall back to a stable sha256 hash for handlers that look up by numeric user ID.
+	var u uint64
+	if v, ok := c.Get(types.UserIDContextKey.String()); ok {
+		switch x := v.(type) {
+		case uint64:
+			u = x
+		case string:
+			h := sha256.Sum256([]byte(x))
+			u = binary.BigEndian.Uint64(h[:8]) &^ (uint64(1) << 63)
+		}
+	}
 	if t == 0 || u == 0 {
 		c.Error(errors.NewUnauthorizedError("missing tenant/user context"))
 		return 0, 0, false
