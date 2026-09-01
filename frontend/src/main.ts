@@ -1,5 +1,12 @@
+import { Buffer } from "buffer";
 import { createApp } from "vue";
 import { createPinia } from "pinia";
+
+// v0.7.76 — pptx-engine (slide editor) and several adapter modules use
+// `new Buffer(...)` / `Buffer.from(...)` heavily. The Node Buffer
+// global is not present in browsers, so install the `buffer` package
+// onto globalThis before any engine module evaluates.
+(globalThis as unknown as { Buffer: typeof Buffer }).Buffer = Buffer;
 import VueKonva from "vue-konva";
 import App from "./App.vue";
 import router from "./router";
