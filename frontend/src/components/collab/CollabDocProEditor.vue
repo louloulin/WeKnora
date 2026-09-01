@@ -1976,8 +1976,27 @@ onBeforeUnmount(teardown)
   box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.18);
 }
 .collab-doc-pro__peer { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; color: white; font-size: 11px; font-weight: 600; }
+/* v0.7.77 — without this, the formatbar + surface-wrap siblings sit at
+   their content height (≈145px) because .collab-doc-pro__main has no
+   flex grow factor, leaving the ProseMirror .collab-doc-pro__surface
+   with no remaining height inside the 720px viewport.  Add flex:1 +
+   display:flex-column + min-height:0 so the wrap child can claim
+   the rest of the viewport. */
+.collab-doc-pro__main {
+  flex: 1 1 0%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.collab-doc-pro__formatbar {
+  flex: 0 0 auto;
+}
 .collab-doc-pro__surface-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.collab-doc-pro__surface { flex: 1; overflow: auto; padding: 24px 32px; max-width: 880px; margin: 0 auto; }
+.collab-doc-pro__surface { flex: 1; overflow: auto; padding: 24px 32px; max-width: 880px; margin: 0 auto; width: 100%; }
+/* v0.7.77 — keep the comments panel pinned to its content height so
+   the editor surface can claim the remaining viewport without being
+   squeezed by a tall comments tree. */
+.collab-doc-pro > .collab-comments { flex: 0 0 auto; }
 .collab-doc-pro__loading, .collab-doc-pro__error { padding: 24px; }
 .collab-doc-pro__error { color: var(--td-error-color-7); }
 
