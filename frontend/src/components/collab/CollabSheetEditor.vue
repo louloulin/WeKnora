@@ -48,6 +48,7 @@
       <button class="collab-sheet-editor__feature" @click="openSheetManageModal" type="button" title="工作表管理">工作表</button>
       <button class="collab-sheet-editor__feature" @click="openNoteModal" type="button" title="单元格批注">批注</button>
       <button class="collab-sheet-editor__feature" @click="openHyperlinkModal" type="button" title="超链接">链接</button>
+      <button class="collab-sheet-editor__feature" @click="openFindModal" type="button" title="查找替换" data-testid="sheet-find-btn">查找</button>
       <button class="collab-sheet-editor__feature" @click="openTableModal" type="button" title="插入表对象">表格</button>
       <span class="collab-sheet-editor__peers">
         <span
@@ -84,6 +85,7 @@
         <h3 v-else-if="featureDialog === 'sheetManage'">工作表管理</h3>
         <h3 v-else-if="featureDialog === 'note'">单元格批注 ({{ activeSheetName }})</h3>
         <h3 v-else-if="featureDialog === 'hyperlink'">超链接 ({{ activeSheetName }})</h3>
+        <h3 v-else-if="featureDialog === 'find'">查找替换 ({{ activeSheetName }})</h3>
         <h3 v-else-if="featureDialog === 'table'">插入表格对象 ({{ activeSheetName }})</h3>
 
         <template v-if="featureDialog === 'freeze'">
@@ -302,6 +304,46 @@
           </div>
         </template>
 
+        <!-- v0.7.99 — Find & replace modal -->
+        <template v-else-if="featureDialog === 'find'">
+          <div class="collab-sheet-editor__modal-body">
+            <label>查找内容：
+              <input
+                type="text"
+                v-model="findSearchInput"
+                placeholder="例如: hello"
+                data-testid="sheet-find-search"
+              />
+            </label>
+            <label>替换为：
+              <input
+                type="text"
+                v-model="findReplaceInput"
+                placeholder="替换文本（留空 = 仅查找）"
+                data-testid="sheet-find-replace"
+              />
+            </label>
+            <label>
+              <input type="checkbox" v-model="findMatchCaseInput" data-testid="sheet-find-case" />
+              区分大小写
+            </label>
+            <div class="collab-sheet-editor__find-summary" data-testid="sheet-find-summary">
+              {{ findMatches.length }} 个匹配
+            </div>
+            <ul v-if="findMatches.length" class="collab-sheet-editor__find-list" data-testid="sheet-find-list">
+              <li v-for="(m, mi) in findMatches.slice(0, 20)" :key="mi">
+                {{ cellLabel(m.row, m.column) }}：{{ m.before }}
+              </li>
+              <li v-if="findMatches.length > 20">… 还有 {{ findMatches.length - 20 }} 个</li>
+            </ul>
+          </div>
+          <div class="collab-sheet-editor__modal-actions">
+            <button type="button" @click="onFindClear">清空查找</button>
+            <button type="button" @click="featureDialog = null">关闭</button>
+            <button type="button" @click="onFindCommit" :disabled="!findSearchInput || !findMatches.length" data-testid="sheet-find-replace-btn">全部替换</button>
+          </div>
+        </template>
+
         <!-- v0.7.45 — Table modal -->
         <template v-else-if="featureDialog === 'table'">
           <div class="collab-sheet-editor__modal-body">
@@ -502,7 +544,7 @@ const sheetRenameDraftBySheet = ref<Record<number, string>>({})
 const notesBySheet = ref<Record<number, SheetNote[]>>({})
 const hyperlinksBySheet = ref<Record<number, HyperlinkEdit[]>>({})
 const tablesBySheet = ref<Record<number, TableAddition[]>>({})
-const featureDialog = ref<null | 'freeze' | 'filter' | 'cf' | 'dv' | 'spark' | 'pageSetup' | 'sheetManage' | 'note' | 'hyperlink' | 'table'>(null)
+const featureDialog = ref<null | 'freeze' | 'filter' | 'cf' | 'dv' | 'spark' | 'pageSetup' | 'sheetManage' | 'note' | 'hyperlink' | 'find' | 'table'>(null)
 
 // Modal-input reactive state — re-used across all 5 modals.
 const freezeRowsInput = ref(1)
@@ -541,6 +583,10 @@ const noteTextInput = ref('')
 
 // v0.7.45 — Hyperlink modal inputs
 const linkRowInput = ref('')
+// v0.7.99 — find & replace inputs
+const findSearchInput = ref('')
+const findReplaceInput = ref('')
+const findMatchCaseInput = ref(false)
 const linkColInput = ref('')
 const linkTargetInput = ref('')
 
@@ -922,6 +968,61 @@ const onNoteClear = () => {
   notesBySheet.value[activeSheet.value] = []
   featureDialog.value = null
   scheduleSave()
+}
+
+// ===== v0.7.99 — Find & Replace handlers =====
+const openFindModal = () => {
+  findSearchInput.value = ''
+  findReplaceInput.value = ''
+  findMatchCaseInput.value = false
+  featureDialog.value = 'find'
+}
+interface FindMatch {
+  row: number
+  column: number
+  before: string
+}
+const findMatches = computed<FindMatch[]>(() => {
+  const needle = findSearchInput.value
+  if (!needle) return []
+  const out: FindMatch[] = []
+  for (let r = 0; r < rows.value.length; r++) {
+    const row = rows.value[r] || []
+    for (let c = 0; c < row.length; c++) {
+      const v = row[c] ?? ''
+      const hay = findMatchCaseInput.value ? v : v.toLowerCase()
+      const ndl = findMatchCaseInput.value ? needle : needle.toLowerCase()
+      if (hay.includes(ndl)) {
+        const before = v.length > 40 ? v.slice(0, 40) + '…' : v
+        out.push({ row: r, column: c, before })
+      }
+    }
+  }
+  return out
+})
+const onFindCommit = () => {
+  if (!findSearchInput.value || !findMatches.value.length) return
+  const repl = findReplaceInput.value
+  const m = findMatchCaseInput.value
+  const re = m
+    ? null
+    : new RegExp(findSearchInput.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+  let count = 0
+  for (const hit of findMatches.value) {
+    const v = rows.value[hit.row]?.[hit.column] ?? ''
+    const next = m ? v.replaceAll(findSearchInput.value, repl) : v.replace(re!, repl)
+    if (next !== v) {
+      setCell(hit.row, hit.column, next)
+      count += 1
+    }
+  }
+  MessagePlugin.success(`已替换 ${count} 个单元格`)
+  findSearchInput.value = ''
+  findReplaceInput.value = ''
+}
+const onFindClear = () => {
+  findSearchInput.value = ''
+  findReplaceInput.value = ''
 }
 
 // ===== v0.7.45 — Hyperlink modal handlers =====

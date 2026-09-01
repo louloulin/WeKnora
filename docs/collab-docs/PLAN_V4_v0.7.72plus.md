@@ -334,3 +334,29 @@ Alice 切到 Sheet2 写 A1=Bob 在 Sheet2 看到，Sheet1 不会串表。已 PAS
 - v0.7.100 SHEET 找并替换 (find & replace) 或 SHEET 命名区域 UI
 - v0.7.101 DOC 修订对比 viewer (audit timeline 增强)
 - 持续收敛 genoffice vendor (doc* / xlsx* / pivot* / slide* adapters + 配套 vitest)
+
+## 13. v0.7.99 — SHEET 查找替换（已交付，2026-09-02）
+
+### 已完成
+
+- 工具栏 "查找" 按钮 (data-testid="sheet-find-btn")
+- featureDialog 新增 'find' 类型 + modal (search/replace/matchCase 输入 + 匹配计数 + 命中列表)
+- findMatches computed: 遍历当前 sheet 全部 cells,按 hay.includes(ndl) 过滤
+- onFindCommit: 用 setCell 走 Yjs transact + scheduleSave 1.5s debounce 自动保存
+- 支持 case-insensitive (默认) + case-sensitive 切换
+
+### 真实双端验证
+
+`frontend/wk-sheet-find.mjs` 已 PASS:
+- 输入测试数据 hello world / hello sheet / Hello / unrelated
+- find "hello" 找到 3 个匹配 (A1/A2/A3)
+- 替换为 hi -> 自动保存 -> 重下载 xlsx 解压 -> sheet1.xml 验证 A1=hi world, A2=hi sheet, A3=hi, A4=unrelated
+- case-sensitive "Hello" 0 匹配 (因为都变成了 hi)
+- 0 page error
+
+### 下一阶段
+
+- v0.7.100 SLIDE 多选 + 等距分布 + 匹配宽高 (alignment 扩展)
+- v0.7.101 SHEET 命名区域 UI (xlsxDefinedNames.ts + 需在 wb 接口暴露 workbookXml)
+- v0.7.102 DOC 修订对比 viewer
+- 持续收敛 genoffice vendor

@@ -3192,3 +3192,104 @@ ALL OK — slide align
 - 仅对齐到 slide bounds，未实现"对齐到选中形状的边界"（多选场景）
 - 未实现"等距分布"（horizontal/vertical distribute）
 - 未实现"匹配宽度/高度"（match width/height）
+
+## 47. v0.7.99 — SHEET 查找替换（Find & Replace）（2026-09-02）
+
+### 47.1 背景
+
+SHEET 编辑器已经支持冻结 / 筛选 / 条件格式 / 数据验证 / 迷你图 / 页面布局 / 工作表管理 /
+批注 / 超链接 / 表格对象 / 透视表 / 命名区域待做。但缺 SHEET 核心功能：**查找替换**。
+DOC 编辑器有 docFind.ts + panel, SLIDE 没有, SHEET 一直没有。
+
+### 47.2 实现
+
+`CollabSheetEditor.vue`：
+- 工具栏 hyperlink 按钮后加 `<button data-testid="sheet-find-btn">查找</button>`
+- `featureDialog` ref 类型加 `'find'`
+- modal 模板加 find body：search input + replace input + matchCase checkbox + 匹配计数 + 命中列表
+- 复用现有 `setCell(ri, ci, value)` 走 Yjs transact + scheduleSave
+
+新增输入 refs：
+```ts
+const findSearchInput = ref('')
+const findReplaceInput = ref('')
+const findMatchCaseInput = ref(false)
+```
+
+新增 `openFindModal()` / `findMatches` computed / `onFindCommit()` / `onFindClear()`：
+
+```ts
+const findMatches = computed<FindMatch[]>(() => {
+  const needle = findSearchInput.value
+  if (!needle) return []
+  const out: FindMatch[] = []
+  for (let r = 0; r < rows.value.length; r++) {
+    const row = rows.value[r] || []
+    for (let c = 0; c < row.length; c++) {
+      const v = row[c] ?? ''
+      const hay = findMatchCaseInput.value ? v : v.toLowerCase()
+      const ndl = findMatchCaseInput.value ? needle : needle.toLowerCase()
+      if (hay.includes(ndl)) {
+        out.push({ row: r, column: c, before: v.slice(0, 40) + (v.length > 40 ? '…' : '') })
+      }
+    }
+  }
+  return out
+})
+
+const onFindCommit = () => {
+  if (!findSearchInput.value || !findMatches.value.length) return
+  const repl = findReplaceInput.value
+  const m = findMatchCaseInput.value
+  const re = m ? null : new RegExp(findSearchInput.value.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&'), 'gi')
+  let count = 0
+  for (const hit of findMatches.value) {
+    const v = rows.value[hit.row]?.[hit.column] ?? ''
+    const next = m ? v.replaceAll(findSearchInput.value, repl) : v.replace(re!, repl)
+    if (next !== v) {
+      setCell(hit.row, hit.column, next)
+      count += 1
+    }
+  }
+  MessagePlugin.success(`已替换 ${count} 个单元格`)
+}
+```
+
+### 47.3 新增文件
+
+- `frontend/wk-sheet-find.mjs`：Playwright + xlsx 解压验证脚本
+
+### 47.4 真实双端浏览器验证
+
+`node frontend/wk-sheet-find.mjs`：
+
+测试场景：
+- 输入 A1="hello world" / A2="hello sheet" / A3="Hello" / A4="unrelated"
+- 等 saveLabel → "已保存"
+- 打开 find modal, 搜 "hello" (默认 case-insensitive)
+  → 3 个匹配：A1=A2=A3
+- 替换为 "hi" → 全部替换
+- 重开 find modal, 搜 "hi" → 3 个匹配 (A1=hi world / A2=hi sheet / A3=hi)
+- 打开 case-sensitive, 搜 "Hello" → 0 个匹配 (因为都变成了 hi)
+- 下载 xlsx, 解压 `xl/worksheets/sheet1.xml`, 解析 `<c r="A1" t="str"><v>...</v></c>`
+
+```
+A1: hi world expected: hi world  ✓
+A2: hi sheet expected: hi sheet  ✓
+A3: hi expected: hi              ✓
+A4: unrelated expected: unrelated ✓
+page errors: 0
+ALL OK — SHEET find & replace
+```
+
+截图：`/tmp/wk-shots/sheet-find-final.png`
+
+### 47.5 类型检查
+
+`vue-tsc -p tsconfig.app.json --noEmit` 对 `CollabSheetEditor.vue` 输出 0 新错误。
+
+### 47.6 已知遗留
+
+- 仅"全部替换"，未实现"逐个替换 + 跳到下一个"（next/prev 按钮）
+- 仅对当前活动 sheet 操作，未实现"全部 sheet 中查找"
+- 命中列表只显示前 20 个
