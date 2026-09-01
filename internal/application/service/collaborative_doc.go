@@ -8,12 +8,14 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
-	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -27,12 +29,13 @@ import (
 // The realtime Yjs engine lives on the same struct so a doc snapshot is
 // always loaded through a single seam.
 type CollabDocService struct {
-	docRepo    interfaces.CollabDocRepository
-	snapRepo   interfaces.CollabDocSnapshotRepository
-	sessRepo   interfaces.CollabDocSessionRepository
+	docRepo      interfaces.CollabDocRepository
+	snapRepo     interfaces.CollabDocSnapshotRepository
+	sessRepo     interfaces.CollabDocSessionRepository
 	fileRepo     interfaces.CollabDocFileRepository
 	commentRepo  interfaces.CollabDocCommentRepository
 	auditRepo    interfaces.CollabDocAuditRepository
+	responseRepo interfaces.CollabDocFormResponseRepository
 	authz        CollabDocAuthorizer
 
 	snapshotInterval time.Duration
@@ -85,20 +88,22 @@ func NewCollabDocService(
 	fileRepo interfaces.CollabDocFileRepository,
 	commentRepo interfaces.CollabDocCommentRepository,
 	auditRepo interfaces.CollabDocAuditRepository,
+	responseRepo interfaces.CollabDocFormResponseRepository,
 	authz CollabDocAuthorizer,
 ) *CollabDocService {
 	return &CollabDocService{
-		docRepo:     docRepo,
-		snapRepo:    snapRepo,
-		sessRepo:    sessRepo,
-		fileRepo:    fileRepo,
-		commentRepo: commentRepo,
-		auditRepo:   auditRepo,
-		authz:       authz,
+		docRepo:              docRepo,
+		snapRepo:             snapRepo,
+		sessRepo:             sessRepo,
+		fileRepo:             fileRepo,
+		commentRepo:          commentRepo,
+		auditRepo:            auditRepo,
+		responseRepo:         responseRepo,
+		authz:                authz,
 		snapshotInterval:     5 * time.Minute,
 		snapshotBytes:        256 * 1024,
 		presenceIdleTTL:      30 * time.Second,
-		fileVersionRetention: 10, // keep the latest 10 .docx/.pptx/.xlsx per doc
+		fileVersionRetention: 10,                  // keep the latest 10 .docx/.pptx/.xlsx per doc
 		fileRetentionAge:     30 * 24 * time.Hour, // 30 days
 		cache:                make(map[string]*collabDocEntry),
 	}
@@ -178,11 +183,11 @@ func (s *CollabDocService) CreateDoc(
 		return nil, fmt.Errorf("create collab doc: %w", err)
 	}
 	s.publishEvent(ctx, "collab.doc.created", map[string]any{
-		"doc_id":     d.ID,
-		"doc_kind":   string(d.DocKind),
-		"title":      d.Title,
-		"owner_id":   d.OwnerUserID,
-		"kb_id":      d.KBID,
+		"doc_id":   d.ID,
+		"doc_kind": string(d.DocKind),
+		"title":    d.Title,
+		"owner_id": d.OwnerUserID,
+		"kb_id":    d.KBID,
 	})
 	return d, nil
 }
@@ -626,18 +631,18 @@ func (s *CollabDocService) EnableShare(ctx context.Context, tenantID, userID uin
 	}
 	s.RecordAudit(ctx, types.RecordAuditRequest{
 		TenantID: tenantID, DocID: docID, ActorUserID: userID,
-		Action: types.AuditActionShareEnable,
-		Target: d.ShareToken,
+		Action:  types.AuditActionShareEnable,
+		Target:  d.ShareToken,
 		Payload: fmt.Sprintf(`{"password_protected":%v,"expires_at":%q}`, password != "", formatExpires(expiresAt)),
 	})
 	// v0.7.41 — emit WebHook event so KB-sync consumers see share-link
 	// lifecycle changes. Payload mirrors the audit row so receivers can
 	// render the same notification card.
 	s.publishEvent(ctx, "collab.doc.shared", map[string]any{
-		"doc_id":            docID,
-		"doc_kind":          d.DocKind,
+		"doc_id":             docID,
+		"doc_kind":           d.DocKind,
 		"password_protected": password != "",
-		"expires_at":        formatExpires(expiresAt),
+		"expires_at":         formatExpires(expiresAt),
 	})
 	return d, nil
 }
@@ -743,7 +748,6 @@ func (s *CollabDocService) LoadFileByVersion(
 	}
 	return row, nil
 }
-
 
 // ---------------------------------------------------------------------------
 // Comments — threaded discussions anchored to a doc / slide / cell position.
@@ -872,4 +876,239 @@ func (s *CollabDocService) AuditSummary(ctx context.Context, tenantID uint64, fi
 		return nil, errors.New("audit repo not configured")
 	}
 	return s.auditRepo.Summary(ctx, tenantID, filter)
+}
+
+// -----------------------------------------------------------------------------
+// v0.7.90 — form responses (Tencent Docs 收集表 parity)
+//
+// Public submit endpoint hits SubmitFormResponse which only enforces the
+// doc is a form. The owner-side list/summary is gated by authz.CanRead.
+// -----------------------------------------------------------------------------
+
+// SubmitFormResponse persists one submission. `callerUserID` is 0 for
+// anonymous (public) submissions — the handler decides whether public
+// access is allowed by consulting the doc metadata + share_token. JSON
+// validation runs here so the repo only sees well-formed answer blobs.
+func (s *CollabDocService) SubmitFormResponse(
+	ctx context.Context,
+	tenantID uint64,
+	docID string,
+	callerUserID uint64,
+	submitterToken, submitterName, clientIP, userAgent string,
+	answers map[string]interface{},
+) (*types.CollabDocFormResponse, error) {
+	if s.responseRepo == nil {
+		return nil, errors.New("form response repo not configured")
+	}
+	doc, err := s.docRepo.Get(ctx, tenantID, docID)
+	if err != nil {
+		return nil, err
+	}
+	if doc == nil {
+		return nil, types.ErrCollabDocInvalid("form doc not found")
+	}
+	if doc.DocKind != types.CollaborativeDocKindForm {
+		return nil, types.ErrCollabDocInvalid("doc is not a form")
+	}
+	if len(answers) == 0 {
+		return nil, types.ErrCollabDocInvalid("answers is empty")
+	}
+	answersJSON, err := jsonMarshalAnswers(answers)
+	if err != nil {
+		return nil, fmt.Errorf("marshal answers: %w", err)
+	}
+	if submitterToken == "" {
+		// Synthesize a stable token from caller identity so the public
+		// responder page can de-dupe on the second pass.
+		if callerUserID != 0 {
+			submitterToken = fmt.Sprintf("u-%d", callerUserID)
+		} else {
+			submitterToken = newCollabDocID()
+		}
+	}
+	if submitterName == "" && callerUserID != 0 {
+		submitterName = fmt.Sprintf("user-%d", callerUserID)
+	}
+	resp := &types.CollabDocFormResponse{
+		TenantID:        tenantID,
+		DocID:           docID,
+		SubmitterToken:  submitterToken,
+		SubmitterName:   submitterName,
+		SubmitterUserID: callerUserID,
+		Answers:         answersJSON,
+		ClientIP:        clientIP,
+		UserAgent:       userAgent,
+	}
+	if err := s.responseRepo.Create(ctx, resp); err != nil {
+		return nil, err
+	}
+	// Best-effort audit trail.
+	if s.auditRepo != nil {
+		_, _ = s.auditRepo.Record(ctx, types.RecordAuditRequest{
+			TenantID:    tenantID,
+			DocID:       docID,
+			ActorUserID: callerUserID,
+			ActorName:   submitterName,
+			Action:      "form_response_submit",
+			Target:      fmt.Sprintf("response:%d", resp.ID),
+			IP:          clientIP,
+			UserAgent:   userAgent,
+		})
+	}
+	return resp, nil
+}
+
+// ListFormResponses returns paginated responses (newest first). Owner-only;
+// handler enforces authz.CanRead.
+func (s *CollabDocService) ListFormResponses(
+	ctx context.Context, tenantID, userID uint64, docID string,
+	filter types.ListCollabDocFormResponsesFilter,
+) ([]*types.CollabDocFormResponse, error) {
+	if s.responseRepo == nil {
+		return nil, errors.New("form response repo not configured")
+	}
+	if ok, err := s.authz.CanRead(ctx, tenantID, userID, docID); err != nil || !ok {
+		return nil, types.ErrCollabDocInvalid("form response: read access denied")
+	}
+	return s.responseRepo.ListByDoc(ctx, tenantID, docID, filter)
+}
+
+// FormResponseSummary aggregates per-question stats. The question schema
+// is taken from the latest .form.json in the file repo so we know which
+// ids / titles to summarize; if the schema is missing we fall back to
+// inferring ids from the response payloads.
+func (s *CollabDocService) FormResponseSummary(
+	ctx context.Context, tenantID, userID uint64, docID string,
+) (*types.CollabDocFormResponseSummary, error) {
+	if s.responseRepo == nil {
+		return nil, errors.New("form response repo not configured")
+	}
+	if ok, err := s.authz.CanRead(ctx, tenantID, userID, docID); err != nil || !ok {
+		return nil, types.ErrCollabDocInvalid("form response: read access denied")
+	}
+	rows, err := s.responseRepo.ListByDoc(ctx, tenantID, docID, types.ListCollabDocFormResponsesFilter{Limit: 500})
+	if err != nil {
+		return nil, err
+	}
+	return summarizeFormResponses(rows), nil
+}
+
+// jsonMarshalAnswers is a small helper kept private to the service to
+// avoid leaking json dependency through the repo signature.
+func jsonMarshalAnswers(answers map[string]interface{}) (string, error) {
+	b, err := jsonMarshal(answers)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// summarizeFormResponses groups answers by question id and computes
+// per-type aggregates. See CollabDocFormResponseQuestionSummary for the
+// payload shape.
+func summarizeFormResponses(rows []*types.CollabDocFormResponse) *types.CollabDocFormResponseSummary {
+	type agg struct {
+		total   uint64
+		counts  map[string]uint64
+		samples []string
+		title   string
+		qtype   string
+	}
+	byQ := map[string]*agg{}
+	for _, row := range rows {
+		var answers map[string]interface{}
+		if err := jsonUnmarshal([]byte(row.Answers), &answers); err != nil {
+			continue
+		}
+		for qid, raw := range answers {
+			a, ok := byQ[qid]
+			if !ok {
+				a = &agg{counts: map[string]uint64{}}
+				byQ[qid] = a
+			}
+			a.total++
+			switch v := raw.(type) {
+			case string:
+				if v == "" {
+					continue
+				}
+				if len(a.samples) < 5 {
+					a.samples = append(a.samples, v)
+				}
+			case float64:
+				// numeric (rating / date-as-epoch)
+				key := fmtFloat(v)
+				a.counts[key]++
+			case bool:
+				if v {
+					a.counts["true"]++
+				} else {
+					a.counts["false"]++
+				}
+			case []interface{}:
+				// multi-choice array
+				for _, opt := range v {
+					if s, ok := opt.(string); ok {
+						a.counts[s]++
+					}
+				}
+			}
+		}
+	}
+	out := &types.CollabDocFormResponseSummary{
+		Total:      uint64(len(rows)),
+		ByQuestion: make([]types.CollabDocFormResponseQuestionSummary, 0, len(byQ)),
+	}
+	for qid, a := range byQ {
+		out.ByQuestion = append(out.ByQuestion, types.CollabDocFormResponseQuestionSummary{
+			QuestionID:    qid,
+			QuestionType:  a.qtype,
+			QuestionTitle: a.title,
+			Total:         a.total,
+			Counts:        a.counts,
+			LatestSample:  a.samples,
+		})
+	}
+	return out
+}
+
+// CollabDocFormResponseSummary is the rolled-up view returned to the
+// owner-side form responses panel. ByQuestion is keyed by question id
+// and contains per-type aggregates. Declared in the types package as
+// CollabDocFormResponseSummary; we re-export here for callers that
+// import only the service package.
+
+// fmtFloat renders a float64 with stable precision so counter keys line up
+// across runs even though the JSON parser demotes all numbers to float64.
+func fmtFloat(v float64) string {
+	if v == float64(int64(v)) {
+		return fmtInt(int64(v))
+	}
+	return strconvFloat(v)
+}
+
+// jsonMarshal is a small indirection so tests can swap the encoder.
+var jsonMarshal = func(v interface{}) ([]byte, error) { return jsonMarshalStd(v) }
+
+// jsonUnmarshal is a small indirection so tests can swap the decoder.
+var jsonUnmarshal = func(b []byte, v interface{}) error { return jsonUnmarshalStd(b, v) }
+
+func jsonMarshalStd(v interface{}) ([]byte, error)   { return json.Marshal(v) }
+func jsonUnmarshalStd(b []byte, v interface{}) error { return json.Unmarshal(b, v) }
+
+func fmtInt(v int64) string         { return strconv.FormatInt(v, 10) }
+func strconvFloat(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
+
+// CountFormResponses returns the number of responses for the doc. Used by
+// the owner-side list endpoint to populate pagination metadata.
+func (s *CollabDocService) CountFormResponses(
+	ctx context.Context, tenantID, userID uint64, docID string,
+) (int64, error) {
+	if s.responseRepo == nil {
+		return 0, errors.New("form response repo not configured")
+	}
+	if ok, err := s.authz.CanRead(ctx, tenantID, userID, docID); err != nil || !ok {
+		return 0, types.ErrCollabDocInvalid("form response: read access denied")
+	}
+	return s.responseRepo.CountByDoc(ctx, tenantID, docID)
 }

@@ -14,13 +14,14 @@ package handler
 import (
 	"crypto/sha256"
 	"encoding/binary"
-	"time"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
 	"github.com/Tencent/WeKnora/internal/errors"
@@ -48,6 +49,7 @@ func (h *CollabDocBytesHandler) Mount(rg *gin.RouterGroup) {
 	rg.POST("/collaborative-docs/:id/sync-to-kb", h.SyncToKB)
 	// Public read-only download by share token (no auth).
 	rg.GET("/collaborative-docs/share/:token/download", h.ShareDownload)
+	rg.GET("/collaborative-docs/share/:token/form-schema", h.ShareFormSchema)
 }
 
 // Upload handles POST /collaborative-docs/:id/upload.
@@ -83,13 +85,13 @@ func (h *CollabDocBytesHandler) Upload(c *gin.Context) {
 	}
 	src, err := fh.Open()
 	if err != nil {
-		c.Error(errors.NewInternalServerError("open uploaded file: "+err.Error()))
+		c.Error(errors.NewInternalServerError("open uploaded file: " + err.Error()))
 		return
 	}
 	defer src.Close()
 	content, err := io.ReadAll(io.LimitReader(src, maxUploadBytes+1))
 	if err != nil {
-		c.Error(errors.NewInternalServerError("read uploaded file: "+err.Error()))
+		c.Error(errors.NewInternalServerError("read uploaded file: " + err.Error()))
 		return
 	}
 	if len(content) == 0 {
@@ -371,4 +373,57 @@ func (h *CollabDocBytesHandler) ListFiles(c *gin.Context) {
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": out})
+}
+
+// ShareFormSchema returns the form metadata plus its latest JSON schema to
+// an anonymous responder. It avoids forcing the public page to infer the
+// document id from Content-Disposition filenames. The same share-token
+// checks as ShareDownload are applied before the schema is returned.
+func (h *CollabDocBytesHandler) ShareFormSchema(c *gin.Context) {
+	token := strings.TrimSpace(c.Param("token"))
+	if token == "" {
+		c.Error(errors.NewBadRequestError("missing share token"))
+		return
+	}
+	doc, err := h.svc.FindByShareToken(c.Request.Context(), token)
+	if err != nil {
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
+	if doc == nil || (doc.Visibility != "public" && doc.Visibility != "shared") {
+		c.Error(errors.NewNotFoundError("share link not found"))
+		return
+	}
+	if service.ShareExpired(doc, time.Now()) {
+		c.Error(errors.NewNotFoundError("share link expired"))
+		return
+	}
+	if !service.VerifySharePassword(doc, c.GetHeader("X-Share-Password")) {
+		c.Header("WWW-Authenticate", `Share password="X-Share-Password"`)
+		c.Error(errors.NewForbiddenError("share password required or wrong"))
+		return
+	}
+	if doc.DocKind != types.CollaborativeDocKindForm {
+		c.Error(errors.NewBadRequestError("shared document is not a form"))
+		return
+	}
+	file, err := h.svc.LoadLatestFile(c.Request.Context(), doc.TenantID, doc.OwnerUserID, doc.ID)
+	if err != nil {
+		c.Error(errors.NewInternalServerError(err.Error()))
+		return
+	}
+	if file == nil || len(file.Content) == 0 {
+		c.Error(errors.NewNotFoundError("form schema not found"))
+		return
+	}
+	var schema map[string]interface{}
+	if err := json.Unmarshal(file.Content, &schema); err != nil {
+		c.Error(errors.NewInternalServerError("invalid form schema"))
+		return
+	}
+	schema["doc_id"] = doc.ID
+	schema["title"] = doc.Title
+	schema["doc_kind"] = string(doc.DocKind)
+	schema["share_token"] = token
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": schema})
 }

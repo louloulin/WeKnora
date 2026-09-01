@@ -76,20 +76,20 @@ func (CollaborativeDoc) TableName() string { return "collaborative_docs" }
 // CollaborativeDoc is the metadata row for one multi-format editing
 // surface document.
 type CollaborativeDoc struct {
-	ID            string               `json:"id" gorm:"type:varchar(36);primaryKey"`
-	TenantID      uint64               `json:"tenant_id" gorm:"index"`
-	KBID          string               `json:"kb_id" gorm:"type:varchar(36);index"`
-	Title         string               `json:"title" gorm:"type:varchar(256)"`
-	DocKind       CollaborativeDocKind `json:"doc_kind" gorm:"type:varchar(16)"`
-	SchemaVersion int                  `json:"schema_version"`
-	OwnerUserID   uint64               `json:"owner_user_id"`
-	Visibility    string               `json:"visibility" gorm:"type:varchar(16)"`
-	ShareToken         string     `json:"share_token" gorm:"type:varchar(64)"`
-	SharePasswordHash string     `json:"-" gorm:"type:varchar(128);default:''"`
-	ShareExpiresAt    *time.Time `json:"share_expires_at,omitempty" gorm:""`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
-	ArchivedAt        *time.Time `json:"archived_at,omitempty"`
+	ID                string               `json:"id" gorm:"type:varchar(36);primaryKey"`
+	TenantID          uint64               `json:"tenant_id" gorm:"index"`
+	KBID              string               `json:"kb_id" gorm:"type:varchar(36);index"`
+	Title             string               `json:"title" gorm:"type:varchar(256)"`
+	DocKind           CollaborativeDocKind `json:"doc_kind" gorm:"type:varchar(16)"`
+	SchemaVersion     int                  `json:"schema_version"`
+	OwnerUserID       uint64               `json:"owner_user_id"`
+	Visibility        string               `json:"visibility" gorm:"type:varchar(16)"`
+	ShareToken        string               `json:"share_token" gorm:"type:varchar(64)"`
+	SharePasswordHash string               `json:"-" gorm:"type:varchar(128);default:''"`
+	ShareExpiresAt    *time.Time           `json:"share_expires_at,omitempty" gorm:""`
+	CreatedAt         time.Time            `json:"created_at"`
+	UpdatedAt         time.Time            `json:"updated_at"`
+	ArchivedAt        *time.Time           `json:"archived_at,omitempty"`
 }
 
 // CollabDocSnapshotUpsert is the shape used by the snapshot service when
@@ -128,7 +128,7 @@ func (s CollabDocSnapshot) MarshalJSON() ([]byte, error) {
 	vc := base64.StdEncoding.EncodeToString(s.VectorClock)
 	return json.Marshal(struct {
 		alias
-		YDocStateB64 string `json:"ydoc_state"`
+		YDocStateB64   string `json:"ydoc_state"`
 		VectorClockB64 string `json:"vector_clock"`
 	}{
 		alias:          alias(s),
@@ -209,15 +209,15 @@ type ListCollaborativeDocsFilter struct {
 // version+1 so history can be inspected and previous bytes can be
 // downloaded for rollback.
 type CollabDocFile struct {
-	ID          uint64                `json:"id"`
-	TenantID    uint64                `json:"tenant_id" gorm:"index"`
-	DocID       string                `json:"doc_id" gorm:"type:varchar(36);uniqueIndex:uk_collab_doc_file_doc_version,priority:1"`
-	Format      CollaborativeDocKind  `json:"format" gorm:"type:varchar(16)"`
-	Content     []byte                `json:"-" gorm:"column:content;type:longblob"`
-	SizeBytes   int                   `json:"size_bytes"`
-	SHA256      string                `json:"sha256" gorm:"type:varchar(64)"`
-	Version     int                   `json:"version" gorm:"uniqueIndex:uk_collab_doc_file_doc_version,priority:2"`
-	CreatedAt   time.Time             `json:"created_at"`
+	ID        uint64               `json:"id"`
+	TenantID  uint64               `json:"tenant_id" gorm:"index"`
+	DocID     string               `json:"doc_id" gorm:"type:varchar(36);uniqueIndex:uk_collab_doc_file_doc_version,priority:1"`
+	Format    CollaborativeDocKind `json:"format" gorm:"type:varchar(16)"`
+	Content   []byte               `json:"-" gorm:"column:content;type:longblob"`
+	SizeBytes int                  `json:"size_bytes"`
+	SHA256    string               `json:"sha256" gorm:"type:varchar(64)"`
+	Version   int                  `json:"version" gorm:"uniqueIndex:uk_collab_doc_file_doc_version,priority:2"`
+	CreatedAt time.Time            `json:"created_at"`
 }
 
 // TableName returns the GORM table name.
@@ -232,7 +232,7 @@ func (f CollabDocFile) MarshalJSON() ([]byte, error) {
 		alias
 		ContentB64 string `json:"content"`
 	}{
-		alias:     alias(f),
+		alias:      alias(f),
 		ContentB64: content,
 	})
 }
@@ -240,11 +240,11 @@ func (f CollabDocFile) MarshalJSON() ([]byte, error) {
 // CollabDocFileUpsert is the input for SaveFile: tenant, doc, format, raw
 // bytes and the caller-computed version (current_version+1).
 type CollabDocFileUpsert struct {
-	TenantID  uint64
-	DocID     string
-	Format    CollaborativeDocKind
-	Content   []byte
-	Version   int
+	TenantID uint64
+	DocID    string
+	Format   CollaborativeDocKind
+	Content  []byte
+	Version  int
 }
 
 // Validate enforces non-empty invariants for SaveFile.
@@ -296,20 +296,20 @@ var ValidCommentAnchorTypes = map[CommentAnchorType]bool{
 // JSON blob the editor knows how to render (paragraph range, shape id,
 // A1:B10 cell range, …).
 type CollabDocComment struct {
-	ID            uint64           `json:"id" gorm:"primaryKey"`
-	TenantID      uint64           `json:"tenant_id" gorm:"index"`
-	DocID         string           `json:"doc_id" gorm:"type:varchar(36);index"`
-	ThreadID      string           `json:"thread_id" gorm:"type:varchar(36);index"`
-	ParentID      *uint64          `json:"parent_id,omitempty"`
-	AuthorUserID  uint64           `json:"author_user_id"`
-	AuthorName    string           `json:"author_name" gorm:"type:varchar(128)"`
-	AuthorColor   string           `json:"author_color" gorm:"type:varchar(16)"`
-	AnchorType    CommentAnchorType `json:"anchor_type" gorm:"type:varchar(16)"`
-	AnchorRef     string           `json:"anchor_ref" gorm:"column:anchor_ref;type:text"`
-	Body          string           `json:"body" gorm:"type:text"`
-	Resolved      bool             `json:"resolved" gorm:"column:resolved"`
-	CreatedAt     time.Time        `json:"created_at"`
-	UpdatedAt     time.Time        `json:"updated_at"`
+	ID           uint64            `json:"id" gorm:"primaryKey"`
+	TenantID     uint64            `json:"tenant_id" gorm:"index"`
+	DocID        string            `json:"doc_id" gorm:"type:varchar(36);index"`
+	ThreadID     string            `json:"thread_id" gorm:"type:varchar(36);index"`
+	ParentID     *uint64           `json:"parent_id,omitempty"`
+	AuthorUserID uint64            `json:"author_user_id"`
+	AuthorName   string            `json:"author_name" gorm:"type:varchar(128)"`
+	AuthorColor  string            `json:"author_color" gorm:"type:varchar(16)"`
+	AnchorType   CommentAnchorType `json:"anchor_type" gorm:"type:varchar(16)"`
+	AnchorRef    string            `json:"anchor_ref" gorm:"column:anchor_ref;type:text"`
+	Body         string            `json:"body" gorm:"type:text"`
+	Resolved     bool              `json:"resolved" gorm:"column:resolved"`
+	CreatedAt    time.Time         `json:"created_at"`
+	UpdatedAt    time.Time         `json:"updated_at"`
 }
 
 // TableName returns the GORM table name.
@@ -352,10 +352,10 @@ type UpdateCollabDocCommentRequest struct {
 
 // ListCollabDocCommentsFilter narrows comment queries.
 type ListCollabDocCommentsFilter struct {
-	ThreadID  string
-	Resolved  *bool
-	Limit     int
-	Offset    int
+	ThreadID string
+	Resolved *bool
+	Limit    int
+	Offset   int
 }
 
 // ----------------------------------------------------------------------------
@@ -383,9 +383,9 @@ const (
 	AuditActionCommentReply CollabDocAuditAction = "comment.reply" // comment reply posted
 	AuditActionCommentSolve CollabDocAuditAction = "comment.solve" // thread resolved/unresolved
 	AuditActionCommentDel   CollabDocAuditAction = "comment.delete"
-	AuditActionPolish       CollabDocAuditAction = "polish"        // AI 段落润色
-	AuditActionSyncToKB     CollabDocAuditAction = "sync_to_kb"    // KB ingestion pipeline
-	AuditActionExport       CollabDocAuditAction = "export"        // markdown / pdf export
+	AuditActionPolish       CollabDocAuditAction = "polish"     // AI 段落润色
+	AuditActionSyncToKB     CollabDocAuditAction = "sync_to_kb" // KB ingestion pipeline
+	AuditActionExport       CollabDocAuditAction = "export"     // markdown / pdf export
 )
 
 // ValidCollabDocAuditActions is the closed set enforced at the application layer.
@@ -413,18 +413,18 @@ var ValidCollabDocAuditActions = map[CollabDocAuditAction]bool{
 // are never updated — every meaningful user action produces a new entry so
 // the timeline is tamper-evident.
 type CollabDocAuditEntry struct {
-	ID           uint64     `json:"id" gorm:"primaryKey"`
-	TenantID     uint64     `json:"tenant_id" gorm:"index"`
-	DocID        string     `json:"doc_id" gorm:"type:varchar(36);index"`
-	ActorUserID  uint64     `json:"actor_user_id"`
-	ActorName    string     `json:"actor_name" gorm:"type:varchar(128)"`
-	ActorColor   string     `json:"actor_color" gorm:"type:varchar(16)"`
-	Action       CollabDocAuditAction `json:"action" gorm:"type:varchar(32)"`
-	Target       string     `json:"target" gorm:"type:varchar(64)"`
-	Payload      string     `json:"payload" gorm:"type:text"`
-	IP           string     `json:"ip" gorm:"type:varchar(64)"`
-	UserAgent    string     `json:"user_agent" gorm:"type:varchar(256)"`
-	CreatedAt    time.Time  `json:"created_at"`
+	ID          uint64               `json:"id" gorm:"primaryKey"`
+	TenantID    uint64               `json:"tenant_id" gorm:"index"`
+	DocID       string               `json:"doc_id" gorm:"type:varchar(36);index"`
+	ActorUserID uint64               `json:"actor_user_id"`
+	ActorName   string               `json:"actor_name" gorm:"type:varchar(128)"`
+	ActorColor  string               `json:"actor_color" gorm:"type:varchar(16)"`
+	Action      CollabDocAuditAction `json:"action" gorm:"type:varchar(32)"`
+	Target      string               `json:"target" gorm:"type:varchar(64)"`
+	Payload     string               `json:"payload" gorm:"type:text"`
+	IP          string               `json:"ip" gorm:"type:varchar(64)"`
+	UserAgent   string               `json:"user_agent" gorm:"type:varchar(256)"`
+	CreatedAt   time.Time            `json:"created_at"`
 }
 
 // TableName returns the GORM table name.
@@ -480,14 +480,98 @@ type ListCollabDocAuditFilter struct {
 // CollabDocAuditSummary is the rolled-up view returned to the frontend
 // history panel ("12 saves, 3 comments this week" etc.).
 type CollabDocAuditSummary struct {
-	TotalEntries uint64                   `json:"total_entries"`
-	ByAction     map[CollabDocAuditAction]uint64   `json:"by_action"`
-	ByDay        []CollabDocAuditDayCount `json:"by_day"`
+	TotalEntries uint64                          `json:"total_entries"`
+	ByAction     map[CollabDocAuditAction]uint64 `json:"by_action"`
+	ByDay        []CollabDocAuditDayCount        `json:"by_day"`
 }
 
 // CollabDocAuditDayCount is one row in the daily roll-up. Days with no
 // entries are skipped (not zero-filled) to keep payloads small.
 type CollabDocAuditDayCount struct {
-	Day    string `json:"day"`    // YYYY-MM-DD
-	Count  uint64 `json:"count"`
+	Day   string `json:"day"` // YYYY-MM-DD
+	Count uint64 `json:"count"`
+}
+
+// -----------------------------------------------------------------------------
+// v0.7.90 — form responses (Tencent Docs 收集表 parity)
+//
+// Forms (CollaborativeDocKindForm) used to only persist the question schema
+// in the Yjs doc; respondents had no submission path. The new types here
+// model anonymous OR authed submissions with a per-submission JSON answer
+// blob that survives schema evolution (text/choice/multi/rating/date).
+// -----------------------------------------------------------------------------
+
+// CollabDocFormResponse is one submitted response. Public (no-auth)
+// respondents land here with SubmitterUserID=0 and SubmitterToken set to
+// the UUID the public responder page pinned in localStorage. Authed
+// respondents fill SubmitterUserID and skip SubmitterToken (server still
+// stamps a token for de-dupe in the editor UI).
+type CollabDocFormResponse struct {
+	ID              uint64    `json:"id" gorm:"primaryKey"`
+	TenantID        uint64    `json:"tenant_id" gorm:"index"`
+	DocID           string    `json:"doc_id" gorm:"type:varchar(36);index"`
+	SubmitterToken  string    `json:"submitter_token" gorm:"type:varchar(64);index"`
+	SubmitterName   string    `json:"submitter_name" gorm:"type:varchar(128)"`
+	SubmitterUserID uint64    `json:"submitter_user_id"`
+	Answers         string    `json:"answers" gorm:"type:text"` // JSON map
+	ClientIP        string    `json:"client_ip" gorm:"type:varchar(64)"`
+	UserAgent       string    `json:"user_agent" gorm:"type:varchar(256)"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+// TableName returns the GORM table name.
+func (CollabDocFormResponse) TableName() string { return "collab_doc_form_responses" }
+
+// Validate enforces non-empty invariants the repo relies on. AnswersJSON
+// is kept as a string to avoid forcing GORM to round-trip JSONB; the
+// service layer is responsible for verifying it is valid JSON before
+// persisting.
+func (r CollabDocFormResponse) Validate() error {
+	if r.TenantID == 0 {
+		return ErrCollabDocInvalid("tenant_id is required")
+	}
+	if r.DocID == "" {
+		return ErrCollabDocInvalid("doc_id is required")
+	}
+	if r.Answers == "" {
+		return ErrCollabDocInvalid("answers is empty")
+	}
+	return nil
+}
+
+// CreateCollabDocFormResponseRequest is the body for the public POST
+// endpoint. Answers uses a flexible map because each question type
+// (text/choice/multi/rating/date) has its own answer shape.
+type CreateCollabDocFormResponseRequest struct {
+	SubmitterToken string                 `json:"submitter_token"`
+	SubmitterName  string                 `json:"submitter_name"`
+	Answers        map[string]interface{} `json:"answers" binding:"required"`
+}
+
+// ListCollabDocFormResponsesFilter narrows the owner-side list query.
+type ListCollabDocFormResponsesFilter struct {
+	Limit  int
+	Offset int
+}
+
+// CollabDocFormResponseQuestionSummary is the per-question aggregate
+// returned to the owner view. Type-specific counters keep the response
+// payload compact: single/multi/rating store counters in Counts, text/date
+// store the latest value in LatestSample.
+type CollabDocFormResponseQuestionSummary struct {
+	QuestionID    string            `json:"question_id"`
+	QuestionType  string            `json:"question_type"`
+	QuestionTitle string            `json:"question_title"`
+	Total         uint64            `json:"total"`
+	Counts        map[string]uint64 `json:"counts,omitempty"`        // choice / multi / rating
+	LatestSample  []string          `json:"latest_sample,omitempty"` // text snippets
+}
+
+// CollabDocFormResponseSummary is the rolled-up view returned by the
+// owner-side summary endpoint. ByQuestion is sorted in insertion order;
+// the handler does not re-sort so the frontend can rely on stable
+// question-id order matching the form schema.
+type CollabDocFormResponseSummary struct {
+	Total      uint64                                 `json:"total"`
+	ByQuestion []CollabDocFormResponseQuestionSummary `json:"by_question"`
 }

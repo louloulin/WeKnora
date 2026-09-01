@@ -412,7 +412,6 @@ func (r *collabDocFileRepository) ListByDoc(ctx context.Context, tenantID uint64
 	return rows, nil
 }
 
-
 // PurgeFilesOlderThan deletes old version rows; keeps the latest `keepLatest`
 // versions per (tenant, doc) regardless of age. The latest row is the one
 // served by /download and is always retained. Implemented as a single
@@ -729,3 +728,84 @@ func (r *collabDocAuditRepository) applyFilter(q *gorm.DB, filter types.ListColl
 }
 
 var _ interfaces.CollabDocAuditRepository = (*collabDocAuditRepository)(nil)
+
+// -----------------------------------------------------------------------------
+// v0.7.90 — collab_doc_form_responses repository
+//
+// Anonymous respondent submissions land here with SubmitterUserID=0 and
+// SubmitterToken set to the UUID pinned in localStorage. The public
+// submit handler fills ClientIP and User-Agent from gin.Context; the
+// service layer is responsible for JSON-validating the Answers string
+// before passing it to Create.
+
+type collabDocFormResponseRepository struct {
+	db *gorm.DB
+}
+
+// NewCollabDocFormResponseRepository wires the form-response repo to the
+// GORM handle.
+func NewCollabDocFormResponseRepository(db *gorm.DB) interfaces.CollabDocFormResponseRepository {
+	return &collabDocFormResponseRepository{db: db}
+}
+
+func (r *collabDocFormResponseRepository) Create(ctx context.Context, resp *types.CollabDocFormResponse) error {
+	if err := resp.Validate(); err != nil {
+		return err
+	}
+	if resp.CreatedAt.IsZero() {
+		resp.CreatedAt = time.Now().UTC()
+	}
+	return r.db.WithContext(ctx).Create(resp).Error
+}
+
+func (r *collabDocFormResponseRepository) Get(ctx context.Context, tenantID uint64, id uint64) (*types.CollabDocFormResponse, error) {
+	var resp types.CollabDocFormResponse
+	err := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND id = ?", tenantID, id).
+		First(&resp).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("collab_doc_form_response get: %w", err)
+	}
+	return &resp, nil
+}
+
+func (r *collabDocFormResponseRepository) ListByDoc(ctx context.Context, tenantID uint64, docID string, filter types.ListCollabDocFormResponsesFilter) ([]*types.CollabDocFormResponse, error) {
+	limit := filter.Limit
+	if limit <= 0 || limit > 500 {
+		limit = 200
+	}
+	q := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND doc_id = ?", tenantID, docID).
+		Order("created_at DESC").
+		Limit(limit).
+		Offset(filter.Offset)
+	var rows []*types.CollabDocFormResponse
+	if err := q.Find(&rows).Error; err != nil {
+		return nil, fmt.Errorf("collab_doc_form_response list: %w", err)
+	}
+	return rows, nil
+}
+
+func (r *collabDocFormResponseRepository) CountByDoc(ctx context.Context, tenantID uint64, docID string) (int64, error) {
+	var n int64
+	err := r.db.WithContext(ctx).
+		Model(&types.CollabDocFormResponse{}).
+		Where("tenant_id = ? AND doc_id = ?", tenantID, docID).
+		Count(&n).Error
+	return n, err
+}
+
+func (r *collabDocFormResponseRepository) DeleteByDoc(ctx context.Context, tenantID uint64, docID string) (int64, error) {
+	res := r.db.WithContext(ctx).
+		Where("tenant_id = ? AND doc_id = ?", tenantID, docID).
+		Delete(&types.CollabDocFormResponse{})
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	return res.RowsAffected, nil
+}
+
+var _ interfaces.CollabDocFormResponseRepository = (*collabDocFormResponseRepository)(nil)

@@ -2530,3 +2530,107 @@ x-collab-doc-sha256: ca3a2eee01f16261ff64ce75286bf2d4775bb9d8d241f05be41ba829a8e
 8. **修复 `WikiDatabaseView.vue` `Invalid end tag`** 让 `npm run build-only` 绿灯
 9. **修复 `go test ./internal/handler` `capturingAuditService` 冲突**
 10. **DOC dark theme** — 待样式整理（用户明确"先不管样式"，跳过）
+
+## 39. v0.7.90 — FORM 公开填表 + 响应收集端到端（2026-09-01）
+
+### 39.1 新增文件
+
+| 类型 | 文件 |
+| --- | --- |
+| 迁移 | `migrations/sqlite/000055_collab_doc_form_responses.up.sql` + `.down.sql` |
+| 迁移 | `migrations/mysql/000048_collab_doc_form_responses.up.sql` + `.down.sql` |
+| 后端 | `internal/handler/collaborative_doc_form_response.go` (320 行) |
+| 前端 | `frontend/src/components/collab/CollabFormResponder.vue` (358 行) |
+| 前端 | `frontend/src/components/collab/CollabFormResponsesPanel.vue` (228 行) |
+| 前端 | `frontend/src/views/collab/PublicFormResponderView.vue` (25 行) |
+| 测试 | `frontend/wk-form-public.mjs` |
+
+### 39.2 修改文件
+
+后端：
+- `internal/types/collaborative_doc.go` — 新增 `CollabDocFormResponse`、`CreateCollabDocFormResponseRequest`、`ListCollabDocFormResponsesFilter`、`CollabDocFormResponseQuestionSummary`、`CollabDocFormResponseSummary`
+- `internal/types/interfaces/collab_doc.go` — 新增 `CollabDocFormResponseRepository`
+- `internal/application/repository/collab_doc.go` — `collabDocFormResponseRepository` 实现
+- `internal/application/service/collaborative_doc.go` — `responseRepo` 字段、`SubmitFormResponse`、`ListFormResponses`、`CountFormResponses`、`FormResponseSummary`、`summarizeFormResponses`
+- `internal/handler/collaborative_doc_bytes.go` — 新增 `ShareFormSchema` (GET `/share/:token/form-schema`)
+- `internal/middleware/auth.go` — `noAuthAPI` 白名单加 `/api/v1/collaborative-docs/*/responses` (POST) 和 `/api/v1/collaborative-docs/share/*` (GET)；重写 `isNoAuthAPI` 使用 `matchNoAuthPattern` 正则（**修复**原 strings.HasPrefix 不支持中段通配符的 bug）
+- `internal/router/routes_collaborative_doc.go` — 新增 `formRespH` 参数 + Register
+- `internal/router/router.go` — `CollabDocFormResponseHandler` 字段
+- `internal/container/container.go` — Provide `NewCollabDocFormResponseRepository` + `NewCollabDocFormResponseHandler`
+
+前端：
+- `frontend/src/api/collabDoc/index.ts` — 新增 `FormResponse` / `FormResponseSummary` / `FormResponseQuestionSummary` + `getFormResponses` + `getFormResponseSummary`
+- `frontend/src/components/collab/CollabFormEditor.vue` — 加 "查看响应" 按钮 + 集成 `<CollabFormResponsesPanel>`
+- `frontend/src/router/index.ts` — 新增 `publicFormResponder` 路由（`/form/:token`，`requiresAuth: false`）
+
+### 39.3 新增 Endpoint
+
+| Method | Path | Auth | 说明 |
+| --- | --- | --- | --- |
+| POST | `/api/v1/collaborative-docs/:id/responses` | optional | 提交表单响应（authed 用户或匿名 token） |
+| GET | `/api/v1/collaborative-docs/:id/responses` | owner | 列出响应 |
+| GET | `/api/v1/collaborative-docs/:id/responses/summary` | owner | 响应汇总（按题型） |
+| GET | `/api/v1/collaborative-docs/:id/responses/export.csv` | owner | CSV 导出 |
+| GET | `/api/v1/collaborative-docs/share/:token/form-schema` | public | 返回 `{doc_id, title, questions[], share_token, doc_kind}` |
+
+### 39.4 真实验证
+
+后端 curl 10 项测试（全部 ✅）：
+1. Authed submit → 201 返回 row
+2. Authed submit (rating) → 201
+3. List responses → 200, total=2 newest first
+4. Summary → 200, q1=2 texts, q2=1 multi-choice, q3=1 rating 5:1
+5. CSV export → 200 + 正确表头/行
+6. Public submit (no auth, share_token) → 201 submitter_user_id=0
+7. Public submit without share_token → 401
+8. Public submit wrong share_token → 401
+9. Share download (no auth) → 200 + 384 bytes JSON form.json
+10. Share form-schema (no auth) → 200, questions 数组完整
+
+浏览器端 Playwright E2E（`wk-form-public.mjs`）：
+- 匿名访问 `/form/<token>` → schema 加载、title "E2E 表单验证"、8 个 question 元素渲染
+- 填写 text + 5-star rating → 点击 submit
+- Thanks 页显示 ✅
+- Owner 端登录 → `/collab-documents/<doc_id>` → 点 "查看响应"
+- 列表显示 4 条响应（含本次匿名提交 "Tencent Docs parity via Playwright"）
+- Summary tab 显示 "共 4 条响应"
+
+输出：
+```
+anon schema: {"url":"...","title":"E2E 表单验证","itemCount":8}
+anon submit: {"thanksVisible":true,"error":""}
+owner list: {"panelVisible":true,"rowCount":4}
+owner summary: {"summaryVisible":true,"totalText":"共 4 条响应"}
+ALL OK
+```
+
+截图：`/tmp/wk-shots/form-anon-loaded.png`、`form-anon-thanks.png`、`form-responses-owner.png`、`form-responses-summary.png`
+
+### 39.5 Bug 修复
+
+1. **`hash.Hash.Sum` 语义错**（v0.7.88 已提交）：`sha256.New().Sum(row.Content)` 等于"空 hash + row.Content"，导致 17KB xlsx 被塞进 `X-Collab-Doc-SHA256` header 触发 Vite proxy 500。改为 `sha256.Sum256(row.Content)`。
+
+2. **`isNoAuthAPI` 中段通配符 bug**（v0.7.90）：旧逻辑 `strings.HasPrefix(path, strings.TrimSuffix(api, "*"))` 只支持末尾通配符（如 `/api/*`），不识别 `/api/v1/collaborative-docs/*/responses` 这种中段通配。重写为 `matchNoAuthPattern`，使用正则 `[^/]+` 替代，支持三种 pattern：exact match、segment wildcard（`*`）、trailing wildcard（`/path/*`）。修复后公开 submit/form-schema 接口正常放行。
+
+3. **`CollabFormResponder.vue` 模板残留**（v0.7.90）：`v-else-if="schema"` 引用不存在的响应式变量，应为 `questions.length > 0`，否则匿名页只显示空白。修复后 itemCount=8，question 全部渲染。
+
+### 39.6 当前文档能力现状
+
+| 能力 | DOC | SHEET | SLIDE | FORM |
+| --- | --- | --- | --- | --- |
+| 多人 CRDT 在线 | ✅ | ✅ | ✅ | ✅ |
+| 远端选区 awareness | ✅ | ✅ | ✅ | — |
+| 真实二进制 round-trip | ✅ | ✅ | ✅ | ✅ |
+| KB 同步入口 | ✅ | ✅ | ✅ | ✅ |
+| 动作型 E2E | ✅ | ✅ | ✅ | ✅ |
+| **公开填表 + 响应收集** | — | — | — | ✅ |
+| **真实 KB 入库（chunking）** | ❌ | ❌ | ❌ | ❌ |
+
+### 39.7 后续阶段
+
+1. 真实 KB 入库 — 接入 docparser/anydoc 后端 chunking/embedding
+2. DOC outline sidebar 持久化 — y.Map 保存重连恢复
+3. SHEET 多 sheet 实时协同 — 切换验证
+4. SLIDE 主题/母版 — vendor genoffice theme.ts
+5. 离线 y-indexeddb 端到端
+6. 历史版本 UI diff viewer

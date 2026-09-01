@@ -103,3 +103,19 @@ type CollabDocAuditRepository interface {
 	// DeleteByDoc removes every entry for a doc (used on hard delete).
 	DeleteByDoc(ctx context.Context, tenantID uint64, docID string) (int64, error)
 }
+
+// -----------------------------------------------------------------------------
+// v0.7.90 — collab_doc_form_responses repository
+// -----------------------------------------------------------------------------
+
+// CollabDocFormResponseRepository persists submitted answers for form
+// documents. The public responder page calls Create; the owner-side
+// summary/export endpoints call ListByDoc / Count. DeleteByDoc is invoked
+// when the owning doc is hard-deleted so we never leak PII across docs.
+type CollabDocFormResponseRepository interface {
+	Create(ctx context.Context, r *types.CollabDocFormResponse) error
+	Get(ctx context.Context, tenantID uint64, id uint64) (*types.CollabDocFormResponse, error)
+	ListByDoc(ctx context.Context, tenantID uint64, docID string, filter types.ListCollabDocFormResponsesFilter) ([]*types.CollabDocFormResponse, error)
+	CountByDoc(ctx context.Context, tenantID uint64, docID string) (int64, error)
+	DeleteByDoc(ctx context.Context, tenantID uint64, docID string) (int64, error)
+}

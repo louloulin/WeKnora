@@ -20,6 +20,10 @@
 //	DELETE /api/v1/collaborative-docs/:id/comments/:commentID — v0.7.29 remove
 //	GET    /api/v1/collaborative-docs/audit            — v0.7.30 list audit
 //	GET    /api/v1/collaborative-docs/audit/summary   — v0.7.30 summary
+//	POST   /api/v1/collaborative-docs/:id/responses      — v0.7.90 submit (public via share_token)
+//	GET    /api/v1/collaborative-docs/:id/responses      — v0.7.90 list (owner)
+//	GET    /api/v1/collaborative-docs/:id/responses/summary — v0.7.90 aggregate (owner)
+//	GET    /api/v1/collaborative-docs/:id/responses/export.csv — v0.7.90 export (owner)
 package router
 
 import (
@@ -41,6 +45,7 @@ func RegisterCollabDocRoutes(
 	ws *handler.CollabDocRealtimeWSHandler,
 	commentH *handler.CollabDocCommentHandler,
 	auditH *handler.CollabDocAuditHandler,
+	formRespH *handler.CollabDocFormResponseHandler,
 	g *rbacGuards,
 	redisClient *redis.Client,
 ) {
@@ -71,5 +76,8 @@ func RegisterCollabDocRoutes(
 	}
 	if commentH != nil {
 		commentH.Register(rg)
+	}
+	if formRespH != nil {
+		formRespH.Register(rg)
 	}
 }

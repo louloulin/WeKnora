@@ -48,28 +48,28 @@ import (
 	sqliteRetrieverRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/sqlite"
 	tencentVectorDBRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/tencentvectordb"
 	weaviateRepo "github.com/Tencent/WeKnora/internal/application/repository/retriever/weaviate"
-	connsvc "github.com/Tencent/WeKnora/internal/application/service/connector"
-	formulasvc "github.com/Tencent/WeKnora/internal/application/service/formula"
-	autosvc "github.com/Tencent/WeKnora/internal/application/service/automation"
-	kg "github.com/Tencent/WeKnora/internal/application/service/kg"
-	workflowsvc "github.com/Tencent/WeKnora/internal/application/service/workflow"
-	regionsvc "github.com/Tencent/WeKnora/internal/application/service/region"
-	docsvc "github.com/Tencent/WeKnora/internal/application/service/doc_integration"
-	mktsvc "github.com/Tencent/WeKnora/internal/application/service/marketplace"
+	"github.com/Tencent/WeKnora/internal/application/service"
 	asvc "github.com/Tencent/WeKnora/internal/application/service/agentstudio"
 	authzsvc "github.com/Tencent/WeKnora/internal/application/service/authzadmin"
-	dockbsvc "github.com/Tencent/WeKnora/internal/application/service/dockb"
-	dlpsvc "github.com/Tencent/WeKnora/internal/application/service/dlp"
-	"github.com/Tencent/WeKnora/internal/application/service"
-	verification "github.com/Tencent/WeKnora/internal/application/service/verification"
+	autosvc "github.com/Tencent/WeKnora/internal/application/service/automation"
 	chatpipeline "github.com/Tencent/WeKnora/internal/application/service/chat_pipeline"
+	connsvc "github.com/Tencent/WeKnora/internal/application/service/connector"
 	dbsvc "github.com/Tencent/WeKnora/internal/application/service/database"
-	mmsvc "github.com/Tencent/WeKnora/internal/application/service/mindmap"
-	sldsvc "github.com/Tencent/WeKnora/internal/application/service/slides"
-	webhooksvc "github.com/Tencent/WeKnora/internal/application/service/webhooks"
+	dlpsvc "github.com/Tencent/WeKnora/internal/application/service/dlp"
+	docsvc "github.com/Tencent/WeKnora/internal/application/service/doc_integration"
+	dockbsvc "github.com/Tencent/WeKnora/internal/application/service/dockb"
 	"github.com/Tencent/WeKnora/internal/application/service/file"
+	formulasvc "github.com/Tencent/WeKnora/internal/application/service/formula"
+	kg "github.com/Tencent/WeKnora/internal/application/service/kg"
+	mktsvc "github.com/Tencent/WeKnora/internal/application/service/marketplace"
 	"github.com/Tencent/WeKnora/internal/application/service/memory"
+	mmsvc "github.com/Tencent/WeKnora/internal/application/service/mindmap"
+	regionsvc "github.com/Tencent/WeKnora/internal/application/service/region"
 	"github.com/Tencent/WeKnora/internal/application/service/retriever"
+	sldsvc "github.com/Tencent/WeKnora/internal/application/service/slides"
+	verification "github.com/Tencent/WeKnora/internal/application/service/verification"
+	webhooksvc "github.com/Tencent/WeKnora/internal/application/service/webhooks"
+	workflowsvc "github.com/Tencent/WeKnora/internal/application/service/workflow"
 	"github.com/Tencent/WeKnora/internal/authz"
 	"github.com/Tencent/WeKnora/internal/common"
 	"github.com/Tencent/WeKnora/internal/config"
@@ -82,8 +82,8 @@ import (
 	imaConnector "github.com/Tencent/WeKnora/internal/datasource/connector/ima"
 	notionConnector "github.com/Tencent/WeKnora/internal/datasource/connector/notion"
 	rssConnector "github.com/Tencent/WeKnora/internal/datasource/connector/rss"
-	yuqueConnector "github.com/Tencent/WeKnora/internal/datasource/connector/yuque"
 	tencentdocsConnector "github.com/Tencent/WeKnora/internal/datasource/connector/tencentdocs/doc"
+	yuqueConnector "github.com/Tencent/WeKnora/internal/datasource/connector/yuque"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/geoiplookup"
 	"github.com/Tencent/WeKnora/internal/handler"
@@ -542,7 +542,6 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewWikiAclService))
 	must(container.Provide(service.NewWikiPageService))
 
-
 	// v0.7.24 — AI Connector framework.
 	// Build #25 (G05) wires the real KnowledgeIngester into the
 	// KnowledgeService.CreateKnowledgeFromManual path so connector
@@ -705,6 +704,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(repository.NewCollabDocFileRepository, dig.As(new(interfaces.CollabDocFileRepository))))
 	must(container.Provide(repository.NewCollabDocCommentRepository, dig.As(new(interfaces.CollabDocCommentRepository))))
 	must(container.Provide(repository.NewCollabDocAuditRepository, dig.As(new(interfaces.CollabDocAuditRepository))))
+	must(container.Provide(repository.NewCollabDocFormResponseRepository, dig.As(new(interfaces.CollabDocFormResponseRepository))))
 	must(container.Provide(func(docRepo interfaces.CollabDocRepository) service.CollabDocAuthorizer {
 		return service.NewCollabDocDefaultAuthorizer(docRepo)
 	}))
@@ -715,10 +715,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		fileRepo interfaces.CollabDocFileRepository,
 		commentRepo interfaces.CollabDocCommentRepository,
 		auditRepo interfaces.CollabDocAuditRepository,
+		responseRepo interfaces.CollabDocFormResponseRepository,
 		authz service.CollabDocAuthorizer,
 	) *service.CollabDocService {
-		return service.NewCollabDocService(docRepo, snapRepo, sessRepo, fileRepo, commentRepo, auditRepo, authz)
+		return service.NewCollabDocService(docRepo, snapRepo, sessRepo, fileRepo, commentRepo, auditRepo, responseRepo, authz)
 	}))
+	must(container.Provide(handler.NewCollabDocFormResponseHandler))
 	must(container.Provide(handler.NewCollabDocHandler))
 	must(container.Provide(handler.NewCollabDocBytesHandler))
 	must(container.Provide(handler.NewCollabDocRealtimeWSHandler))
@@ -769,7 +771,6 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(func(svc *service.WikiSyncBlockService) *handler.WikiSyncBlockHandler {
 		return handler.NewWikiSyncBlockHandler(svc)
 	}))
-
 
 	must(container.Provide(repository.NewWikiBatchJobRepository, dig.As(new(interfaces.WikiBatchJobRepository))))
 	must(container.Provide(repository.NewWikiBatchAuditRepository, dig.As(new(interfaces.WikiBatchAuditRepository))))

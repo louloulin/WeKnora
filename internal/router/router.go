@@ -105,17 +105,18 @@ type RouterParams struct {
 	WikiVerificationHandler      *handler.WikiVerificationHandler
 	WikiAclHandler               *handler.WikiAclHandler
 	WikiTagHandler               *handler.WikiTagHandler
-	WikiCommentHandler            *handler.WikiCommentHandler
+	WikiCommentHandler           *handler.WikiCommentHandler
 	WikiTemplateHandler          *handler.WikiTemplateHandler
 	WikiSearchV2Handler          *handler.WikiSearchV2Handler
 	WikiRealtimeWSHandler        *handler.WikiRealtimeWSHandler
-	CollabDocHandler            *handler.CollabDocHandler
+	CollabDocHandler             *handler.CollabDocHandler
 	CollabDocBytesHandler        *handler.CollabDocBytesHandler
 	CollabDocRealtimeWSHandler   *handler.CollabDocRealtimeWSHandler
 	CollabDocCommentHandler      *handler.CollabDocCommentHandler
 	CollabDocAuditHandler        *handler.CollabDocAuditHandler
+	CollabDocFormResponseHandler *handler.CollabDocFormResponseHandler
 	MindMapHandler               *handler.MindMapHandler
-	SlideHandler                  *handler.SlideHandler
+	SlideHandler                 *handler.SlideHandler
 	WikiSyncBlockHandler         *handler.WikiSyncBlockHandler
 	AgentStudioHandler           *handler.AgentStudioHandler
 	DLPAuthZHandler              *handler.DLPAuthZHandler
@@ -126,17 +127,17 @@ type RouterParams struct {
 	// citation-log route is registered when the handler is present.
 	CitationLogHandler *handler.CitationLogHandler
 	// v0.7.25 Build #22-#26 handlers.
-	ConnectorHandler    *handler.ConnectorHandler
-	WebhookHandler       *handler.WebhookHandler
-	InlineAIHandler     *handler.InlineAIHandler
-	AuditExportHandler  *handler.AuditExportHandler
-	DatabaseHandler     *handler.DatabaseHandler
-	AutomationHandler   *handler.AutomationHandler
-	KGHandler           *handler.KGHandler
-	WorkflowHandler     *handler.WorkflowHandler
-	RegionHandler       *handler.RegionHandler
+	ConnectorHandler      *handler.ConnectorHandler
+	WebhookHandler        *handler.WebhookHandler
+	InlineAIHandler       *handler.InlineAIHandler
+	AuditExportHandler    *handler.AuditExportHandler
+	DatabaseHandler       *handler.DatabaseHandler
+	AutomationHandler     *handler.AutomationHandler
+	KGHandler             *handler.KGHandler
+	WorkflowHandler       *handler.WorkflowHandler
+	RegionHandler         *handler.RegionHandler
 	DocIntegrationHandler *handler.DocIntegrationHandler
-	MarketplaceHandler     *handler.MarketplaceHandler
+	MarketplaceHandler    *handler.MarketplaceHandler
 }
 
 // NewRouter 创建新的路由
@@ -375,41 +376,42 @@ func NewRouter(params RouterParams) *gin.Engine {
 		}
 		if params.DatabaseHandler != nil {
 			RegisterDatabaseRoutes(v1, params.DatabaseHandler, rbacGuards)
-		if params.AutomationHandler != nil {
-			params.AutomationHandler.Register(v1)
-		}
-		if params.KGHandler != nil {
-			params.KGHandler.Mount(v1)
-		}
-		if params.WorkflowHandler != nil {
-			params.WorkflowHandler.Mount(v1)
-		}
-		if params.RegionHandler != nil {
-			params.RegionHandler.Mount(v1)
-		}
-		if params.DocIntegrationHandler != nil {
-			params.DocIntegrationHandler.Mount(v1)
-		}
-		if params.SlideHandler != nil {
-			params.SlideHandler.Mount(v1)
-		}
-		if params.WebhookHandler != nil {
-			RegisterWebhookRoutes(v1, params.WebhookHandler)
-		}
-		if params.CollabDocHandler != nil {
-			RegisterCollabDocRoutes(v1,
-				params.CollabDocHandler,
-				params.CollabDocBytesHandler,
-				params.CollabDocRealtimeWSHandler,
-				params.CollabDocCommentHandler,
-				params.CollabDocAuditHandler,
-				rbacGuards,
-				params.RedisClient,
-			)
-		}
-		if params.MarketplaceHandler != nil {
-			params.MarketplaceHandler.Mount(v1)
-		}
+			if params.AutomationHandler != nil {
+				params.AutomationHandler.Register(v1)
+			}
+			if params.KGHandler != nil {
+				params.KGHandler.Mount(v1)
+			}
+			if params.WorkflowHandler != nil {
+				params.WorkflowHandler.Mount(v1)
+			}
+			if params.RegionHandler != nil {
+				params.RegionHandler.Mount(v1)
+			}
+			if params.DocIntegrationHandler != nil {
+				params.DocIntegrationHandler.Mount(v1)
+			}
+			if params.SlideHandler != nil {
+				params.SlideHandler.Mount(v1)
+			}
+			if params.WebhookHandler != nil {
+				RegisterWebhookRoutes(v1, params.WebhookHandler)
+			}
+			if params.CollabDocHandler != nil {
+				RegisterCollabDocRoutes(v1,
+					params.CollabDocHandler,
+					params.CollabDocBytesHandler,
+					params.CollabDocRealtimeWSHandler,
+					params.CollabDocCommentHandler,
+					params.CollabDocAuditHandler,
+					params.CollabDocFormResponseHandler,
+					rbacGuards,
+					params.RedisClient,
+				)
+			}
+			if params.MarketplaceHandler != nil {
+				params.MarketplaceHandler.Mount(v1)
+			}
 		}
 
 		// Fail fast if any declared API-key policy points at a route

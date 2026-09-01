@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -60,21 +61,68 @@ var noAuthAPI = map[string][]string{
 	// before GET to validate Content-Type / Content-Length when rendering
 	// image previews — both verbs must be allowed for image links to work.
 	"/api/v1/files/presigned": {"GET", "HEAD"},
+	// v0.7.90 — public form response submission (Tencent Docs 收集表
+	// parity). Anonymous respondents reach the submit endpoint with a
+	// share_token in the query string; the handler enforces the token
+	// match against the doc's share_token before persisting. The list /
+	// summary / export endpoints stay auth-protected so anonymous
+	// respondents cannot enumerate other submitters.
+	"/api/v1/collaborative-docs/*/responses": {"POST"},
+	// v0.7.90 — public share-link download of the form schema bytes.
+	// Forms persist their schema as .form.json so the responder page
+	// can fetch the questions anonymously via share_token. The handler
+	// already enforces Visibility / expiry / password — opening this
+	// up just lets the share-token check stand on its own.
+	"/api/v1/collaborative-docs/share/*": {"GET"},
 }
 
 // 检查请求是否在无需认证的API列表中
 func isNoAuthAPI(path string, method string) bool {
 	for api, methods := range noAuthAPI {
-		// 如果以*结尾，按照前缀匹配，否则按照全路径匹配
-		if strings.HasSuffix(api, "*") {
-			if strings.HasPrefix(path, strings.TrimSuffix(api, "*")) && slices.Contains(methods, method) {
-				return true
-			}
-		} else if path == api && slices.Contains(methods, method) {
+		if !slices.Contains(methods, method) {
+			continue
+		}
+		if matchNoAuthPattern(api, path) {
 			return true
 		}
 	}
 	return false
+}
+
+// matchNoAuthPattern matches the whitelist entry against the request path.
+// Three shapes are supported:
+//   - exact match: "/api/v1/auth/login"
+//   - segment wildcard: "/api/v1/collaborative-docs/*/responses"
+//     where each `*` matches one path segment (any chars, no slashes).
+//   - trailing wildcard: "/api/v1/files/presigned/*"
+//     matches the prefix before the final `*` (one segment or more).
+//
+// The trailing-wildcard form is preserved for backwards compatibility with
+// the legacy whitelist entries.
+func matchNoAuthPattern(pattern, path string) bool {
+	if !strings.Contains(pattern, "*") {
+		return pattern == path
+	}
+	parts := strings.Split(pattern, "*")
+	// Trailing wildcard only (e.g. "/api/v1/files/presigned/*").
+	if len(parts) == 2 && parts[1] == "" {
+		return strings.HasPrefix(path, parts[0])
+	}
+	// Segment wildcards: each `*` must match a non-slash substring.
+	var b strings.Builder
+	b.WriteString("^")
+	for i, seg := range parts {
+		if i > 0 {
+			b.WriteString("[^/]+")
+		}
+		b.WriteString(regexp.QuoteMeta(seg))
+	}
+	b.WriteString("$")
+	re, err := regexp.Compile(b.String())
+	if err != nil {
+		return false
+	}
+	return re.MatchString(path)
 }
 
 // isTenantOptionalAPI lists authenticated identity-level operations that are
