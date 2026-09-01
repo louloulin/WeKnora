@@ -38,6 +38,14 @@ const (
 	// read+offline-export MVP; full inline collaborative editing is
 	// tracked as a follow-up.
 	CollaborativeDocKindSlide CollaborativeDocKind = "slide"
+	// CollaborativeDocKindForm is the form-builder equivalent to Tencent
+	// Docs 收集表 / Feishu Base forms. Editor: CollabFormEditor.vue
+	// (Y.Array<Question> + simple text/choice/rating widgets). Storage:
+	// plain JSON in the existing Yjs doc; bytes import/export round-trips
+	// through .form.json. Responses are kept alongside the doc under
+	// collab_doc_responses (added in a follow-up if/when response
+	// collection is wired).
+	CollaborativeDocKindForm CollaborativeDocKind = "form"
 )
 
 // ValidCollaborativeDocKinds is the closed set accepted by handlers; an
@@ -46,6 +54,7 @@ var ValidCollaborativeDocKinds = map[CollaborativeDocKind]bool{
 	CollaborativeDocKindDoc:   true,
 	CollaborativeDocKindSheet: true,
 	CollaborativeDocKindSlide: true,
+	CollaborativeDocKindForm:  true,
 }
 
 // ErrInvalidCollabDocKind is returned when the request carries a doc_kind

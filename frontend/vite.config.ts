@@ -141,6 +141,16 @@ export default defineConfig({
         target: DEV_PROXY_TARGET,
         changeOrigin: true,
         secure: false,
+      },
+      // v0.7.73 — collab docs (Feishu/Tencent document parity). The
+      // API client does not prefix these endpoints with /api/v1, so we
+      // proxy them directly. Keeps the existing /api proxy intact for
+      // everything else.
+      '/collaborative-docs': {
+        target: DEV_PROXY_TARGET,
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path: string) => `/api/v1${path}`,
       }
     }
   },
@@ -160,6 +170,12 @@ export default defineConfig({
         target: DEV_PROXY_TARGET,
         changeOrigin: true,
         secure: false,
+      },
+      '/collaborative-docs': {
+        target: DEV_PROXY_TARGET,
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path: string) => `/api/v1${path}`,
       }
     }
   }

@@ -57,6 +57,13 @@
           :display-name="displayName"
           :tenant-id="tenantId"
         />
+        <CollabFormEditor
+          v-else-if="doc.doc_kind === 'form'"
+          :doc-id="doc.id"
+          :title="doc.title"
+          :token="token"
+          :display-name="displayName"
+        />
         <div v-else>不支持的文档类型</div>
       </div>
     </template>
@@ -70,6 +77,7 @@ import { getCollabDoc, type CollabDoc } from '@/api/collabDoc'
 import CollabDocProEditor from '@/components/collab/CollabDocProEditor.vue'
 import CollabSheetEditor from '@/components/collab/CollabSheetEditor.vue'
 import CollabSlideKonvaEditor from '@/components/collab/CollabSlideKonvaEditor.vue'
+import CollabFormEditor from '@/components/collab/CollabFormEditor.vue'
 import CollabAuditTimeline from '@/components/collab/CollabAuditTimeline.vue'
 import CollabSharePasswordPanel from '@/components/collab/CollabSharePasswordPanel.vue'
 import { MessagePlugin } from 'tdesign-vue-next'

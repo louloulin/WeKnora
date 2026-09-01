@@ -210,13 +210,21 @@ func (h *CollabDocBytesHandler) tenantAndUser(c *gin.Context) (uint64, uint64, b
 }
 
 func kindFromFilename(name string) types.CollaborativeDocKind {
-	switch strings.ToLower(filepath.Ext(name)) {
+	ext := strings.ToLower(filepath.Ext(name))
+	lower := strings.ToLower(name)
+	// v0.7.73 — form JSON: accept `.form.json` and plain `.json` for form docs.
+	if ext == ".form.json" || (ext == ".json" && strings.HasSuffix(lower, ".form.json")) {
+		return types.CollaborativeDocKindForm
+	}
+	switch ext {
 	case ".docx":
 		return types.CollaborativeDocKindDoc
 	case ".pptx":
 		return types.CollaborativeDocKindSlide
 	case ".xlsx":
 		return types.CollaborativeDocKindSheet
+	case ".json":
+		return types.CollaborativeDocKindForm
 	}
 	return ""
 }
@@ -229,6 +237,8 @@ func extForKind(k types.CollaborativeDocKind) string {
 		return ".pptx"
 	case types.CollaborativeDocKindSheet:
 		return ".xlsx"
+	case types.CollaborativeDocKindForm:
+		return ".form.json"
 	}
 	return ""
 }
@@ -241,6 +251,8 @@ func mimeForKind(k types.CollaborativeDocKind) string {
 		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 	case types.CollaborativeDocKindSheet:
 		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	case types.CollaborativeDocKindForm:
+		return "application/json"
 	}
 	return "application/octet-stream"
 }

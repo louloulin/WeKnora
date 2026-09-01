@@ -156,9 +156,11 @@
             <button type="button" @click="featureDialog = null">取消</button>
             <button type="button" @click="onSparklineCommit">应用</button>
           </div>
+        </template>
 
-          <!-- v0.7.44 — Page Setup modal -->
-          <div v-else-if="featureDialog === 'pageSetup'" class="collab-sheet-editor__modal-body">
+        <!-- v0.7.44 — Page Setup modal -->
+        <template v-else-if="featureDialog === 'pageSetup'">
+          <div class="collab-sheet-editor__modal-body">
             <label>方向：
               <select v-model="pageOrientationInput">
                 <option value="portrait">纵向</option>
@@ -205,14 +207,16 @@
               <input type="text" v-model="pagePrintAreaInput" />
             </label>
           </div>
-          <div v-else-if="featureDialog === 'pageSetup'" class="collab-sheet-editor__modal-actions">
+          <div class="collab-sheet-editor__modal-actions">
             <button type="button" @click="onPageSetupClear">清除</button>
             <button type="button" @click="featureDialog = null">取消</button>
             <button type="button" @click="onPageSetupCommit">应用</button>
           </div>
+        </template>
 
-          <!-- v0.7.44 — Sheet Manage modal -->
-          <div v-else-if="featureDialog === 'sheetManage'" class="collab-sheet-editor__modal-body">
+        <!-- v0.7.44 — Sheet Manage modal -->
+        <template v-else-if="featureDialog === 'sheetManage'">
+          <div class="collab-sheet-editor__modal-body">
             <table class="collab-sheet-editor__sheet-manage">
               <thead>
                 <tr><th>顺序</th><th>原名</th><th>新名</th><th>可见</th><th></th></tr>
@@ -237,13 +241,15 @@
               </tbody>
             </table>
           </div>
-          <div v-else-if="featureDialog === 'sheetManage'" class="collab-sheet-editor__modal-actions">
+          <div class="collab-sheet-editor__modal-actions">
             <button type="button" @click="featureDialog = null">关闭</button>
             <button type="button" @click="applySheetRenames">应用改名</button>
           </div>
+        </template>
 
-          <!-- v0.7.45 — Note modal -->
-          <div v-else-if="featureDialog === 'note'" class="collab-sheet-editor__modal-body">
+        <!-- v0.7.45 — Note modal -->
+        <template v-else-if="featureDialog === 'note'">
+          <div class="collab-sheet-editor__modal-body">
             <label>单元格地址：
               <input type="text" v-model="noteRowInput" placeholder="行(数字)" style="width:60px" />
               <input type="text" v-model="noteColInput" placeholder="列(A,B,...)" style="width:60px" />
@@ -263,14 +269,16 @@
               </ul>
             </div>
           </div>
-          <div v-else-if="featureDialog === 'note'" class="collab-sheet-editor__modal-actions">
+          <div class="collab-sheet-editor__modal-actions">
             <button type="button" @click="onNoteClear">清除</button>
             <button type="button" @click="featureDialog = null">取消</button>
             <button type="button" @click="onNoteCommit">添加</button>
           </div>
+        </template>
 
-          <!-- v0.7.45 — Hyperlink modal -->
-          <div v-else-if="featureDialog === 'hyperlink'" class="collab-sheet-editor__modal-body">
+        <!-- v0.7.45 — Hyperlink modal -->
+        <template v-else-if="featureDialog === 'hyperlink'">
+          <div class="collab-sheet-editor__modal-body">
             <label>单元格地址：
               <input type="text" v-model="linkRowInput" placeholder="行(数字)" style="width:60px" />
               <input type="text" v-model="linkColInput" placeholder="列(A,B,...)" style="width:60px" />
@@ -287,14 +295,16 @@
               </ul>
             </div>
           </div>
-          <div v-else-if="featureDialog === 'hyperlink'" class="collab-sheet-editor__modal-actions">
+          <div class="collab-sheet-editor__modal-actions">
             <button type="button" @click="onHyperlinkClear">清除</button>
             <button type="button" @click="featureDialog = null">取消</button>
             <button type="button" @click="onHyperlinkCommit">添加</button>
           </div>
+        </template>
 
-          <!-- v0.7.45 — Table modal -->
-          <div v-else-if="featureDialog === 'table'" class="collab-sheet-editor__modal-body">
+        <!-- v0.7.45 — Table modal -->
+        <template v-else-if="featureDialog === 'table'">
+          <div class="collab-sheet-editor__modal-body">
             <label>表名：
               <input type="text" v-model="tableNameInput" placeholder="SalesTable" />
             </label>
@@ -320,7 +330,7 @@
               </ul>
             </div>
           </div>
-          <div v-else-if="featureDialog === 'table'" class="collab-sheet-editor__modal-actions">
+          <div class="collab-sheet-editor__modal-actions">
             <button type="button" @click="onTableClear">清除</button>
             <button type="button" @click="featureDialog = null">取消</button>
             <button type="button" @click="onTableCommit">添加</button>
@@ -362,6 +372,26 @@
           <tr v-for="(row, ri) in rows" :key="ri">
             <th class="collab-sheet-editor__rowhead">{{ ri + 1 }}</th>
             <td v-for="(col, ci) in cols" :key="ci">
+              <div
+                v-if="isCellLocked(ri, ci)"
+                class="collab-sheet-editor__cell-lock"
+                :style="{ color: cellLocker(ri, ci)?.color }"
+                :title="`正在编辑：${cellLocker(ri, ci)?.displayName}`"
+                :data-testid="`sheet-cell-lock-${ri}-${ci}`"
+              >
+                🔒
+              </div>
+              <div
+                v-if="remoteCellPeer(ri, ci)"
+                class="collab-sheet-editor__peer-label"
+                :style="{
+                  background: remoteCellPeer(ri, ci)?.color,
+                  borderColor: remoteCellPeer(ri, ci)?.color,
+                }"
+                :data-testid="`sheet-peer-label-${ri}-${ci}`"
+              >
+                {{ remoteCellPeer(ri, ci)?.displayName }}
+              </div>
               <input
                 class="collab-sheet-editor__cell-input"
                 :class="{
@@ -369,10 +399,13 @@
                   'is-percent': cellPercent(ri, ci),
                   'collab-sheet-editor__cell--selected': selectedRi === ri && selectedCi === ci,
                   'collab-sheet-editor__cell--remote': remoteCellPeer(ri, ci),
+                  'collab-sheet-editor__cell--locked': isCellLocked(ri, ci),
                 }"
                 :style="remoteCellStyle(ri, ci)"
                 :value="cellFormula(ri, ci) || cellText(ri, ci)"
-                :title="cellFormula(ri, ci) || ''"
+                :title="cellFormula(ri, ci) || (isCellLocked(ri, ci) ? `🔒 ${cellLocker(ri, ci)?.displayName} 正在编辑` : '')"
+                :readonly="isCellLocked(ri, ci)"
+                :data-cell="`${ri}-${ci}`"
                 @focus="onCellSelect(ri, ci)"
                 @click="onCellSelect(ri, ci)"
                 @input="setCell(ri, ci, ($event.target as HTMLInputElement).value)"
@@ -424,6 +457,7 @@ import {
   type SheetFilterState,
 } from '@/editor/adapters/xlsxFilter'
 import { applyCfRules, type CfWireRule } from '@/editor/adapters/xlsxCf'
+import { buildLockMap, cellKey, checkEditAllowed, type RemoteCellPeer } from '@/editor/adapters/xlsxCellLock'
 import { applyDvRules, type DvWireRule } from '@/editor/adapters/xlsxDv'
 import { applySparklineAdditions, type SparklineGroupAdd } from '@/editor/adapters/xlsxSparkline'
 import { transformWorkbook, transformPackage, inspectXlsx, type MutablePackage } from '@/editor/adapters/xlsxWorksheetIo'
@@ -549,6 +583,13 @@ const remoteCellStyle = (ri: number, ci: number) => {
   if (!p) return {}
   return { outline: `2px solid ${p.color}`, outlineOffset: '-1px' }
 }
+
+// v0.7.77 — soft optimistic cell lock (read-lock from awareness selection)
+const myClientId = computed(() => handle?.provider?.awareness?.clientID ?? -1)
+const lockMap = computed(() => buildLockMap(remoteSelections.value, myClientId.value))
+const isCellLocked = (ri: number, ci: number) => lockMap.value.has(cellKey(ri, ci))
+const cellLocker = (ri: number, ci: number): RemoteCellPeer | null =>
+  lockMap.value.get(cellKey(ri, ci)) ?? null
 
 // v0.7.38 — sheet comment anchor (cell-level)
 const commentAnchor = ref<{ type: 'sheet'; ref: string } | null>(null)
@@ -1228,6 +1269,16 @@ const buildCell = (raw: string | undefined): XlsxAdapterCell => {
 }
 
 const setCell = (ri: number, ci: number, value: string) => {
+  // v0.7.77 — soft optimistic lock: a peer currently editing this cell blocks our write.
+  const check = checkEditAllowed(remoteSelections.value, myClientId.value, ri, ci)
+  if (!check.allowed) {
+    // eslint-disable-next-line no-console
+    console.warn(`[CollabSheetEditor] cell (${ri},${ci}) is being edited by ${check.locker}; local edit rejected`)
+    // Restore the input value to the cell's current contents so the user sees why nothing happened.
+    const cellInput = document.querySelector<HTMLInputElement>(`input[data-cell="${ri}-${ci}"]`)
+    if (cellInput) cellInput.value = rows.value[ri]?.[ci] ?? ''
+    return
+  }
   rows.value[ri][ci] = value
   if (!ymap || !handle) return
   handle!.ydoc.transact(() => {
@@ -1578,7 +1629,36 @@ onBeforeUnmount(teardown)
 .collab-sheet-editor__table-wrap { flex: 1; overflow: auto; padding: 16px; }
 .collab-sheet-editor__grid { border-collapse: collapse; min-width: 100%; }
 .collab-sheet-editor__colhead, .collab-sheet-editor__rowhead { background: var(--td-bg-color-secondarycontainer); padding: 6px 8px; font-weight: 500; min-width: 80px; border: 1px solid var(--td-component-stroke); }
-.collab-sheet-editor__grid td { border: 1px solid var(--td-component-stroke); padding: 0; }
+.collab-sheet-editor__grid td { border: 1px solid var(--td-component-stroke); padding: 0; position: relative; }
+.collab-sheet-editor__cell-lock {
+  position: absolute;
+  top: 1px;
+  left: 2px;
+  font-size: 10px;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0.85;
+}
+.collab-sheet-editor__cell--locked { background: rgba(255, 200, 200, 0.3); cursor: not-allowed; }
+.collab-sheet-editor__peer-label {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  padding: 1px 6px;
+  font-size: 10px;
+  color: #fff;
+  border: 1px solid;
+  border-radius: 6px 0 4px 0;
+  pointer-events: none;
+  z-index: 4;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  white-space: nowrap;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .collab-sheet-editor__cell-input, .collab-sheet-editor__header-input { width: 100%; padding: 6px 8px; border: none; outline: none; background: transparent; }
 .collab-sheet-editor__cell-input:focus, .collab-sheet-editor__header-input:focus { background: var(--td-brand-color-1); }
 

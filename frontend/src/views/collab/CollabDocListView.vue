@@ -7,7 +7,7 @@
   <div class="collab-doc-list">
     <header class="collab-doc-list__header">
       <h2>协作文档</h2>
-      <p class="collab-doc-list__sub">类似飞书文档 / 腾讯文档：DOC、SHEET、SLIDE 三类多人实时协作。</p>
+      <p class="collab-doc-list__sub">类似飞书文档 / 腾讯文档：DOC、SHEET、SLIDE、FORM 四类多人实时协作。</p>
     </header>
     <section class="collab-doc-list__create">
       <input v-model="newTitle" placeholder="新文档标题" class="collab-doc-list__title-input" />
@@ -15,6 +15,7 @@
         <option value="doc">文档 (DOC)</option>
         <option value="sheet">表格 (SHEET)</option>
         <option value="slide">幻灯片 (SLIDE)</option>
+        <option value="form">收集表 (FORM)</option>
       </select>
       <input v-model="kbId" placeholder="知识库 ID" class="collab-doc-list__kb-input" />
       <button class="collab-doc-list__create-btn" :disabled="creating" @click="onCreate">新建</button>
@@ -71,6 +72,7 @@ const kinds = [
   { value: 'doc' as CollabDocKind, label: '文档' },
   { value: 'sheet' as CollabDocKind, label: '表格' },
   { value: 'slide' as CollabDocKind, label: '幻灯片' },
+  { value: 'form' as CollabDocKind, label: '收集表' },
 ]
 
 const filter = reactive<{ kind: CollabDocKind | '' }>({ kind: '' })
@@ -125,7 +127,7 @@ const onDelete = async (id: string) => {
   }
 }
 
-const kindLabel = (k: CollabDocKind) => ({ doc: '文档', sheet: '表格', slide: '幻灯片' }[k] || k)
+const kindLabel = (k: CollabDocKind) => ({ doc: '文档', sheet: '表格', slide: '幻灯片', form: '收集表' }[k] || k)
 const formatTime = (s: string) => new Date(s).toLocaleString()
 
 onMounted(reload)

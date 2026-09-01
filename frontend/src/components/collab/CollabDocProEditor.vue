@@ -33,6 +33,16 @@
       <button class="collab-doc-pro__btn" :disabled="downloading" @click="onDownload">
         {{ downloading ? '下载中...' : '下载 .docx' }}
       </button>
+      <button class="collab-doc-pro__btn" :disabled="uploading" @click="triggerDocUpload" type="button">
+        {{ uploading ? '上传中...' : '上传 .docx / .txt / .md' }}
+      </button>
+      <input
+        ref="docFileInput"
+        type="file"
+        accept=".docx,.txt,.md"
+        style="display:none"
+        @change="onUploadDocFile"
+      />
       <button class="collab-doc-pro__btn" :disabled="uploading" @click="onForceSave">
         {{ uploading ? '保存中...' : '立即保存' }}
       </button>
@@ -42,6 +52,54 @@
       <!-- v0.7.42 — Math formula (LaTeX → MathML) via docxAdapter.latexToDocxMath -->
       <button class="collab-doc-pro__btn" type="button" data-testid="doc-math-btn" @click="onOpenMath">
         公式
+      </button>
+      <button class="collab-doc-pro__btn" type="button" data-testid="doc-page-break-btn" @click="onInsertPageBreak">
+        分页符
+      </button>
+      <button class="collab-doc-pro__btn" type="button" data-testid="doc-hf-btn" @click="openHfModal">
+        页眉页脚
+      </button>
+      <!-- v0.7.67 — DOC document protection (Word "Review > Protect Document") -->
+      <button class="collab-doc-pro__btn" type="button" data-testid="doc-protect-btn" @click="openProtectModal">
+        {{ protectionEnabled ? '已保护' : '保护文档' }}
+      </button>
+      <!-- v0.7.68 — DOC track changes / accept-all / reject-all (Word "Review" ribbon) -->
+      <button class="collab-doc-pro__btn" type="button" data-testid="doc-revisions-btn" @click="openRevisionsPanel">
+        修订 ({{ revisionCount }})
+      </button>
+      <!-- v0.7.69 — DOC compare (Word "Review > Compare") -->
+      <button class="collab-doc-pro__btn" type="button" data-testid="doc-compare-btn" @click="openCompareModal">
+        对比文档
+      </button>
+      <!-- v0.7.71 — DOC heading outline (Word "View > Navigation Pane") -->
+      <button
+        class="collab-doc-pro__btn"
+        type="button"
+        data-testid="doc-outline-btn"
+        :disabled="!editor"
+        @click="onToggleOutline"
+      >
+        {{ outlineOpen ? '关闭大纲' : '大纲' }}
+      </button>
+      <!-- v0.7.72 — DOC page setup / multi-section preview -->
+      <button
+        class="collab-doc-pro__btn"
+        type="button"
+        data-testid="doc-sections-btn"
+        :disabled="!doc"
+        @click="openSectionsModal"
+      >
+        页面设置
+      </button>
+      <!-- v0.7.73 — DOC find / replace (Word "Home > Find" / Ctrl+F) -->
+      <button
+        class="collab-doc-pro__btn"
+        type="button"
+        data-testid="doc-find-btn"
+        :disabled="!editor"
+        @click="openFindPanel"
+      >
+        {{ findOpen ? '关闭查找' : '查找' }}
       </button>
       <button class="collab-doc-pro__btn" :disabled="!doc" @click="onToggleHistory" type="button">
         {{ historyOpen ? '关闭历史' : '版本历史' }}
@@ -58,8 +116,8 @@
       </span>
     </div>
     <div v-if="loading" class="collab-doc-pro__loading">加载文档中…</div>
-    <div v-else-if="loadError" class="collab-doc-pro__error">加载失败：{{ loadError }}</div>
-    <template v-else>
+    <div v-if="!loading && loadError" class="collab-doc-pro__error">加载失败：{{ loadError }}</div>
+    <div v-if="!loading && !loadError" class="collab-doc-pro__main">
       <div class="collab-doc-pro__formatbar" v-if="editor">
         <button class="collab-doc-pro__fmt" :class="{ active: isMarkActive('bold') }" @click="runMark('bold')" type="button" title="粗体 (Ctrl+B)"><b>B</b></button>
         <button class="collab-doc-pro__fmt" :class="{ active: isMarkActive('italic') }" @click="runMark('italic')" type="button" title="斜体 (Ctrl+I)"><i>I</i></button>
@@ -79,6 +137,9 @@
         <span class="collab-doc-pro__sep"></span>
         <button class="collab-doc-pro__fmt" :class="{ active: isMarkActive('link') }" @click="onSetLink" type="button" title="链接">🔗</button>
         <button class="collab-doc-pro__fmt" @click="onInsertTable" type="button" title="插入表格">⊞</button>
+        <button class="collab-doc-pro__fmt" @click="onSetColumnWidth" type="button" title="调整列宽 (px)">⇔ 列宽</button>
+        <button class="collab-doc-pro__fmt" @click="onApplyTablePreset" type="button" title="表格样式 (蓝/灰/无)">🎨 样式</button>
+        <button class="collab-doc-pro__fmt" @click="onToggleRepeatHeader" type="button" title="跨页重复表头">⇕ 表头</button>
         <button class="collab-doc-pro__fmt" @click="onInsertImageUrl" type="button" title="插入图片">🖼</button>
       <button class="collab-doc-pro__btn" @click="onInsertImageFile" type="button" title="插入本地图片">📁 图片</button>
       <input ref="fileImageInput" type="file" accept="image/*" style="display:none" @change="onImageFileChosen" />
@@ -88,6 +149,10 @@
         <span class="collab-doc-pro__sep"></span>
         <button class="collab-doc-pro__fmt" @click="runNode('undo')" type="button" title="撤销 (Ctrl+Z)">↶</button>
         <button class="collab-doc-pro__fmt" @click="runNode('redo')" type="button" title="重做 (Ctrl+Y)">↷</button>
+        <button class="collab-doc-pro__fmt" type="button" data-testid="doc-move-up" :disabled="!editor" title="上移段落 (Alt+Shift+↑)" @click="onMoveBlock(-1)">↑</button>
+        <button class="collab-doc-pro__fmt" type="button" data-testid="doc-move-down" :disabled="!editor" title="下移段落 (Alt+Shift+↓)" @click="onMoveBlock(1)">↓</button>
+        <button class="collab-doc-pro__fmt" type="button" data-testid="doc-case" :disabled="!editor" title="大小写切换 (Shift+F3)" @click="onCycleCase">Aa</button>
+        <button class="collab-doc-pro__fmt" type="button" data-testid="doc-clear-fmt" :disabled="!editor || !canClearFormat" title="清除格式 (Ctrl+Space)" @click="onClearFormat">⌫</button>
       </div>
       <div class="collab-doc-pro__surface-wrap">
       <EditorContent :editor="editor" class="collab-doc-pro__surface" />
@@ -99,6 +164,7 @@
         @close="aiOpen = false"
         @accept="onAcceptAi"
       />
+      </div>
       <!-- v0.7.42 — Math formula dialog (LaTeX in, MathML out) -->
       <div v-if="mathOpen" class="collab-doc-pro__math-bg" @click="mathOpen = false">
         <div class="collab-doc-pro__math" @click.stop>
@@ -112,10 +178,197 @@
           ></textarea>
           <div class="collab-doc-pro__math-preview" data-testid="doc-math-preview" v-html="mathPreviewHtml"></div>
           <p v-if="mathError" class="collab-doc-pro__math-error" data-testid="doc-math-error">{{ mathError }}</p>
+        </div>
+      </div>
+      <!-- v0.7.66 — DOC header/footer editor -->
+      <div v-if="hfOpen" class="collab-doc-pro__math-bg" @click="hfOpen = false">
+        <div class="collab-doc-pro__math" @click.stop>
+          <h3>页眉页脚</h3>
+          <label>页眉文本：
+            <input v-model="headerTextInput" class="collab-doc-pro__math-input" placeholder="默认页眉" />
+          </label>
+          <label>页脚文本：
+            <input v-model="footerTextInput" class="collab-doc-pro__math-input" placeholder="默认页脚" />
+          </label>
+          <label>
+            <input type="checkbox" v-model="footerPageNumberInput" />
+            页脚自动追加页码 (PAGE 字段)
+          </label>
+          <div class="collab-doc-pro__math-actions">
+            <button type="button" @click="hfOpen = false">取消</button>
+            <button type="button" data-testid="doc-hf-clear" @click="onHfClear">清除</button>
+            <button type="button" data-testid="doc-hf-save" @click="onHfSave">保存</button>
+          </div>
           <div class="collab-doc-pro__math-actions">
             <button type="button" @click="mathOpen = false">取消</button>
             <button type="button" data-testid="doc-math-insert" @click="onInsertMath">插入文档</button>
           </div>
+        </div>
+      </div>
+      <!-- v0.7.67 — DOC document protection dialog (Word-style) -->
+      <div v-if="protectOpen" class="collab-doc-pro__math-bg" @click="protectOpen = false">
+        <div class="collab-doc-pro__math collab-doc-pro__protect" @click.stop>
+          <h3>保护文档</h3>
+          <p class="collab-doc-pro__protect-desc">
+            设置编辑限制：跟踪修订 / 仅评论 / 只读 / 表单填写。可选密码保护。
+          </p>
+          <label class="collab-doc-pro__protect-row">
+            <input
+              type="checkbox"
+              data-testid="doc-protect-enabled"
+              :checked="protectPatch.enabled"
+              @change="onProtectEnabledChange(($event.target as HTMLInputElement).checked)"
+            />
+            开启编辑限制
+          </label>
+          <template v-if="protectPatch.enabled">
+            <label class="collab-doc-pro__protect-row">
+              限制模式：
+              <select
+                v-model="protectPatch.mode"
+                data-testid="doc-protect-mode"
+                @change="protectPatch.mode = ($event.target as HTMLSelectElement).value as any"
+              >
+                <option value="trackedChanges">跟踪修订</option>
+                <option value="comments">仅评论</option>
+                <option value="readOnly">只读</option>
+                <option value="forms">表单填写</option>
+              </select>
+            </label>
+            <label class="collab-doc-pro__protect-row">
+              取消限制密码（保留现有密码时留空）：
+              <input
+                v-model="protectPatch.unlockPassword"
+                type="password"
+                data-testid="doc-protect-unlock"
+                placeholder="输入现有密码"
+              />
+            </label>
+            <label class="collab-doc-pro__protect-row">
+              新密码（清除密码请留空，6 位以上）：
+              <input
+                v-model="protectPatch.password"
+                type="password"
+                data-testid="doc-protect-pwd"
+                placeholder="至少 6 位"
+              />
+            </label>
+            <label class="collab-doc-pro__protect-row">
+              确认密码：
+              <input
+                v-model="protectPatch.passwordConfirm"
+                type="password"
+                data-testid="doc-protect-pwd2"
+                placeholder="再次输入"
+              />
+            </label>
+            <p v-if="protectPatch.error" class="collab-doc-pro__math-error" data-testid="doc-protect-error">
+              {{ protectErrorText }}
+            </p>
+          </template>
+          <div class="collab-doc-pro__math-actions">
+            <button type="button" @click="protectOpen = false">取消</button>
+            <button type="button" data-testid="doc-protect-clear" @click="onProtectClear" :disabled="!protectPatch.enabled">
+              清除保护
+            </button>
+            <button type="button" data-testid="doc-protect-save" @click="onProtectSave" :disabled="protectPatch.busy">
+              {{ protectPatch.busy ? '保存中...' : '应用' }}
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- v0.7.68 — DOC track changes / revisions panel -->
+      <div v-if="revisionsOpen" class="collab-doc-pro__math-bg" @click="revisionsOpen = false">
+        <div class="collab-doc-pro__math collab-doc-pro__revisions" @click.stop>
+          <h3>修订记录（接受 / 拒绝）</h3>
+          <p class="collab-doc-pro__protect-desc">
+            Word 风格的修订面板：按作者分组，一键全部接受或拒绝。
+          </p>
+          <div v-if="revisions.length === 0" class="collab-doc-pro__revisions-empty">
+            当前文档无修订记录
+          </div>
+          <ul v-else class="collab-doc-pro__revisions-list" data-testid="doc-revisions-list">
+            <li v-for="(group, idx) in revisionsByAuthor" :key="idx" class="collab-doc-pro__revisions-group">
+              <div class="collab-doc-pro__revisions-author">
+                <strong>{{ group.author || '匿名' }}</strong>
+                <span class="collab-doc-pro__revisions-count">{{ group.count }} 处</span>
+              </div>
+              <ul class="collab-doc-pro__revisions-items">
+                <li v-for="(rev, i) in group.items" :key="i" class="collab-doc-pro__revisions-item">
+                  <span class="collab-doc-pro__revisions-kind">{{ revisionLabel(rev.kind) }}</span>
+                  <span class="collab-doc-pro__revisions-snippet">{{ rev.snippet }}</span>
+                </li>
+              </ul>
+              <div class="collab-doc-pro__math-actions">
+                <button type="button" data-testid="doc-revisions-goto" @click="onRevisionGoto(group.items[0])">
+                  跳到下一处
+                </button>
+                <button type="button" data-testid="doc-revisions-accept-author" @click="onAcceptAuthor(group.author)">
+                  全部接受
+                </button>
+                <button type="button" data-testid="doc-revisions-reject-author" @click="onRejectAuthor(group.author)">
+                  全部拒绝
+                </button>
+              </div>
+            </li>
+          </ul>
+          <div class="collab-doc-pro__math-actions">
+            <button type="button" data-testid="doc-revisions-accept-all" @click="onAcceptAll" :disabled="revisions.length === 0">
+              全部接受
+            </button>
+            <button type="button" data-testid="doc-revisions-reject-all" @click="onRejectAll" :disabled="revisions.length === 0">
+              全部拒绝
+            </button>
+            <button type="button" @click="revisionsOpen = false">关闭</button>
+          </div>
+        </div>
+      </div>
+      <!-- v0.7.69 — DOC compare panel -->
+      <div v-if="compareOpen" class="collab-doc-pro__math-bg" @click="compareOpen = false">
+        <div class="collab-doc-pro__math collab-doc-pro__compare" @click.stop>
+          <h3>对比文档</h3>
+          <p class="collab-doc-pro__protect-desc">
+            选择另一个 .docx 文件，按段落级别比对两份文档的差异。
+          </p>
+          <div v-if="!compareOther" class="collab-doc-pro__compare-upload">
+            <input
+              type="file"
+              accept=".docx"
+              data-testid="doc-compare-input"
+              @change="onCompareFileSelected"
+            />
+            <p class="collab-doc-pro__protect-desc">（仅解析段落文本，不上传）</p>
+          </div>
+          <template v-else>
+            <div class="collab-doc-pro__compare-meta">
+              对比文件：<strong>{{ compareOther.name }}</strong> ·
+              <span class="collab-doc-pro__compare-stat added">+{{ compareSummary.added }}</span> ·
+              <span class="collab-doc-pro__compare-stat removed">−{{ compareSummary.removed }}</span> ·
+              <span class="collab-doc-pro__compare-stat changed">~{{ compareSummary.changed }}</span>
+            </div>
+            <div v-if="compareSummary.added + compareSummary.removed + compareSummary.changed === 0" class="collab-doc-pro__compare-empty">
+              两份文档完全一致
+            </div>
+            <div v-else class="collab-doc-pro__compare-list" data-testid="doc-compare-list">
+              <div v-for="(row, idx) in compareRows" :key="idx" class="collab-doc-pro__compare-row" :class="'collab-doc-pro__compare-row--' + row.kind">
+                <span v-if="row.kind === 'same'" class="collab-doc-pro__compare-same">…{{ row.count }} 处未变更…</span>
+                <template v-else-if="row.entry">
+                  <div v-if="row.entry.kind === 'removed' || row.entry.kind === 'changed'" class="collab-doc-pro__compare-cell collab-doc-pro__compare-cell--left">
+                    <span class="collab-doc-pro__compare-label">当前</span>
+                    <span>{{ row.entry.left || '（空）' }}</span>
+                  </div>
+                  <div v-if="row.entry.kind === 'added' || row.entry.kind === 'changed'" class="collab-doc-pro__compare-cell collab-doc-pro__compare-cell--right">
+                    <span class="collab-doc-pro__compare-label">对比</span>
+                    <span>{{ row.entry.right || '（空）' }}</span>
+                  </div>
+                </template>
+              </div>
+            </div>
+            <div class="collab-doc-pro__math-actions">
+              <button type="button" @click="compareOther = null">重新选择</button>
+              <button type="button" @click="compareOpen = false">关闭</button>
+            </div>
+          </template>
         </div>
       </div>
       <div v-if="historyOpen" class="collab-doc-pro__history">
@@ -133,8 +386,154 @@
           </div>
         </div>
       </div>
+      <!-- v0.7.71 — DOC outline panel (heading navigation) -->
+      <div v-if="outlineOpen" class="collab-doc-pro__outline" data-testid="doc-outline-panel">
+        <div class="collab-doc-pro__outline-head">
+          <span>文档大纲</span>
+          <span class="collab-doc-pro__outline-count">{{ outlineList.length }} 个标题</span>
+        </div>
+        <div v-if="outlineList.length === 0" class="collab-doc-pro__outline-empty">文档暂无标题</div>
+        <div v-else class="collab-doc-pro__outline-list">
+          <button
+            v-for="(h, i) in outlineList"
+            :key="`${h.pos}-${i}`"
+            class="collab-doc-pro__outline-item"
+            :class="`collab-doc-pro__outline-item--l${Math.min(h.level, 4)}`"
+            :data-tip="h.text"
+            :data-testid="`doc-outline-item-${i}`"
+            type="button"
+            @click="onOutlineJump(h)"
+          >{{ h.text }}</button>
+        </div>
+      </div>
     </div>
-    </template>
+    <!-- v0.7.72 — DOC page-setup / multi-section preview modal -->
+    <div v-if="sectionsOpen" class="collab-doc-pro__math-bg" @click="closeSectionsModal">
+      <div
+        class="collab-doc-pro__math collab-doc-pro__sections"
+        data-testid="doc-sections-modal"
+        @click.stop
+      >
+        <div class="collab-doc-pro__math-head">页面设置（共 {{ sectionsList.length }} 节）</div>
+        <div class="collab-doc-pro__sections-body">
+          <div class="collab-doc-pro__sections-list" data-testid="doc-sections-list">
+            <button
+              v-for="s in sectionsList"
+              :key="s.index"
+              type="button"
+              class="collab-doc-pro__sections-item"
+              :class="{ active: sectionsSelected === s.index }"
+              :data-testid="`doc-section-item-${s.index}`"
+              @click="onSelectSection(s.index)"
+            >
+              {{ formatSectionSummary(s) }}
+            </button>
+            <div v-if="sectionsList.length === 0" class="collab-doc-pro__sections-empty">暂无节信息</div>
+          </div>
+          <div v-if="sectionsList[sectionsSelected]" class="collab-doc-pro__sections-detail" data-testid="doc-sections-detail">
+            <div class="collab-doc-pro__sections-row">
+              <span class="collab-doc-pro__sections-label">纸张</span>
+              <span class="collab-doc-pro__sections-value">{{ paperLabel(sectionsList[sectionsSelected]!.settings) }}</span>
+            </div>
+            <div class="collab-doc-pro__sections-row">
+              <span class="collab-doc-pro__sections-label">方向</span>
+              <span class="collab-doc-pro__sections-value">{{ sectionsList[sectionsSelected]!.settings.orientation === 'landscape' ? '横向' : '纵向' }}</span>
+            </div>
+            <div class="collab-doc-pro__sections-row">
+              <span class="collab-doc-pro__sections-label">分节方式</span>
+              <span class="collab-doc-pro__sections-value">{{ sectionsList[sectionsSelected]!.startType }}</span>
+            </div>
+            <div class="collab-doc-pro__sections-row">
+              <span class="collab-doc-pro__sections-label">上 / 下边距</span>
+              <span class="collab-doc-pro__sections-value">
+                {{ fromTwips(sectionsList[sectionsSelected]!.settings.marginTop, 'inches') }}″ /
+                {{ fromTwips(sectionsList[sectionsSelected]!.settings.marginBottom, 'inches') }}″
+              </span>
+            </div>
+            <div class="collab-doc-pro__sections-row">
+              <span class="collab-doc-pro__sections-label">左 / 右边距</span>
+              <span class="collab-doc-pro__sections-value">
+                {{ fromTwips(sectionsList[sectionsSelected]!.settings.marginLeft, 'inches') }}″ /
+                {{ fromTwips(sectionsList[sectionsSelected]!.settings.marginRight, 'inches') }}″
+              </span>
+            </div>
+            <div class="collab-doc-pro__sections-row">
+              <span class="collab-doc-pro__sections-label">分栏</span>
+              <span class="collab-doc-pro__sections-value">{{ sectionsList[sectionsSelected]!.settings.columns }} 栏</span>
+            </div>
+            <div class="collab-doc-pro__sections-row">
+              <span class="collab-doc-pro__sections-label">首页独立</span>
+              <span class="collab-doc-pro__sections-value">{{ sectionsList[sectionsSelected]!.titlePg ? '是' : '否' }}</span>
+            </div>
+            <div class="collab-doc-pro__sections-row">
+              <span class="collab-doc-pro__sections-label">块范围</span>
+              <span class="collab-doc-pro__sections-value">
+                #{{ sectionsList[sectionsSelected]!.firstBlockIndex }} – #{{ sectionsList[sectionsSelected]!.lastBlockIndex }}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="collab-doc-pro__math-actions">
+          <button type="button" @click="closeSectionsModal">关闭</button>
+        </div>
+      </div>
+    </div>
+    <!-- v0.7.73 — DOC find / replace panel (Word Home > Find / Replace) -->
+    <div v-if="findOpen" class="collab-doc-pro__math-bg" @click="closeFindPanel">
+      <div
+        class="collab-doc-pro__math collab-doc-pro__find"
+        data-testid="doc-find-panel"
+        @click.stop
+      >
+        <div class="collab-doc-pro__math-head">查找与替换</div>
+        <div class="collab-doc-pro__find-field">
+          <label class="collab-doc-pro__find-label">查找内容</label>
+          <input
+            ref="findQueryInput"
+            v-model="findQuery"
+            type="text"
+            class="collab-doc-pro__find-input"
+            data-testid="doc-find-input"
+            placeholder="输入要查找的文本"
+            @input="onFindQueryInput"
+          />
+        </div>
+        <div class="collab-doc-pro__find-field">
+          <label class="collab-doc-pro__find-label">替换为</label>
+          <input
+            v-model="findReplaceWith"
+            type="text"
+            class="collab-doc-pro__find-input"
+            data-testid="doc-find-replace-input"
+            placeholder="（留空则删除）"
+          />
+        </div>
+        <div class="collab-doc-pro__find-opts">
+          <label class="collab-doc-pro__find-opt">
+            <input v-model="findMatchCase" type="checkbox" data-testid="doc-find-case" @change="onFindOptsChange" />
+            区分大小写
+          </label>
+          <label class="collab-doc-pro__find-opt">
+            <input v-model="findWholeWord" type="checkbox" data-testid="doc-find-word" @change="onFindOptsChange" />
+            全字匹配
+          </label>
+        </div>
+        <div class="collab-doc-pro__find-status" data-testid="doc-find-status">
+          <span v-if="!findQuery">输入关键词开始查找</span>
+          <span v-else-if="findMatchesList.length === 0">未找到匹配</span>
+          <span v-else>
+            第 {{ findCurrentIdx + 1 }} / {{ findMatchesList.length }} 处匹配
+          </span>
+        </div>
+        <div class="collab-doc-pro__find-actions">
+          <button type="button" data-testid="doc-find-prev" :disabled="findMatchesList.length === 0" @click="goToPrevMatch">上一个</button>
+          <button type="button" data-testid="doc-find-next" :disabled="findMatchesList.length === 0" @click="goToNextMatch">下一个</button>
+          <button type="button" data-testid="doc-find-replace" :disabled="findCurrentIdx < 0" @click="doReplaceCurrent">替换</button>
+          <button type="button" data-testid="doc-find-replace-all" :disabled="findMatchesList.length === 0" @click="doReplaceAll">全部替换</button>
+          <button type="button" data-testid="doc-find-close" @click="closeFindPanel">关闭</button>
+        </div>
+      </div>
+    </div>
     <!-- v0.7.29 — comments side panel -->
     <CollabCommentsPanel
       :doc-id="docId"
@@ -142,6 +541,9 @@
       :anchor="commentAnchor"
       anchor-label="段落选区"
       placeholder="对选中的段落添加评论…"
+      @created="onCommentCreated"
+      @deleted="onCommentDeleted"
+      @loaded="onCommentsLoaded"
     />
   </div>
 </template>
@@ -151,10 +553,9 @@ import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { Editor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
-import Table from '@tiptap/extension-table'
-import TableRow from '@tiptap/extension-table-row'
-import TableCell from '@tiptap/extension-table-cell'
-import TableHeader from '@tiptap/extension-table-header'
+import { DocTable, DocTableRow, DocTableCell, DocTableHeader } from '@/editor/adapters/docTableExtras'
+import { applyTablePreset, toggleRepeatHeaderRows } from '@/editor/adapters/docTableProperties'
+import { DocTableHandle } from '@/editor/adapters/docTableHandle'
 import Image from '@tiptap/extension-image'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
@@ -173,9 +574,9 @@ import {
   saveDocxBytesWithImages,
   patchParagraphText,
   latexToDocxMath,
-  mathDisplayParagraph,
   docxMathToMathML,
   buildBlankDocxDoc,
+  pmDocToSavePlan,
   type DocxAdapterDocument,
   type DocxAdapterParagraph,
 } from '@/editor/adapters/docxAdapter'
@@ -184,7 +585,45 @@ import {
   uploadCollabDocBytes,
 } from '@/api/collabDoc'
 import { MessagePlugin } from 'tdesign-vue-next'
+import { importTextToDocParagraphs, type DocImportParagraph } from '@/editor/adapters/docTextImport'
 import CollabAiPolishDialog from './CollabAiPolishDialog.vue'
+import { DocInlineMath, DocProtected } from '@/editor/adapters/docNodes'
+import { equationBlockJson } from '@/editor/adapters/docEquation'
+import { setSelectedColumnWidth, constrainSelectedTableWidth } from '@/editor/adapters/docTableSizing'
+import { CommentMark, addCommentToSelection, removeCommentFromDoc } from '@/editor/adapters/docComments'
+import { DocPageBreak } from '@/editor/adapters/docPageBreak'
+import { collectHeadings, type HeadingRef } from '@/editor/adapters/docHeadings'
+import { findMatches, replaceMatch, replaceAllMatches, type FindRange, type FindOptions } from '@/editor/adapters/docFind'
+import { moveBlocks } from '@/editor/adapters/docMoveBlock'
+import { markdownPasteHtml } from '@/editor/adapters/docMarkdownPaste'
+import { applyCase, nextCaseMode, type CaseMode } from '@/editor/adapters/docCaseTransform'
+import { clearFormatting, hasFormatting } from '@/editor/adapters/docClearFormat'
+import { getDocumentSections, formatSectionSummary, fromTwips, paperLabel, type DocSectionSummary } from '@/editor/adapters/docSections'
+import { hashProtectionPassword } from '@/editor/engines/docx-engine/index'
+import {
+  makeProtectionPatch,
+  applyDocProtection,
+  validateProtectionPatch,
+  PROTECTION_I18N,
+  type DocProtectionPatch,
+} from '@/editor/adapters/docProtection'
+import {
+  acceptAllRevisions,
+  rejectAllRevisions,
+  applyRevisionsBy,
+  collectRevisions,
+  gotoRevision,
+  revisionLabel,
+} from '@/editor/adapters/docRevisions'
+import {
+  compareParagraphs,
+  summarize,
+  blockTexts,
+  type CompareEntry,
+} from '@/editor/adapters/docCompare'
+import type { DocProtection, WriteProtection } from '@/editor/engines/docx-engine'
+import type { CollabDocComment } from '@/api/collabDoc'
+import type { CommentInfo } from '@/editor/engines/docx-engine'
 
 const props = defineProps<{
   docId: string
@@ -209,6 +648,148 @@ const aiOriginal = ref('')
 let aiTargetIndex: number | null = null
 const historyOpen = ref(false)
 
+// v0.7.71 — DOC heading outline (mirrors genoffice NavPane.tsx, Vue port).
+// collectHeadings reads the live ProseMirror doc; outlineTick bumps on every
+// editor update so the list re-renders even when the doc ref would otherwise
+// short-circuit the computed (Pinia/Vue reactivity on `state` is shallow).
+const outlineOpen = ref(false)
+const outlineTick = ref(0)
+const outlineList = computed<HeadingRef[]>(() => {
+  outlineTick.value
+  if (!editor.value) return []
+  return collectHeadings(editor.value.state.doc)
+})
+const onToggleOutline = () => {
+  outlineOpen.value = !outlineOpen.value
+  outlineTick.value++
+}
+const onOutlineJump = (h: HeadingRef) => {
+  if (!editor.value) return
+  const dom = editor.value.view.nodeDOM(h.pos) as HTMLElement | null
+  dom?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  // Place caret inside the heading so the next keystroke lands there.
+  editor.value.commands.focus(h.pos + 1)
+}
+
+// v0.7.72 — DOC page-setup / multi-section panel.
+// Read-only preview of all sections in document order (paper, orientation,
+// margins, columns). Uses getDocumentSections on the latest parsed doc.
+const sectionsOpen = ref(false)
+const sectionsList = ref<DocSectionSummary[]>([])
+const sectionsSelected = ref(0)
+const openSectionsModal = () => {
+  if (!doc) {
+    MessagePlugin.warning('文档未加载')
+    return
+  }
+  sectionsList.value = getDocumentSections(doc as any)
+  sectionsSelected.value = 0
+  sectionsOpen.value = true
+}
+const closeSectionsModal = () => {
+  sectionsOpen.value = false
+}
+const onSelectSection = (idx: number) => {
+  sectionsSelected.value = idx
+}
+
+// v0.7.73 — DOC find / replace (mirrors genoffice FindPanel.tsx; UI inlined here to keep change minimal).
+// Pure helpers live in adapters/docFind.ts; this section only wires them into
+// the editor view (selection scroll + count display + replace dispatch).
+const findOpen = ref(false)
+const findQuery = ref('')
+const findReplaceWith = ref('')
+const findMatchCase = ref(false)
+const findWholeWord = ref(false)
+const findMatchesList = ref<FindRange[]>([])
+const findCurrentIdx = ref(-1)
+const findOpts = computed<FindOptions>(() => ({
+  matchCase: findMatchCase.value,
+  wholeWord: findWholeWord.value,
+}))
+const refreshFindMatches = () => {
+  if (!editor.value) {
+    findMatchesList.value = []
+    findCurrentIdx.value = -1
+    return
+  }
+  findMatchesList.value = findMatches(editor.value, findQuery.value, findOpts.value)
+  if (findMatchesList.value.length > 0) {
+    findCurrentIdx.value = Math.min(findCurrentIdx.value, findMatchesList.value.length - 1)
+    if (findCurrentIdx.value < 0) findCurrentIdx.value = 0
+  } else {
+    findCurrentIdx.value = -1
+  }
+}
+const openFindPanel = () => {
+  findOpen.value = !findOpen.value
+  if (findOpen.value) refreshFindMatches()
+}
+const closeFindPanel = () => {
+  findOpen.value = false
+}
+const onFindQueryInput = () => {
+  findCurrentIdx.value = -1
+  refreshFindMatches()
+}
+const onFindOptsChange = () => {
+  refreshFindMatches()
+}
+const scrollToMatch = (idx: number) => {
+  const r = findMatchesList.value[idx]
+  if (!r || !editor.value) return
+  editor.value.commands.setTextSelection(r.from)
+  const dom = editor.value.view.nodeDOM(r.from) as HTMLElement | null
+  dom?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
+const goToNextMatch = () => {
+  if (findMatchesList.value.length === 0) return
+  findCurrentIdx.value = (findCurrentIdx.value + 1) % findMatchesList.value.length
+  scrollToMatch(findCurrentIdx.value)
+}
+const goToPrevMatch = () => {
+  if (findMatchesList.value.length === 0) return
+  findCurrentIdx.value =
+    (findCurrentIdx.value - 1 + findMatchesList.value.length) % findMatchesList.value.length
+  scrollToMatch(findCurrentIdx.value)
+}
+const doReplaceCurrent = () => {
+  if (!editor.value || findCurrentIdx.value < 0) return
+  const r = findMatchesList.value[findCurrentIdx.value]
+  if (!r) return
+  replaceMatch(editor.value, r, findReplaceWith.value)
+  refreshFindMatches()
+}
+const doReplaceAll = () => {
+  if (!editor.value || findMatchesList.value.length === 0) return
+  replaceAllMatches(editor.value, findMatchesList.value, findReplaceWith.value)
+  refreshFindMatches()
+}
+
+// v0.7.74 — Word Alt+Shift+Up / Alt+Shift+Down: move selected block past its neighbor.
+const onMoveBlock = (dir: -1 | 1) => {
+  if (!editor.value) return
+  moveBlocks(editor.value, dir)
+}
+
+// v0.7.75 — Word Shift+F3: cycle case on the current selection (lower → UPPER → Title).
+const onCycleCase = () => {
+  if (!editor.value) return
+  const sel = editor.value.state.selection
+  if (sel.from === sel.to) return
+  // Extract the selection text via ProseMirror textBetween.
+  const text = editor.value.state.doc.textBetween(sel.from, sel.to, '\n', '\n')
+  const mode = nextCaseMode(text) as CaseMode
+  applyCase(editor.value, mode)
+}
+
+// v0.7.78 — Word Ctrl+Space: strip all character-level formatting from the selection.
+const canClearFormat = computed(() => (editor.value ? hasFormatting(editor.value) : false))
+const onClearFormat = () => {
+  if (!editor.value) return
+  clearFormatting(editor.value)
+}
+
 // v0.7.42 — Math formula dialog (LaTeX → MathML via docxAdapter).
 // Uses browser-native MathML for preview (Firefox / Safari / Edge);
 // Chrome shows source until a KaTeX renderer is wired in later.
@@ -229,6 +810,222 @@ const mathPreviewHtml = computed(() => {
   if (!mathml) return '<em style="color:#999">MathML 渲染不可用</em>'
   return mathml
 })
+// v0.7.63 — Word-style page break (Ctrl+Enter equivalent)
+// v0.7.66 — DOC page header/footer
+const hfOpen = ref(false)
+
+// v0.7.67 — DOC document protection (Word Review > Protect Document)
+const protectOpen = ref(false)
+const protectPatch = ref<DocProtectionPatch>(makeProtectionPatch(null))
+const currentProtection = ref<DocProtection | null>(null)
+const protectionEnabled = computed(() => currentProtection.value?.enforced === true)
+const protectErrorText = computed(() => PROTECTION_I18N[protectPatch.value.error] || protectPatch.value.error)
+
+// v0.7.68 — DOC track changes
+const revisionsOpen = ref(false)
+const revisionTick = ref(0) // bump to recompute revisions on selection update
+const revisionCount = computed(() => {
+  revisionTick.value
+  return editor.value ? collectRevisions(editor.value.state.doc).length : 0
+})
+interface RevisionSnippet {
+  from: number
+  to: number
+  kind: ReturnType<typeof collectRevisions>[number]['kind']
+  snippet: string
+}
+const revisions = computed<RevisionSnippet[]>(() => {
+  revisionTick.value
+  if (!editor.value) return []
+  return collectRevisions(editor.value.state.doc).map((r) => ({
+    from: r.from,
+    to: r.to,
+    kind: r.kind,
+    snippet: editor.value!.state.doc.textBetween(r.from, r.to, ' ', ' ').trim().slice(0, 40),
+  }))
+})
+const revisionsByAuthor = computed(() => {
+  if (!editor.value) return []
+  const groups = new Map<string, { author: string; items: RevisionSnippet[]; count: number }>()
+  for (const r of collectRevisions(editor.value.state.doc)) {
+    const snippet: RevisionSnippet = {
+      from: r.from,
+      to: r.to,
+      kind: r.kind,
+      snippet: editor.value!.state.doc.textBetween(r.from, r.to, ' ', ' ').trim().slice(0, 40),
+    }
+    const existing = groups.get(r.author)
+    if (existing) {
+      existing.items.push(snippet)
+      existing.count++
+    } else {
+      groups.set(r.author, { author: r.author, items: [snippet], count: 1 })
+    }
+  }
+  return Array.from(groups.values())
+})
+const openRevisionsPanel = () => {
+  revisionsOpen.value = true
+}
+const onAcceptAll = () => {
+  if (!editor.value) return
+  acceptAllRevisions(editor.value)
+  revisionTick.value++
+  scheduleSave()
+}
+const onRejectAll = () => {
+  if (!editor.value) return
+  rejectAllRevisions(editor.value)
+  revisionTick.value++
+  scheduleSave()
+}
+const onAcceptAuthor = (author: string) => {
+  if (!editor.value) return
+  applyRevisionsBy(editor.value, author, 'accept')
+  revisionTick.value++
+  scheduleSave()
+}
+const onRejectAuthor = (author: string) => {
+  if (!editor.value) return
+  applyRevisionsBy(editor.value, author, 'reject')
+  revisionTick.value++
+  scheduleSave()
+}
+const onRevisionGoto = (rev: RevisionSnippet) => {
+  if (!editor.value) return
+  editor.value.commands.setTextSelection({ from: rev.from, to: rev.to })
+  revisionsOpen.value = false
+}
+
+// v0.7.69 — DOC compare (Word Review > Compare)
+const compareOpen = ref(false)
+const compareOther = ref<{ name: string; entries: CompareEntry[] } | null>(null)
+const compareSummary = computed(() =>
+  compareOther.value ? summarize(compareOther.value.entries) : { added: 0, removed: 0, changed: 0 },
+)
+interface CompareRow {
+  kind: 'same' | 'entry'
+  count?: number
+  entry?: CompareEntry
+}
+const compareRows = computed<CompareRow[]>(() => {
+  if (!compareOther.value) return []
+  const rows: CompareRow[] = []
+  let sameRun = 0
+  for (const entry of compareOther.value.entries) {
+    if (entry.kind === 'same') {
+      sameRun++
+      continue
+    }
+    if (sameRun > 0) {
+      rows.push({ kind: 'same', count: sameRun })
+      sameRun = 0
+    }
+    rows.push({ kind: 'entry', entry })
+  }
+  if (sameRun > 0) rows.push({ kind: 'same', count: sameRun })
+  return rows
+})
+const openCompareModal = () => {
+  compareOther.value = null
+  compareOpen.value = true
+}
+const onCompareFileSelected = async (e: Event) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    const otherDoc = await openDocx(bytes)
+    const otherTexts = blockTexts(otherDoc.parsed.blocks)
+    const currentTexts = doc ? blockTexts(doc.parsed.blocks) : []
+    const entries = compareParagraphs(currentTexts, otherTexts)
+    compareOther.value = { name: file.name, entries }
+  } catch (err: any) {
+    MessagePlugin.error(`解析失败：${err?.message || err}`)
+  } finally {
+    if (input) input.value = ''
+  }
+}
+const headerTextInput = ref('')
+const footerTextInput = ref('')
+const footerPageNumberInput = ref(false)
+const openHfModal = () => {
+  headerTextInput.value = pendingHeader.value?.text ?? ''
+  footerTextInput.value = pendingFooter.value?.text ?? ''
+  footerPageNumberInput.value = pendingFooter.value?.pageNumber ?? false
+  hfOpen.value = true
+}
+const pendingHeader = ref<{ text: string } | null>(null)
+const pendingFooter = ref<{ text: string; pageNumber?: boolean } | null>(null)
+// v0.7.67 — document protection pending state (applied on next save)
+const pendingProtection = ref<DocProtection | null>(null)
+const pendingWriteProtection = ref<WriteProtection | null>(null)
+const onHfClear = () => {
+  pendingHeader.value = null
+  pendingFooter.value = null
+  hfOpen.value = false
+  scheduleSave()
+}
+const onHfSave = () => {
+  pendingHeader.value = headerTextInput.value.trim() ? { text: headerTextInput.value } : null
+  pendingFooter.value = footerTextInput.value.trim() || footerPageNumberInput.value
+    ? { text: footerTextInput.value, pageNumber: footerPageNumberInput.value }
+    : null
+  hfOpen.value = false
+  scheduleSave()
+}
+
+const openProtectModal = () => {
+  protectPatch.value = makeProtectionPatch(currentProtection.value)
+  protectOpen.value = true
+}
+const onProtectEnabledChange = (enabled: boolean) => {
+  protectPatch.value.enabled = enabled
+  protectPatch.value.error = ''
+}
+const onProtectClear = () => {
+  protectPatch.value.enabled = false
+  protectPatch.value.error = ''
+  onProtectSave()
+}
+const onProtectSave = async () => {
+  const validationError = validateProtectionPatch(protectPatch.value)
+  if (validationError) {
+    protectPatch.value.error = validationError
+    return
+  }
+  protectPatch.value.busy = true
+  try {
+    const { protection, error } = await applyDocProtection(
+      currentProtection.value,
+      protectPatch.value,
+    )
+    if (error) {
+      protectPatch.value.error = error
+      return
+    }
+    currentProtection.value = protection
+    pendingProtection.value = protection
+    protectOpen.value = false
+    scheduleSave()
+  } finally {
+    protectPatch.value.busy = false
+  }
+}
+
+const onInsertPageBreak = () => {
+  const ed = editor.value
+  if (!ed) return
+  const { $from } = ed.state.selection
+  if (!$from.parent.isTextblock) return
+  const tr = ed.state.tr.setNodeMarkup($from.before($from.depth), undefined, {
+    ...$from.parent.attrs,
+    pageBreakBefore: true,
+  })
+  ed.view.dispatch(tr.scrollIntoView())
+}
+
 const onOpenMath = () => {
   mathLatex.value = ''
   mathError.value = null
@@ -240,21 +1037,33 @@ const onInsertMath = () => {
     mathError.value = '请输入 LaTeX'
     return
   }
-  const paragraphXml = mathDisplayParagraph(latex)
-  if (!paragraphXml) {
+  let node: ReturnType<typeof equationBlockJson>
+  try {
+    node = equationBlockJson(latex)
+  } catch {
     mathError.value = '无法解析 LaTeX 语法'
     return
   }
-  const mathml = docxMathToMathML('<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math">' + latexToDocxMath(latex) + '</m:oMath>')
-  // Insert as raw HTML block — wrapped math content survives TipTap editing
-  // (the source LaTeX is preserved in data-latex so save round-trip can
-  // recover OMML via mathDisplayParagraph()).
-  const html = `<div class="collab-doc-pro__math-block" data-latex="${latex.replace(/"/g, '&quot;')}">${mathml ?? paragraphXml}</div>`
   if (editor.value) {
-    editor.value.chain().focus().insertContent(html).run()
+    // v0.7.49 — structured docProtected node: genXml carries the OMML
+    // paragraph so the save path can round-trip the formula faithfully.
+    const idx = findDocxIndexAt(editor.value)
+    if (idx != null) node.attrs!.docxIndex = idx
+    editor.value.chain().focus().insertContent(node).run()
     mathOpen.value = false
     scheduleSave()
   }
+}
+
+/** docxIndex of the block containing the current selection (formula anchor). */
+const findDocxIndexAt = (ed: import('@tiptap/core').Editor, pos?: number): number | null => {
+  const from = pos ?? ed.state.selection.from
+  const resolved = ed.state.doc.resolve(from)
+  for (let depth = resolved.depth; depth >= 0; depth--) {
+    const idx = parseDocxIndex(resolved.node(depth))
+    if (idx != null) return idx
+  }
+  return null
 }
 const versions = ref<Array<{ version: number; size_bytes: number; created_at: string }>>([])
 
@@ -335,6 +1144,82 @@ const onForceSave = () => {
   flushSave(true)
 }
 
+// v0.7.58 — Tencent Docs compatibility: .txt/.md/.docx import.
+const importParagraphsToContent = (paragraphs: DocImportParagraph[]) => {
+  const nodes: any[] = []
+  for (let i = 0; i < paragraphs.length; i++) {
+    const p = paragraphs[i]
+    const textNode = p.text ? [{ type: 'text', text: p.text }] : []
+    if (p.kind === 'heading') {
+      nodes.push({
+        type: 'heading',
+        attrs: { level: p.level ?? 1, 'data-docx-index': i },
+        content: textNode,
+      })
+    } else if (p.kind === 'listItem') {
+      nodes.push({
+        type: 'bulletList',
+        content: [{
+          type: 'listItem',
+          attrs: { 'data-docx-index': i },
+          content: [{ type: 'paragraph', content: textNode }],
+        }],
+      })
+    } else {
+      nodes.push({
+        type: 'paragraph',
+        attrs: { 'data-docx-index': i },
+        content: textNode,
+      })
+    }
+  }
+  if (nodes.length === 0) {
+    nodes.push({ type: 'paragraph', attrs: { 'data-docx-index': 0 }, content: [] })
+  }
+  return { type: 'doc', content: nodes }
+}
+
+const triggerDocUpload = () => docFileInput.value?.click()
+
+const onUploadDocFile = async (e: Event) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  uploading.value = true
+  try {
+    const name = file.name.toLowerCase()
+    if (name.endsWith('.docx')) {
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      doc = await openDocx(bytes)
+      currentProtection.value = doc.parsed.protection ?? null
+      pendingProtection.value = currentProtection.value
+      if (editor.value) {
+        editor.value.commands.setContent(paragraphsToContent(doc.paragraphs), false)
+      }
+      patchedMap.clear()
+      await uploadCollabDocBytes(props.docId, bytes, file.name)
+      saveLabel.value = '已上传'
+      MessagePlugin.success(`已上传 ${file.name}`)
+      return
+    }
+    const text = await file.text()
+    const paragraphs = importTextToDocParagraphs(text)
+    doc = await buildBlankDocxDoc(paragraphs)
+    if (editor.value) {
+      editor.value.commands.setContent(importParagraphsToContent(paragraphs), false)
+    }
+    patchedMap.clear()
+    await flushSave(true)
+    saveLabel.value = '已上传'
+    MessagePlugin.success(`已导入 ${file.name}`)
+  } catch (err: any) {
+    MessagePlugin.error(`上传失败：${err?.message || err}`)
+  } finally {
+    uploading.value = false
+    if (input) input.value = ''
+  }
+}
+
 const isMarkActive = (name: string): boolean => {
   if (!editor.value) return false
   return editor.value.isActive(name)
@@ -394,8 +1279,82 @@ const onInsertTable = () => {
     .run()
 }
 
+// v0.7.53 — resize the selected columns (px) and redistribute the grid.
+const onSetColumnWidth = () => {
+  if (!editor.value) return
+  const widthStr = window.prompt('列宽 (px，留空取消)', '120')
+  if (widthStr === null) return
+  const width = Math.max(40, Math.min(600, Number(widthStr) || 120))
+  const maxWidth = Math.max(400, (editor.value.view.dom as HTMLElement | null)?.clientWidth ?? 800)
+  editor.value.chain().focus().command(({ state, dispatch }) =>
+    setSelectedColumnWidth(width, maxWidth)(state, dispatch),
+  ).run()
+  scheduleSave()
+}
+
+// v0.7.54 — apply a Word-style visual preset (header fill + banded rows + borders).
+const onApplyTablePreset = () => {
+  if (!editor.value) return
+  const choice = window.prompt('表格样式: 1=蓝 2=灰 3=无边框 (留空取消)', '1')
+  if (choice === null) return
+  const presets: Record<string, { headerFill: string | null; band1Fill: string | null; band2Fill: string | null; borderColor: string }> = {
+    '1': { headerFill: 'D9E2F3', band1Fill: 'F2F6FC', band2Fill: 'FFFFFF', borderColor: '8EAADB' },
+    '2': { headerFill: 'E7E6E6', band1Fill: 'F7F7F7', band2Fill: 'FFFFFF', borderColor: 'BFBFBF' },
+    '3': { headerFill: null, band1Fill: null, band2Fill: null, borderColor: 'FFFFFF' },
+  }
+  const preset = presets[choice.trim()]
+  if (!preset) return
+  editor.value.chain().focus().command(({ state, dispatch }) =>
+    applyTablePreset(preset)(state, dispatch),
+  ).run()
+  scheduleSave()
+}
+
+// v0.7.54 — toggle the selected leading row(s) as repeating table headers.
+const onToggleRepeatHeader = () => {
+  if (!editor.value) return
+  editor.value.chain().focus().command(({ state, dispatch }) =>
+    toggleRepeatHeaderRows()(state, dispatch),
+  ).run()
+  scheduleSave()
+}
+
 // --- v0.7.29 — comments anchor (set when the user selects a range) ---
 const commentAnchor = ref<{ type: 'doc' | 'slide' | 'sheet'; ref: string } | null>(null)
+
+// v0.7.49 — attach the comment mark to the selected range once the thread
+// exists on the backend (the mark carries the numeric comment id).
+const onCommentCreated = (comment: CollabDocComment) => {
+  if (!editor.value) return
+  addCommentToSelection(editor.value, String(comment.id))
+  scheduleSave()
+}
+
+// v0.7.52 — strip the comment mark once the thread is deleted on the backend.
+const onCommentDeleted = (comment: CollabDocComment) => {
+  if (!editor.value) return
+  removeCommentFromDoc(editor.value, String(comment.id))
+  scheduleSave()
+}
+
+// v0.7.56 — cache the REST comment threads so the save path can regenerate
+// word/comments.xml from them (bodies + authors + replies + resolved flags).
+let cachedComments: CollabDocComment[] = []
+const onCommentsLoaded = (comments: CollabDocComment[]) => {
+  cachedComments = comments
+}
+
+/** CollabDocComment[] -> engine CommentInfo[] for the .docx save. */
+const commentsToCommentInfo = (comments: CollabDocComment[]): CommentInfo[] => {
+  return comments.map((c) => ({
+    id: String(c.id),
+    author: c.author_name,
+    text: c.body,
+    date: c.created_at,
+    parentId: c.parent_id != null ? String(c.parent_id) : undefined,
+    done: c.resolved || undefined,
+  }))
+}
 
 const onInsertImageUrl = () => {
   if (!editor.value) return
@@ -409,6 +1368,7 @@ const onInsertImageFile = () => {
 }
 
 const fileImageInput = ref<HTMLInputElement | null>(null)
+const docFileInput = ref<HTMLInputElement | null>(null)
 const onImageFileChosen = async (e: Event) => {
   if (!editor.value) return
   const file = (e.target as HTMLInputElement).files?.[0]
@@ -601,6 +1561,8 @@ const setup = async () => {
       return
     }
     doc = await openDocx(bytes)
+    currentProtection.value = doc.parsed.protection ?? null
+    pendingProtection.value = currentProtection.value
     initEditor(doc.paragraphs)
   } catch (e: any) {
     loadError.value = e?.message || String(e)
@@ -613,15 +1575,20 @@ const initEditor = (paragraphs: DocxAdapterParagraph[]) => {
   editor.value = new Editor({
     extensions: [
       StarterKit.configure({ history: false }),
+      DocPageBreak,
+      DocInlineMath,
+      DocProtected,
+      CommentMark,
       Link,
       Underline,
       Highlight.configure({ multicolor: true }),
       Color,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
-      Table.configure({ resizable: true, HTMLAttributes: { class: 'collab-doc-pro__table' } }),
-      TableRow,
-      TableHeader,
-      TableCell,
+      DocTable.configure({ resizable: true, HTMLAttributes: { class: 'collab-doc-pro__table' } }),
+      DocTableRow,
+      DocTableHeader,
+      DocTableCell,
+      DocTableHandle,
       Image.configure({ inline: false, allowBase64: true, HTMLAttributes: { class: 'collab-doc-pro__image' } }),
       TaskList,
       TaskItem.configure({ nested: true }),
@@ -633,11 +1600,56 @@ const initEditor = (paragraphs: DocxAdapterParagraph[]) => {
     ],
     content: paragraphsToContent(paragraphs),
     onUpdate: ({ editor: ed }) => onEditorUpdate(ed),
+    editorProps: {
+      attributes: { class: 'collab-doc-pro__surface' },
+      handleKeyDown(_view, event) {
+        // v0.7.74 — Word Alt+Shift+Up / Alt+Shift+Down moves blocks past the neighbor.
+        if (event.altKey && event.shiftKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+          if (!editor.value) return false
+          event.preventDefault()
+          return moveBlocks(editor.value, event.key === 'ArrowUp' ? -1 : 1)
+        }
+        // v0.7.75 — Word Shift+F3: cycle case on the current selection
+        if (event.shiftKey && (event.key === 'F3' || (event.code === 'F3'))) {
+          if (!editor.value) // v0.7.78 — Word Ctrl+Space: clear formatting
+        if ((event.ctrlKey || event.metaKey) && event.code === 'Space') {
+          if (!editor.value) return false
+          event.preventDefault()
+          onClearFormat()
+          return true
+        }
+        return false
+          event.preventDefault()
+          onCycleCase()
+          return true
+        }
+        // v0.7.78 — Word Ctrl+Space: clear formatting
+        if ((event.ctrlKey || event.metaKey) && event.code === 'Space') {
+          if (!editor.value) return false
+          event.preventDefault()
+          onClearFormat()
+          return true
+        }
+        return false
+      },
+    },
     onSelectionUpdate: ({ editor: ed }) => {
       // ed is the tiptap core Editor which exposes the same .state API
       // as the vue-3 wrapper we hold in editor.value.
       void ed
       refreshAiSelection()
+      // v0.7.49 — comment anchor follows the selection (paragraph range)
+      const sel = ed.state.selection
+      if (sel && sel.from !== sel.to) {
+        const fromIdx = findDocxIndexAt(ed, sel.from)
+        const toIdx = findDocxIndexAt(ed, sel.to)
+        commentAnchor.value =
+          fromIdx != null && toIdx != null
+            ? { type: 'doc', ref: JSON.stringify({ from: fromIdx, to: toIdx }) }
+            : null
+      } else {
+        commentAnchor.value = null
+      }
       // v0.7.38 — broadcast the local selection range so other
       // collaborators can render a highlight rectangle over the
       // selected text. publishSelection is idempotent on identical
@@ -661,11 +1673,17 @@ const paragraphsToContent = (paragraphs: DocxAdapterParagraph[]) => {
   for (const p of paragraphs) {
     if (p.hidden) continue
     const text = p.text || ''
+    // v0.7.50 — restore the comment mark highlight for paragraphs that carry
+    // comment ids in the original .docx (run-level + cross-paragraph ranges).
+    const marks = p.commentIds?.length
+      ? [{ type: 'comment', attrs: { ids: p.commentIds.join(' ') } }]
+      : undefined
+    const textNode = (t: string) => (t ? [{ type: 'text', text: t, ...(marks ? { marks } : {}) }] : [])
     if (p.kind === 'heading' && p.level) {
       nodes.push({
         type: 'heading',
         attrs: { level: p.level, 'data-docx-index': p.index },
-        content: text ? [{ type: 'text', text }] : [],
+        content: textNode(text),
       })
     } else if (p.kind === 'listItem') {
       nodes.push({
@@ -673,14 +1691,14 @@ const paragraphsToContent = (paragraphs: DocxAdapterParagraph[]) => {
         content: [{
           type: 'listItem',
           attrs: { 'data-docx-index': p.index },
-          content: [{ type: 'paragraph', content: text ? [{ type: 'text', text }] : [] }],
+          content: [{ type: 'paragraph', content: textNode(text) }],
         }],
       })
     } else {
       nodes.push({
         type: 'paragraph',
         attrs: { 'data-docx-index': p.index },
-        content: text ? [{ type: 'text', text }] : [],
+        content: textNode(text),
       })
     }
   }
@@ -691,6 +1709,8 @@ const paragraphsToContent = (paragraphs: DocxAdapterParagraph[]) => {
 }
 
 const onEditorUpdate = (ed: import('@tiptap/core').Editor) => {
+  // v0.7.71 — bump outline tick so the outline pane recomputes on every keystroke.
+  outlineTick.value++
   if (!doc) {
     // First-time empty edit: we don't yet have a parsed.docx, so the save
     // path will fall back to building a blank docx from TipTap text.
@@ -707,6 +1727,20 @@ const onEditorUpdate = (ed: import('@tiptap/core').Editor) => {
     const idx = parseDocxIndex(node)
     if (idx == null || seen.has(idx)) continue
     seen.add(idx)
+    // v0.7.49 — formula block: replace the whole paragraph XML with genXml
+    if (node.type === 'docProtected' && typeof node.attrs?.genXml === 'string') {
+      const genXml = node.attrs.genXml as string
+      const preview = String(node.attrs.previewText ?? '')
+      if (doc.patched.get(idx) === genXml && doc.paragraphs[idx]?.text === preview) continue
+      suppressObserver = true
+      try {
+        doc.patched.set(idx, genXml)
+        if (doc.paragraphs[idx]) doc.paragraphs[idx].text = preview
+      } finally {
+        suppressObserver = false
+      }
+      continue
+    }
     const text = extractText(node)
     if (!doc.paragraphs[idx] || doc.paragraphs[idx].text === text) continue
     suppressObserver = true
@@ -773,8 +1807,25 @@ const flushSave = async (immediate: boolean) => {
     const patched = Array.from(patchedMap.entries()).map(([docxIndex, xml]) => ({
       docxIndex, xml, text: curDoc.paragraphs[docxIndex]?.text || '',
     }))
+    // v0.7.51 — full SavePlan: docxIndex-anchored blocks (paragraph insert/
+    // delete + docProtected formula genXml) round-trip through saveDocx.
     const bytes = editor.value
-      ? await saveDocxBytesWithImages(curDoc, editor.value.getJSON() as any)
+      ? await saveDocxBytesWithImages(
+          curDoc,
+          editor.value.getJSON() as any,
+          pmDocToSavePlan(editor.value.getJSON() as any, curDoc).blocks,
+          {
+            comments: commentsToCommentInfo(cachedComments),
+            ...(pendingHeader.value ? { header: pendingHeader.value } : {}),
+            ...(pendingFooter.value ? { footer: pendingFooter.value } : {}),
+            ...(pendingProtection.value !== undefined
+              ? { protection: pendingProtection.value }
+              : {}),
+            ...(pendingWriteProtection.value !== undefined
+              ? { writeProtection: pendingWriteProtection.value }
+              : {}),
+          },
+        )
       : await saveDocxBytes(curDoc, patched)
     patchedMap.clear()
     await uploadCollabDocBytes(props.docId, bytes, `${props.title || 'collab-doc'}.docx`)
@@ -889,7 +1940,6 @@ onBeforeUnmount(teardown)
   text-align: center;
   font-family: serif;
 }
-</style>
 .collab-doc-pro { display: flex; flex-direction: column; height: 100%; }
 .collab-doc-pro__toolbar {
   display: flex; align-items: center; gap: 10px;
@@ -930,12 +1980,126 @@ onBeforeUnmount(teardown)
 .collab-doc-pro__surface { flex: 1; overflow: auto; padding: 24px 32px; max-width: 880px; margin: 0 auto; }
 .collab-doc-pro__loading, .collab-doc-pro__error { padding: 24px; }
 .collab-doc-pro__error { color: var(--td-error-color-7); }
+
+.collab-doc-pro__outline {
+  border-top: 1px solid var(--td-component-stroke);
+  background: var(--td-bg-color-container);
+  max-height: 280px;
+  display: flex;
+  flex-direction: column;
+}
+.collab-doc-pro__outline-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--td-component-stroke);
+  background: var(--td-bg-color-secondarycontainer);
+}
+.collab-doc-pro__outline-count {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--td-text-color-secondary);
+}
+.collab-doc-pro__outline-empty {
+  padding: 16px 12px;
+  font-size: 12px;
+  color: var(--td-text-color-secondary);
+  text-align: center;
+}
+.collab-doc-pro__outline-list {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 4px 0;
+}
+.collab-doc-pro__outline-item {
+  display: block;
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--td-text-color-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: 0;
+}
+.collab-doc-pro__outline-item:hover {
+  background: var(--td-bg-color-secondarycontainer);
+  color: var(--td-brand-color-7);
+}
+.collab-doc-pro__outline-item--l1 {
+  font-weight: 600;
+  padding-left: 12px;
+  font-size: 13px;
+}
+.collab-doc-pro__outline-item--l2 {
+  padding-left: 24px;
+  color: var(--td-text-color-secondary);
+}
+.collab-doc-pro__outline-item--l3 {
+  padding-left: 36px;
+  color: var(--td-text-color-secondary);
+}
+.collab-doc-pro__outline-item--l4 {
+  padding-left: 48px;
+  color: var(--td-text-color-disabled);
+  font-size: 11px;
+}
+/* v0.7.72 — DOC page-setup / multi-section preview modal */
+.collab-doc-pro__sections { width: min(720px, 92vw); max-height: 80vh; display: flex; flex-direction: column; }
+/* v0.7.73 — DOC find / replace panel */
+.collab-doc-pro__find { width: min(560px, 92vw); display: flex; flex-direction: column; gap: 10px; }
+.collab-doc-pro__find-field { display: flex; gap: 10px; align-items: center; }
+.collab-doc-pro__find-label { flex: 0 0 80px; color: var(--td-text-color-secondary, #888); font-size: 13px; }
+.collab-doc-pro__find-input { flex: 1 1 auto; padding: 6px 10px; border: 1px solid var(--td-component-stroke, #d0d7de); border-radius: 4px; font-size: 13px; outline: none; }
+.collab-doc-pro__find-input:focus { border-color: var(--td-brand-color-7, #0052d9); }
+.collab-doc-pro__find-opts { display: flex; gap: 16px; padding-left: 90px; }
+.collab-doc-pro__find-opt { font-size: 13px; color: var(--td-text-color-secondary, #555); display: flex; gap: 4px; align-items: center; cursor: pointer; }
+.collab-doc-pro__find-status { padding: 6px 90px 0 90px; font-size: 12px; color: var(--td-text-color-secondary, #888); }
+.collab-doc-pro__find-actions { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 4px; }
+.collab-doc-pro__find-actions button { padding: 6px 12px; border: 1px solid var(--td-component-stroke, #d0d7de); border-radius: 4px; background: var(--td-bg-color-container, #fff); cursor: pointer; font-size: 13px; }
+.collab-doc-pro__find-actions button:hover:not(:disabled) { border-color: var(--td-brand-color-7, #0052d9); color: var(--td-brand-color-7, #0052d9); }
+.collab-doc-pro__find-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+.collab-doc-pro__sections-body { display: flex; gap: 16px; min-height: 360px; max-height: 60vh; }
+.collab-doc-pro__sections-list { flex: 0 0 220px; display: flex; flex-direction: column; gap: 4px; overflow-y: auto; border: 1px solid var(--td-component-stroke, #e7e7e7); border-radius: 6px; padding: 6px; }
+.collab-doc-pro__sections-item { text-align: left; background: transparent; border: 1px solid transparent; border-radius: 4px; padding: 6px 10px; cursor: pointer; font-size: 13px; line-height: 1.4; }
+.collab-doc-pro__sections-item:hover { background: var(--td-bg-color-container-hover, #f2f3f5); }
+.collab-doc-pro__sections-item.active { background: var(--td-brand-color-1, #e6f0ff); border-color: var(--td-brand-color-7, #0052d9); color: var(--td-brand-color-7, #0052d9); font-weight: 500; }
+.collab-doc-pro__sections-empty { color: var(--td-text-color-secondary, #888); padding: 16px; text-align: center; font-size: 12px; }
+.collab-doc-pro__sections-detail { flex: 1 1 auto; display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--td-component-stroke, #e7e7e7); border-radius: 6px; overflow-y: auto; }
+.collab-doc-pro__sections-row { display: flex; gap: 12px; font-size: 13px; }
+.collab-doc-pro__sections-label { flex: 0 0 80px; color: var(--td-text-color-secondary, #888); }
+.collab-doc-pro__sections-value { flex: 1 1 auto; color: var(--td-text-color-primary, #222); }
 </style>
 .collab-doc-pro__table { border-collapse: collapse; margin: 12px 0; width: 100%; table-layout: fixed; }
 .collab-doc-pro__table th, .collab-doc-pro__surface :deep(table th),
 .collab-doc-pro__surface :deep(table td) { border: 1px solid var(--td-component-stroke, #e7e7e7); padding: 6px 10px; vertical-align: top; min-width: 60px; }
 .collab-doc-pro__surface :deep(table th) { background: var(--td-bg-color-container, #f7f7f7); font-weight: 600; }
 .collab-doc-pro__surface :deep(.selectedCell) { background: rgba(88, 166, 255, 0.12); }
+.doc-table-handle {
+  position: absolute;
+  z-index: 20;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--td-component-stroke, #d0d7de);
+  border-radius: 4px;
+  background: var(--td-bg-color-container, #fff);
+  color: var(--td-text-color-secondary, #57606a);
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.doc-table-handle:hover { color: var(--td-brand-color, #0052d9); border-color: var(--td-brand-color, #0052d9); }
+.doc-table-handle:active { cursor: grabbing; }
 .collab-doc-pro__image, .collab-doc-pro__surface :deep(img) { max-width: 100%; height: auto; border-radius: 4px; margin: 8px 0; }
 .collab-doc-pro__surface :deep(ul[data-type="taskList"]) { list-style: none; padding-left: 0; }
 .collab-doc-pro__surface :deep(ul[data-type="taskList"] li) { display: flex; gap: 6px; align-items: flex-start; }
