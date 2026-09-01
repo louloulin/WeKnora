@@ -96,7 +96,7 @@ func (c *Connector) ListResources(
 	}
 	cli := c.newClient(cfg)
 
-	docs, err := cli.ListDriveFiles(ctx, "doc", 200)
+	docs, err := cli.ListAllDriveFiles(ctx, 200)
 	if err != nil {
 		return nil, fmt.Errorf("list tencent_docs files: %w", err)
 	}
@@ -194,7 +194,14 @@ type docOps struct{}
 // document ID for incremental) to the documents it contains. Tencent Docs
 // exposes a /drive/v2/files endpoint that lists documents by type and parent.
 func (o docOps) List(ctx context.Context, client *tdcore.Client, resourceID string) ([]tdcore.Document, error, error) {
-	docs, err := client.ListDriveFilesRecursive(ctx, resourceID, "doc", 200)
+	if tdcore.IsSingleDocumentID(resourceID) {
+		d, err := client.GetDocument(ctx, resourceID)
+		if err != nil {
+			return nil, nil, err
+		}
+		return []tdcore.Document{d}, nil, nil
+	}
+	docs, err := client.ListAllDriveFiles(ctx, 200)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -214,7 +221,7 @@ func (o docOps) EditTime(d tdcore.Document) string { return d.EditTime() }
 // FetchedItems. For text-friendly doc types it returns a single Markdown
 // item; for binary types it returns the raw bytes wrapped as an attachment.
 func (o docOps) Fetch(ctx context.Context, client *tdcore.Client, d tdcore.Document, resourceID string, multimodal bool) ([]*types.FetchedItem, error) {
-	content, contentType, err := client.FetchDocumentContent(ctx, d.ID)
+	content, contentType, err := client.FetchAnyContent(ctx, d)
 	if err != nil {
 		return nil, err
 	}

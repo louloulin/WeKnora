@@ -705,6 +705,10 @@ export default {
       authHeaders: 'Пользовательские заголовки (необязательно)',
       authHeadersHint: 'Для приватных лент. По одному в строке в формате «Имя: Значение», например Authorization: Bearer xxxx'
     },
+      tencentDocsClientId: 'Tencent Docs Client ID',
+      tencentDocsClientSecret: 'Tencent Docs Client Secret',
+      tencentDocsAccessToken: 'Access Token (необязательно)',
+      tencentDocsAccessTokenHint: 'Используйте долгосрочный Access Token вместо client_credentials, если это требуется вашим тенантом. Оставьте пустым для автоматического обмена через client_id + client_secret.',
     connectorDesc: {
       feishu: 'Синхронизация документов, таблиц и файлов из Feishu Wiki',
       lark: 'Синхронизация документов, таблиц и файлов из Lark Wiki',
@@ -714,7 +718,8 @@ export default {
       yuque: 'Синхронизация документов из баз знаний Yuque',
       ima: 'Синхронизация документов, заметок и файлов из баз знаний Tencent IMA (ИИ-сессии и разбор видео не поддерживаются)',
       rss: 'Синхронизация статей из лент RSS / Atom',
-      gitlab: 'Синхронизация файлов из проектов GitLab'
+      gitlab: 'Синхронизация файлов из проектов GitLab',
+      tencent_docs: 'Синхронизация Word / Excel / Слайдов / Смарт-таблиц / Форм из Tencent Docs (docs.qq.com)',
     },
     connector: {
       feishu: 'Feishu (Фэйшу)',

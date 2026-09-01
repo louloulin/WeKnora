@@ -2,6 +2,7 @@ package doc
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -90,16 +91,12 @@ func TestListResources_FlattensDriveListing(t *testing.T) {
 			_, _ = w.Write([]byte(`{"access_token":"tok","expires_in":7200}`))
 		case strings.HasPrefix(r.URL.Path, "/drive/v2/files"):
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{
-				"errcode":0,
-				"data":{
-					"files":[
-						{"id":"Dabc","type":"doc","title":"Hello","updated_at":"2025-06-01T10:00:00Z","owner":"alice"},
-						{"id":"Ddef","type":"doc","title":"World","updated_at":"2025-06-02T11:00:00Z","owner":"bob"}
-					],
-					"has_more":false
-				}
-			}`))
+			// Drive listing is per-type: respond with the doc that matches
+			// the ?type= query parameter so ListAllDriveFiles's fan-out
+			// (one call per type) doesn't double-count.
+			want := r.URL.Query().Get("type")
+			_, _ = fmt.Fprintf(w, `{"errcode":0,"data":{"files":[{"id":"%s-1","type":"%s","title":"%s","updated_at":"2025-06-01T10:00:00Z","owner":"alice"}],"has_more":false}}`,
+				want, want, want)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -120,17 +117,28 @@ func TestListResources_FlattensDriveListing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListResources: %v", err)
 	}
-	if len(resources) != 2 {
-		t.Fatalf("len(resources) = %d, want 2", len(resources))
+	if len(resources) != 4 {
+		t.Fatalf("len(resources) = %d, want 4 (one per type)", len(resources))
 	}
-	if resources[0].ExternalID != "Dabc" || resources[0].Name != "Hello" {
-		t.Errorf("resources[0] = %+v", resources[0])
+	// AllDocTypes order: doc, sheet, slide, form. Stub returns id="<type>-1"
+	// name="<type>" per type, so the joined listing yields exactly these.
+	want := []struct{ id, typ string }{
+		{"doc-1", "doc"},
+		{"sheet-1", "sheet"},
+		{"slide-1", "slide"},
+		{"form-1", "form"},
 	}
-	if resources[0].URL != "https://docs.qq.com/doc/Dabc" {
-		t.Errorf("resources[0].URL = %q", resources[0].URL)
-	}
-	if resources[0].Metadata["owner"] != "alice" {
-		t.Errorf("resources[0].Metadata[owner] = %v", resources[0].Metadata["owner"])
+	for i, w := range want {
+		if resources[i].ExternalID != w.id || resources[i].Name != w.typ {
+			t.Errorf("resources[%d] = id=%q name=%q, want id=%q name=%q",
+				i, resources[i].ExternalID, resources[i].Name, w.id, w.typ)
+		}
+		if resources[i].URL != "https://docs.qq.com/doc/"+w.id {
+			t.Errorf("resources[%d].URL = %q", i, resources[i].URL)
+		}
+		if resources[i].Metadata["owner"] != "alice" {
+			t.Errorf("resources[%d].Metadata[owner] = %v", i, resources[i].Metadata["owner"])
+		}
 	}
 }
 

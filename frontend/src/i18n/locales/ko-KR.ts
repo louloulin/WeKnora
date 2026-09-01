@@ -705,6 +705,10 @@ export default {
       authHeaders: '사용자 지정 헤더 (선택)',
       authHeadersHint: '비공개 피드 접근용. 한 줄에 하나씩 「이름: 값」 형식으로 입력하세요. 예: Authorization: Bearer xxxx'
     },
+      tencentDocsClientId: '텐센트 문서 Client ID',
+      tencentDocsClientSecret: '텐센트 문서 Client Secret',
+      tencentDocsAccessToken: 'Access Token (선택)',
+      tencentDocsAccessTokenHint: 'client_credentials 대신 장기 Access Token을 사용하려면 입력하세요. 비워두면 client_id + client_secret으로 자동 교환됩니다.',
     connectorDesc: {
       feishu: '페이슈 위키에서 문서, 스프레드시트, 파일 동기화',
       lark: 'Lark 위키에서 문서, 스프레드시트, 파일 동기화',
@@ -714,7 +718,8 @@ export default {
       yuque: '위큐 지식베이스에서 문서 동기화',
       ima: 'Tencent IMA 지식베이스에서 문서, 노트 및 파일 동기화 (AI 세션과 동영상 분석은 지원되지 않음)',
       rss: 'RSS / Atom 피드에서 글 동기화',
-      gitlab: 'GitLab 프로젝트의 파일 동기화'
+      gitlab: 'GitLab 프로젝트의 파일 동기화',
+      tencent_docs: '텐센트 문서(docs.qq.com)의 Word / Excel / 슬라이드 / 스마트시트 / 양식 동기화',
     },
     connector: {
       feishu: '페이슈 (Feishu)',

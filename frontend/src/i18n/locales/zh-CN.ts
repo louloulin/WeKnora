@@ -707,6 +707,10 @@ export default {
       authHeaders: '自定义请求头（可选）',
       authHeadersHint: '用于访问私有订阅源，每行一个，格式为「名称: 值」，例如 Authorization: Bearer xxxx'
     },
+      tencentDocsClientId: '腾讯文档 Client ID',
+      tencentDocsClientSecret: '腾讯文档 Client Secret',
+      tencentDocsAccessToken: 'Access Token（可选）',
+      tencentDocsAccessTokenHint: '如使用长期 Access Token 而非 client_credentials，可填写此项。留空则使用 client_id + client_secret 自动换取。',
     connectorDesc: {
       feishu: '同步飞书知识库中的文档、表格、文件',
       lark: '同步 Lark 知识库中的文档、表格、文件（飞书国际版）',
@@ -716,7 +720,8 @@ export default {
       yuque: '同步语雀知识库中的文档',
       ima: '同步腾讯 IMA 知识库中的文档、笔记与文件（暂不支持 AI 会话与视频解析）',
       rss: '同步 RSS / Atom 订阅源中的文章',
-      gitlab: '同步 GitLab 项目中的文件'
+      gitlab: '同步 GitLab 项目中的文件',
+      tencent_docs: '同步腾讯文档（docs.qq.com）中的 Word / Excel / 演示文稿 / 智能表 / 收集表',
     },
     connector: {
       title: 'AI 连接器',

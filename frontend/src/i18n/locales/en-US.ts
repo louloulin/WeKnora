@@ -6864,9 +6864,14 @@ export default {
       yuque: 'Yuque',
       rss: 'RSS / Atom Feed',
       ima: 'Tencent IMA',
-      gitlab: 'GitLab'
+      gitlab: 'GitLab',
+      tencent_docs: 'Sync Word / Excel / Slides / Smart sheets / Forms from Tencent Docs (docs.qq.com)',
     },
 
+      tencentDocsClientId: 'Tencent Docs Client ID',
+      tencentDocsClientSecret: 'Tencent Docs Client Secret',
+      tencentDocsAccessToken: 'Access Token (optional)',
+      tencentDocsAccessTokenHint: 'Use a long-lived Access Token instead of client_credentials, if your tenant requires it. Leave blank to auto-exchange via client_id + client_secret.',
     connectorDesc: {
       feishu: 'Sync documents, spreadsheets and files from Feishu Wiki',
       lark: 'Sync documents, spreadsheets and files from Lark Wiki (Feishu international)',

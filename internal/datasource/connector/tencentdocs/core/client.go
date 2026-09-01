@@ -573,10 +573,117 @@ func (c *Client) FetchDocumentContent(ctx context.Context, docID string) (string
 	return resp.Data, resp.ContentType, nil
 }
 
-// looksLikeDocumentID is a best-effort heuristic: Tencent Docs doc IDs are
+// Document types recognised by the Tencent Docs drive listing. Exposed as
+// named constants so docOps.Fetch can switch on them without typo risk.
+const (
+	DocTypeDoc   = "doc"
+	DocTypeSheet = "sheet"
+	DocTypeSlide = "slide"
+	DocTypeForm  = "form"
+)
+
+// AllDocTypes returns every document type the picker surfaces. v1 treats the
+// picker as flat (no nested folders): we list every doc type in one drive
+// call so the user sees their whole library.
+func AllDocTypes() []string { return []string{DocTypeDoc, DocTypeSheet, DocTypeSlide, DocTypeForm} }
+
+// ListAllDriveFiles fans out one /drive/v2/files call per doc type and
+// concatenates the results. Kept as a separate helper rather than inlining
+// inside ListDriveFiles because the engine's NodeOps.List contract expects
+// a single []Document; pagination across multiple types is the connector's
+// job, not the engine's.
+func (c *Client) ListAllDriveFiles(ctx context.Context, limit int) ([]Document, error) {
+	var out []Document
+	for _, t := range AllDocTypes() {
+		docs, err := c.ListDriveFiles(ctx, t, limit)
+		if err != nil {
+			return nil, fmt.Errorf("list drive files (type=%s): %w", t, err)
+		}
+		out = append(out, docs...)
+	}
+	return out, nil
+}
+
+// FetchSheetContent pulls a sheet's tabular content. The Tencent Docs Open
+// platform returns it as a CSV blob; callers that want structured rows can
+// parse it. content_type is "text/csv".
+func (c *Client) FetchSheetContent(ctx context.Context, docID string) (string, string, error) {
+	path := fmt.Sprintf("/sheet/v3/%s/content", url.PathEscape(docID))
+	var resp DocumentContentResponse
+	if err := c.DoRequest(ctx, http.MethodGet, path, nil, &resp); err != nil {
+		return "", "", fmt.Errorf("fetch sheet content: %w", err)
+	}
+	if resp.ErrCode != 0 {
+		return "", "", fmt.Errorf("fetch sheet content: errcode=%d errmsg=%s", resp.ErrCode, resp.ErrMsg)
+	}
+	if resp.ContentType == "" {
+		resp.ContentType = "text/csv"
+	}
+	return resp.Data, resp.ContentType, nil
+}
+
+// FetchSlideContent pulls a slide deck. The Open API exposes a markdown
+// export; content_type is "text/markdown".
+func (c *Client) FetchSlideContent(ctx context.Context, docID string) (string, string, error) {
+	path := fmt.Sprintf("/slide/v3/%s/content", url.PathEscape(docID))
+	var resp DocumentContentResponse
+	if err := c.DoRequest(ctx, http.MethodGet, path, nil, &resp); err != nil {
+		return "", "", fmt.Errorf("fetch slide content: %w", err)
+	}
+	if resp.ErrCode != 0 {
+		return "", "", fmt.Errorf("fetch slide content: errcode=%d errmsg=%s", resp.ErrCode, resp.ErrMsg)
+	}
+	if resp.ContentType == "" {
+		resp.ContentType = "text/markdown"
+	}
+	return resp.Data, resp.ContentType, nil
+}
+
+// FetchFormContent pulls a form's structure + current responses. The Open
+// API returns it as JSON for round-tripping; content_type is "application/json".
+func (c *Client) FetchFormContent(ctx context.Context, docID string) (string, string, error) {
+	path := fmt.Sprintf("/form/v3/%s/content", url.PathEscape(docID))
+	var resp DocumentContentResponse
+	if err := c.DoRequest(ctx, http.MethodGet, path, nil, &resp); err != nil {
+		return "", "", fmt.Errorf("fetch form content: %w", err)
+	}
+	if resp.ErrCode != 0 {
+		return "", "", fmt.Errorf("fetch form content: errcode=%d errmsg=%s", resp.ErrCode, resp.ErrMsg)
+	}
+	if resp.ContentType == "" {
+		resp.ContentType = "application/json"
+	}
+	return resp.Data, resp.ContentType, nil
+}
+
+// FetchAnyContent routes by document type to the right content endpoint.
+// Centralised here so docOps.Fetch (the only engine-facing call site) stays
+// a one-liner switch instead of duplicating routing logic.
+func (c *Client) FetchAnyContent(ctx context.Context, d Document) (string, string, error) {
+	switch d.Type {
+	case DocTypeSheet:
+		return c.FetchSheetContent(ctx, d.ID)
+	case DocTypeSlide:
+		return c.FetchSlideContent(ctx, d.ID)
+	case DocTypeForm:
+		return c.FetchFormContent(ctx, d.ID)
+	default:
+		return c.FetchDocumentContent(ctx, d.ID)
+	}
+}
+
+// IsSingleDocumentID is a best-effort heuristic: Tencent Docs doc IDs are
 // 16-22 char alphanumeric strings starting with a type letter (D / S / B /
 // F). Anything shorter or with non-alphanumeric characters is treated as a
-// folder / drive ID.
+// folder / drive ID. Exported because doc/ uses it to decide whether the
+// resource IDs list is "one specific doc" vs "list the whole library".
+func IsSingleDocumentID(id string) bool {
+	return looksLikeDocumentID(id)
+}
+
+// looksLikeDocumentID is the lowercase alias kept for in-package callers /
+// tests. Mirrors the engine's lowercase-symbol convention (see FetchTally,
+// newFetchTally).
 func looksLikeDocumentID(id string) bool {
 	if len(id) < 8 || len(id) > 64 {
 		return false

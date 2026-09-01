@@ -616,6 +616,29 @@ const connectorDefs = computed<ConnectorDef[]>(() => [
     ],
   },
   {
+    // Tencent Docs (docs.qq.com) — 腾讯文档 OpenAPI.
+    // Auth path: client_credentials OAuth2 (preferred) or a long-lived
+    // access_token for service-account integrations. Scopes are
+    // doc:read / drive:read / sheet:read / slide:read.
+    // base_url is for private deployments / proxy mirrors only; defaults to
+    // the public docs.qq.com/openapi origin.
+    type: 'tencent_docs',
+    available: true,
+    docUrl: 'https://docs.qq.com/open',
+    permissionDocUrl: 'https://docs.qq.com/open',
+    permissionPageUrl: 'https://docs.qq.com/open',
+    requiredPermissions: [
+      'doc:read',
+      'drive:read',
+    ],
+    fields: [
+      { key: 'client_id', labelKey: 'datasource.field.tencentDocsClientId', placeholder: '', secret: false },
+      { key: 'client_secret', labelKey: 'datasource.field.tencentDocsClientSecret', placeholder: '', secret: true },
+      { key: 'access_token', labelKey: 'datasource.field.tencentDocsAccessToken', placeholder: '', secret: true, optional: true, hintKey: 'datasource.field.tencentDocsAccessTokenHint' },
+      { key: 'base_url', labelKey: 'datasource.field.baseUrl', placeholder: 'https://docs.qq.com/openapi', optional: true, hintKey: 'datasource.field.baseUrlHint' },
+    ],
+  },
+  {
     type: 'rss',
     available: true,
     docUrl: '',
