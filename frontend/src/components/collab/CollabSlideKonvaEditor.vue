@@ -57,6 +57,14 @@
       <button @click="onDownload" type="button" :disabled="downloading">
         {{ downloading ? '下载中…' : '下载 .pptx' }}
       </button>
+      <button
+        type="button"
+        class="collab-slide-konva__present-btn"
+        data-testid="slide-present-btn"
+        :disabled="!slides.length || loading"
+        @click="onEnterPresent"
+        title="全屏演示 (F5)"
+      >▶ 演示</button>
       <button @click="deleteSelected" type="button" :disabled="!selectedId" data-testid="slide-delete-selected">删除</button>
       <button @click="duplicateSelected" type="button" :disabled="!selectedId" title="复制所选">⎘ 复制</button>
       <button @click="bringForward" type="button" :disabled="!selectedId" title="上移一层">↑ 上移</button>
@@ -492,6 +500,94 @@
       </aside>
     </div>
     <p v-if="error || saveError" class="collab-slide-konva__error">{{ saveError || error }}</p>
+    <!-- v0.7.96 — fullscreen present mode (Teleport to body) -->
+    <Teleport v-if="presentMode" to="body">
+      <div class="slide-present-overlay" data-testid="slide-present-overlay" @click.self="onExitPresent">
+        <div class="slide-present-shell">
+          <div class="slide-present-stage">
+            <svg
+              :viewBox="`0 0 ${stageWidthPx} ${stageHeightPx}`"
+              :width="stageWidthPx"
+              :height="stageHeightPx"
+              preserveAspectRatio="xMidYMid meet"
+              class="slide-present-svg"
+              data-testid="slide-present-svg"
+            >
+              <rect v-if="presentSlide?.background" x="0" y="0" :width="stageWidthPx" :height="stageHeightPx" :fill="`#${presentSlide.background}`" />
+              <template v-for="shape in presentShapes" :key="shape.id">
+                <rect
+                  v-if="shape.type === 'rect'"
+                  :x="emuToPx(shape.x)" :y="emuToPx(shape.y)"
+                  :width="emuToPx(shape.w)" :height="emuToPx(shape.h)"
+                  :fill="shape.fill ? `#${shape.fill}` : '#3b82f6'"
+                  :stroke="shape.stroke ? `#${shape.stroke}` : '#1e3a8a'"
+                  stroke-width="1"
+                  :transform="shape.rotation ? `rotate(${shape.rotation} ${emuToPx(shape.x) + emuToPx(shape.w)/2} ${emuToPx(shape.y) + emuToPx(shape.h)/2})` : ''"
+                />
+                <rect
+                  v-else-if="shape.type === 'roundRect'"
+                  :x="emuToPx(shape.x)" :y="emuToPx(shape.y)"
+                  :width="emuToPx(shape.w)" :height="emuToPx(shape.h)"
+                  :rx="Math.min(emuToPx(shape.w), emuToPx(shape.h)) * 0.15"
+                  :fill="shape.fill ? `#${shape.fill}` : '#8b5cf6'"
+                  :stroke="shape.stroke ? `#${shape.stroke}` : '#4c1d95'"
+                  stroke-width="1"
+                  :transform="shape.rotation ? `rotate(${shape.rotation} ${emuToPx(shape.x) + emuToPx(shape.w)/2} ${emuToPx(shape.y) + emuToPx(shape.h)/2})` : ''"
+                />
+                <ellipse
+                  v-else-if="shape.type === 'ellipse'"
+                  :cx="emuToPx(shape.x) + emuToPx(shape.w)/2" :cy="emuToPx(shape.y) + emuToPx(shape.h)/2"
+                  :rx="emuToPx(shape.w)/2" :ry="emuToPx(shape.h)/2"
+                  :fill="shape.fill ? `#${shape.fill}` : '#10b981'"
+                  :stroke="shape.stroke ? `#${shape.stroke}` : '#064e3b'"
+                  stroke-width="1"
+                />
+                <line
+                  v-else-if="shape.type === 'line'"
+                  :x1="emuToPx(shape.x)" :y1="emuToPx(shape.y)"
+                  :x2="emuToPx(shape.x) + emuToPx(shape.w)" :y2="emuToPx(shape.y) + emuToPx(shape.h)"
+                  :stroke="shape.stroke ? `#${shape.stroke}` : '#111827'"
+                  :stroke-width="shape.strokeWidth ? Math.max(1, emuToPx(shape.strokeWidth)) : 2"
+                />
+                <text
+                  v-else-if="shape.type === 'text'"
+                  :x="emuToPx(shape.x)" :y="emuToPx(shape.y) + (shape.fontSize || 18)"
+                  :width="emuToPx(shape.w)"
+                  :fill="shape.fill ? `#${shape.fill}` : '#1f2937'"
+                  :font-size="shape.fontSize || 18"
+                  font-family="Segoe UI, system-ui, sans-serif"
+                >{{ shape.text || '' }}</text>
+                <rect
+                  v-else
+                  :x="emuToPx(shape.x)" :y="emuToPx(shape.y)"
+                  :width="emuToPx(shape.w)" :height="emuToPx(shape.h)"
+                  :fill="shape.fill ? `#${shape.fill}` : '#94a3b8'"
+                  :stroke="shape.stroke ? `#${shape.stroke}` : '#475569'"
+                  stroke-width="1"
+                  :transform="shape.rotation ? `rotate(${shape.rotation} ${emuToPx(shape.x) + emuToPx(shape.w)/2} ${emuToPx(shape.y) + emuToPx(shape.h)/2})` : ''"
+                />
+              </template>
+            </svg>
+          </div>
+          <div class="slide-present-controls" data-testid="slide-present-controls">
+            <button type="button" class="slide-present-btn" @click="presentPrev" :disabled="presentIndex === 0" data-testid="slide-present-prev" title="上一页 (←)">← 上一页</button>
+            <span class="slide-present-counter" data-testid="slide-present-counter">{{ presentIndex + 1 }} / {{ slides.length }}</span>
+            <button type="button" class="slide-present-btn" @click="presentNext" :disabled="presentIndex >= slides.length - 1" data-testid="slide-present-next" title="下一页 (→)">下一页 →</button>
+            <span class="slide-present-divider" />
+            <button type="button" class="slide-present-btn slide-present-btn--exit" @click="onExitPresent" data-testid="slide-present-exit" title="退出 (ESC)">✕ 退出 (ESC)</button>
+          </div>
+          <div v-if="presentSlide?.notes" class="slide-present-notes" data-testid="slide-present-notes">
+            <div class="slide-present-notes-label">演讲者备注</div>
+            <div class="slide-present-notes-body">{{ presentSlide.notes }}</div>
+          </div>
+          <div v-if="nextSlide && nextSlide !== presentSlide" class="slide-present-next-preview" data-testid="slide-present-next-preview">
+            <div class="slide-present-next-label">下一页</div>
+            <div class="slide-present-next-title">{{ slideSummary(nextSlide) }}</div>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- v0.7.30 — speaker notes panel -->
     <section class="collab-slide-konva__notes">
       <header class="collab-slide-konva__notes-header">
@@ -649,6 +745,7 @@ const saveError = ref<string | null>(null)
 const uploading = ref(false)
 const downloading = ref(false)
 const saveLabel = ref('未修改')
+const presentMode = ref(false)
 const savetagClass = reactive({ dirty: false, saving: false })
 const fileInput = ref<HTMLInputElement | null>(null)
 const activeIndex = ref(0)
@@ -1599,8 +1696,49 @@ const onSlideThemeApply = async (e: Event) => {
   }
 }
 
+// --- v0.7.96 — fullscreen present mode ---
+const presentIndex = ref(0)
+const presentSlide = computed(() => slides.value[presentIndex.value] ?? null)
+const presentShapes = computed(() => presentSlide.value?.shapes ?? [])
+const nextSlide = computed(() => slides.value[presentIndex.value + 1] ?? null)
+
+const onEnterPresent = () => {
+  if (!slides.value.length || loading.value) return
+  presentIndex.value = activeIndex.value
+  presentMode.value = true
+}
+const onExitPresent = () => {
+  presentMode.value = false
+  // sync back so editor resumes on the slide the presenter was last showing
+  activeIndex.value = presentIndex.value
+}
+const presentPrev = () => {
+  if (presentIndex.value > 0) presentIndex.value -= 1
+}
+const presentNext = () => {
+  if (presentIndex.value < slides.value.length - 1) presentIndex.value += 1
+}
+const onPresentKeydown = (e: KeyboardEvent) => {
+  if (!presentMode.value) return
+  if (e.key === 'Escape') { e.preventDefault(); onExitPresent(); return }
+  if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+    e.preventDefault()
+    if (e.shiftKey && e.key === 'ArrowRight') { presentPrev(); return }
+    presentNext()
+    return
+  }
+  if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+    e.preventDefault()
+    presentPrev()
+    return
+  }
+  if (e.key === 'Home') { e.preventDefault(); presentIndex.value = 0; return }
+  if (e.key === 'End') { e.preventDefault(); presentIndex.value = slides.value.length - 1; return }
+}
+
 if (typeof window !== 'undefined') {
   window.addEventListener('wk-slide-theme-apply', onSlideThemeApply as EventListener)
+  window.addEventListener('keydown', onPresentKeydown)
 }
 
 const triggerUpload = () => fileInput.value?.click()
@@ -1734,6 +1872,7 @@ onBeforeUnmount(() => {
   if (saveTimer.value) window.clearTimeout(saveTimer.value)
   if (typeof window !== 'undefined') {
     window.removeEventListener('keydown', onKeydown)
+    window.removeEventListener('keydown', onPresentKeydown)
     window.removeEventListener('wk-slide-theme-apply', onSlideThemeApply as EventListener)
   }
   handle?.destroy()
@@ -1741,6 +1880,91 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.slide-present-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.96);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.slide-present-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+.slide-present-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 0;
+}
+.slide-present-svg {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  background: #ffffff;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.45);
+}
+.slide-present-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  background: rgba(15, 23, 42, 0.85);
+  border-radius: 999px;
+  color: #f1f5f9;
+  font-size: 14px;
+}
+.slide-present-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #f8fafc;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.slide-present-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.slide-present-btn--exit { background: rgba(220, 38, 38, 0.2); border-color: rgba(220, 38, 38, 0.4); }
+.slide-present-divider { width: 1px; height: 20px; background: rgba(255, 255, 255, 0.2); }
+.slide-present-counter { font-variant-numeric: tabular-nums; min-width: 60px; text-align: center; }
+.slide-present-notes {
+  position: absolute;
+  bottom: 100px;
+  right: 24px;
+  max-width: 360px;
+  padding: 14px 18px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #f1f5f9;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+.slide-present-notes-label { font-size: 11px; color: #cbd5e1; margin-bottom: 6px; letter-spacing: 0.05em; }
+.slide-present-notes-body { font-size: 14px; line-height: 1.5; white-space: pre-wrap; }
+.slide-present-next-preview {
+  position: absolute;
+  bottom: 100px;
+  left: 24px;
+  max-width: 240px;
+  padding: 12px 16px;
+  background: rgba(15, 23, 42, 0.85);
+  color: #e2e8f0;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+.slide-present-next-label { font-size: 11px; color: #94a3b8; margin-bottom: 4px; letter-spacing: 0.05em; }
+.slide-present-next-title { font-size: 14px; }
 .collab-slide-konva { display: flex; flex-direction: column; height: 100%; background: var(--td-bg-color-container); }
 .collab-slide-konva__toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--td-component-stroke); flex-wrap: wrap; }
 .collab-slide-konva__title { font-weight: 600; }

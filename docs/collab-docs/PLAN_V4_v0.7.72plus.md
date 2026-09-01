@@ -261,3 +261,28 @@ Alice 切到 Sheet2 写 A1=Bob 在 Sheet2 看到，Sheet1 不会串表。已 PAS
 - v0.7.97 SLIDE 主题 Yjs 协同（让多端实时看到主题切换）
 - 持续收敛 genoffice vendor：把已 copy 的 doc*/xlsx*/pivot*/slide* adapters + 配套
   vitest 按模块分组提交，避免一次性 PR 引入回归
+
+## 10. v0.7.96 — SLIDE 全屏演示模式 + 演讲者视图（已交付，2026-09-02）
+
+### 已完成
+
+- 工具栏 ▶ 演示 按钮 (data-testid="slide-present-btn")
+- `<Teleport>` 全屏 overlay (z-index 9999, rgba 黑色遮罩)
+- SVG 重渲染当前幻灯片 (text/rect/roundRect/ellipse/line + 其他 fallback)
+- 翻页控制：键盘 (←/→/Space/Home/End/PageUp/PageDown/Shift+→) + 工具栏按钮
+- 演讲者视图：右下浮动备注 + 左下下一页预览
+- ESC 退出，退出时 activeIndex 同步到编辑器
+
+### 真实双端验证
+
+`frontend/wk-slide-present.mjs` 已 PASS：
+- overlay 出现 + svg 渲染 + 翻页 + prev/next disabled + ESC 关闭
+- 编辑器 textarea 写备注 → 演示 overlay 浮动显示
+- 0 page error
+
+### 下一阶段
+
+- v0.7.97 SLIDE 母版编辑 / 布局切换 (listBuiltinLayouts + ensureBuiltinLayout)
+- v0.7.98 SHEET 命名区域 UI (xlsxDefinedNames.ts 已就位)
+- v0.7.99 DOC 修订对比 viewer (audit timeline 增强)
+- 持续收敛 genoffice vendor (doc* / xlsx* / pivot* adapters + 配套 vitest 按模块分组)

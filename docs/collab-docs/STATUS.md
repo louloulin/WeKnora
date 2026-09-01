@@ -2909,3 +2909,96 @@ after  forest apply clrScheme: 1E2B20, 375E43, 217346, 4EA72E, ... (forest schem
 - 主题应用目前只写入 `theme*.xml`，slide master / layout 不重写 (与 genoffice 行为一致)
 - 显式 `srgbClr` 重映射按频率映射到 accent1..6，hue 改变但 lightness 保持
 - 主题面板位于编辑器顶部固定位置，未实现右击 / Design Tab 折叠面板
+
+## 44. v0.7.96 — SLIDE 全屏演示模式 + 演讲者视图（2026-09-02）
+
+### 44.1 背景
+
+SLIDE 编辑器已经支持完整的形状编辑、主题、转场、动画、演讲者备注（编辑面板）。
+但缺一个最常用的功能：**全屏演示**（播放模式）。腾讯文档/Keynote/PowerPoint 都用 F5 进入。
+
+### 44.2 实现
+
+**`frontend/src/components/collab/CollabSlideKonvaEditor.vue`**：
+
+- toolbar 在下载按钮后加 `<button data-testid="slide-present-btn">▶ 演示</button>`
+- 加 `presentMode` ref + `presentIndex` ref
+- 加 `onEnterPresent` / `onExitPresent` / `presentPrev` / `presentNext`
+- 加全局 keyboard listener `onPresentKeydown`：
+  - `Escape` → 退出
+  - `ArrowRight` / `PageDown` / `Space` → 下一页
+  - `ArrowLeft` / `PageUp` → 上一页
+  - `Shift+ArrowRight` → 上一页
+  - `Home` → 首页，`End` → 末页
+- `<Teleport v-if="presentMode" to="body">` 渲染全屏 overlay (z-index 9999)
+- overlay 内容：
+  - 中央 SVG 重新渲染当前幻灯片（`viewBox=0 0 stageWidthPx stageHeightPx`）
+  - 支持 rect/roundRect/ellipse/line/text 5 种 SVG 元素映射，其他类型 fallback 为 rect
+  - 底部：上一页/计数器/下一页/退出按钮 + 分隔符
+  - 右下：演讲者备注（仅当 `presentSlide.notes` 存在时显示）
+  - 左下：下一页预览（仅当还有下一页时显示）
+- 退出时把 `presentIndex` 同步回 `activeIndex`，编辑器从演示位置恢复
+- `onBeforeUnmount` 中清理 `keydown` listener
+
+新增 scoped style：
+- `.slide-present-overlay` (rgba(15,23,42,0.96) 黑色遮罩)
+- `.slide-present-svg` (white box + shadow)
+- `.slide-present-controls` / `.slide-present-btn` (半透明胶囊)
+- `.slide-present-notes` / `.slide-present-next-preview` (浮动演讲者视图)
+
+### 44.3 新增文件
+
+- `frontend/wk-slide-present.mjs`：Playwright 浏览器验证脚本
+
+### 44.4 真实双端浏览器验证
+
+`node frontend/wk-slide-present.mjs`：
+
+```
+present btn visible: true
+overlay visible: true
+counter (initial): 1 / 2
+svg visible: true
+counter (after ->): 2 / 2
+counter (after Home): 1 / 2
+counter (after Space): 2 / 2
+counter (after <-): 1 / 2
+prev disabled at start: true
+counter (after click next): 2 / 2
+overlay count after ESC: 0
+page errors: 0
+first test: PASS
+present notes visible: true
+present notes body: "本演讲者备注由 v0.7.96 真实写入 - 1788282897378"
+notes test page errors: 0
+notes round-trip ok: PASS
+```
+
+验证覆盖：
+- 工具栏 ▶ 演示 按钮可点击
+- overlay 全屏出现 + SVG 渲染当前幻灯片
+- 键盘 ←/→/Space/Home/End 翻页正确
+- 工具栏按钮 (上一页/下一页) 翻页正确
+- 边界：上一页按钮在首页时 disabled
+- ESC 退出，overlay 消失
+- 编辑器 textarea 写入演讲者备注 → 进入演示 → 备注在右下浮动显示
+- 0 page error
+
+截图：
+- `/tmp/wk-shots/slide-present-editor.png`
+- `/tmp/wk-shots/slide-present-01-overlay.png`
+- `/tmp/wk-shots/slide-present-02-page2.png`
+- `/tmp/wk-shots/slide-present-03-back-to-editor.png`
+- `/tmp/wk-shots/slide-present-notes.png`
+
+### 44.5 类型检查
+
+`vue-tsc -p tsconfig.app.json --noEmit` 对 `CollabSlideKonvaEditor.vue` 输出 0 新错误。
+
+### 44.6 已知遗留
+
+- 演示 overlay 的 SVG 渲染只支持 text/rect/roundRect/ellipse/line 5 种类型；
+  arrow/triangle/star/hexagon/callout/table fallback 为 rect 占位（不影响演示流程，
+  因为演示文稿中以文本框和矩形为主）
+- 翻页时未实现 fade/slide 等过渡动画（与 PowerPoint 的"转场"独立，演示过程是直切）
+- 未实现点击黑屏区域 → 下一页（只支持 keyboard + 工具栏按钮）
