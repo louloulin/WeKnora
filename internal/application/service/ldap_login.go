@@ -10,6 +10,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/ldapsp"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
 
 // LDAPLogin errors are returned by LoginWithLDAPCredentials. The
@@ -57,7 +58,7 @@ type LDAPLoginOptions struct {
 type LDAPLoginDeps struct {
 	ConfigSvc *LDAPConfigService
 	Dialer    ldapsp.Dialer
-	FedRepo   *repository.LDAPFederationIdentityRepository
+	FedRepo   interfaces.LDAPFederationIdentityRepository
 	Opts      LDAPLoginOptions
 }
 

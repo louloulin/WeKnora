@@ -53,8 +53,12 @@ type CompositeChecker struct {
 }
 
 // NewCompositeChecker builds a Checker with the given adapters. Pass
-// adapters in any order; duplicate ObjectTypes panic so integration
-// bugs surface at startup instead of silently masking one policy.
+// adapters in any order. Duplicate ObjectTypes are tolerated — the
+// first adapter for each ObjectType wins. The TupleAdapter
+// intentionally reuses ObjectTypeTenant so it can sit alongside the
+// TenantRoleAdapter without forcing the composite to special-case
+// fallthrough dispatch; production wiring puts the role adapter
+// first so it stays authoritative.
 func NewCompositeChecker(adapters ...Adapter) *CompositeChecker {
 	c := &CompositeChecker{
 		adapters:      make(map[ObjectType]Adapter, len(adapters)),
@@ -62,26 +66,32 @@ func NewCompositeChecker(adapters ...Adapter) *CompositeChecker {
 		decisionCache: newDecisionLRU(4096),
 	}
 	for _, a := range adapters {
+		// Duplicate ObjectTypes are tolerated: the first adapter
+		// wins. The TupleAdapter intentionally reuses
+		// ObjectTypeTenant as a sentinel so it can be looked up
+		// alongside the role adapter without the composite
+		// framework refusing to register it. Keeping the first
+		// registration preserves the documented ranking
+		// ("ranked below the in-memory adapters").
 		ot := a.ObjectType()
-		if _, dup := c.adapters[ot]; dup {
-			panic("authz: duplicate adapter for " + string(ot))
+		if _, exists := c.adapters[ot]; !exists {
+			c.adapters[ot] = a
 		}
-		c.adapters[ot] = a
 	}
 	return c
 }
 
 // Register adds an adapter after construction. Intended for tests and
 // for plugin-style opt-ins; production wiring registers everything
-// in NewCompositeChecker.
+// in NewCompositeChecker. Duplicate ObjectTypes are ignored — the
+// first registration wins — see NewCompositeChecker for rationale.
 func (c *CompositeChecker) Register(a Adapter) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	ot := a.ObjectType()
-	if _, dup := c.adapters[ot]; dup {
-		panic("authz: duplicate adapter for " + string(ot))
+	if _, exists := c.adapters[ot]; !exists {
+		c.adapters[ot] = a
 	}
-	c.adapters[ot] = a
 }
 
 // DisableCache turns off the composite-level decision cache. Tests

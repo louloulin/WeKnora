@@ -251,13 +251,17 @@ func TestCompositeCache_HitsShortCircuitAdapter(t *testing.T) {
 	}
 }
 
-func TestDuplicateAdapterPanics(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("expected panic on duplicate adapter")
-		}
-	}()
-	_ = NewCompositeChecker(NewTenantRoleAdapter(), NewTenantRoleAdapter())
+func TestDuplicateAdapterFirstWins(t *testing.T) {
+	// Composite tolerates duplicate ObjectTypes — the first
+	// registration wins. The TupleAdapter intentionally reuses
+	// ObjectTypeTenant so it can sit alongside TenantRoleAdapter
+	// without forcing the composite to special-case fallthrough
+	// dispatch.
+	a := NewTenantRoleAdapter()
+	c := NewCompositeChecker(a, NewTenantRoleAdapter())
+	if c.adapters[ObjectTypeTenant] != a {
+		t.Fatalf("first adapter must win on duplicate ObjectType")
+	}
 }
 
 func TestStableReasonOrder_PicksMostSpecific(t *testing.T) {

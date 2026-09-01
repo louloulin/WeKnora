@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -41,6 +42,14 @@ import (
 )
 
 func main() {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "PANIC RECOVERED: %v\n", r)
+			fmt.Fprintf(os.Stderr, "%s\n", debug.Stack())
+			_ = r
+			os.Exit(1)
+		}
+	}()
 	// Set Gin mode
 	if os.Getenv("GIN_MODE") == "release" {
 		gin.SetMode(gin.ReleaseMode)
@@ -56,13 +65,16 @@ func main() {
 	runtime.MarkServerStarted()
 
 	// Build dependency injection container
+	fmt.Fprintln(os.Stderr, "[trace] before BuildContainer")
 	c := container.BuildContainer(runtime.GetContainer())
+	fmt.Fprintln(os.Stderr, "[trace] after BuildContainer")
 
 	// One-shot bootstrap hooks (e.g. promote env-named user to system
 	// admin). Best-effort: never aborts startup — see bootstrap.go.
 	runStartupBootstrap(c)
 
 	// Run application
+	fmt.Fprintln(os.Stderr, "[trace] before c.Invoke gin")
 	err := c.Invoke(func(
 		cfg *config.Config,
 		router *gin.Engine,
@@ -70,6 +82,7 @@ func main() {
 		systemSettingSvc interfaces.SystemSettingService,
 		wikiPageRepo interfaces.WikiPageRepository,
 	) error {
+		fmt.Fprintln(os.Stderr, "[trace] inside c.Invoke closure")
 		// Create HTTP server
 		server := &http.Server{
 			Handler: router,
@@ -148,6 +161,8 @@ func main() {
 		return nil
 	})
 	if err != nil {
-		logger.Fatalf(context.Background(), "Failed to run application: %v", err)
+		fmt.Fprintf(os.Stderr, "FATAL: c.Invoke failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%+v\n", err)
+		os.Exit(1)
 	}
 }

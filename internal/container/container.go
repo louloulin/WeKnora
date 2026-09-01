@@ -166,56 +166,56 @@ func BuildContainer(container *dig.Container) *dig.Container {
 
 	// Data repositories layer
 	logger.Debugf(ctx, "[Container] Registering repositories...")
-	must(container.Provide(repository.NewTenantRepository))
-	must(container.Provide(repository.NewTenantAPIKeyRepository))
-	must(container.Provide(repository.NewTenantMemberRepository))
-	must(container.Provide(repository.NewTenantInvitationRepository))
-	must(container.Provide(repository.NewAuditLogRepository))
-	must(container.Provide(repository.NewKnowledgeBaseRepository))
-	must(container.Provide(repository.NewKnowledgeRepository))
+	must(container.Provide(repository.NewTenantRepository, dig.As(new(interfaces.TenantRepository))))
+	must(container.Provide(repository.NewTenantAPIKeyRepository, dig.As(new(interfaces.TenantAPIKeyRepository))))
+	must(container.Provide(repository.NewTenantMemberRepository, dig.As(new(interfaces.TenantMemberRepository))))
+	must(container.Provide(repository.NewTenantInvitationRepository, dig.As(new(interfaces.TenantInvitationRepository))))
+	must(container.Provide(repository.NewAuditLogRepository, dig.As(new(interfaces.AuditLogRepository))))
+	must(container.Provide(repository.NewKnowledgeBaseRepository, dig.As(new(interfaces.KnowledgeBaseRepository))))
+	must(container.Provide(repository.NewKnowledgeRepository, dig.As(new(interfaces.KnowledgeRepository))))
 	must(container.Provide(repository.NewKnowledgeSpanRepository))
-	must(container.Provide(repository.NewChunkRepository))
-	must(container.Provide(repository.NewKnowledgeTagRepository))
-	must(container.Provide(repository.NewSessionRepository))
-	must(container.Provide(repository.NewMessageRepository))
-	must(container.Provide(repository.NewMessageSuggestionRepository))
-	must(container.Provide(repository.NewModelRepository))
-	must(container.Provide(repository.NewUserRepository))
-	must(container.Provide(repository.NewOIDCIdentityRepository))
-	must(container.Provide(repository.NewAuthZTupleRepository))
-	must(container.Provide(repository.NewSAMLIdentityRepository))
-	must(container.Provide(repository.NewLDAPConfigRepository))
-	must(container.Provide(repository.NewLDAPFederationIdentityRepository))
-	must(container.Provide(repository.NewSCIMTokenRepository))
-	must(container.Provide(repository.NewSCIMSyncLogRepository))
-	must(container.Provide(repository.NewMFACredentialRepository))
+	must(container.Provide(repository.NewChunkRepository, dig.As(new(interfaces.ChunkRepository))))
+	must(container.Provide(repository.NewKnowledgeTagRepository, dig.As(new(interfaces.KnowledgeTagRepository))))
+	must(container.Provide(repository.NewSessionRepository, dig.As(new(interfaces.SessionRepository))))
+	must(container.Provide(repository.NewMessageRepository, dig.As(new(interfaces.MessageRepository))))
+	must(container.Provide(repository.NewMessageSuggestionRepository, dig.As(new(interfaces.MessageSuggestionRepository))))
+	must(container.Provide(repository.NewModelRepository, dig.As(new(interfaces.ModelRepository))))
+	must(container.Provide(repository.NewUserRepository, dig.As(new(interfaces.UserRepository))))
+	must(container.Provide(repository.NewOIDCIdentityRepository, dig.As(new(interfaces.OIDCIdentityRepository))))
+	must(container.Provide(repository.NewAuthZTupleRepository, dig.As(new(interfaces.AuthZTupleRepository))))
+	must(container.Provide(repository.NewSAMLIdentityRepository, dig.As(new(interfaces.SAMLIdentityRepository))))
+	must(container.Provide(repository.NewLDAPConfigRepository, dig.As(new(interfaces.LDAPConfigRepository))))
+	must(container.Provide(repository.NewLDAPFederationIdentityRepository, dig.As(new(interfaces.LDAPFederationIdentityRepository))))
+	must(container.Provide(repository.NewSCIMTokenRepository, dig.As(new(interfaces.SCIMTokenRepository))))
+	must(container.Provide(repository.NewSCIMSyncLogRepository, dig.As(new(interfaces.SCIMSyncLogRepository))))
+	must(container.Provide(repository.NewMFACredentialRepository, dig.As(new(interfaces.MFACredentialRepository))))
 	// Conditional access policy engine (Build v0.7.14). Tenant-scoped
 	// store on conditional_access_policies (pg 116 / sqlite 25); the
 	// evaluator runs as part of the login flow (hot read), the admin
 	// handler exposes the CRUD surface.
-	must(container.Provide(repository.NewConditionalAccessRepository))
-	must(container.Provide(repository.NewAuthTokenRepository))
-	must(container.Provide(repository.NewSystemSettingRepository))
+	must(container.Provide(repository.NewConditionalAccessRepository, dig.As(new(interfaces.ConditionalAccessRepository))))
+	must(container.Provide(repository.NewAuthTokenRepository, dig.As(new(interfaces.AuthTokenRepository))))
+	must(container.Provide(repository.NewSystemSettingRepository, dig.As(new(interfaces.SystemSettingRepository))))
 	must(container.Provide(neo4jRepo.NewNeo4jRepository))
-	must(container.Provide(repository.NewMCPServiceRepository))
-	must(container.Provide(repository.NewMCPToolApprovalRepository))
-	must(container.Provide(repository.NewMCPOAuthRepository))
+	must(container.Provide(repository.NewMCPServiceRepository, dig.As(new(interfaces.MCPServiceRepository))))
+	must(container.Provide(repository.NewMCPToolApprovalRepository, dig.As(new(interfaces.MCPToolApprovalRepository))))
+	must(container.Provide(repository.NewMCPOAuthRepository, dig.As(new(interfaces.MCPOAuthRepository))))
 	must(container.Provide(repository.NewTenantSandboxConfigRepository))
 	must(container.Provide(repository.NewTenantSkillRepository))
-	must(container.Provide(repository.NewCustomAgentRepository))
-	must(container.Provide(repository.NewOrganizationRepository))
-	must(container.Provide(repository.NewKBShareRepository))
-	must(container.Provide(repository.NewAgentShareRepository))
-	must(container.Provide(repository.NewEmbedChannelRepository))
-	must(container.Provide(repository.NewTenantDisabledSharedAgentRepository))
-	must(container.Provide(repository.NewUserResourceFavoriteRepository))
+	must(container.Provide(repository.NewCustomAgentRepository, dig.As(new(interfaces.CustomAgentRepository))))
+	must(container.Provide(repository.NewOrganizationRepository, dig.As(new(interfaces.OrganizationRepository))))
+	must(container.Provide(repository.NewKBShareRepository, dig.As(new(interfaces.KBShareRepository))))
+	must(container.Provide(repository.NewAgentShareRepository, dig.As(new(interfaces.AgentShareRepository))))
+	must(container.Provide(repository.NewEmbedChannelRepository, dig.As(new(interfaces.EmbedChannelRepository))))
+	must(container.Provide(repository.NewTenantDisabledSharedAgentRepository, dig.As(new(interfaces.TenantDisabledSharedAgentRepository))))
+	must(container.Provide(repository.NewUserResourceFavoriteRepository, dig.As(new(interfaces.UserResourceFavoriteRepository))))
 	must(container.Provide(service.NewWebSearchStateService))
-	must(container.Provide(repository.NewDataSourceRepository))
-	must(container.Provide(repository.NewSyncLogRepository))
-	must(container.Provide(repository.NewWikiPageRepository))
-	must(container.Provide(repository.NewMemoryRepository))
-	must(container.Provide(repository.NewTaskPendingOpsRepository))
-	must(container.Provide(repository.NewTaskDeadLetterRepository))
+	must(container.Provide(repository.NewDataSourceRepository, dig.As(new(interfaces.DataSourceRepository))))
+	must(container.Provide(repository.NewSyncLogRepository, dig.As(new(interfaces.SyncLogRepository))))
+	must(container.Provide(repository.NewWikiPageRepository, dig.As(new(interfaces.WikiPageRepository))))
+	must(container.Provide(repository.NewMemoryRepository, dig.As(new(interfaces.MemoryRepository))))
+	must(container.Provide(repository.NewTaskPendingOpsRepository, dig.As(new(interfaces.TaskPendingOpsRepository))))
+	must(container.Provide(repository.NewTaskDeadLetterRepository, dig.As(new(interfaces.TaskDeadLetterRepository))))
 
 	// MCP manager for managing MCP client connections
 	logger.Debugf(ctx, "[Container] Registering MCP manager...")
@@ -238,20 +238,36 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewTenantAPIKeyService))
 	must(container.Provide(service.NewTenantMemberService))
 	must(container.Provide(service.NewTenantInvitationService))
-	must(container.Provide(repository.NewNotificationRepository))
+	must(container.Provide(repository.NewNotificationRepository, dig.As(new(interfaces.NotificationRepository))))
 	must(container.Provide(service.NewNotificationService))
 	// SAML 2.0 SP — repository + service. The SPConfig singleton
 	// (cert + entity ID + ACS URL) is registered as a value; today
 	// it reads from env (SAML_SP_ENTITY_ID, SAML_SP_CERT_PEM,
 	// SAML_SP_KEY_PEM) and a follow-up commit moves it to the
 	// admin-managed settings table.
-	must(container.Provide(repository.NewSAMLIdPRepository))
+	must(container.Provide(repository.NewSAMLIdPRepository, dig.As(new(interfaces.SAMLIdPRepository))))
 	must(container.Provide(service.NewSAMLIdPService))
-	must(container.Provide(service.NewLDAPConfigService))
+	// LDAPConfigService constructor takes an ldapsp.Dialer; default
+	// to the package's no-network dialer so deployments without
+	// LDAP still wire successfully.
+	must(container.Provide(func(repo interfaces.LDAPConfigRepository) *service.LDAPConfigService {
+		return service.NewLDAPConfigService(repo, nil)
+	}))
 	must(container.Provide(service.NewSCIMTokenService))
 	must(container.Provide(service.NewSCIMSyncLogService))
+	// NewSCIMUserService takes a concrete *userService; dig can't
+	// resolve that through interfaces.UserService alone. Wrap with a
+	// closure that registers SCIMUserService via the service package's
+	// own constructor using the *userService provider registered above
+	// via dig.As.
 	must(container.Provide(service.NewSCIMUserService))
-	must(container.Provide(service.NewMFAService))
+	// MFAService constructor takes a string `issuer` (deployment name).
+	// dig can't resolve a bare string, so wrap with a closure that
+	// reads MFA_ISSUER from env (default "WeKnora").
+	must(container.Provide(func(repo interfaces.MFACredentialRepository) *service.MFAService {
+		issuer := os.Getenv("MFA_ISSUER")
+		return service.NewMFAService(repo, issuer)
+	}))
 	// GeoIP resolver — CountryResolver is the seam ConditionalAccessService
 	// uses to auto-fill the country field of an EvaluationRequest. The
 	// default is NoopCountryResolver; deployments with a MaxMind
@@ -408,7 +424,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// Audit exports (v0.7.25 Build #24 / G04) — on-demand CSV/JSON
 	// exports of the audit_logs table + monthly compliance summary.
 	// Owner / Admin only — guarded by the route group's rbac chain.
-	must(container.Provide(repository.NewAuditExportRepository))
+	must(container.Provide(repository.NewAuditExportRepository, dig.As(new(interfaces.AuditExportRepository))))
 	must(container.Provide(service.NewAuditExportService))
 	must(container.Provide(handler.NewAuditExportHandler))
 	must(container.Provide(service.NewAuditLogRetentionRunner))
@@ -445,6 +461,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		return service.NewEvalRunnerService(db, datasetSvc, badcaseSvc, modelSvc, chatPipeline, auditSvc)
 	}))
 	must(container.Provide(service.NewUserService))
+	// Also register the concrete *userService pointer for SCIM and
+	// any caller that needs unexported helpers. NewUserServiceConcrete
+	// returns the same value that satisfies interfaces.UserService.
+	must(container.Provide(service.NewUserServiceConcrete))
 	must(container.Provide(service.NewSystemSettingService))
 	must(container.Provide(func(
 		repo repository.TenantSandboxConfigRepository,
@@ -467,24 +487,6 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewKnowledgeAutoTagService, dig.Name("knowledgeAutoTag")))
 
 	must(container.Provide(service.NewMessageService))
-	// Wire the notification emitter onto the message service so chat
-	// messages containing @user mentions create notification rows.
-	// Both providers must be registered above this line for dig to
-	// resolve the dependency graph correctly.
-	must(container.Invoke(func(msgSvc interfaces.MessageService, notifSvc interfaces.NotificationService) {
-		if setter, ok := msgSvc.(interface {
-			SetNotificationService(interfaces.NotificationService)
-		}); ok {
-			setter.SetNotificationService(notifSvc)
-		}
-	}))
-	must(container.Invoke(func(notifSvc interfaces.NotificationService, checker authz.Checker) {
-		if setter, ok := notifSvc.(interface {
-			SetAuthzChecker(authz.Checker)
-		}); ok {
-			setter.SetAuthzChecker(checker)
-		}
-	}))
 	must(container.Provide(service.NewMessageSuggestionService))
 	must(container.Provide(service.NewMCPServiceService))
 	must(container.Provide(service.NewMCPToolApprovalService))
@@ -495,12 +497,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// "today's note" without the user having to remember to create
 	// one. Wired after the wiki surface so future lazy-wiki-page
 	// backfill hooks can plug into the existing knowledge_service.
-	must(container.Provide(repository.NewUserDailyNoteRepository))
+	must(container.Provide(repository.NewUserDailyNoteRepository, dig.As(new(interfaces.UserDailyNoteRepository))))
 	must(container.Provide(service.NewUserDailyNoteService))
 	must(container.Provide(handler.NewUserDailyNoteHandler))
 	// Register page ACL before WikiPageService: the page service consults
 	// ACLs on read paths and therefore needs this dependency at construction.
-	must(container.Provide(repository.NewWikiAclRepository))
+	must(container.Provide(repository.NewWikiAclRepository, dig.As(new(interfaces.WikiAclRepository))))
 	must(container.Provide(service.NewWikiAclService))
 	must(container.Provide(service.NewWikiPageService))
 
@@ -554,65 +556,31 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// 6 view types (table/board/gallery/calendar/timeline/list) over a
 	// typed-column schema, with per-view filters/sorts/groups/hidden
 	// field config. Repository is cross-dialect; handler is REST only.
-	must(container.Provide(repository.NewDatabaseRepository))
+	must(container.Provide(repository.NewDatabaseRepository, dig.As(new(interfaces.DatabaseRepository))))
 	must(container.Provide(dbsvc.NewService))
 	must(container.Provide(handler.NewDatabaseHandler))
 	// v0.7.36 Build #43 — MindMap (思维导图编辑器) for Docs × KB 一体化.
-	must(container.Provide(repository.NewMindMapRepository))
+	must(container.Provide(repository.NewMindMapRepository, dig.As(new(interfaces.MindMapRepository))))
 	must(container.Provide(mmsvc.NewMindMapService))
 	must(container.Provide(handler.NewMindMapHandler))
 	// v0.7.37 Build #44 — Slides (Markdown → 演示文稿). Deck/slide persistence,
 	// auto-generate from doc markdown, export to markdown/json/html, audit
 	// hook reserved for Build #46 Governance. Mirrors the MindMap wiring.
-	must(container.Provide(repository.NewSlideDeckRepository))
+	must(container.Provide(repository.NewSlideDeckRepository, dig.As(new(interfaces.SlideDeckRepository))))
 	must(container.Provide(sldsvc.NewSlideService))
 
 	// v0.7.38 Build #46.x — Webhook subscriptions + outbound delivery.
 	// Wired here so the collab / slide services can publish events to it.
-	must(container.Provide(repository.NewWebhookRepository))
-	must(container.Provide(webhooksvc.NewWebhookService))
+	must(container.Provide(repository.NewWebhookRepository, dig.As(new(interfaces.WebhookRepository))))
+	// Wrap NewWebhookService so the dispatcher dependency is
+	// satisfied with nil — NewWebhookService installs a default
+	// HTTPS dispatcher when nil, so the production service still
+	// works without a registered WebhookDispatcher.
+	must(container.Provide(func(repo interfaces.WebhookRepository) *webhooksvc.WebhookService {
+		return webhooksvc.NewWebhookService(repo, nil)
+	}))
 	must(container.Provide(handler.NewWebhookHandler))
 
-	// v0.7.38 Build #46.x — wire CollabDocService.SetEventPublisher
-	// so doc lifecycle events reach the WebhookService. Adapts the
-	// collab service's (string event) contract to WebhookEvent.
-	must(container.Invoke(func(collabSvc *service.CollabDocService, hookSvc interfaces.WebhookService) {
-		collabSvc.SetEventPublisher(func(ctx context.Context, event string, payload map[string]any) {
-			we := types.WebhookEvent(event)
-			if !types.ValidWebhookEvents[we] {
-				return
-			}
-			tenantID, _ := types.TenantIDFromContext(ctx)
-			if err := hookSvc.PublishEvent(ctx, tenantID, we, payload); err != nil {
-				logger.Warnf(ctx, "[collab-webhook-hook] publish failed: %v", err)
-			}
-		})
-	}))
-
-	must(container.Invoke(func(svc *sldsvc.SlideService, auditSvc interfaces.AuditLogService) {
-		// v0.7.38 Build #46.x — wire SlideService.SetAuditHook so deck
-		// lifecycle events flow into the governance audit_logs table.
-		// The slide-internal audit_log table (deck/slide scoped) keeps
-		// the per-deck timeline; audit_logs is the cross-product
-		// compliance trail surfaced by /audit-export.
-		svc.SetAuditHook(func(ctx context.Context, tenantID uint64, deckID string, userID uint64, action, detail string) {
-			governanceAction := slideActionToGovernance(action)
-			if governanceAction == "" {
-				return
-			}
-			entry := &types.AuditLog{
-				TenantID:    tenantID,
-				ActorUserID: strconv.FormatUint(userID, 10),
-				Action:      governanceAction,
-				ScopeType:   "slide_deck",
-				ScopeID:     deckID,
-				Details:     types.JSON(detailJSON(detail)),
-			}
-			if err := auditSvc.Log(ctx, entry); err != nil {
-				logger.Warnf(ctx, "[slides-audit-hook] governance log failed: %v", err)
-			}
-		})
-	}))
 	must(container.Provide(handler.NewSlideHandler))
 	// v0.7.26 Build #31 — formula / rollup / linked-record engine.
 	// Adapter so the formula handler can ask the database service for a field.
@@ -622,23 +590,23 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(formulasvc.NewService))
 	must(container.Provide(handler.NewFormulaHandler))
 	// v0.7.27 Build #33 — automation / button engine.
-	must(container.Provide(repository.NewAutomationRepository))
+	must(container.Provide(repository.NewAutomationRepository, dig.As(new(interfaces.AutomationRepository))))
 	must(container.Provide(autosvc.NewAgentStudioAdapter))
 	must(container.Provide(autosvc.NewService))
 	must(container.Provide(handler.NewAutomationHandler))
 	// v0.7.29 Build #35 — knowledge graph + KGSupertags foundation.
-	must(container.Provide(repository.NewKGRepository))
+	must(container.Provide(repository.NewKGRepository, dig.As(new(interfaces.KGRepository))))
 	must(container.Provide(kg.NewNERPipeline))
 	must(container.Provide(kg.NewREPipeline))
 	must(container.Provide(kg.NewKGSupertagService))
 	must(container.Provide(kg.NewKGGraphService))
 	must(container.Provide(handler.NewKGHandler))
 	// v0.7.31 Build #37 — AI Workflow Builder foundation.
-	must(container.Provide(repository.NewWorkflowRepository))
+	must(container.Provide(repository.NewWorkflowRepository, dig.As(new(interfaces.WorkflowRepository))))
 	must(container.Provide(workflowsvc.NewService))
 	must(container.Provide(handler.NewWorkflowHandler))
 	// v0.7.31 Build #36 — Multi-region + Data Residency foundation.
-	must(container.Provide(repository.NewRegionRepository))
+	must(container.Provide(repository.NewRegionRepository, dig.As(new(interfaces.RegionRepository))))
 	must(container.Provide(func(repo interfaces.RegionRepository, cfg *config.Config) *regionsvc.Resolver {
 		defaultRegion := types.Region(cfg.Region.DefaultRegion)
 		if !defaultRegion.IsValid() {
@@ -651,7 +619,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	}))
 	must(container.Provide(handler.NewRegionHandler))
 	// v0.7.34 Build #42 — Docs × KB integration foundation.
-	must(container.Provide(repository.NewDocIntegrationRepository))
+	must(container.Provide(repository.NewDocIntegrationRepository, dig.As(new(interfaces.DocIntegrationRepository))))
 	must(container.Provide(func(repo interfaces.DocIntegrationRepository) *docsvc.Service {
 		// Production wiring plugs in real KG / KB / Wiki / LLM
 		// collaborators via dig groups; the foundation ships with
@@ -660,14 +628,14 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	}))
 	must(container.Provide(handler.NewDocIntegrationHandler))
 	// v0.7.32 Build #34.x — Plugin signing + Marketplace foundation.
-	must(container.Provide(repository.NewMarketplaceRepository))
+	must(container.Provide(repository.NewMarketplaceRepository, dig.As(new(interfaces.MarketplaceRepository))))
 	must(container.Provide(func(repo interfaces.MarketplaceRepository) *mktsvc.Service {
 		return mktsvc.NewService(repo, nil)
 	}))
 	must(container.Provide(handler.NewMarketplaceHandler))
 	// v0.7.19 — wiki realtime (Yjs collaboration) wiring.
-	must(container.Provide(repository.NewWikiRealtimeSnapshotRepository))
-	must(container.Provide(repository.NewWikiRealtimeSessionRepository))
+	must(container.Provide(repository.NewWikiRealtimeSnapshotRepository, dig.As(new(interfaces.WikiRealtimeSnapshotRepository))))
+	must(container.Provide(repository.NewWikiRealtimeSessionRepository, dig.As(new(interfaces.WikiRealtimeSessionRepository))))
 	must(container.Provide(func(
 		snapRepo interfaces.WikiRealtimeSnapshotRepository,
 		sessRepo interfaces.WikiRealtimeSessionRepository,
@@ -680,12 +648,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	}))
 	// v0.7.25 — collaborative_docs (Feishu/Tencent doc parity): DOC/SHEET/SLIDE
 	// multi-format realtime editing with Yjs WebSocket fan-out.
-	must(container.Provide(repository.NewCollabDocRepository))
-	must(container.Provide(repository.NewCollabDocSnapshotRepository))
-	must(container.Provide(repository.NewCollabDocSessionRepository))
-	must(container.Provide(repository.NewCollabDocFileRepository))
-	must(container.Provide(repository.NewCollabDocCommentRepository))
-	must(container.Provide(repository.NewCollabDocAuditRepository))
+	must(container.Provide(repository.NewCollabDocRepository, dig.As(new(interfaces.CollabDocRepository))))
+	must(container.Provide(repository.NewCollabDocSnapshotRepository, dig.As(new(interfaces.CollabDocSnapshotRepository))))
+	must(container.Provide(repository.NewCollabDocSessionRepository, dig.As(new(interfaces.CollabDocSessionRepository))))
+	must(container.Provide(repository.NewCollabDocFileRepository, dig.As(new(interfaces.CollabDocFileRepository))))
+	must(container.Provide(repository.NewCollabDocCommentRepository, dig.As(new(interfaces.CollabDocCommentRepository))))
+	must(container.Provide(repository.NewCollabDocAuditRepository, dig.As(new(interfaces.CollabDocAuditRepository))))
 	must(container.Provide(func(docRepo interfaces.CollabDocRepository) service.CollabDocAuthorizer {
 		return service.NewCollabDocDefaultAuthorizer(docRepo)
 	}))
@@ -706,13 +674,13 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewCollabDocCommentHandler))
 	must(container.Provide(handler.NewCollabDocAuditHandler))
 	// v0.7.21 — Custom Agent Studio wiring (飞书妙搭 / Notion Custom Agents parity).
-	must(container.Provide(repository.NewAgentStudioRepository))
+	must(container.Provide(repository.NewAgentStudioRepository, dig.As(new(interfaces.AgentStudioRepository))))
 	must(container.Provide(asvc.NewAgentStudioService))
 	must(container.Provide(handler.NewAgentStudioHandler))
 
 	// v0.7.20 — wiki sync blocks wiring (Notion Synced Blocks / 飞书同步块 parity).
 	// v0.7.22 — DLP + AuthZ Admin UI wiring.
-	must(container.Provide(repository.NewDLPAuthZRepository))
+	must(container.Provide(repository.NewDLPAuthZRepository, dig.As(new(interfaces.DLPAuthZRepository))))
 	must(container.Provide(dlpsvc.NewDLPScanner))
 	must(container.Provide(authzsvc.NewAuthZAdmin))
 	must(container.Provide(handler.NewDLPAuthZHandler))
@@ -725,8 +693,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	}))
 	must(container.Provide(handler.NewDockbHandler))
 
-	must(container.Provide(repository.NewWikiSyncBlockRepository))
-	must(container.Provide(repository.NewWikiSyncBlockRefRepository))
+	must(container.Provide(repository.NewWikiSyncBlockRepository, dig.As(new(interfaces.WikiSyncBlockRepository))))
+	must(container.Provide(repository.NewWikiSyncBlockRefRepository, dig.As(new(interfaces.WikiSyncBlockRefRepository))))
 	must(container.Provide(func(
 		repo interfaces.WikiSyncBlockRepository,
 		refs interfaces.WikiSyncBlockRefRepository,
@@ -739,12 +707,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	}))
 
 
-	must(container.Provide(repository.NewWikiBatchJobRepository))
-	must(container.Provide(repository.NewWikiBatchAuditRepository))
-	must(container.Provide(repository.NewWikiBatchFailureRepository))
+	must(container.Provide(repository.NewWikiBatchJobRepository, dig.As(new(interfaces.WikiBatchJobRepository))))
+	must(container.Provide(repository.NewWikiBatchAuditRepository, dig.As(new(interfaces.WikiBatchAuditRepository))))
+	must(container.Provide(repository.NewWikiBatchFailureRepository, dig.As(new(interfaces.WikiBatchFailureRepository))))
 	must(container.Provide(service.NewWikiBatchJobService))
 	// Wiki page comments (Sprint 1 §27 #4).
-	must(container.Provide(repository.NewWikiCommentRepository))
+	must(container.Provide(repository.NewWikiCommentRepository, dig.As(new(interfaces.WikiCommentRepository))))
 	must(container.Provide(service.NewWikiPageCommentService))
 	// Adapter: wire WikiPageExistenceLookup to the wiki page repository.
 	// WikiPageExistenceLookup is required by NewWikiPageCommentService but
@@ -760,7 +728,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// four-section payload as TEXT (json strings) for dialect
 	// portability; the invalidator service owns the slug-resolution
 	// policy for the seven write-path hooks.
-	must(container.Provide(repository.NewWikiBacklinksCacheRepository))
+	must(container.Provide(repository.NewWikiBacklinksCacheRepository, dig.As(new(interfaces.WikiBacklinksCacheRepository))))
 	must(container.Provide(service.NewWikiBacklinksCacheInvalidator))
 	// Wiki backlinks cache cleanup sweeper (Build #22). Owns the
 	// 24h cron loop, in-process mutex, and multi-instance coordination
@@ -777,14 +745,14 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// backlinks cache repo via wireWikiAclCacheRepo below (mirrors
 	// wireWikiBacklinksCache).
 	// Wiki tag system (Build #17).
-	must(container.Provide(repository.NewWikiTagRepository))
+	must(container.Provide(repository.NewWikiTagRepository, dig.As(new(interfaces.WikiTagRepository))))
 	// Wiki ↔ KB document bidirectional references (doc+KB integration,
 	// Build v0.7.12). The repo is a vanilla GORM store on
 	// wiki_kb_references (pg 115 / sqlite 24); the service decorates
 	// each row with the wiki title and KB title/snippet; the handler
 	// exposes 4 page-side endpoints + 1 KB-side endpoint (the
 	// "Mentioned in Wiki Pages" sidebar).
-	must(container.Provide(repository.NewWikiKBReferenceRepository))
+	must(container.Provide(repository.NewWikiKBReferenceRepository, dig.As(new(interfaces.WikiKBReferenceRepository))))
 	must(container.Provide(service.NewKnowledgeReferenceService))
 	must(container.Provide(service.NewWikiKBReferenceBackfillService))
 	must(container.Provide(service.NewWikiTagService))
@@ -797,7 +765,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// the service wraps ACL post-filtering on top of the repo. The
 	// handler fans out ?v=2 to v2 and ?legacy=1 / missing v to the
 	// legacy WikiPageHandler.SearchPages path.
-	must(container.Provide(repository.NewWikiSearchV2Repository))
+	must(container.Provide(repository.NewWikiSearchV2Repository, dig.As(new(interfaces.WikiSearchV2Repository))))
 	must(container.Provide(func(
 		repo interfaces.WikiSearchV2Repository,
 		kb interfaces.KnowledgeBaseService,
@@ -823,7 +791,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// The handler exposes 4 endpoints: ask (sync), ask-stream
 	// (?stream=1, SSE), list conversations, get a single conversation
 	// thread.
-	must(container.Provide(repository.NewAssistantConversationRepository))
+	must(container.Provide(repository.NewAssistantConversationRepository, dig.As(new(interfaces.AssistantConversationRepository))))
 	// LLM provider — NoopProvider when OPENAI_API_KEY is unset
 	// (dev / test / offline). When the env var is present we spin up
 	// the real OpenAI provider; the API key is loaded lazily here so
@@ -854,11 +822,11 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	logger.Debugf(ctx, "[Container] Registering web search registry and providers...")
 	must(container.Provide(infra_web_search.NewRegistry))
 	must(container.Invoke(registerWebSearchProviders))
-	must(container.Provide(repository.NewWebSearchProviderRepository))
-	must(container.Provide(repository.NewVectorStoreRepository))
-	must(container.Provide(repository.NewStorageBackendRepository))
-	must(container.Provide(repository.NewResourceRepository))
-	must(container.Provide(repository.NewTemporaryDocumentRepository))
+	must(container.Provide(repository.NewWebSearchProviderRepository, dig.As(new(interfaces.WebSearchProviderRepository))))
+	must(container.Provide(repository.NewVectorStoreRepository, dig.As(new(interfaces.VectorStoreRepository))))
+	must(container.Provide(repository.NewStorageBackendRepository, dig.As(new(interfaces.StorageBackendRepository))))
+	must(container.Provide(repository.NewResourceRepository, dig.As(new(interfaces.ResourceRepository))))
+	must(container.Provide(repository.NewTemporaryDocumentRepository, dig.As(new(interfaces.TemporaryDocumentRepository))))
 	must(container.Provide(service.NewResourceCatalog))
 	// TenantStoreOwnership adapter used by the retriever factory functions
 	// to verify that a resolved VectorStore belongs to the caller's tenant.
@@ -1004,6 +972,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewTenantMemberHandler))
 	must(container.Provide(handler.NewTenantInvitationHandler))
 	must(container.Provide(handler.NewAuditLogHandler))
+	must(container.Provide(handler.NewNotificationHandler))
 	must(container.Provide(handler.NewKnowledgeBaseHandler))
 	must(container.Provide(handler.NewKnowledgeHandler))
 	must(container.Provide(handler.NewChunkHandler))
@@ -1045,13 +1014,16 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// Attach the LDAP login dependencies to userService. We use the
 	// concrete type so SetLDAPLoginDeps is reachable; dig will
 	// resolve it through the same provider as the interface.
-	must(container.Decorate(func(in *service.UserService, ldapCfg *service.LDAPConfigService, fedRepo *repository.LDAPFederationIdentityRepository) *service.UserService {
-		in.SetLDAPLoginDeps(&service.LDAPLoginDeps{
-			ConfigSvc: ldapCfg,
-			Dialer:    nil,
-			FedRepo:   fedRepo,
-			Opts:      service.LDAPLoginOptions{AllowEmailLinking: false},
-		})
+	must(container.Decorate(func(in interfaces.UserService, ldapCfg *service.LDAPConfigService, fedRepo interfaces.LDAPFederationIdentityRepository) interfaces.UserService {
+		if concrete, ok := in.(*service.UserService); ok {
+			concrete.SetLDAPLoginDeps(&service.LDAPLoginDeps{
+				ConfigSvc: ldapCfg,
+				Dialer:    nil,
+				FedRepo:   fedRepo,
+				Opts:      service.LDAPLoginOptions{AllowEmailLinking: false},
+			})
+			return in
+		}
 		return in
 	}))
 	must(container.Provide(handler.NewFeaturesHandler))
@@ -1126,6 +1098,68 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// local:// images that live under a tenant's configured storage PathPrefix
 	// (which is not encoded in the local:// URL).
 	must(container.Invoke(registerChatLocalImageResolver))
+
+	// Late-cycle setter Invoke blocks. Moved from earlier in BuildContainer
+	// because each block triggers dig to lazily resolve a service whose
+	// transitive dependencies (ResourceCatalog, VectorStoreRepoOwnership,
+	// TaskEnqueuer, TaskInspector, Scheduler, etc.) only get Provide'd
+	// further down. Wiring them here guarantees every type in the
+	// dependency graph is registered before dig tries to build it.
+
+	// MessageService ↔ NotificationService — emits @mention notifications.
+	must(container.Invoke(func(msgSvc interfaces.MessageService, notifSvc interfaces.NotificationService) {
+		if setter, ok := msgSvc.(interface {
+			SetNotificationService(interfaces.NotificationService)
+		}); ok {
+			setter.SetNotificationService(notifSvc)
+		}
+	}))
+	must(container.Invoke(func(notifSvc interfaces.NotificationService, checker authz.Checker) {
+		if setter, ok := notifSvc.(interface {
+			SetAuthzChecker(authz.Checker)
+		}); ok {
+			setter.SetAuthzChecker(checker)
+		}
+	}))
+
+	// CollabDocService ↔ WebhookService — doc lifecycle events to webhook.
+	// Uses the concrete *webhooks.WebhookService type because dig
+	// cannot auto-bridge a concrete pointer type to its interface
+	// (interfaces.WebhookService). NewWebhookService returns the
+	// concrete pointer.
+	must(container.Invoke(func(collabSvc *service.CollabDocService, hookSvc *webhooksvc.WebhookService) {
+		collabSvc.SetEventPublisher(func(ctx context.Context, event string, payload map[string]any) {
+			we := types.WebhookEvent(event)
+			if !types.ValidWebhookEvents[we] {
+				return
+			}
+			tenantID, _ := types.TenantIDFromContext(ctx)
+			if err := hookSvc.PublishEvent(ctx, tenantID, we, payload); err != nil {
+				logger.Warnf(ctx, "[collab-webhook-hook] publish failed: %v", err)
+			}
+		})
+	}))
+
+	// SlideService ↔ AuditLogService — deck lifecycle events to governance log.
+	must(container.Invoke(func(svc *sldsvc.SlideService, auditSvc interfaces.AuditLogService) {
+		svc.SetAuditHook(func(ctx context.Context, tenantID uint64, deckID string, userID uint64, action, detail string) {
+			governanceAction := slideActionToGovernance(action)
+			if governanceAction == "" {
+				return
+			}
+			entry := &types.AuditLog{
+				TenantID:    tenantID,
+				ActorUserID: strconv.FormatUint(userID, 10),
+				Action:      governanceAction,
+				ScopeType:   "slide_deck",
+				ScopeID:     deckID,
+				Details:     types.JSON(detailJSON(detail)),
+			}
+			if err := auditSvc.Log(ctx, entry); err != nil {
+				logger.Warnf(ctx, "[slides-audit-hook] governance log failed: %v", err)
+			}
+		})
+	}))
 
 	// Router configuration
 	logger.Debugf(ctx, "[Container] Registering router and starting task server...")
@@ -2552,10 +2586,10 @@ func initConnectorRegistry() (*datasource.ConnectorRegistry, error) {
 		errs = errors.Join(errs, fmt.Errorf("register notion connector: %w", err))
 	}
 	if err := registry.Register(yuqueConnector.NewConnector()); err != nil {
+		errs = errors.Join(errs, fmt.Errorf("register yuque connector: %w", err))
+	}
 	if err := registry.Register(tencentdocsConnector.NewConnector()); err != nil {
 		errs = errors.Join(errs, fmt.Errorf("register tencent_docs connector: %w", err))
-	}
-		errs = errors.Join(errs, fmt.Errorf("register yuque connector: %w", err))
 	}
 	if err := registry.Register(imaConnector.NewConnector()); err != nil {
 		errs = errors.Join(errs, fmt.Errorf("register ima connector: %w", err))

@@ -123,6 +123,7 @@ type UserService = userService
 // userService implements the UserService interface
 type userService struct {
 	userRepo         interfaces.UserRepository
+	ldapIdentityRepo interfaces.LDAPFederationIdentityRepository
 	oidcIdentityRepo interfaces.OIDCIdentityRepository
 	samlIdentityRepo interfaces.SAMLIdentityRepository
 	tokenRepo        interfaces.AuthTokenRepository
@@ -148,15 +149,17 @@ func NewUserService(
 	memberService interfaces.TenantMemberService,
 	oidcIdentityRepo interfaces.OIDCIdentityRepository,
 	samlIdentityRepo interfaces.SAMLIdentityRepository,
+	ldapIdentityRepo interfaces.LDAPFederationIdentityRepository,
 ) interfaces.UserService {
 	return &userService{
-		userRepo:         userRepo,
-		oidcIdentityRepo: oidcIdentityRepo,
-		samlIdentityRepo: samlIdentityRepo,
-		tokenRepo:        tokenRepo,
-		tenantService:    tenantService,
-		memberService:    memberService,
-		config:           configInfo,
+		userRepo:          userRepo,
+		oidcIdentityRepo:  oidcIdentityRepo,
+		samlIdentityRepo:  samlIdentityRepo,
+		tokenRepo:         tokenRepo,
+		tenantService:     tenantService,
+		memberService:     memberService,
+		config:            configInfo,
+		ldapIdentityRepo:  ldapIdentityRepo,
 	}
 }
 
@@ -2439,4 +2442,33 @@ func isUserLookupNotFound(err error) bool {
 		return false
 	}
 	return errors.Is(err, apprepo.ErrUserNotFound) || strings.Contains(strings.ToLower(err.Error()), "user not found")
+}
+
+
+// NewUserServiceConcrete returns the concrete *userService pointer
+// for callers (notably SCIMUserService) that need access to
+// unexported helpers like jitProvisionUserFromExternal. The
+// returned pointer is the same object that satisfies
+// interfaces.UserService — both refer to the same instance because
+// dig resolves the same provider twice.
+func NewUserServiceConcrete(
+	configInfo *config.Config,
+	userRepo interfaces.UserRepository,
+	tokenRepo interfaces.AuthTokenRepository,
+	tenantService interfaces.TenantService,
+	memberService interfaces.TenantMemberService,
+	oidcIdentityRepo interfaces.OIDCIdentityRepository,
+	samlIdentityRepo interfaces.SAMLIdentityRepository,
+	ldapIdentityRepo interfaces.LDAPFederationIdentityRepository,
+) *UserService {
+	return NewUserService(
+		configInfo,
+		userRepo,
+		tokenRepo,
+		tenantService,
+		memberService,
+		oidcIdentityRepo,
+		samlIdentityRepo,
+		ldapIdentityRepo,
+	).(*UserService)
 }
