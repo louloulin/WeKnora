@@ -689,7 +689,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// v0.7.20 — wiki sync blocks wiring (Notion Synced Blocks / 飞书同步块 parity).
 	// v0.7.22 — DLP + AuthZ Admin UI wiring.
 	must(container.Provide(repository.NewDLPAuthZRepository, dig.As(new(interfaces.DLPAuthZRepository))))
-	must(container.Provide(dlpsvc.NewDLPScanner))
+	must(container.Provide(func(repo interfaces.DLPAuthZRepository) *dlpsvc.DLPScanner {
+		return dlpsvc.NewDLPScannerWithExternal(repo)
+	}))
 	must(container.Provide(authzsvc.NewAuthZAdmin))
 	must(container.Provide(handler.NewDLPAuthZHandler))
 

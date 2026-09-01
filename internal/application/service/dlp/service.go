@@ -275,3 +275,42 @@ func TrimLower(s string) string {
 // Now is exposed so tests can freeze the clock without exporting the
 // internal rule-cache clock.
 func Now() time.Time { return time.Now().UTC() }
+
+
+// DLPAuthZRepoMirror matches interfaces.DLPAuthZRepository so the
+// container can pass it in without going through the package-local
+// typesRepo interface.
+type DLPAuthZRepoMirror interface {
+	CreateDLPPolicy(ctx context.Context, p *types.DLPPolicy) error
+	GetDLPPolicy(ctx context.Context, tenantID uint64, id uint64) (*types.DLPPolicy, error)
+	ListDLPPolicies(ctx context.Context, tenantID uint64) ([]*types.DLPPolicy, error)
+	ListActiveDLPPolicies(ctx context.Context, tenantID uint64) ([]*types.DLPPolicy, error)
+	UpdateDLPPolicy(ctx context.Context, p *types.DLPPolicy) error
+	NextDLPPolicyVersion(ctx context.Context, tenantID uint64, name string) (int64, error)
+	CreateDLPRule(ctx context.Context, r *types.DLPRule) error
+	ListDLPRulesByPolicy(ctx context.Context, tenantID uint64, policyID uint64) ([]*types.DLPRule, error)
+	DeleteDLPRule(ctx context.Context, tenantID uint64, ruleID uint64) error
+	CreateDLPViolation(ctx context.Context, v *types.DLPViolation) error
+	ListDLPViolations(ctx context.Context, tenantID uint64, resource string, limit, offset int) ([]*types.DLPViolation, int64, error)
+}
+
+type dlpAdapter struct{ inner DLPAuthZRepoMirror }
+
+func (a *dlpAdapter) CreateDLPPolicy(ctx context.Context, p *types.DLPPolicy) error { return a.inner.CreateDLPPolicy(ctx, p) }
+func (a *dlpAdapter) GetDLPPolicy(ctx context.Context, tenantID uint64, id uint64) (*types.DLPPolicy, error) { return a.inner.GetDLPPolicy(ctx, tenantID, id) }
+func (a *dlpAdapter) ListDLPPolicies(ctx context.Context, tenantID uint64) ([]*types.DLPPolicy, error) { return a.inner.ListDLPPolicies(ctx, tenantID) }
+func (a *dlpAdapter) ListActiveDLPPolicies(ctx context.Context, tenantID uint64) ([]*types.DLPPolicy, error) { return a.inner.ListActiveDLPPolicies(ctx, tenantID) }
+func (a *dlpAdapter) UpdateDLPPolicy(ctx context.Context, p *types.DLPPolicy) error { return a.inner.UpdateDLPPolicy(ctx, p) }
+func (a *dlpAdapter) NextDLPPolicyVersion(ctx context.Context, tenantID uint64, name string) (int64, error) { return a.inner.NextDLPPolicyVersion(ctx, tenantID, name) }
+func (a *dlpAdapter) CreateDLPRule(ctx context.Context, r *types.DLPRule) error { return a.inner.CreateDLPRule(ctx, r) }
+func (a *dlpAdapter) ListDLPRulesByPolicy(ctx context.Context, tenantID uint64, policyID uint64) ([]*types.DLPRule, error) { return a.inner.ListDLPRulesByPolicy(ctx, tenantID, policyID) }
+func (a *dlpAdapter) DeleteDLPRule(ctx context.Context, tenantID uint64, ruleID uint64) error { return a.inner.DeleteDLPRule(ctx, tenantID, ruleID) }
+func (a *dlpAdapter) CreateDLPViolation(ctx context.Context, v *types.DLPViolation) error { return a.inner.CreateDLPViolation(ctx, v) }
+func (a *dlpAdapter) ListDLPViolations(ctx context.Context, tenantID uint64, resource string, limit, offset int) ([]*types.DLPViolation, int64, error) { return a.inner.ListDLPViolations(ctx, tenantID, resource, limit, offset) }
+
+// NewDLPScannerWithExternal wires the scanner from any repo whose
+// method set matches DLPAuthZRepoMirror (typically the exported
+// interfaces.DLPAuthZRepository from the interfaces package).
+func NewDLPScannerWithExternal(repo DLPAuthZRepoMirror) *DLPScanner {
+	return NewDLPScanner(&dlpAdapter{inner: repo})
+}
