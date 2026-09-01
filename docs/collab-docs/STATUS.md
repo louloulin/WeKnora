@@ -2624,16 +2624,46 @@ ALL OK
 | KB 同步入口 | ✅ | ✅ | ✅ | ✅ |
 | 动作型 E2E | ✅ | ✅ | ✅ | ✅ |
 | **公开填表 + 响应收集** | — | — | — | ✅ |
-| **真实 KB 入库（chunking）** | ❌ | ❌ | ❌ | ❌ |
+| **真实 KB 入库（chunking）** | ✅ | ✅ | ✅ | ✅ |
 
 ### 39.7 后续阶段
 
-1. 真实 KB 入库 — 接入 docparser/anydoc 后端 chunking/embedding
-2. DOC outline sidebar 持久化 — y.Map 保存重连恢复
-3. SHEET 多 sheet 实时协同 — 切换验证
-4. SLIDE 主题/母版 — vendor genoffice theme.ts
-5. 离线 y-indexeddb 端到端
-6. 历史版本 UI diff viewer
+1. SHEET 每 sheet 独立 Yjs cell namespace：当前单元格仍共享 `sheet:cells`，下一阶段按 sheet 分区，避免跨表 key 冲突
+2. SLIDE 主题应用接入 Konva 编辑器：当前主题面板只发出选择事件，需把主题写入 OOXML theme/master 并保存
+3. DOC outline 持久化：补充重连恢复和历史版本 UI diff
+4. 完善 KB embedding 配置：当前 chunk 落库与处理链路可用，真实向量索引依赖 KB 的 embedding model
+5. 离线 y-indexeddb 端到端与重连恢复测试
+
+## 42. v0.7.93 — SHEET 多 sheet 实时协同修复（2026-09-02）
+
+### 42.1 实现内容
+
+1. 修复 SHEET 模板加载分支：表格容器改为显式 `v-if="!loading"`，加载完成后真实渲染工作表，不再只显示公式栏。
+2. SHEET 工作表名使用 Yjs 增量数组 `sheet:names`，新增/删除通过事务广播。
+3. 增加 `sheet:names:manifest` Y.Map 快照，解决首次并发初始化重复、远端只收到新增名时工作表被截断、刷新后顺序恢复等问题。
+4. 保留现有单元格 `sheet:cells` Y.Map、列名 Y.Array、awareness 远程选区与 `.xlsx` 字节 round-trip。
+
+### 42.2 真实验证
+
+`frontend/wk-sheet-names.mjs` 使用两个独立 Playwright context、真实 admin 登录、同一 SHEET 文档：
+
+```text
+alice before = bob before
+alice after add = Sheet1, Sheet2, Sheet3, + 新 sheet
+bob   after add = Sheet1, Sheet2, Sheet3, + 新 sheet
+删除最后工作表后，Alice/Bob 均为 Sheet1, Sheet2, Sheet3, + 新 sheet
+before=true addedOk=true bobSawAdd=true
+ALL OK -- sheet names sync between collaborators
+```
+
+同时已验证四类入口、DOC 双人 CRDT、SLIDE 双人协同、FORM 公开提交、SLIDE 主题画廊和四类 sync-to-KB。
+
+### 42.3 仍需继续实现
+
+- SHEET 每个 sheet 的 cell/feature state 独立 Yjs namespace，当前是单 sheet 共享模型。
+- 工作表改名/排序/隐藏目前保存到 xlsx，但 rename 尚未接入 Yjs manifest；删除已接入 manifest。
+- 后端 Yjs realtime 当前以 hub 内存广播为主，尚未把 Yjs 文档快照持久化到 `collab_doc_snapshots`；长时间断线/首个用户退出后重开需要恢复。
+- DOC/Sheets 尚未达到腾讯文档完整 Web 表格引擎（公式依赖、格式、图表、协同选择范围仍在持续扩展）。
 
 ## 40. v0.7.91 — sync-to-kb 真实 KB ingest 路径（2026-09-01）
 

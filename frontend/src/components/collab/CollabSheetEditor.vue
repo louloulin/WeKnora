@@ -354,7 +354,7 @@
       <span v-if="formulaError" class="collab-sheet-editor__formula-error">⚠ {{ formulaError }}</span>
       <span v-else-if="formulaValue" class="collab-sheet-editor__formula-hint">= {{ formulaResult }}</span>
     </div>
-    <div v-else class="collab-sheet-editor__table-wrap">
+    <div v-if="!loading" class="collab-sheet-editor__table-wrap">
       <table class="collab-sheet-editor__grid">
         <thead>
           <tr>
@@ -642,6 +642,15 @@ const switchSheet = (i: number) => {
   selectedCi.value = -1
   formulaValue.value = ''
 }
+
+const commitSheetManifest = () => {
+  if (!ysheetSnapshot || !handle) return
+  const names = JSON.stringify(sheets.value.map((sheet) => sheet.name))
+  handle.ydoc.transact(() => {
+    ysheetSnapshot?.set('names', names)
+  })
+}
+
 const addSheet = () => {
   if (sheets.value[activeSheet.value]) {
     sheets.value[activeSheet.value] = {
@@ -651,6 +660,13 @@ const addSheet = () => {
   }
   const name = 'Sheet' + (sheets.value.length + 1)
   sheets.value.push({ name, rows: [Array.from({ length: cols.value.length }, () => '')] })
+  // v0.7.93 -- broadcast sheet addition so collaborators see the new tab.
+  if (ysheets && handle) {
+    handle.ydoc.transact(() => {
+      if (ysheets) ysheets.push([name])
+    })
+  }
+  commitSheetManifest()
   activeSheet.value = sheets.value.length - 1
   rows.value = sheets.value[activeSheet.value].rows.map((r) => r.slice())
   selectedRi.value = -1
@@ -1048,7 +1064,18 @@ const toggleSheetHidden = (si: number) => {
 
 const removeSheet = (si: number) => {
   if (sheets.value.length <= 1) return
+  const removedName = sheets.value[si] && sheets.value[si].name
   sheets.value.splice(si, 1)
+  // v0.7.93 -- broadcast sheet removal so collaborators drop the tab.
+  if (ysheets && removedName && handle) {
+    const yi = ysheets.toArray().indexOf(removedName)
+    if (yi >= 0) {
+      handle.ydoc.transact(() => {
+        if (ysheets) ysheets.delete(yi, 1)
+      })
+    }
+  }
+  commitSheetManifest()
   if (activeSheet.value >= sheets.value.length) activeSheet.value = sheets.value.length - 1
   rows.value = sheets.value[activeSheet.value].rows.map((r) => r.slice())
   // Cascade-clear per-sheet feature state for removed index.
@@ -1085,7 +1112,10 @@ const applySheetRenames = () => {
     sheets.value[si] = { ...sheets.value[si], name: newName }
     changed = true
   }
-  if (changed) scheduleSave()
+  if (changed) {
+    commitSheetManifest()
+    scheduleSave()
+  }
   featureDialog.value = null
 }
 
@@ -1111,6 +1141,11 @@ const remoteSelections = ref<Array<{
 
 let ymap: Y.Map<Y.Map<string>> | null = null
 let ycols: Y.Array<string> | null = null
+// v0.7.93 -- sheet-name list as a Y.Array so add/remove propagates to
+// all collaborators in real time. Cells stay in the shared
+// (sheet:cells) ymap; per-sheet cell namespace is the next milestone.
+let ysheets: Y.Array<string> | null = null
+let ysheetSnapshot: Y.Map<string> | null = null
 let wb: XlsxAdapterWorkbook = newXlsxWorkbook()
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -1152,6 +1187,8 @@ const setup = async () => {
 
   ycols = handle.ydoc.getArray<string>('sheet:cols')
   ymap = handle.ydoc.getMap<Y.Map<string>>('sheet:cells')
+  ysheets = handle.ydoc.getArray<string>('sheet:names')
+  ysheetSnapshot = handle.ydoc.getMap<string>('sheet:names:manifest')
 
   loading.value = true
   try {
@@ -1181,6 +1218,51 @@ const setup = async () => {
         sheets.value = [{ name: 'Sheet1', rows: [Array.from({ length: cols.value.length }, () => '')] }]
       }
     }
+  const applyRemoteSheetNames = () => {
+    const manifest = ysheetSnapshot?.get('names')
+    if (manifest) {
+      try {
+        const names = JSON.parse(manifest)
+        if (Array.isArray(names) && names.every((name) => typeof name === 'string')) {
+          const current = sheets.value.map((sheet) => sheet.name)
+          if (JSON.stringify(current) !== JSON.stringify(names)) {
+            sheets.value = names.map((name, index) => {
+              const existing = sheets.value[index]
+              return existing && existing.name === name
+                ? existing
+                : { name, rows: [Array.from({ length: cols.value.length }, () => '')] }
+            })
+            if (activeSheet.value >= sheets.value.length) activeSheet.value = Math.max(0, sheets.value.length - 1)
+            rows.value = sheets.value[activeSheet.value]?.rows?.map((row) => row.slice()) || [[]]
+          }
+          return
+        }
+      } catch {
+        // Fall through to the legacy Y.Array delta path.
+      }
+    }
+    if (!ysheets) return
+    const remote = ysheets.toArray()
+    if (remote.length === 0) return
+    const current = sheets.value.map((sheet) => sheet.name)
+    if (JSON.stringify(remote) === JSON.stringify(current)) return
+    const currentSet = new Set(current)
+    const extra = remote.filter((name) => !currentSet.has(name))
+    if (current.length > 0 && remote.every((name) => currentSet.has(name)) && remote.length <= current.length) return
+    const names = extra.length > 0 ? [...current, ...extra] : remote
+    if (JSON.stringify(names) === JSON.stringify(current)) return
+    sheets.value = names.map((name, index) => {
+      const existing = sheets.value[index]
+      return existing && existing.name === name
+        ? existing
+        : { name, rows: [Array.from({ length: cols.value.length }, () => '')] }
+    })
+    if (activeSheet.value >= sheets.value.length) activeSheet.value = Math.max(0, sheets.value.length - 1)
+    rows.value = sheets.value[activeSheet.value]?.rows?.map((row) => row.slice()) || [[]]
+  }
+  ysheets?.observe(applyRemoteSheetNames)
+  ysheetSnapshot?.observe(applyRemoteSheetNames)
+  applyRemoteSheetNames()
   } catch (e: any) {
     error.value = `加载失败：${e?.message || e}`
   } finally {
