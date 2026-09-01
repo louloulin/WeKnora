@@ -8,7 +8,7 @@
  * component itself (see useYjsCollabDoc) so the Yjs binary framing stays
  * out of the typed HTTP layer.
  */
-import { get, post, patch, del } from '@/utils/request'
+import { get, post, patch, del, postUpload } from '@/utils/request'
 
 export type CollabDocKind = 'doc' | 'sheet' | 'slide'
 
@@ -96,7 +96,7 @@ export async function uploadCollabDocBytes(id: string, bytes: Uint8Array, filena
   const form = new FormData()
   const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer
   form.append('file', new Blob([buf]), filename)
-  return post(`/collaborative-docs/${id}/upload`, form)
+  return postUpload(`/collaborative-docs/${id}/upload`, form)
 }
 
 /** Download the current binary blob of a document. */

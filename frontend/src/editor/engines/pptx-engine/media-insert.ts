@@ -11,8 +11,7 @@
  * no am3d extension XML is written (the schema is complex and easily triggers
  * repair); shows as the poster image in PowerPoint.
  */
-import { deflateSync } from 'node:zlib'
-import { deflateRawSync } from './polyfills'
+import { deflateSync, deflateRawSync } from './polyfills'
 import type { EmuRect, Slide } from './types'
 import { creationIdXml, escapeXmlAttr } from './xml-utils'
 import { relsPathFor } from './zip'

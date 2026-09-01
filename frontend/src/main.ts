@@ -1,5 +1,6 @@
 import { createApp } from "vue";
 import { createPinia } from "pinia";
+import VueKonva from "vue-konva";
 import App from "./App.vue";
 import router from "./router";
 import "./assets/fonts.css";
@@ -51,6 +52,7 @@ async function bootstrap() {
 
   app.use(router);
   app.use(i18n);
+  app.use(VueKonva);
 
   // 等首屏路由（含导航守卫、Lite 自动登录）完成后再挂载，避免先闪默认页再跳转
   await router.isReady();
@@ -59,5 +61,3 @@ async function bootstrap() {
 }
 
 bootstrap();
-import VueKonva from "vue-konva";
-  app.use(VueKonva);

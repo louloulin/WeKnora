@@ -97,6 +97,12 @@ export function deflateRawSync(bytes: Uint8Array): Uint8Array {
   return pako.deflateRaw(bytes)
 }
 
+/** Sync zlib deflate replacement via pako. Includes the 2-byte zlib header and
+ *  adler32 trailer that node:zlib's `deflateSync` produces by default. */
+export function deflateSync(bytes: Uint8Array): Uint8Array {
+  return pako.deflate(bytes)
+}
+
 /** Sync randomUUID replacement via globalThis.crypto. */
 export function randomUUID(): string {
   return globalThis.crypto.randomUUID()
