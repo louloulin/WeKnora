@@ -2403,3 +2403,130 @@ genoffice editor/ 中三个独立模块，本轮全部 vendor + 适配：
 - node-name map：把 `docParagraph → paragraph`、`docHeading → heading`、`docListItem → taskList` 接入 `setSelectionAlign / setParagraphDirection`
 - AutoDirectionExtension 接入：检测首字符方向自动设置段落 bidi
 - 段落边框合并的 UI（按 Shift 显示段落边框组预览）
+
+## 36. v0.7.88 — collab doc download header bug fix (2026-09-01)
+
+### 36.1 真实 bug 发现
+
+通过 `wk-4kinds.mjs` 验证 SHEET 类型页面时发现 Vite 代理返回：
+```
+[console.error] Failed to load resource: the server responded with a status of 500
+  URL: http://127.0.0.1:5173/collab-documents/<id>/download
+```
+
+后端日志：
+```
+/tmp/wk-vite.log: Error: Parse Error: Header overflow
+```
+
+### 36.2 根因（`internal/handler/collaborative_doc_bytes.go:199`）
+
+```go
+// 修复前（错误）：
+c.Header("X-Collab-Doc-SHA256", hex.EncodeToString(sha256.New().Sum(row.Content)))
+```
+
+`hash.Hash.Sum(b)` 语义：返回「空 hash 的结果 + b 的全部内容」。所以 hex header
+实际包含整个 17KB xlsx 文件内容 → Vite proxy header buffer 溢出 → 500。
+
+### 36.3 修复
+
+```go
+sum := sha256.Sum256(row.Content)
+c.Header("X-Collab-Doc-SHA256", hex.EncodeToString(sum[:]))
+```
+
+### 36.4 真实验证（重启后端后）
+
+```bash
+$ curl -s -D - -H "Authorization: Bearer $(cat /tmp/wk-token)" \
+    "http://127.0.0.1:8080/api/v1/collaborative-docs/<id>/download" \
+    -o /tmp/wk-sheet.xlsx
+HTTP/1.1 200 OK
+Content-Disposition: attachment; filename="E2E--v4.xlsx"
+Content-Length: 17031
+Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+X-Collab-Doc-Sha256: ca3a2eee01f16261ff64ce75286bf2d4775bb9d8d241f05be41ba829a8e740ad
+
+$ file /tmp/wk-sheet.xlsx
+/tmp/wk-sheet.xlsx: Microsoft Excel 2007+
+```
+
+Vite 代理路径同样 200：
+```
+$ curl ... "http://127.0.0.1:5173/collaborative-docs/<id>/download"
+HTTP/1.1 200 OK
+x-collab-doc-sha256: ca3a2eee01f16261ff64ce75286bf2d4775bb9d8d241f05be41ba829a8e740ad
+```
+
+64 字符 hex sha256 header，17031 bytes 真实 xlsx 二进制。
+
+## 37. v0.7.89 — collab doc action E2E coverage (2026-09-01)
+
+### 37.1 新增文件
+
+| 文件 | 行数 | 作用 |
+| --- | --- | --- |
+| `frontend/wk-action-e2e.mjs` | 218 | 真实浏览器动作型 E2E，覆盖 DOC/SHEET/SLIDE/FORM |
+
+### 37.2 测试覆盖（全部 4 类真实验证通过）
+
+| 类型 | 动作 | 二进制变化 | sync-to-kb |
+| --- | --- | --- | --- |
+| DOC | ProseMirror 真实输入 marker | upload 201 / 3577 bytes | 202 ✅ |
+| SHEET | + 列 + 行 + 单元格 | 17031 → 17454 (+423) | 202 ✅ |
+| SLIDE | +文本框 +矩形 | 7339 → 7412 (+73) | 202 ✅ |
+| FORM | + 评分问题 | 607 → 384 (-223 压缩) | 202 ✅ |
+
+所有 4 类 sync-to-kb 都返回 202 + `"note":"docparser unreachable; queued for next ingest tick"` —
+真实 KB 索引依赖 docparser/anydoc 后端启用（待后续 PR）。
+
+### 37.3 回归测试
+
+| 测试 | 状态 |
+| --- | --- |
+| `wk-collab-sync.mjs`（DOC 双端 CRDT） | ✅ peers=1, marker 跨端同步 |
+| `wk-slide-collab-sync.mjs`（SLIDE 双端） | ✅ 双端 peers=1, A 加 shape B 看到 |
+| `wk-doc-save.mjs`（DOC 真实落盘） | ✅ upload 201, 3577 bytes docx |
+| `wk-4kinds.mjs`（四类渲染） | ✅ 0 page errors |
+
+## 38. v0.7.89.b 当前实现进度总结（2026-09-01）
+
+| 能力维度 | DOC | SHEET | SLIDE | FORM | 验证 |
+| --- | --- | --- | --- | --- | --- |
+| 多人 CRDT 在线 | ✅ | ✅ | ✅ | ✅ | 真浏览器 |
+| 远端选区 awareness | ✅ | ✅ | ✅ | — | 真浏览器 |
+| 真实二进制 round-trip | ✅ | ✅ | ✅ | ✅ | 真下载 |
+| KB 同步入口 | ✅ 202 | ✅ 202 | ✅ 202 | ✅ 202 | 真接口 |
+| 真实 KB 入库（chunking/embedding） | ❌ | ❌ | ❌ | ❌ | 待 docparser/anydoc 接入 |
+| 动作型 E2E（点击+输入+保存） | ✅ | ✅ | ✅ | ✅ | 新增 wk-action-e2e.mjs |
+| 批注 / 公式 / 透视 / 修订 / 大纲 / 多节 / 表格样式 | ✅ 仅代码+单测 | ✅ 仅代码 | ✅ 仅代码 | ✅ JSON | 单元测试 |
+| 文档保护 / 比较 / 墨迹 / 密码 | ✅ | — | — | — | 单元测试 |
+| 单元格锁 / 条件格式 / 数据验证 / 迷你图 | — | ✅ | — | — | 单元测试 |
+| 透视表 pipeline / 高级选项 / grouping | — | ✅ | — | — | 单元测试 |
+| 形状旋转 / 转场 / 评论 / 形状层级 | — | — | ✅ | — | 单元测试 |
+| 页面布局 / 冻结 / 筛选 / 多 sheet / 批注 | — | ✅ | — | — | 单元测试 |
+| 历史版本 diff / 回滚 UI | 部分 | 部分 | 部分 | 部分 | UI 在前端，diff 需真实数据驱动 |
+| 离线 y-indexeddb 端到端 | — | — | — | — | 未做 |
+| docparser/anydoc 后端真实 chunking | ❌ | ❌ | ❌ | ❌ | 后续 PR |
+
+### 38.1 与 genoffice 三大子项目能力对比
+
+| 子项目 | genoffice 核心模块 | WeKnora 已 copy 数量 | 差距 |
+| --- | --- | --- | --- |
+| docs | editor/* (23 个核心 TS) | 17+ 个 + 自写 ~10 | 公式/批注/保护/比较/大小写/方向/列布局 已全 |
+| sheets | renderer/* (40+ 模块) | 19+ 个 adapter + pivot/comment/pipeline | 高级筛选/切片器/名称管理器/数据验证 UI 已全 |
+| slides | renderer/* (30+ 模块) | 8+ 个 + 自写 rotate/transition | 主题/母版/演讲者视图 待评估 |
+
+### 38.2 下一阶段计划（v0.7.90+）
+
+1. **DOC outline sidebar 持久化** — 当前 outline 只是 UI，需要保存到 y.Map，重连后恢复
+2. **SHEET 多 sheet 实时协同** — 当前多个 sheet 在同一个 doc 下，需切换验证
+3. **SLIDE 主题/母版** — vendor genoffice `theme.ts` + `master-slide.ts`
+4. **FORM 响应收集 + 图表** — 新建 `collab_form_response` 表 + 前端收集视图
+5. **真实 KB 入库** — 接入 docparser/anydoc 后端，验证 chunk + embedding
+6. **离线协同** — y-indexeddb persistence 端到端断网测试
+7. **历史版本 UI** — `collab-documents/[id]/versions` 路由 + diff viewer
+8. **修复 `WikiDatabaseView.vue` `Invalid end tag`** 让 `npm run build-only` 绿灯
+9. **修复 `go test ./internal/handler` `capturingAuditService` 冲突**
+10. **DOC dark theme** — 待样式整理（用户明确"先不管样式"，跳过）

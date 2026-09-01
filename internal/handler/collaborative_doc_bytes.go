@@ -196,7 +196,8 @@ func (h *CollabDocBytesHandler) download(c *gin.Context, version int) {
 	filename := fmt.Sprintf("%s-v%d%s", sanitizeFilename(doc.Title), row.Version, extForKind(row.Format))
 	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	c.Header("X-Collab-Doc-Version", fmt.Sprintf("%d", row.Version))
-	c.Header("X-Collab-Doc-SHA256", hex.EncodeToString(sha256.New().Sum(row.Content))) // re-hash for header consistency
+	sum := sha256.Sum256(row.Content)
+	c.Header("X-Collab-Doc-SHA256", hex.EncodeToString(sum[:]))
 	c.Data(http.StatusOK, mime, row.Content)
 }
 
