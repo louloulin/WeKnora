@@ -17,6 +17,10 @@ export const datasourceIconMap: Record<string, string> = {
   rss: rssIcon,
   gitlab: gitlabIcon,
   ima: imaIcon,
+  // tencent_docs reuses yuque's docs-style icon as a visual placeholder
+  // until the team provides a dedicated brand asset. getDatasourceIconUrl
+  // returns undefined for unmapped keys, which the editor dialog v-if hides.
+  tencent_docs: yuqueIcon,
 }
 
 export function getDatasourceIconUrl(type: string): string | undefined {

@@ -38,6 +38,7 @@ const (
 	ConnectorTypeRSS         = "rss"
 	ConnectorTypeGitLab      = "gitlab"
 	ConnectorTypeIMA         = "ima"
+	ConnectorTypeTencentDocs = "tencent_docs"
 
 	// Sync modes
 	SyncModeIncremental = "incremental"

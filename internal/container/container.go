@@ -83,6 +83,7 @@ import (
 	notionConnector "github.com/Tencent/WeKnora/internal/datasource/connector/notion"
 	rssConnector "github.com/Tencent/WeKnora/internal/datasource/connector/rss"
 	yuqueConnector "github.com/Tencent/WeKnora/internal/datasource/connector/yuque"
+	tencentdocsConnector "github.com/Tencent/WeKnora/internal/datasource/connector/tencentdocs/doc"
 	"github.com/Tencent/WeKnora/internal/event"
 	"github.com/Tencent/WeKnora/internal/geoiplookup"
 	"github.com/Tencent/WeKnora/internal/handler"
@@ -2551,6 +2552,9 @@ func initConnectorRegistry() (*datasource.ConnectorRegistry, error) {
 		errs = errors.Join(errs, fmt.Errorf("register notion connector: %w", err))
 	}
 	if err := registry.Register(yuqueConnector.NewConnector()); err != nil {
+	if err := registry.Register(tencentdocsConnector.NewConnector()); err != nil {
+		errs = errors.Join(errs, fmt.Errorf("register tencent_docs connector: %w", err))
+	}
 		errs = errors.Join(errs, fmt.Errorf("register yuque connector: %w", err))
 	}
 	if err := registry.Register(imaConnector.NewConnector()); err != nil {
