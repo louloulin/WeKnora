@@ -3293,3 +3293,81 @@ ALL OK — SHEET find & replace
 - 仅"全部替换"，未实现"逐个替换 + 跳到下一个"（next/prev 按钮）
 - 仅对当前活动 sheet 操作，未实现"全部 sheet 中查找"
 - 命中列表只显示前 20 个
+
+## 48. v0.7.100 — SHEET 按列排序（Sort by Column）（2026-09-02）
+
+### 48.1 背景
+
+SHEET 编辑器已具备冻结 / 筛选 / 条件格式 / 数据验证 / 迷你图 / 页面布局 / 工作表管理 /
+批注 / 超链接 / 表格对象 / 透视表 / 查找替换。缺 SHEET 高频数据操作：**按列排序**。
+腾讯文档/飞书表格均支持选中区域按某列升/降序重排整行。
+
+### 48.2 实现
+
+`CollabSheetEditor.vue`：
+- 工具栏 find 按钮后加 `<button data-testid="sheet-sort-btn">排序</button>`
+- `featureDialog` 类型加 `'sort'`
+- modal 模板：排序依据列（A/B/...）+ 方向（升/降）+ 起始行 + 结束行 + 实时提示
+- 输入 refs：`sortColInput` / `sortDirectionInput` / `sortStartRowInput` / `sortEndRowInput`
+- `openSortModal()` 默认 A 列升序、全表范围
+- `onSortCommit()`：
+  - `colToIndex` 校验列名
+  - 数字单元格按数值比较，其余按 `localeCompare` 字符串比较
+  - 只重排 `[start, end]` 区间内的行，区间外行数据保持不变
+  - 同步到 Yjs per-sheet cellMap：先删除区间内旧行 key，再按新顺序写回
+    （修复了初版"清空整个 cellMap"会误删区间外行的问题）
+  - `scheduleSave()` 1.5s debounce 自动保存
+
+### 48.3 新增文件
+
+- `frontend/wk-sheet-sort.mjs`：Playwright + xlsx 解压验证脚本
+  （修复了 readColumnFromXlsx 正则被 heredoc 转义破坏的问题）
+
+### 48.4 真实双端浏览器验证
+
+`node frontend/wk-sheet-sort.mjs`：
+
+```
+after desc sort row 0-7:
+  row 0: A=4 B=bravo
+  row 1: A=3 B=delta
+  row 2: A=2 B=charlie
+  row 3: A=1 B=alpha
+  row 4: A=1 B=alpha
+  row 5: A=1 B=alpha
+  row 6: A= B=
+  row 7: A= B=
+xlsx A first 8: [ '4', '3', '2', '1', '1', '1' ]
+xlsx B first 8: [ 'bravo', 'delta', 'charlie', 'alpha', 'alpha', 'alpha' ]
+---
+descSorted: true
+expectUI_A: true ( 4,3,2,1 )
+expectUI_B: true ( bravo,delta,charlie,alpha )
+expectXlsxA: true ( 4,3,2,1 )
+expectXlsxB: true ( bravo,delta,charlie,alpha )
+page errors: 0
+ALL OK — SHEET sort
+```
+
+验证流程：
+1. 真实 admin 登录
+2. 打开 SHEET 文档，写入 A 列 3/1/2/4 + B 列 delta/alpha/charlie/bravo
+3. 打开排序 modal，按 A 列降序、行 1-8
+4. UI 断言：前 4 行 A=[4,3,2,1]、B=[bravo,delta,charlie,alpha]（B 跟随 A 重排）
+5. 下载 xlsx → 解压 `xl/worksheets/sheet1.xml` → 解析 `<c r="A1..A4">` 值一致
+6. 0 page error
+
+截图：`/tmp/wk-shots/sheet-sort-desc.png`
+
+### 48.5 回归
+
+- 新增适配器 + 协作组件测试：`tsx --test` 504/504 pass
+- `go build ./internal/... ./cmd/server` ✅
+- `vue-tsc` 仅仓库既有错误，本轮文件 0 新错误
+- 四类文档真实登录烟测（`wk-4kinds.mjs`）：DOC/SHEET/SLIDE/FORM 全部打开、0 page error
+
+### 48.6 已知遗留
+
+- 仅单列排序，未实现多关键字排序（按多列依次比较）
+- 未实现"排序时保留格式/批注/超链接随行移动"（当前只重排单元格值）
+- 未实现撤销（undo）支持

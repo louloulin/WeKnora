@@ -360,3 +360,28 @@ Alice 切到 Sheet2 写 A1=Bob 在 Sheet2 看到，Sheet1 不会串表。已 PAS
 - v0.7.101 SHEET 命名区域 UI (xlsxDefinedNames.ts + 需在 wb 接口暴露 workbookXml)
 - v0.7.102 DOC 修订对比 viewer
 - 持续收敛 genoffice vendor
+
+## 14. v0.7.100 — SHEET 按列排序（已交付，2026-09-02）
+
+### 已完成
+
+- 工具栏 "排序" 按钮 (data-testid="sheet-sort-btn")
+- featureDialog 新增 'sort' 类型 + modal（列/方向/起始行/结束行）
+- onSortCommit：数字按数值、文本按 localeCompare；只重排区间内行
+- 同步到 Yjs per-sheet cellMap（只删区间内行 key，区间外数据保留）
+- scheduleSave 1.5s debounce 自动保存
+
+### 真实双端验证
+
+`frontend/wk-sheet-sort.mjs` 已 PASS:
+- 写入 A=3/1/2/4 + B=delta/alpha/charlie/bravo
+- 按 A 列降序排序行 1-8 → UI 前 4 行 A=[4,3,2,1]、B 跟随重排
+- 下载 xlsx 解压 sheet1.xml → A1..A4=[4,3,2,1]、B1..B4=[bravo,delta,charlie,alpha]
+- 0 page error
+
+### 下一阶段
+
+- v0.7.101 SLIDE 多选 + 等距分布 + 匹配宽高 (alignment 扩展)
+- v0.7.102 SHEET 命名区域 UI (xlsxDefinedNames.ts + 需在 wb 接口暴露 workbookXml)
+- v0.7.103 DOC 修订对比 viewer (audit timeline 增强)
+- 持续收敛 genoffice vendor (doc* / xlsx* / pivot* / slide* adapters + 配套 vitest)

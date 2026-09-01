@@ -49,6 +49,7 @@
       <button class="collab-sheet-editor__feature" @click="openNoteModal" type="button" title="单元格批注">批注</button>
       <button class="collab-sheet-editor__feature" @click="openHyperlinkModal" type="button" title="超链接">链接</button>
       <button class="collab-sheet-editor__feature" @click="openFindModal" type="button" title="查找替换" data-testid="sheet-find-btn">查找</button>
+      <button class="collab-sheet-editor__feature" @click="openSortModal" type="button" title="按列排序" data-testid="sheet-sort-btn">排序</button>
       <button class="collab-sheet-editor__feature" @click="openTableModal" type="button" title="插入表对象">表格</button>
       <span class="collab-sheet-editor__peers">
         <span
@@ -86,6 +87,7 @@
         <h3 v-else-if="featureDialog === 'note'">单元格批注 ({{ activeSheetName }})</h3>
         <h3 v-else-if="featureDialog === 'hyperlink'">超链接 ({{ activeSheetName }})</h3>
         <h3 v-else-if="featureDialog === 'find'">查找替换 ({{ activeSheetName }})</h3>
+        <h3 v-else-if="featureDialog === 'sort'">按列排序 ({{ activeSheetName }})</h3>
         <h3 v-else-if="featureDialog === 'table'">插入表格对象 ({{ activeSheetName }})</h3>
 
         <template v-if="featureDialog === 'freeze'">
@@ -344,6 +346,32 @@
           </div>
         </template>
 
+        <!-- v0.7.100 — Sort modal -->
+        <template v-else-if="featureDialog === 'sort'">
+          <div class="collab-sheet-editor__modal-body">
+            <label>排序依据列：
+              <input type="text" v-model="sortColInput" placeholder="列(A,B,...)" style="width:80px" data-testid="sheet-sort-col" />
+            </label>
+            <label>方向：
+              <select v-model="sortDirectionInput" data-testid="sheet-sort-direction">
+                <option value="asc">升序 (A→Z, 0→9)</option>
+                <option value="desc">降序 (Z→A, 9→0)</option>
+              </select>
+            </label>
+            <label>起始行：
+              <input type="number" v-model.number="sortStartRowInput" :min="1" :max="rows.length" style="width:60px" data-testid="sheet-sort-start-row" />
+            </label>
+            <label>结束行：
+              <input type="number" v-model.number="sortEndRowInput" :min="1" :max="rows.length" style="width:60px" data-testid="sheet-sort-end-row" />
+            </label>
+            <p class="collab-sheet-editor__sort-hint">第 {{ sortStartRowInput }} - {{ sortEndRowInput }} 行将按 {{ sortColInput || '?' }} 列{{ sortDirectionInput === 'desc' ? '降序' : '升序' }}排列。</p>
+          </div>
+          <div class="collab-sheet-editor__modal-actions">
+            <button type="button" @click="featureDialog = null">取消</button>
+            <button type="button" @click="onSortCommit" :disabled="sortColInput.trim() === '' || colToIndex(sortColInput.trim()) < 0" data-testid="sheet-sort-apply-btn">应用排序</button>
+          </div>
+        </template>
+
         <!-- v0.7.45 — Table modal -->
         <template v-else-if="featureDialog === 'table'">
           <div class="collab-sheet-editor__modal-body">
@@ -544,7 +572,7 @@ const sheetRenameDraftBySheet = ref<Record<number, string>>({})
 const notesBySheet = ref<Record<number, SheetNote[]>>({})
 const hyperlinksBySheet = ref<Record<number, HyperlinkEdit[]>>({})
 const tablesBySheet = ref<Record<number, TableAddition[]>>({})
-const featureDialog = ref<null | 'freeze' | 'filter' | 'cf' | 'dv' | 'spark' | 'pageSetup' | 'sheetManage' | 'note' | 'hyperlink' | 'find' | 'table'>(null)
+const featureDialog = ref<null | 'freeze' | 'filter' | 'cf' | 'dv' | 'spark' | 'pageSetup' | 'sheetManage' | 'note' | 'hyperlink' | 'find' | 'sort' | 'table'>(null)
 
 // Modal-input reactive state — re-used across all 5 modals.
 const freezeRowsInput = ref(1)
@@ -587,6 +615,11 @@ const linkRowInput = ref('')
 const findSearchInput = ref('')
 const findReplaceInput = ref('')
 const findMatchCaseInput = ref(false)
+// v0.7.100 — sort inputs
+const sortColInput = ref('A')
+const sortDirectionInput = ref<'asc' | 'desc'>('asc')
+const sortStartRowInput = ref(1)
+const sortEndRowInput = ref(0)
 const linkColInput = ref('')
 const linkTargetInput = ref('')
 
@@ -966,6 +999,64 @@ const onNoteCommit = () => {
 }
 const onNoteClear = () => {
   notesBySheet.value[activeSheet.value] = []
+  featureDialog.value = null
+  scheduleSave()
+}
+
+// ===== v0.7.100 — Sort handlers =====
+const openSortModal = () => {
+  sortColInput.value = 'A'
+  sortDirectionInput.value = 'asc'
+  sortStartRowInput.value = 1
+  sortEndRowInput.value = rows.value.length
+  featureDialog.value = 'sort'
+}
+const onSortCommit = () => {
+  const ci = colToIndex(sortColInput.value.trim())
+  if (ci < 0) {
+    MessagePlugin.error('列格式不正确,例如 A/B/C/...')
+    return
+  }
+  const start = Math.max(0, (sortStartRowInput.value || 1) - 1)
+  const end = Math.min(rows.value.length - 1, (sortEndRowInput.value || rows.value.length) - 1)
+  if (end <= start) {
+    MessagePlugin.error('结束行必须大于起始行')
+    return
+  }
+  const dir = sortDirectionInput.value === 'desc' ? -1 : 1
+  const slice = rows.value.slice(start, end + 1)
+  const sorted = slice.slice().sort((a, b) => {
+    const av = a[ci] ?? ''
+    const bv = b[ci] ?? ''
+    const an = Number(av)
+    const bn = Number(bv)
+    if (!Number.isNaN(an) && !Number.isNaN(bn) && av !== '' && bv !== '') {
+      return dir * (an - bn)
+    }
+    return dir * String(av).localeCompare(String(bv))
+  })
+  const newRows = rows.value.slice()
+  for (let i = 0; i < sorted.length; i++) newRows[start + i] = sorted[i]
+  // Sync only the selected row range. Rows outside the sort range must keep
+  // their existing Yjs data and collaborator edits.
+  const cellMap = getSheetCellMap(activeSheetName.value)
+  if (cellMap && handle) {
+    handle!.ydoc.transact(() => {
+      for (let ri = start; ri <= end; ri++) cellMap.delete(String(ri))
+      for (let i = 0; i < sorted.length; i++) {
+        const newKey = String(start + i)
+        const yrow = new Y.Map<string>()
+        const srcRow = sorted[i]
+        for (let c = 0; c < srcRow.length; c++) {
+          const v = srcRow[c]
+          if (v !== '' && v !== null && v !== undefined) yrow.set(String(c), String(v))
+        }
+        cellMap.set(newKey, yrow)
+      }
+    })
+  }
+  rows.value = newRows
+  MessagePlugin.success(`已按 ${sortColInput.value.toUpperCase()} 列${sortDirectionInput.value === 'desc' ? '降序' : '升序'}排列 ${sorted.length} 行`)
   featureDialog.value = null
   scheduleSave()
 }
