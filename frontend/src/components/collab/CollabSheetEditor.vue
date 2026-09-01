@@ -1075,6 +1075,7 @@ const removeSheet = (si: number) => {
       })
     }
   }
+  if (sheetCellRoot && removedName) sheetCellRoot.delete(removedName)
   commitSheetManifest()
   if (activeSheet.value >= sheets.value.length) activeSheet.value = sheets.value.length - 1
   rows.value = sheets.value[activeSheet.value].rows.map((r) => r.slice())
@@ -1110,6 +1111,11 @@ const applySheetRenames = () => {
       return
     }
     sheets.value[si] = { ...sheets.value[si], name: newName }
+    if (sheetCellRoot && oldName && oldName !== newName) {
+      const oldMap = sheetCellRoot.get(oldName)
+      if (oldMap) sheetCellRoot.set(newName, oldMap)
+      sheetCellRoot.delete(oldName)
+    }
     changed = true
   }
   if (changed) {
@@ -1141,6 +1147,8 @@ const remoteSelections = ref<Array<{
 
 let ymap: Y.Map<Y.Map<string>> | null = null
 let ycols: Y.Array<string> | null = null
+type SheetCellMap = Y.Map<Y.Map<string>>
+let sheetCellRoot: Y.Map<SheetCellMap> | null = null
 // v0.7.93 -- sheet-name list as a Y.Array so add/remove propagates to
 // all collaborators in real time. Cells stay in the shared
 // (sheet:cells) ymap; per-sheet cell namespace is the next milestone.
@@ -1148,6 +1156,16 @@ let ysheets: Y.Array<string> | null = null
 let ysheetSnapshot: Y.Map<string> | null = null
 let wb: XlsxAdapterWorkbook = newXlsxWorkbook()
 let saveTimer: ReturnType<typeof setTimeout> | null = null
+
+const getSheetCellMap = (sheetName: string): SheetCellMap | null => {
+  if (!sheetCellRoot) return null
+  let cellMap = sheetCellRoot.get(sheetName)
+  if (!cellMap) {
+    cellMap = new Y.Map<Y.Map<string>>()
+    sheetCellRoot.set(sheetName, cellMap)
+  }
+  return cellMap
+}
 
 const connectionLabel = computed(() => {
   if (saveError.value) return `保存错误：${saveError.value}`
@@ -1187,6 +1205,7 @@ const setup = async () => {
 
   ycols = handle.ydoc.getArray<string>('sheet:cols')
   ymap = handle.ydoc.getMap<Y.Map<string>>('sheet:cells')
+  sheetCellRoot = handle.ydoc.getMap<SheetCellMap>('sheet:cells:by-sheet')
   ysheets = handle.ydoc.getArray<string>('sheet:names')
   ysheetSnapshot = handle.ydoc.getMap<string>('sheet:names:manifest')
 
@@ -1216,6 +1235,37 @@ const setup = async () => {
         }
       } else {
         sheets.value = [{ name: 'Sheet1', rows: [Array.from({ length: cols.value.length }, () => '')] }]
+      }
+    }
+    if (sheetCellRoot && handle) {
+      handle.ydoc.transact(() => {
+        for (const sheet of sheets.value) {
+          const cellMap = getSheetCellMap(sheet.name)
+          if (!cellMap || cellMap.size > 0) continue
+          for (let ri = 0; ri < sheet.rows.length; ri++) {
+            const row = sheet.rows[ri] || []
+            for (let ci = 0; ci < row.length; ci++) {
+              if (row[ci] === '') continue
+              let yrow = cellMap.get(String(ri))
+              if (!yrow) {
+                yrow = new Y.Map<string>()
+                cellMap.set(String(ri), yrow)
+              }
+              yrow.set(String(ci), row[ci])
+            }
+          }
+        }
+      })
+    }
+    if (ymap && ymap.size > 0 && sheets.value[0] && handle) {
+      const target = getSheetCellMap(sheets.value[0].name)
+      if (target && target.size === 0) {
+        handle.ydoc.transact(() => {
+          ymap!.forEach((yrow, rowKey) => {
+            target.set(rowKey, yrow)
+          })
+          ymap!.clear()
+        })
       }
     }
   const applyRemoteSheetNames = () => {
@@ -1287,7 +1337,7 @@ const setup = async () => {
       })
     }
   })
-  ymap.observe(() => syncFromY())
+  sheetCellRoot?.observeDeep(syncFromY)
   syncFromY()
 }
 
@@ -1302,11 +1352,12 @@ const colName = (i: number): string => {
 }
 
 const syncFromY = () => {
-  if (!ymap) return
+  const cellMap = getSheetCellMap(activeSheetName.value)
+  if (!cellMap) return
   const next: string[][] = []
   for (let i = 0; i < rows.value.length; i++) {
     const rowKey = String(i)
-    const yrow = ymap.get(rowKey)
+    const yrow = cellMap.get(rowKey)
     const row: string[] = []
     for (let ci = 0; ci < cols.value.length; ci++) {
       row.push(yrow ? yrow.get(String(ci)) || '' : '')
@@ -1362,12 +1413,13 @@ const setCell = (ri: number, ci: number, value: string) => {
     return
   }
   rows.value[ri][ci] = value
-  if (!ymap || !handle) return
+  const cellMap = getSheetCellMap(activeSheetName.value)
+  if (!cellMap || !handle) return
   handle!.ydoc.transact(() => {
-    let yrow = ymap!.get(String(ri))
+    let yrow = cellMap.get(String(ri))
     if (!yrow) {
       yrow = new Y.Map<string>()
-      ymap!.set(String(ri), yrow)
+      cellMap.set(String(ri), yrow)
     }
     yrow.set(String(ci), value)
   })
@@ -1395,12 +1447,13 @@ const delLastColumn = () => {
     localCols.delete(localCols.length - 1, 1)
   })
   rows.value = rows.value.map((r) => r.slice(0, -1))
-  if (ymap) {
+  const cellMap = getSheetCellMap(activeSheetName.value)
+  if (cellMap) {
     handle!.ydoc.transact(() => {
-      ymap!.forEach((yrow, key) => {
+      cellMap.forEach((yrow, key) => {
         const lastKey = String(cols.value.length)
         yrow.delete(lastKey)
-        if (yrow.size === 0) ymap!.delete(key)
+        if (yrow.size === 0) cellMap.delete(key)
       })
     })
   }
@@ -1410,7 +1463,7 @@ const delLastColumn = () => {
 const delLastRow = () => {
   if (rows.value.length <= 1) return
   rows.value = rows.value.slice(0, -1)
-  if (ymap) ymap!.delete(String(rows.value.length))
+  getSheetCellMap(activeSheetName.value)?.delete(String(rows.value.length))
   scheduleSave()
 }
 
@@ -1641,18 +1694,19 @@ const onUploadFile = async (e: Event) => {
       if (rows.value.length === 0) {
         rows.value = [Array.from({ length: cols.value.length }, () => '')]
       }
-      // reset Yjs cells
-      if (ymap && handle) {
+      // Reset only the active sheet's Yjs cell namespace.
+      const cellMap = getSheetCellMap(activeSheetName.value)
+      if (cellMap && handle) {
         handle.ydoc.transact(() => {
-          for (const k of Array.from(ymap!.keys())) {
-            ymap!.delete(k)
+          for (const k of Array.from(cellMap.keys())) {
+            cellMap.delete(k)
           }
           for (let i = 0; i < rows.value.length; i++) {
             const yrow = new Y.Map<string>()
             for (let ci = 0; ci < cols.value.length; ci++) {
               yrow.set(String(ci), rows.value[i][ci] || '')
             }
-            ymap!.set(String(i), yrow)
+            cellMap.set(String(i), yrow)
           }
         })
       }
@@ -1679,6 +1733,7 @@ const teardown = () => {
   }
   ymap = null
   ycols = null
+  sheetCellRoot = null
 }
 
 setup()

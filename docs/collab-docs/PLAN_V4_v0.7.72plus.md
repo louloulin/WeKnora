@@ -216,3 +216,24 @@ Yjs Awareness + 自建 cellLock：
 - `npm run build-with-types` 通过；若仍有全仓基线错误，需按模块输出新增错误为 0 的结果。
 - Go 全量 `go test ./...` 通过，不再以失败测试作为发布门禁。
 - Playwright 真实验证：DOC/SHEET/SLIDE 双端、FORM 公开提交、四类 sync-to-KB，均保存截图与结构化结果。
+
+## 8. v0.7.94 — SHEET per-sheet Yjs cell namespace（已交付，2026-09-02）
+
+### 已完成
+
+- 新增顶层 Yjs 命名空间 `sheet:cells:by-sheet: Y.Map<Y.Map<Y.Map<string>>>`
+- 每个 sheet 独立 cell map，rename 迁移、remove 删除
+- XLSX 首载按 sheet seed 非空 cell
+- 旧 `sheet:cells` 单层 map 自动迁移到第一个 sheet 并清空
+- `observeDeep(syncFromY)` + `syncFromY()` 改读活动 sheet map
+
+### 真实双端验证
+
+`frontend/wk-sheet-cells.mjs`：Alice/Bob 两个 Playwright context，独立登录，
+Alice 切到 Sheet2 写 A1=Bob 在 Sheet2 看到，Sheet1 不会串表。已 PASS。
+
+### 下一阶段
+
+- v0.7.95 SLIDE 主题真正落盘（Konva editor 监听 `wk-slide-theme-apply` →
+  `applyThemeToDeck` + `recolorDeck` → 写回 `theme*.xml` → 重保存 round-trip）
+- 后续命名区域 / 跨 sheet 公式 / 表格样式 / 跨 sheet 引用

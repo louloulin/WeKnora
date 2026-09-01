@@ -2759,3 +2759,70 @@ DOC outline sidebar 实际 **已实现**（v0.7.71），不是未做。
 
 - `wk-slide-theme-apply` 事件目前没有 Konva editor 监听 — Konva editor 的"应用主题"按钮需要在未来集成（不在本轮范围，因为并发 session WIP 文件 `CollabSlideKonvaEditor.vue` 不能动）。
 - SLIDE 主题应用需要 backend 配合（写 theme*.xml + 重映射 srgbClr），当前 swatch 仅前端预览，未触发后端保存。
+
+## 42. v0.7.94 — SHEET per-sheet Yjs cell namespace（2026-09-02）
+
+### 42.1 问题
+
+`CollabSheetEditor.vue` 原本使用单一顶层 Yjs map `sheet:cells: Y.Map<Y.Map<string>>`，
+所有 sheet 共用一个 cell map。当用户切换 sheet 后，cell 操作依旧写入同一命名空间，
+旧实现存在以下问题：
+- 切换 sheet 时旧 sheet 的 cell value 不会清空
+- 跨 sheet 同坐标（如 Sheet1!A1 vs Sheet2!A1）会互相覆盖
+- 删除 sheet 后残留 cell key
+
+### 42.2 方案
+
+新增顶层 Yjs 命名空间 `sheet:cells:by-sheet: Y.Map<Y.Map<Y.Map<string>>>`，
+每个 sheet 持有独立 cell map：
+
+```ts
+type SheetCellMap = Y.Map<Y.Map<string>>
+let sheetCellRoot: Y.Map<SheetCellMap> | null = null
+
+const getSheetCellMap = (sheetName: string): SheetCellMap | null => {
+  if (!sheetCellRoot) return null
+  let cellMap = sheetCellRoot.get(sheetName)
+  if (!cellMap) {
+    cellMap = new Y.Map<Y.Map<string>>()
+    sheetCellRoot.set(sheetName, cellMap)
+  }
+  return cellMap
+}
+```
+
+### 42.3 关键改动
+
+- **XLSX 首载 seed**：遍历每个 sheet 的非空 cell，分别写入对应 sheet 的 cell map
+- **旧 sheet:cells 迁移**：检测到旧 `sheet:cells` map 时，按顺序把 key 路由到第一个 sheet，再清空旧 map
+- **setCell**：`setCell(row, column, value)` 改用 `getSheetCellMap(activeSheetName)`
+- **删除列/删除行/上传重置**：同上
+- **sheet rename**：把旧 sheet cell map 整体搬到新 name（Y.Map 引用迁移）
+- **sheet remove**：删除对应 cell map
+- **`observeDeep(syncFromY)`** 监听 `sheetCellRoot` 而非旧 `sheet:cells`
+- **`syncFromY()`** 改为读取活动 sheet 的 cell map
+
+### 42.4 新增文件
+
+- `frontend/wk-sheet-cells.mjs`：Playwright 双 context 验证脚本
+
+### 42.5 真实双端浏览器验证
+
+```
+{ sheet2Value: 'Alice-S2', sheet1Value: '', ok: true }
+ALL OK -- per-sheet Yjs cells sync
+```
+
+- 两个独立 Playwright context + 真实 admin 登录
+- Alice 切换到 `Sheet2`，写入 `A1 = 'Alice-S2'`
+- Bob 切换到 `Sheet2`，`A1` 读到 `'Alice-S2'`
+- 双方切换回 `Sheet1`，`A1` 为空（不串表）
+
+### 42.6 类型检查
+
+`vue-tsc -p tsconfig.app.json --noEmit` 对 `CollabSheetEditor.vue` 输出 0 新错误。
+
+### 42.7 已知遗留
+
+- 未实现跨 sheet 公式引用实时更新（v0.7.95+）
+- 未实现命名区域（named range）的 Yjs 同步
