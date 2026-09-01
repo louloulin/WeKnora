@@ -310,3 +310,27 @@ Alice 切到 Sheet2 写 A1=Bob 在 Sheet2 看到，Sheet1 不会串表。已 PAS
 - v0.7.98 SHEET 命名区域 UI (xlsxDefinedNames.ts 已就位)
 - v0.7.99 DOC 修订对比 viewer (audit timeline 增强)
 - 持续收敛 genoffice vendor (doc* / xlsx* / pivot* / slide* adapters + 配套 vitest)
+
+## 12. v0.7.98 — SLIDE 形状对齐工具（已交付，2026-09-02）
+
+### 已完成
+
+- 工具栏加 6 个对齐按钮 (data-testid="slide-align-left/center-h/right/top/center-v/bottom")
+- alignSelected(direction) handler:
+  left/centerH/right -> 修改 shape.x (基于 slide.width)
+  top/centerV/bottom -> 修改 shape.y (基于 slide.height)
+- 复用 updateShape() 走 Yjs transact + markDirty + scheduleSave 1.5s debounce
+
+### 真实双端验证
+
+`frontend/wk-slide-align.mjs` 已 PASS:
+- 加矩形 -> 6 次对齐 -> 每次下载 PPTX 解压 -> 验证 slide1.xml 最后 <p:sp> 的 <a:off x y>
+- left/right/top/bottom 边界对齐 + centerH/centerV 居中 x/y 值全部精确匹配
+- 0 page error
+
+### 下一阶段
+
+- v0.7.99 SLIDE 多选 / 等距分布 / 匹配宽高 (alignment 扩展)
+- v0.7.100 SHEET 找并替换 (find & replace) 或 SHEET 命名区域 UI
+- v0.7.101 DOC 修订对比 viewer (audit timeline 增强)
+- 持续收敛 genoffice vendor (doc* / xlsx* / pivot* / slide* adapters + 配套 vitest)

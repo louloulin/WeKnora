@@ -3090,3 +3090,105 @@ ALL OK — slide layout switcher
 - 切换 layout 时 placeholder 默认位置会被覆盖，遗留的形状保持在原位
   （与 PowerPoint 行为一致）
 - 未实现 layout 缩略图预览（只显示 name + 占位数）
+
+## 46. v0.7.98 — SLIDE 形状对齐工具（左/中/右 + 顶/中/底）（2026-09-02）
+
+### 46.1 背景
+
+SLIDE 编辑器已经支持形状添加、Z-order、复制、删除、旋转、转场、动画、备注、演示、主题、布局。
+但缺腾讯文档/Keynote/PowerPoint 都有的"对齐工具栏"——一键把形状对齐到幻灯片边界
+（左/水平居中/右/顶端/垂直居中/底端）。
+
+### 46.2 实现
+
+`CollabSlideKonvaEditor.vue` 工具栏在 `↻ 旋转` 按钮后加 6 个对齐按钮：
+
+```html
+<button @click="alignSelected('left')" data-testid="slide-align-left">⇤</button>
+<button @click="alignSelected('centerH')" data-testid="slide-align-center-h">↔</button>
+<button @click="alignSelected('right')" data-testid="slide-align-right">⇥</button>
+<button @click="alignSelected('top')" data-testid="slide-align-top">⫶</button>
+<button @click="alignSelected('centerV')" data-testid="slide-align-center-v">↕</button>
+<button @click="alignSelected('bottom')" data-testid="slide-align-bottom">⫷</button>
+```
+
+新增 `alignSelected(direction: AlignDirection)` 函数（基于 slide bounds）：
+
+```ts
+type AlignDirection = 'left' | 'centerH' | 'right' | 'top' | 'centerV' | 'bottom'
+const alignSelected = (direction: AlignDirection) => {
+  const slide = activeSlide.value
+  const id = selectedId.value
+  if (!slide || !id) return
+  const shape = slide.shapes.find((s) => s.id === id)
+  if (!shape) return
+  const sw = slide.width ?? SLIDE_W_INCH * 914400
+  const sh = slide.height ?? SLIDE_H_INCH * 914400
+  let nx = shape.x, ny = shape.y
+  switch (direction) {
+    case 'left':    nx = 0; break
+    case 'centerH': nx = Math.round((sw - shape.w) / 2); break
+    case 'right':   nx = sw - shape.w; break
+    case 'top':     ny = 0; break
+    case 'centerV': ny = Math.round((sh - shape.h) / 2); break
+    case 'bottom':  ny = sh - shape.h; break
+  }
+  if (nx === shape.x && ny === shape.y) return
+  updateShape(id, { x: nx, y: ny })  // Yjs 协同 + markDirty + scheduleSave
+}
+```
+
+复用现有 `updateShape(id, patch)`：
+- 走 Yjs transact → `yslide.shapes` 数组按 id 找 → 改 x/y
+- `markDirty` 同步到 engine slide model
+- `scheduleSave` 1.5s debounce 自动保存
+
+### 46.3 新增文件
+
+- `frontend/wk-slide-align.mjs`：Playwright + PPTX XML 解压验证脚本
+
+### 46.4 真实双端浏览器验证
+
+`node frontend/wk-slide-align.mjs`：
+
+```
+slide size: { cx: 12192000, cy: 6858000 }
+left disabled (auto-selected after add): false
+after left:    { x: 0,        y: 914400,  cx: 1828800, cy: 914400 } ✓
+after right:   { x: 10363200, y: 914400,  cx: 1828800, cy: 914400 } ✓ (=12192000-1828800)
+after top:     { x: 10363200, y: 0,       cx: 1828800, cy: 914400 } ✓
+after bottom:  { x: 10363200, y: 5943600, cx: 1828800, cy: 914400 } ✓ (=6858000-914400)
+after centerH: { x: 5181600,  y: 5943600, cx: 1828800, cy: 914400 } ✓ (=(12192000-1828800)/2)
+after centerV: { x: 5181600,  y: 2971800, cx: 1828800, cy: 914400 } ✓ (=(6858000-914400)/2)
+
+expect left: true
+expect right: true
+expect top: true
+expect bottom: true
+expect centerH: true
+expect centerV: true
+page errors: 0
+ALL OK — slide align
+```
+
+验证流程：
+1. 登录 + 打开 slide 文档
+2. 点击 `+ 矩形` → addShape auto-select 新矩形
+3. 连续 6 次点击对齐按钮
+4. 每次点击后下载 PPTX → 解压 → 解析 `ppt/slides/slide1.xml` → 读最后一个 `<p:sp>` 的 `<a:off x y>` + `<a:ext cx cy>`
+5. 6 个方向 x/y 值都符合预期计算
+6. 0 page error
+
+截图：
+- `/tmp/wk-shots/slide-align-00-pre.png`（加矩形后）
+- `/tmp/wk-shots/slide-align-99-final.png`（6 次对齐后）
+
+### 46.5 类型检查
+
+`vue-tsc -p tsconfig.app.json --noEmit` 对 `CollabSlideKonvaEditor.vue` 输出 0 新错误。
+
+### 46.6 已知遗留
+
+- 仅对齐到 slide bounds，未实现"对齐到选中形状的边界"（多选场景）
+- 未实现"等距分布"（horizontal/vertical distribute）
+- 未实现"匹配宽度/高度"（match width/height）

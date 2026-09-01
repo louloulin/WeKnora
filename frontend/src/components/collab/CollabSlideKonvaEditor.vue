@@ -93,6 +93,12 @@
       <button @click="sendToBack" type="button" :disabled="!selectedId" title="置于底层">⤓ 底层</button>
       <button @click="rotateSelected(-90)" type="button" :disabled="!selectedId" title="逆时针旋转 90° (Alt+←)" data-testid="slide-rotate-ccw">↺ 旋转</button>
       <button @click="rotateSelected(90)" type="button" :disabled="!selectedId" title="顺时针旋转 90° (Alt+→)" data-testid="slide-rotate-cw">↻ 旋转</button>
+      <button @click="alignSelected('left')" type="button" :disabled="!selectedId" title="左对齐" data-testid="slide-align-left">⇤</button>
+      <button @click="alignSelected('centerH')" type="button" :disabled="!selectedId" title="水平居中" data-testid="slide-align-center-h">↔</button>
+      <button @click="alignSelected('right')" type="button" :disabled="!selectedId" title="右对齐" data-testid="slide-align-right">⇥</button>
+      <button @click="alignSelected('top')" type="button" :disabled="!selectedId" title="顶端对齐" data-testid="slide-align-top">⫶</button>
+      <button @click="alignSelected('centerV')" type="button" :disabled="!selectedId" title="垂直居中" data-testid="slide-align-center-v">↕</button>
+      <button @click="alignSelected('bottom')" type="button" :disabled="!selectedId" title="底端对齐" data-testid="slide-align-bottom">⫷</button>
       <span class="collab-slide-konva__divider" />
       <button @click="onUndo" type="button" :disabled="!canUndo" title="撤销 (Ctrl+Z)">↶ 撤销</button>
       <button @click="onRedo" type="button" :disabled="!canRedo" title="重做 (Ctrl+Shift+Z)">↷ 重做</button>
@@ -1203,6 +1209,30 @@ const objToShape = (o: Record<string, unknown>): PptxShape => {
     cols: o.cols ? Number(o.cols) : undefined,
     cellTexts,
   }
+}
+
+// --- v0.7.98 — shape alignment to slide bounds ---
+type AlignDirection = 'left' | 'centerH' | 'right' | 'top' | 'centerV' | 'bottom'
+const alignSelected = (direction: AlignDirection) => {
+  const slide = activeSlide.value
+  const id = selectedId.value
+  if (!slide || !id) return
+  const shape = slide.shapes.find((s) => s.id === id)
+  if (!shape) return
+  const sw = slide.width ?? SLIDE_W_INCH * 914400
+  const sh = slide.height ?? SLIDE_H_INCH * 914400
+  let nx = shape.x
+  let ny = shape.y
+  switch (direction) {
+    case 'left': nx = 0; break
+    case 'centerH': nx = Math.round((sw - shape.w) / 2); break
+    case 'right': nx = sw - shape.w; break
+    case 'top': ny = 0; break
+    case 'centerV': ny = Math.round((sh - shape.h) / 2); break
+    case 'bottom': ny = sh - shape.h; break
+  }
+  if (nx === shape.x && ny === shape.y) return
+  updateShape(id, { x: nx, y: ny })
 }
 
 const updateShape = (id: string, patch: Partial<PptxShape>) => {
