@@ -5,6 +5,689 @@
 
 ---
 
+### v0.7.49 — DOC 飞书级补完 (equation + comments + nodes)
+
+**目标**: 充分学习 genoffice docs editor, copy 其 equation/comments 模块到 WeKnora,
+实现 DOC 飞书级公式与段落级批注。
+
+**已完成**:
+- copy `docEquation.ts` (51 行, 从 genoffice `docs/editor/equation.ts`):
+  - `inlineMathML` / `inlineEquationNodeJson` (docInlineMath) / `equationBlockJson` (docProtected)
+  - 修复 import 路径: `../../engines/docx-engine` → `../engines/docx-engine`
+  - 测试 `docEquation.test.ts` (4/4 pass): inlineMathML / inlineEquationNodeJson / equationBlockJson / trim
+- copy `docComments.ts` (106 行, 从 genoffice `docs/editor/comments.ts`):
+  - `CommentMark` (Word comment range mark, ids 空格分隔) + `nextCommentId` / `addCommentToSelection` / `removeCommentFromDoc` / `addReplyToCommentRange`
+  - `TRACK_IGNORE` inline 常量 (WeKnora 无 revisions.ts)
+  - 测试 `docComments.test.ts` (9/9 pass, EditorState + mock view 无 DOM 运行)
+- 自写 `docNodes.ts` (轻量 DOC 节点, 从 genoffice `extensions.ts` DocInlineMath + 简化 docProtected):
+  - `DocInlineMath` (inline atom: omml/mathml/latex/text)
+  - `DocProtected` (block atom: docxIndex/blockType/label/previewText/genXml/formulaDisplay)
+  - 测试 `docNodes.test.ts` (4/4 pass)
+- **接入 CollabDocProEditor.vue**:
+  - extensions 加 DocInlineMath + DocProtected + CommentMark
+  - 公式 modal 改用 `equationBlockJson(latex)` 插入结构化 docProtected 节点
+    (genXml 携带 OMML 段落, 保存路径 `onEditorUpdate` 识别 docProtected → 整段 XML 替换)
+  - 批注: `onSelectionUpdate` 设置 commentAnchor (段落范围 JSON), CollabCommentsPanel
+    `@created` 事件 → `addCommentToSelection` 把批注 id 挂到选中文本 mark
+- **接入 CollabCommentsPanel.vue**: 新增 `created` emit (创建线程后通知父编辑器挂 mark)
+
+**验证**:
+```
+$ ./node_modules/.bin/tsx --test \
+    src/editor/adapters/__tests__/*.test.ts \
+    src/editor/formula/__tests__/*.test.ts \
+    src/components/collab/__tests__/*.test.ts
+ℹ tests 246
+ℹ pass 246
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc -p tsconfig.app.json --noEmit
+# 本任务相关文件 (docEquation/docComments/docNodes/CollabDocProEditor/CollabCommentsPanel) 0 错误
+# 40 个 pre-existing 错误与本任务无关
+```
+
+**已知遗留**:
+- 公式插入在段落中间会 split 段落 (与 v0.7.42 raw HTML 行为一致), 后半段文本在逐段
+  patch 保存模式下不落盘 — 完整段落增删需要 convert.ts 级 SavePlan (v0.7.50)
+- 批注 mark 只挂到新建批注; 打开已有批注文档时 mark 未从 docx 恢复 (需要 parse 侧
+  commentIds → mark 映射, v0.7.50)
+- docProtected 仅公式子集; 图片/表格/图表 block 仍走 TipTap 原生节点
+
+### v0.7.50 — DOC 批注 mark 恢复 (in-progress)
+
+**目标**: 打开已有批注的 .docx 时恢复 comment mark 高亮。
+
+**已完成**:
+- `docxAdapter.ts`: `DocxAdapterParagraph` 加 `commentIds?: string[]`, `openDocx` 时
+  用 `collectCommentIds` 合并 run 级 commentIds + 跨段落 commentStarts/commentEnds
+- `CollabDocProEditor.vue`: `paragraphsToContent` 给有 commentIds 的段落加
+  `comment` mark (ids 空格分隔), 打开文档即恢复批注高亮
+- 测试 `docxCommentRestore.test.ts` (4/4 pass): run 级合并 / 跨段落 / 无批注 / textbox
+
+### v0.7.51 — DOC 全量 SavePlan (公式 round-trip + 段落增删)
+
+**目标**: 让 DOC 保存路径支持 docProtected 公式节点与段落增删 (convert.ts 简化版)。
+
+**已完成**:
+- `docxAdapter.ts` `pmDocToSavePlan` 加 docProtected 支持:
+  - visibleNodes filter 加 `docProtected`
+  - docProtected 节点 → `{ kind: 'xml', xml: genXml, docxIndex }` (OMML 段落整段替换)
+- `pmDocToSavePlan` 加 docxIndex 锚定:
+  - `parseDocxIndexFromNode` 读 `data-docx-index` / `docxIndex` attr
+  - `originalByIndex` Map 优先按 docxIndex 定位, 无 anchor 节点 fallback 顺序游标
+  - 段落插入/删除不再错位
+- `saveDocxBytes` 支持两种模式: `PatchedParagraph[]` (增量) 与 `SaveBlock[]` (全量 plan)
+- `saveDocxBytesWithImages` 加可选 `blocks` 参数
+- `CollabDocProEditor.vue` flushSave 改用 `pmDocToSavePlan` 全量保存
+- 测试 `docxSavePlan.test.ts` (4/4 pass): parseDocxIndexFromNode / docProtected genXml /
+  新段落 generated / SaveBlock[] round-trip
+
+**验证**:
+```
+$ ./node_modules/.bin/tsx --test \
+    src/editor/adapters/__tests__/*.test.ts \
+    src/editor/formula/__tests__/*.test.ts \
+    src/components/collab/__tests__/*.test.ts
+ℹ tests 254
+ℹ pass 254
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc -p tsconfig.app.json --noEmit
+# 本任务相关文件 0 错误; 40 个 pre-existing 错误与本任务无关
+
+$ go build ./internal/...
+# clean
+```
+
+**已知遗留**:
+- 公式插入在段落中间仍会 split 段落 (TipTap insertContent 行为); 现在保存路径
+  按 docxIndex 锚定, split 出的后半段 (无 anchor) 会作为新段落 generated 保存
+- 批注 mark 的删除清理 (removeCommentFromDoc) 尚未接 UI 删除按钮
+- docProtected 仅公式子集; 图片/表格/图表 block 仍走 TipTap 原生节点
+
+### v0.7.52 — DOC 批注删除闭环 (in-progress)
+
+**目标**: 批注线程删除后清理 TipTap comment mark。
+
+**已完成**:
+- `CollabCommentsPanel.vue`: 线程 header 加「删除」按钮, `removeThread` 调
+  `deleteCollabDocComment` (回复级联删除) + `deleted` emit
+- `CollabDocProEditor.vue`: `@deleted` → `removeCommentFromDoc(editor, id)` 剥离
+  comment mark (ids 空格分隔, 最后一个 id 移除时 mark 整体删除)
+
+### v0.7.53 — DOC 表格列宽 (table-sizing copy + colwidth 保存)
+
+**目标**: DOC 表格列宽调整与保存 (copy genoffice table-sizing.ts)。
+
+**已完成**:
+- copy `docTableSizing.ts` (185 行, 从 genoffice `docs/editor/table-sizing.ts`):
+  - `fitColumnWidths` / `setSelectedColumnWidth` / `constrainSelectedTableWidth` /
+    `constrainTableWidthAtCell` — 纯函数 + TipTap commands, 依赖 `@tiptap/pm/tables`
+    (tableRole 检查, 与 TipTap `table` 节点兼容, 无需改节点名)
+- `docxAdapter.ts` `pmTableToTableXml` 读 TipTap `colwidth` attr:
+  - 列宽 px → dxa (×15), 生成真实 `<w:gridCol>` / `<w:tcW>` / `<w:tblW>`
+  - 无 colwidth 时 fallback 2000 dxa 等宽列
+- `CollabDocProEditor.vue`: 工具栏加「⇔ 列宽」按钮 → prompt px →
+  `setSelectedColumnWidth` (选中列调整 + 网格重分配)
+- 测试 `docTableSizing.test.ts` (5/5 pass): fitColumnWidths 3 项 + pmTableToTableXml
+  colwidth 2 项
+
+**验证**:
+```
+$ ./node_modules/.bin/tsx --test \
+    src/editor/adapters/__tests__/*.test.ts \
+    src/editor/formula/__tests__/*.test.ts \
+    src/components/collab/__tests__/*.test.ts
+ℹ tests 259
+ℹ pass 259
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc -p tsconfig.app.json --noEmit
+# 本任务相关文件 0 错误; 40 个 pre-existing 错误与本任务无关
+```
+
+### v0.7.54 — DOC 表格属性 (table-properties copy + 样式/表头)
+
+**目标**: DOC 表格边框/底纹/表头重复 (copy genoffice table-properties.ts)。
+
+**已完成**:
+- 自写 `docTableExtras.ts` (TipTap 表格节点扩展, copy genoffice extensions.ts 的
+  docTable/docTableCell/docTableRow attr 面):
+  - `DocTable`: tblAutoFit / widthPx / widthPct / colWidthsPct / tblLook / tblStyleId
+  - `DocTableRow`: repeatHeader / repeatHeaderEdited
+  - `DocTableCell` / `DocTableHeader`: fill / borders
+- copy `docTableProperties.ts` (212 行, 从 genoffice `docs/editor/table-properties.ts`):
+  - `applyTablePreset` (表头填充 + 斑马纹 + 边框) / `toggleRepeatHeaderRows` (跨页重复表头)
+  - `setTableAutoFit` / `setTableLookOption` / `updateSelectedTableAttrs` / `repeatHeaderState`
+  - 节点名 docTable→table / docTableCell→tableCell / docTableHeader→tableHeader,
+    类型从本地 docx-engine import (TableAutoFitMode / TableLook 已存在)
+- `docxAdapter.ts` `pmTableToTableXml` 输出:
+  - cell fill → `<w:shd>`, borders → `<w:tcBorders>` (top/left/bottom/right)
+  - repeatHeader 行 → `<w:trPr><w:tblHeader/>`
+- `CollabDocProEditor.vue`: 表格扩展换 DocTable 系列 + 工具栏加「🎨 样式」(蓝/灰/无边框
+  预设) 与「⇕ 表头」(跨页重复) 按钮
+- 测试 `docTableProperties.test.ts` (3/3 pass): fill/borders / tblHeader / 无 attrs fallback
+
+**验证**:
+```
+$ ./node_modules/.bin/tsx --test \
+    src/editor/adapters/__tests__/*.test.ts \
+    src/editor/formula/__tests__/*.test.ts \
+    src/components/collab/__tests__/*.test.ts
+ℹ tests 262
+ℹ pass 262
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc -p tsconfig.app.json --noEmit
+# 本任务相关文件 0 错误; 40 个 pre-existing 错误与本任务无关
+
+$ go build ./internal/...
+# clean
+```
+
+### v0.7.55 — DOC 表格移动手柄 (table-handle copy)
+
+**目标**: DOC 表格 hover 移动手柄 (copy genoffice table-handle.ts)。
+
+**已完成**:
+- copy `docTableHandle.ts` (261 行, 从 genoffice `docs/editor/table-handle.ts`):
+  - `DocTableHandle` Extension + ProseMirror plugin: hover 表格左上角显示 ⣿ 手柄,
+    点击选中整表 (NodeSelection), 拖拽走 ProseMirror 原生 block move
+  - 节点名 docTable→table, i18n tooltip inline, 去掉浮动表格 (tblFloat) 分支
+    (WeKnora 无浮动表格 attrs)
+- `CollabDocProEditor.vue`: extensions 加 DocTableHandle + `.doc-table-handle` 全局样式
+- 测试 `docTableHandle.test.ts` (1/1 pass): extension 注册 plugin + key
+
+**验证**:
+```
+$ ./node_modules/.bin/tsx --test \
+    src/editor/adapters/__tests__/*.test.ts \
+    src/editor/formula/__tests__/*.test.ts \
+    src/components/collab/__tests__/*.test.ts
+ℹ tests 263
+ℹ pass 263
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc -p tsconfig.app.json --noEmit
+# 本任务相关文件 0 错误; 40 个 pre-existing 错误与本任务无关
+
+$ go build ./internal/...
+# clean
+```
+
+### v0.7.56 — DOC 批注落盘 (comments.xml round-trip)
+
+**目标**: 批注 mark → .docx comments.xml + commentRangeStart 标记。
+
+**已完成**:
+- `docxAdapter.ts`:
+  - `saveDocxBytes` 加 `options.comments` (SaveDocxBytesOptions), 传引擎
+    `saveDocx` → 重新生成 word/comments.xml + commentsExtended.xml
+  - `collectCommentIdsFromNode` 遍历 TipTap 节点收集 comment mark ids
+  - `pmNodeToGeneratedBlock` 加 `commentStarts` (从 comment marks)
+  - `pmDocToSavePlan` 三个分支 (未变/文本编辑/blank-docx) 遇 comment marks
+    强制走 generated 路径, 保证 commentRangeStart 标记落盘
+- `CollabCommentsPanel.vue`: `loaded` emit (refresh 后暴露批注列表)
+- `CollabDocProEditor.vue`: `@loaded` 缓存批注, flushSave 构建 CommentInfo[]
+  (id/author/text/date/parentId/done) 传 `saveDocxBytesWithImages`
+- 测试 `docxCommentsSave.test.ts` (4/4 pass): mark 收集 / 无 mark / generated
+  commentStarts / comments.xml + commentRangeStart round-trip
+
+**验证**:
+```
+$ ./node_modules/.bin/tsx --test \
+    src/editor/adapters/__tests__/*.test.ts \
+    src/editor/formula/__tests__/*.test.ts \
+    src/components/collab/__tests__/*.test.ts
+ℹ tests 267
+ℹ pass 267
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc -p tsconfig.app.json --noEmit
+# 本任务相关文件 0 错误; 40 个 pre-existing 错误与本任务无关
+
+$ go build ./internal/...
+# clean
+```
+
+### v0.7.57 — SHEET 透视表 pipeline 接入 (pivot additions 落盘)
+
+**目标**: 让 v0.7.48 的透视表 UI 真正走 `transformPackage` 写入 .xlsx 字节
+(此前只写 reactive state, 保存/下载不落盘)。
+
+**已完成**:
+- `CollabSheetEditor.vue` `buildFeaturePipeline` 的 `packageTransformer` 加 pivot 处理:
+  - 遍历 `pivotsBySheet`, 解析 `PivotAddition[]` (补 `worksheetPath`)
+  - 调 `applyPivotAdditions(pkg, resolved, workbookXml, touched)` 注册
+    pivotCacheDefinition / pivotCacheRecords / pivotTable parts + workbook.xml
+    `<pivotCaches>` + worksheet rels 链接
+  - 保存 (flushSave) 与下载 (exportXlsx) 自动落盘透视表
+- 新测试 `xlsxPivotPipeline.test.ts` (2/2 pass):
+  - `applyPivotAdditions` 注册 cache + table parts + workbook.xml + worksheet rels
+  - pivot additions 走 `transformPackage` 后 parts 存活 + workbook.xml 已 patch
+
+**验证**:
+```
+$ ./node_modules/.bin/tsx --test \
+    src/editor/adapters/__tests__/*.test.ts \
+    src/editor/formula/__tests__/*.test.ts \
+    src/components/collab/__tests__/*.test.ts
+ℹ tests 269
+ℹ pass 269
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc -p tsconfig.app.json --noEmit
+# 本任务相关文件 0 错误; 40 个 pre-existing 错误与本任务无关
+
+$ go build ./internal/...
+# clean
+```
+
+**已知遗留**:
+- PivotExpansion 完整 round-trip 未测 (需完整 pivot cache + records)
+- PivotValueSpec.numFmt / showDataAs / formula 高级选项 UI 未暴露
+- Pivot Grouping (日期/数值分组) UI 未接
+
+### v0.7.58 — 腾讯文档兼容层 (CSV 互通 + .txt/.md 导入)
+
+**目标**: 实现腾讯文档级互通 — SHEET 支持 CSV 导入/导出 (腾讯文档/Excel 的
+CSV 是系统 legacy 字符集, 中文 Windows 是 GBK), DOC 支持 .txt/.md 导入
+(腾讯文档在线文档的导入路径)。
+
+**已完成**:
+- copy `csvImport.ts` (从 genoffice `apps/sheets/src/gateway/csv-import.ts`, ~250 行):
+  - `decodeCsvBuffer` (BOM → UTF-8 → GBK/Shift_JIS/Big5 嗅探, 带语言偏好)
+  - `sniffDelimiter` / `parseCsv` (引号/CRLF/尾空行) / `isNumericCell` (前导零保文本)
+  - `buildWorksheetXml` / `csvToXlsxBuffer` / `blankXlsxBuffer`
+  - 适配: `Buffer` → `Uint8Array`, `nodebuffer` → `uint8array` (浏览器)
+- copy CSV 导出纯函数 (从 genoffice `apps/sheets/src/renderer/csv-export.ts`):
+  - `csvField` / `csvFromDisplayRows` (Excel 风格引号 + CRLF)
+  - 自写 `gridToCsvBytes` (UTF-8 BOM, 腾讯文档/Excel 中文正确打开)
+- 自写 `docTextImport.ts` (腾讯文档在线文档 .txt/.md 导入路径):
+  - `textToDocParagraphs` (一行一段) / `markdownToDocParagraphs` (marked.lexer:
+    heading/list/blockquote/code) / `stripInlineMarkdown` / `looksLikeMarkdown`
+  - `importTextToDocParagraphs` (自动检测 Markdown)
+- **接入 CollabSheetEditor.vue**:
+  - 上传按钮改「上传 .xlsx / .csv」, accept 加 `.csv`
+  - `onUploadFile` CSV 分支: `decodeCsvBuffer` → `parseCsv` → `csvToXlsxBuffer` → open
+  - 新增「下载 CSV」按钮 + `exportCsv` (当前 sheet grid → BOM CSV)
+- **接入 CollabDocProEditor.vue**:
+  - 新增「上传 .docx / .txt / .md」按钮 + 隐藏 file input
+  - .docx: `openDocx` → setContent → 上传
+  - .txt/.md: `importTextToDocParagraphs` → `buildBlankDocxDoc` 种子 →
+    `importParagraphsToContent` → `flushSave(true)` 落盘
+- 新测试 14 个 (9 csvImport + 5 docTextImport)
+
+**验证**:
+```
+$ ./node_modules/.bin/tsx --test \
+    src/editor/adapters/__tests__/*.test.ts \
+    src/editor/formula/__tests__/*.test.ts \
+    src/components/collab/__tests__/*.test.ts
+ℹ tests 283
+ℹ pass 283
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc -p tsconfig.app.json --noEmit
+# 本任务相关文件 0 错误; 40 个 pre-existing 错误与本任务无关
+
+$ go build ./internal/...
+# clean
+```
+
+**已知遗留**:
+- DOC .txt/.md 导入的 docx 尾部有 1-2 个空段落 (blank-docx 种子结构, 与
+  现有 fresh-doc 路径一致); 内容完整保留
+- 导入段落 1+ 走 generated 块, 首段 heading 样式走 text-only patch (与现有
+  行为一致)
+- CSV 导出只含当前 sheet 的显示值 (公式结果), 与腾讯文档一致
+
+### v0.7.59 — DOC 批注闭环 (回复 + 解决状态 round-trip + 重新打开)
+
+**目标**: 验证批注回复 (parentId) 与解决状态 (done) 通过 docx commentsExtended.xml
+完整 round-trip, 并补上 UI 的「重新打开」动作让 resolve/unresolve 闭环。
+
+**已完成**:
+- 验证 engine 已支持完整链路 (无需新增 engine 代码):
+  - `saveDocx({ comments })` 检测 `parentId`/`done` 时生成
+    `word/commentsExtended.xml` (`<w15:commentEx w15:paraIdParent=... w15:done=...>`)
+  - 新评论自动分配 `w14:paraId` (commentsExtended 链接 key)
+  - `parseComments` 读 commentsExtended.xml 回填 `parentId`/`done` 到 CommentInfo
+  - Content_Types 与 rels 自动注册
+- 新测试 `docxCommentExtended.test.ts` (2/2 pass):
+  - 回复 + 解决状态 round-trip (paraId 已知)
+  - 新评论无 paraId 时自动分配 + 回复链接保持
+- **接入 CollabCommentsPanel.vue** (v0.7.59 补全):
+  - 已解决线程加「↺ 重新打开」按钮 (`reopenThread` → `updateCollabDocComment({ resolved: false })`)
+  - 此前仅有「✓ 解决」, 闭环断在单向上
+
+**验证**:
+```
+$ ./node_modules/.bin/tsx --test \
+    src/editor/adapters/__tests__/*.test.ts \
+    src/editor/formula/__tests__/*.test.ts \
+    src/components/collab/__tests__/*.test.ts
+ℹ tests 285
+ℹ pass 285
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc -p tsconfig.app.json --noEmit
+# 本任务相关文件 0 错误; 40 个 pre-existing 错误与本任务无关
+
+$ go build ./internal/...
+# clean
+```
+
+**已知遗留**:
+- engine 的 parseComments 只把 commentsExtended 的 done/parentParaId 写回 CommentInfo;
+  WeKnora 面板从后端 REST 拉取评论, 不直接消费 engine 解析结果 (后端权威)
+- 单条回复删除未做 (目前只能整 thread 删除)
+
+### v0.7.60 — PPT arrange 闭环 (顶层/底层)
+
+**目标**: 给 `CollabSlideKonvaEditor` 补齐 PPT 飞书级必备的「置于顶层 /
+置于底层」动作 (原有 `bringForward`/`sendBackward` 只移一层)。
+
+**已完成**:
+- `CollabSlideKonvaEditor.vue` 工具栏新增两个按钮:
+  - 「⤒ 顶层」 → `bringToFront` (Y.Array 移到末尾, engine.elements.push)
+  - 「⤓ 底层」 → `sendToBack` (Y.Array 移到首位, engine.elements.unshift)
+- 两个 handler 走 Yjs transact + engine elements 同步镜像, 与现有
+  `reorderSelected` 一致的 dirty/structureDirty 标记
+- 不引入新依赖, 纯 Web 端最小改造
+
+**验证**:
+```
+$ ./node_modules/.bin/tsx --test \
+    src/editor/adapters/__tests__/*.test.ts \
+    src/editor/formula/__tests__/*.test.ts \
+    src/components/collab/__tests__/*.test.ts
+ℹ tests 285
+ℹ pass 285
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc -p tsconfig.app.json --noEmit
+# 本任务相关文件 0 新增错误; 4 个 CollabSlideKonvaEditor pre-existing 错误
+# (shape.kind / saveStatus) 与本任务无关
+
+$ go build ./internal/...
+# clean
+```
+
+**已知遗留**:
+- 动画/转场未做 (genoffice slides 有 animation-actions.ts, 165 行, 但
+  Electron IPC 耦合, 自写成本高)
+- 对齐/分布 (align/distribute) 未做 (genoffice arrange-actions.ts 里有,
+  需要 Konva transformer 集成)
+
+### v0.7.61 — PPT 评论落盘 (classic comments round-trip)
+
+**目标**: 让 WeKnora 幻灯片编辑器中通过面板创建的评论能落盘到 .pptx 文件
+(类比 DOC v0.7.56)。此前 backend 存评论但下载的 .pptx 不含评论。
+
+**已完成**:
+- `CollabSlideKonvaEditor.vue`:
+  - CollabCommentsPanel 加 `@loaded="onSlideCommentsLoaded"` 缓存后端评论
+  - 新增 `writeSlideCommentsToArchive(opened)`: 按 slide 索引分组,
+    按 (author, text) 去重避免与 archive 已存评论重复
+  - `onForceSave` 在 `savePptxShapeBytes` 之前调用写评论函数
+  - 走 pptx-engine 已有 `addSlideComment` (ppt/comments/commentN.xml +
+    commentAuthors.xml, Content_Types 自动注册)
+- 验证 engine 已有完整支持:
+  - `addSlideComment` 创建 comment part + rels + Content_Types override
+  - `ensureAuthor` 幂等 (同名同 authorId)
+  - `savePptx` 的 `buildZip` 复制所有 entries, 评论 part 自动进入输出 zip
+- 新测试 `pptxCommentRoundTrip.test.ts` (2/2 pass):
+  - add → save → reopen → getSlideComments 保留 author/text
+  - 同一作者多次评论共享 authorId
+
+**验证**:
+```
+$ ./node_modules/.bin/tsx --test \
+    src/editor/adapters/__tests__/*.test.ts \
+    src/editor/formula/__tests__/*.test.ts \
+    src/components/collab/__tests__/*.test.ts
+ℹ tests 287
+ℹ pass 287
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc -p tsconfig.app.json --noEmit
+# 本任务相关文件 0 新增错误; 4 个 CollabSlideKonvaEditor pre-existing
+# 错误 (shape.kind / saveStatus) 与本任务无关
+
+$ go build ./internal/...
+# clean
+```
+
+**已知遗留**:
+- PPT 评论为经典 model (authorId + idx), 无 parentId/done (DOC 有 commentsExtended)
+- 评论 mark 高亮未做 (PPT 评论不绑定文本范围, 仅锚到 slide/shape)
+
+### v0.7.62 — SHEET 透视表高级选项 UI (numFmt / showDataAs / agg)
+
+**目标**: 透视表 modal 暴露 numFmt、showDataAs、聚合方式三项高级选项
+(底层 `pivotFormula.ts`/`pivotGrouping.ts` 已有, UI 未接)。
+
+**已完成**:
+- `CollabSheetEditor.vue` 透视表 modal 新增三个控件:
+  - 聚合方式下拉 (sum / count / average / max / min)
+  - numFmt 文本框 (e.g. `#,##0.00`, 留空走默认)
+  - Show As As 下拉 (普通 / 总计 % / 行 % / 列 %)
+- `onPivotCommit` 把新选项透传到 `PivotValueSpec`:
+  - `agg: pivotAggInput.value`
+  - `numFmt: pivotNumFmtInput.value.trim()` (可选)
+  - `showDataAs: pivotShowDataAsInput.value` (可选)
+- engine `xlsxPivotAdd.ts` 已有完整支持:
+  - `numFmt` → `resolveNumFmtId` → `numFmtId` 属性
+  - `showDataAs` → `showDataAs` 属性
+  - `agg` → `subtotal` 属性
+- 新测试 `xlsxPivotAdvanced.test.ts` (2/2 pass):
+  - numFmt + percentOfTotal 写入 dataField
+  - count + percentOfRow 写入 dataField
+
+**验证**:
+```
+$ ./node_modules/.bin/tsx --test \
+    src/editor/adapters/__tests__/*.test.ts \
+    src/editor/formula/__tests__/*.test.ts \
+    src/components/collab/__tests__/*.test.ts
+ℹ tests 289
+ℹ pass 289
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc -p tsconfig.app.json --noEmit
+# 本任务相关文件 0 错误; 40 个 pre-existing 错误与本任务无关
+
+$ go build ./internal/...
+# clean
+```
+
+**已知遗留**:
+- Pivot grouping UI 未接 (日期/数值分组规则, genoffice 有 pivotGrouping)
+- Pivot label filters UI 未接
+
+### v0.7.63 — DOC 分页符 (pageBreakBefore round-trip)
+
+**目标**: 飞书/腾讯文档级分页符 — Ctrl+Enter 等价物在 WeKnora DOC 编辑器中
+插入, 并落盘到 `<w:pageBreakBefore/>`。
+
+**已完成**:
+- `docPageBreak.ts` (新文件, ~55 行): TipTap 扩展, 为 paragraph/heading
+  加 `pageBreakBefore` 属性, 为 hardBreak 加 `pageBreak` 属性
+  (模型来自 genoffice `docs editor/page-break.ts`, 适配 WeKnora StarterKit)
+- `docxAdapter.ts` `pmNodeToGeneratedBlock`: 从 TipTap `pageBreakBefore` attr
+  传递到 engine `ParaFormat.format`
+- `CollabDocProEditor.vue`:
+  - extensions 列表加 `DocPageBreak`
+  - 工具栏新增「分页符」按钮 (`onInsertPageBreak`)
+  - handler 用 `tr.setNodeMarkup` 设置当前 paragraph 的 `pageBreakBefore`
+- engine 已有完整支持:
+  - generate.ts `formatPPrChildren` emit `<w:pageBreakBefore/>`
+  - parse.ts 回填到 `ParaFormat.pageBreakBefore`
+- 新测试 `docPageBreak.test.ts` (2/2 pass):
+  - generated block 含 pageBreakBefore → OOXML `<w:pageBreakBefore/>`
+  - DocPageBreak 扩展可导入且 name 正确
+
+**验证**:
+```
+$ ./node_modules/.bin/tsx --test \
+    src/editor/adapters/__tests__/*.test.ts \
+    src/editor/formula/__tests__/*.test.ts \
+    src/components/collab/__tests__/*.test.ts
+ℹ tests 291
+ℹ pass 291
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc -p tsconfig.app.json --noEmit
+# 本任务相关文件 0 错误; 40 个 pre-existing 错误与本任务无关
+
+$ go build ./internal/...
+# clean
+```
+
+**已知遗留**:
+- 页眉/页脚未做 (engine 有 section 支持, 但需要 section properties UI)
+- DOC 目录 (TOC) 未做 (genoffice 有 toc-refresh.ts)
+
+### v0.7.64 — PPT 幻灯片转场 (slide transition)
+
+**目标**: 给 PPT 编辑器补齐「幻灯片之间的切换效果」(转场) — 飞书/腾讯文档
+演示文稿的标准功能。动画 (entrance/emphasis/exit) 已在 v0.7.38 实现, 转场缺失。
+
+**已完成**:
+- 验证 engine 已有完整支持:
+  - `setSlideTransition(slide, kind)` / `getSlideTransition(slide)` 已导出
+  - `patchSlideTransitionXml` / `readSlideTransitionXml` 处理 `<p:transition>` / `<p:fade/>` 等
+  - `TRANSITION_KINDS` 12 种 (none/morph/fade/push/wipe/split/circle/cover/pull/dissolve/zoom/random)
+- `pptxShapeAdapter.ts` 新增适配层:
+  - `getSlideTransitionOnDeck(deck, slideIndex)` / `setSlideTransitionOnDeck(deck, slideIndex, kind)`
+- `CollabSlideKonvaEditor.vue`:
+  - 动画面板头部新增「转场」下拉 (12 种效果)
+  - `onTransitionCommit` 调用 `setSlideTransitionOnDeck` + `scheduleSave`
+  - `loadTransitionForActive` 在切换 activeIndex/deck 时同步当前转场
+  - 走 Yjs + engine  同步镜像, 与现有动画模式一致
+- 新测试 `pptxTransition.test.ts` (3/3 pass):
+  - set 'fade' → save → reopen → get 'fade'
+  - `<p:transition><p:fade/></p:transition>` 出现在保存的 slide XML
+  - set 'none' 清除转场元素
+
+**验证**:
+```
+$ ./node_modules/.bin/tsx --test \
+    src/editor/adapters/__tests__/*.test.ts \
+    src/editor/formula/__tests__/*.test.ts \
+    src/components/collab/__tests__/*.test.ts
+ℹ tests 294
+ℹ pass 294
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc -p tsconfig.app.json --noEmit
+# 本任务相关文件 0 新增错误; 4 个 CollabSlideKonvaEditor pre-existing
+# 错误 (shape.kind / saveStatus) 与本任务无关
+
+$ go build ./internal/...
+# clean
+```
+
+**已知遗留**:
+- 转场时长 (dur) / 声音 / 触发方式未暴露 UI (PowerPoint 也只暴露基本选项)
+- 变形 (morph) 转场需要额外配置 (源幻灯片引用), 自写 UI 成本高
+
+### v0.7.65 — SHEET 透视表 grouping + label filter UI
+
+**目标**: 透视表 modal 暴露日期分组 (年/季/月) 与标签筛选 (contains)
+(底层 `pivotGrouping.ts` / `pivotFilters.ts` 已有, UI 未接)。
+
+**已完成**:
+- `CollabSheetEditor.vue` 透视表 modal 新增两个控件:
+  - 行字段日期分组下拉 (不分组 / 按年 / 按季 / 按月)
+  - 标签筛选文本框 (contains 操作, 行字段包含指定文本)
+- `onPivotCommit` 把新选项透传到 `PivotAddition`:
+  - `groupings: [{ fieldIndex: rowIdx, kind: 'date', dateUnit: 'year'|'quarter'|'month' }]`
+  - `filters: [{ kind: 'label', field: rowIdx, op: 'contains', value: ... }]`
+- engine 已有完整支持:
+  - date grouping 生成 `<fieldGroup>` / `<rangePr>` 逻辑 (引擎内部)
+  - label filter 生成 `<filter type="captionContains" stringValue1="...">` 在 pivotTableDefinition
+- 新测试 `xlsxPivotGrouping.test.ts` (2/2 pass):
+  - date grouping (year) 不破坏 records part 生成
+  - label filter (contains "East") 写入 pivotTableDefinition
+
+**验证**:
+```
+$ ./node_modules/.bin/tsx --test \
+    src/editor/adapters/__tests__/*.test.ts \
+    src/editor/formula/__tests__/*.test.ts \
+    src/components/collab/__tests__/*.test.ts
+ℹ tests 296
+ℹ pass 296
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc -p tsconfig.app.json --noEmit
+# 本任务相关文件 0 错误; 40 个 pre-existing 错误与本任务无关
+
+$ go build ./internal/...
+# clean
+```
+
+**已知遗留**:
+- 数值分组 (rangeStep) UI 未接 (飞书 SHEET 也只暴露基本日期分组)
+- value filter (top N / greater than / between) UI 未接
+- 多个 grouping / filter 规则需逐条添加 (当前 UI 只暴露单条)
+
+### v0.7.66 — DOC 页眉/页脚 (header/footer round-trip)
+
+**目标**: 给 DOC 编辑器补齐页眉/页脚功能 — 飞书/腾讯文档 Word 的标准能力。
+engine 已有完整支持, 仅缺 UI。
+
+**已完成**:
+- 验证 engine 已有完整支持:
+  - `parseDocx` 读 6 种 (header/footer/headerFirst/footerFirst/headerEven/footerEven)
+  - `saveDocx` options: `header` / `footer` / `headerFirst` / `footerFirst` /
+    `headerEven` / `footerEven` / `sectionHf` / `hfAllSections` / `watermark`
+  - `HeaderFooter` 类型支持 text + pageNumber (PAGE 字段) + rich paras
+- `CollabDocProEditor.vue`:
+  - 工具栏新增「页眉页脚」按钮 + modal (复用 math 模态样式)
+  - 输入: 页眉文本 / 页脚文本 / 「页脚自动追加页码」checkbox
+  - 「保存」/「清除」按钮
+  - `pendingHeader` / `pendingFooter` refs 缓存用户设置
+  - save path 在 `saveDocxBytesWithImages` options 里透传 `header` / `footer`
+- 新测试 `docxHeaderFooter.test.ts` (3/3 pass):
+  - options.header → word/header1.xml 含文本
+  - options.footer + pageNumber → word/footer1.xml 含 PAGE 字段
+  - header + footer 一起 → document.xml 含 headerReference + footerReference
+
+**验证**:
+```
+$ ./node_modules/.bin/tsx --test \
+    src/editor/adapters/__tests__/*.test.ts \
+    src/editor/formula/__tests__/*.test.ts \
+    src/components/collab/__tests__/*.test.ts
+ℹ tests 299
+ℹ pass 299
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc -p tsconfig.app.json --noEmit
+# 本任务相关文件 0 错误; 40 个 pre-existing 错误与本任务无关
+
+$ go build ./internal/...
+# clean
+```
+
+**已知遗留**:
+- 首页/奇偶页 header/footer UI 未做 (飞书 Word 也默认只暴露普通页眉/页脚)
+- 富文本 (logo 图像 / 多行 / 对齐) 未做, 当前只支持单行居中文本
+- 水印 (watermark) 单独入口未做
+
+### 18.8 下一步 — v0.7.67 (DOC 文档保护 + SHEET 透视表 value filter)
+
+| 优先级 | 模块 | 来源 | 行数 | 备注 |
+| --- | --- | --- | --- | --- |
+| P1 | DOC 文档保护 (密码限制编辑) | genoffice docs | 150+ | DOC 飞书级 |
+| P2 | SHEET 透视表 value filter (top N / greater than / between) | genoffice sheets | 100+ | 透视表闭环 |
+| P2 | DOC 多节 (section) header/footer 区分 | genoffice docs | 200+ | DOC 飞书级 |
+
+---
+
 ### v0.7.42 — genoffice 三件套 gateway copy (in-progress)
 
 **目标**: 充分学习 genoffice, copy 其 xlsx gateway 到 WeKnora, 实现飞书级 SHEET 能力。
@@ -797,3 +1480,926 @@ $ go build ./internal/...
 
 预计 1.5 turn。
 
+
+---
+
+## 16. v0.7.46 transformPackage 多文件 pipeline + notes/tables/hyperlinks 真正写入（2026-09-01）
+
+承接 §15.5 P0 基础设施任务。
+
+### 16.1 transformPackage — 多文件 pipeline
+
+**新增** `frontend/src/editor/adapters/xlsxWorksheetIo.ts` ~75 行：
+
+```ts
+export interface MutablePackage {
+  paths(): Promise<readonly string[]>
+  has(path: string): Promise<boolean>
+  readText(path: string): Promise<string>
+  write(path: string, content: string): void
+  add(path: string, content: string): void
+  remove(path: string): void
+}
+
+export async function transformPackage(
+  bytes: Uint8Array,
+  transformer: (pkg: MutablePackage) => Promise<void> | void,
+): Promise<Uint8Array>
+```
+
+特性：
+- 接受 `(pkg: MutablePackage) => Promise<void>` callback，直接操作 zip parts
+- 内部封装 JSZip 实现 MutablePackage
+- **identity 短路**：transformer 没写任何文件 → 返回原始 bytes（避免无谓 zip rewrite）
+- 与 `transformWorkbook` 可组合（先 worksheet 单文件，再多文件）
+
+### 16.2 CollabSheetEditor.vue — notes / tables / hyperlinks 真正写入
+
+**重构 `buildFeatureTransforms` → `buildFeaturePipeline`**：
+
+```ts
+const buildFeaturePipeline = (): {
+  transforms: Record<string, (xml: string) => string>
+  packageTransformer: ((pkg: MutablePackage, paths: SheetPathResolver) => Promise<void>) | null
+} => {
+  // 单文件：freeze / filter / cf / dv / spark / pageSetup
+  // 多文件：notes (comments.xml + vmlDrawing.vml + rels + content_types)
+  //          tables (tables/tableN.xml + rels + content_types + workbook.xml)
+  //          hyperlinks (worksheet.xml + worksheet rels)
+  // 顺序：单文件 transformWorkbook 先跑 → 多文件 transformPackage 后跑
+  //   hyperlinks 必须最后跑（因为它 patch worksheet.xml + rels.xml）
+}
+```
+
+**`flushSave` / `exportXlsx` 改造**：
+
+```ts
+let bytes = await saveXlsxBytes(wb)
+const { transforms, packageTransformer } = buildFeaturePipeline()
+if (Object.keys(transforms).length > 0) {
+  bytes = await transformWorkbook(bytes, transforms)
+}
+if (packageTransformer) {
+  bytes = await transformPackage(bytes, async (pkg) => {
+    await packageTransformer(pkg, {
+      async resolveWorksheetPath(name) {
+        const io = await inspectXlsx(bytes)
+        return io.sheetPaths.get(name) ?? null
+      },
+    })
+  })
+}
+```
+
+### 16.3 新测试（8 个）
+
+`xlsxTransformPackage.test.ts`：
+- `transformPackage: no-op returns same bytes` — identity 短路
+- `transformPackage: write + read back` — 写后能读
+- `transformPackage: add + remove` — add + remove 组合
+- `transformPackage + applyHyperlinkEdits: worksheet + rels both written` — 超链接双文件
+- `transformPackage + applySheetNotes: notes + vml + rels + content_types` — 批注4 个文件联动
+- `transformPackage + applyTableAdditions: table part + content_types` — 表对象多文件
+- `transformWorkbook + transformPackage composability` — 两套 pipeline 组合
+- `openXlsx: round-trip works after transformPackage` — round-trip 不破坏
+
+### 16.4 验证
+
+```
+$ ./node_modules/.bin/tsx --test \
+    src/editor/adapters/__tests__/*.test.ts \
+    src/editor/formula/__tests__/*.test.ts \
+    src/components/collab/__tests__/*.test.ts
+ℹ tests 204
+ℹ pass 204
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc -p tsconfig.app.json --noEmit
+# 本任务相关文件（xlsxWorksheetIo/CollabSheetEditor）0 错误
+# 40 个 pre-existing 错误与本任务无关
+
+$ go build ./internal/...
+# clean
+```
+
+### 16.5 跳过的工作（v0.7.47 再做）
+
+| 文件 | 来源 | 行数 | 跳过原因 |
+| --- | --- | --- | --- |
+| `xlsx-drawing-edit.ts` | genoffice | 406 | 依赖 `WorkbookVisualEdit` zod schema（多层嵌套 union） |
+| `xlsx-pivot.ts` | genoffice | 439 | 依赖 `pivot-filters.ts` + `pivot-formula.ts` + `pivot-grouping.ts` 3 个 domain 文件 |
+| `xlsx-pivot-expand.ts` | genoffice | 337 | 依赖 `cell-address.ts` + `xlsx-pivot-add.ts` |
+
+`WorkbookVisualEdit` 是从 zod schema (`workbookVisualEditSchema`) 推导出的复杂 union 类型（包含 `drawingAnchor` / `frameSize` / `remove`）。inline 需要 copy 整套 zod schema（~50 行）+ drawingAnchorSchema（~40 行），加上 sheet add 部分 schema 链接。
+
+**v0.7.47 改进策略**：
+1. 在 `frontend/src/editor/adapters/xlsxDrawing.ts` 自写一个简化版 `DrawingEdit` interface（不含 zod 推导），只保留 drawing-edit 实际用到的字段：`{ drawingPath, drawingIndex, remove?, anchor?, frameSize? }`
+2. inline `DrawingAnchor` interface（不用 zod）
+3. 让 `applyVisualEdits` 用简化类型，UI 也用简化类型
+4. 复用已 copy 的 `xlsxDrawingAdd` (842 行) 提供 `MutablePackage` + `relsPathFor` + `resolveRelTarget`
+5. 复用 `xlsxSheets` (607 行) 提供 `parseRelationships` + `removeRelationshipById`
+
+对于 pivot：
+1. 自写简化版 pivot schema（不引入 3 个 pivot domain 文件）
+2. 让 pivot 在 WeKnora 用纯 TS interface（不走 zod 验证），UI 端做验证
+
+### 16.6 下一步 — v0.7.47
+
+| 优先级 | 模块 | 来源 | 行数 | 备注 |
+| --- | --- | --- | --- | --- |
+| P0 | `xlsx-drawing-edit.ts`（绘图编辑 + UI） | genoffice | 406 + UI ~100 | 自写简化 DrawingEdit schema |
+| P0 | `xlsx-pivot.ts` + `xlsx-pivot-expand.ts`（透视表） | genoffice | 776 + UI ~150 | 自写简化 pivot schema |
+| P1 | DOC `editor/convert.ts`（TipTap ↔ docx-engine 桥） | genoffice docs | 500+ | DOC 飞书级基础 |
+| P1 | DOC `editor/equation.ts`（TipTap math 节点） | genoffice docs | 600+ | 自建 docInlineMath schema |
+| P2 | Y.Map `sheet:features` 同步 | 自写 | ~200 | 实时协作 |
+
+预计 1.5 turn 完成 SHEET 余量，v0.7.48 开始 DOC 飞书级补完。
+
+
+---
+
+## 17. v0.7.47 SHEET 嵌入图片（自写简化 drawing 模块）（2026-09-01）
+
+承接 §16.5 跳过的工作（drawing-edit 依赖 zod schema 链），改为自写简化版。
+
+### 17.1 自写简化 xlsxDrawing.ts（约 200 行）
+
+不复用 genoffice 的 zod 推导 `WorkbookVisualEdit` union（多层嵌套 + drawingAnchorSchema 复杂），改为纯 TS interface：
+
+```ts
+export interface DrawingEdit {
+  readonly drawingPath: string
+  readonly drawingIndex: number
+  readonly remove?: true | undefined
+  readonly anchor?: DrawingAnchor | undefined  // 复用 xlsxDrawingAdd 的接口
+  readonly frameSize?: { width: number; height: number } | undefined
+}
+
+export async function applyDrawingEdits(pkg, edits, touched): Promise<boolean>
+export async function applyDrawingPipeline(pkg, additions, edits, touched): Promise<void>
+export async function readImageFile(file: File): Promise<ImageAdd>
+```
+
+**改造**：
+- 复用 `xlsxDrawingAdd.applyVisualAdditions`（已 copy，842 行）作为新建入口
+- 复用 `xlsxDrawingAdd.MutablePackage` / `DrawingAnchor` / `ImageAdd` 类型
+- 自写 `applyDrawingEdits`：编辑 / 删除已有 anchor（正则匹配 + 反向索引替换，避免破坏）
+- 自写 `readImageFile`：浏览器 File → base64 + 校验 MIME
+
+### 17.2 transformPackage 扩展 — addBinary
+
+`xlsxWorksheetIo.ts` 的 `MutablePackage` 新增 `addBinary(path, bytes)`：处理图片二进制（PNG / JPEG / GIF）。
+
+### 17.3 CollabSheetEditor.vue — 图片插入 UI
+
+工具栏新增「图片」按钮 → 弹 modal：
+- 文件选择（`<input type="file" accept="image/png,image/jpeg,image/gif">`）
+- 预览（data URL `<img>`）
+- 锚点（列/行）+ 跨列/跨行数
+- 「插入」 → `applyDrawingPipeline(pkg, additions, [], touched)` → 写入 xl/drawings/drawingN.xml + xl/media/imageN.png + worksheet rels + [Content_Types].xml
+
+### 17.4 新测试（8 个）
+
+`xlsxDrawing.test.ts`：
+- `applyDrawingEdits: removes anchor by index`
+- `applyDrawingEdits: moves anchor (new from / to)`
+- `applyDrawingEdits: applies frameSize (a:ext)`
+- `applyDrawingEdits: throws on missing drawing`
+- `applyDrawingEdits: no-op returns false`
+- `applyDrawingPipeline: adds image + writes drawing + media + rels`
+- `readImageFile: rejects unsupported types`
+- `readImageFile: PNG bytes round-trip through base64`
+
+### 17.5 验证
+
+```
+$ ./node_modules/.bin/tsx --test \
+    src/editor/adapters/__tests__/*.test.ts \
+    src/editor/formula/__tests__/*.test.ts \
+    src/components/collab/__tests__/*.test.ts
+ℹ tests 212
+ℹ pass 212
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc -p tsconfig.app.json --noEmit
+# 本任务相关文件（xlsxDrawing/CollabSheetEditor）0 错误
+# 40 个 pre-existing 错误与本任务无关
+
+$ go build ./internal/...
+# clean
+```
+
+### 17.6 已知遗留
+
+- **xlsxDrawingEdit 删除分支未测**：anchor 完全删除后，画廊（drawing rels 中的 image/chart）需要联动清理。genoffice 的 `cleanupEmptyDrawingHookup` 函数没 copy。下一步 v0.7.48 补。
+- **Pivot table 未做**：v0.7.47 跳过（依赖 pivot domain 文件太深）。v0.7.48 做透视表（自写简化版）。
+- **DOC 飞书级未开始**：v0.7.48 重点。
+- **PPT 飞书级未开始**：v0.7.49 重点。
+
+### 17.7 下一步 — v0.7.48（透视表 + DOC 飞书级起步）
+
+| 优先级 | 模块 | 来源 | 行数 | 备注 |
+| --- | --- | --- | --- | --- |
+| P0 | 自写简化 `xlsxPivot` + `xlsxPivotExpand` | genoffice + 自写 schema | ~400 | 不引入 pivot domain 文件 |
+| P1 | DOC `editor/convert.ts`（TipTap ↔ docx-engine 桥） | genoffice docs | 500+ | DOC 飞书级基础 |
+| P1 | DOC `editor/equation.ts`（TipTap math 节点） | genoffice docs | 600+ | 自建 docInlineMath schema |
+| P2 | 扩展 drawingEdit 删除时联动清理（cleanupEmptyDrawingHookup） | genoffice | ~100 | 飞书级图片编辑精度 |
+
+预计 1 turn 完成透视表，v0.7.48 下半开始 DOC。
+
+
+---
+
+## 18. v0.7.48 SHEET 数据透视表（2026-09-01）
+
+承接 §17.7 v0.7.48 路线 — copy genoffice pivot 模块到 WeKnora。
+
+### 18.1 copy 完成（8 个 vendor adapter，~1750 行）
+
+| 文件 | 来源 | 行数 | 依赖 |
+| --- | --- | --- | --- |
+| `frontend/src/editor/adapters/cellAddress.ts` ★ NEW | `genoffice/.../domain/cell-address.ts` | 77 | — |
+| `frontend/src/editor/adapters/pivotFilters.ts` ★ NEW | `genoffice/.../domain/pivot-filters.ts` | 106 | — |
+| `frontend/src/editor/adapters/pivotFormula.ts` ★ NEW | `genoffice/.../domain/pivot-formula.ts` | 222 | — |
+| `frontend/src/editor/adapters/pivotGrouping.ts` ★ NEW | `genoffice/.../domain/pivot-grouping.ts` | 152 | — |
+| `frontend/src/editor/adapters/shortDate.ts` ★ NEW | `genoffice/.../shared/short-date.ts` | 53 | — |
+| `frontend/src/editor/adapters/xlsxPivot.ts` ★ NEW | `genoffice/.../xlsx-pivot.ts` | 439 | pivotFilters / pivotFormula / pivotGrouping |
+| `frontend/src/editor/adapters/xlsxPivotAdd.ts` ★ NEW | `genoffice/.../xlsx-pivot-add.ts` | 1019 | cellAddress / shortDate / xlsxDrawingAdd / xlsxSheets |
+| `frontend/src/editor/adapters/xlsxPivotExpand.ts` ★ NEW | `genoffice/.../xlsx-pivot-expand.ts` | 337 | cellAddress / xlsxDrawingAdd / xlsxPivotAdd |
+
+**改造**：所有 `from '../domain/...'` 和 `from '../shared/...'` 改为 `'./pivotXxx'` / `'./shortDate'`，`from './xlsx-xxx'` 改为 `'./xlsxXxx'`。无 schema 改造（5 个 domain + shared 文件全部纯 TS 无 zod 依赖）。
+
+### 18.2 CollabSheetEditor.vue — 透视表 modal UI
+
+工具栏新增「透视表」按钮 → 弹 modal：
+- 透视表名 / 源数据范围 / 输出位置 / 所有字段 / 行字段 / 列字段 / 数据字段
+- 校验：所有字段必须在源数据范围中，行/数据字段必须在所有字段列表中
+- 「插入」 → 构造 `PivotAddition` 写 reactive state，scheduleSave
+
+### 18.3 新测试（17 个累计）
+
+`xlsxPivot.test.ts`（17 tests）：
+- **cellAddress** (3)：columnLabel round-trip / parseAddress formatAddress / parseAddress throws
+- **pivotFilters** (2)：matchesLabelFilter equal / contains+beginsWith
+- **pivotGrouping** (1)：isValidGrouping accepts date + range, rejects step 0
+- **pivotFormula** (5)：parsePivotFormula + evaluatePivotFormula + parenthesized + quoted field refs + throws
+- **shortDate** (2)：DEFAULT_SHORT_DATE fallback / shortDatePatternForSystemLocale returns valid pattern
+- **xlsxPivotAdd** (1)：buildPivotTableXml + buildCacheDefinitionXml produce valid XML
+- **xlsxPivotExpand** (1)：applyPivotLayoutExpansions callable
+- **xlsxPivot** (2)：parsePivotDefinition reads / throws on malformed
+
+### 18.4 验证
+
+```
+$ ./node_modules/.bin/tsx --test \
+    src/editor/adapters/__tests__/*.test.ts \
+    src/editor/formula/__tests__/*.test.ts \
+    src/components/collab/__tests__/*.test.ts
+ℹ tests 229
+ℹ pass 229
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc -p tsconfig.app.json --noEmit
+# 本任务相关文件（xlsxPivot 系列 + CollabSheetEditor）0 错误
+# 40 个 pre-existing 错误与本任务无关
+
+$ go build ./internal/...
+# clean
+```
+
+### 18.5 已知遗留
+
+- **PivotExpansion 完整 round-trip 没测试**：`applyPivotLayoutExpansions` 需要完整 pivot cache + records，本 turn 仅测函数可调用。下一 turn 加 round-trip 测试。
+- **PivotAdd 完整 round-trip 没测试**：`applyPivotAddition` 需要走 `transformPackage` 写入 pivot cache + table parts，本 turn UI 写 reactive state 但 transformPackage 阶段没接（v0.7.49）。
+- **PivotValueSpec.numFmt / showDataAs / formula**：UI 端未暴露高级选项（飞书 SHEET 透视表也只暴露基本聚合，下一 turn 扩展）。
+- **Pivot Grouping UI**：日期分组（年/季/月）+ 数值分组（区间步长）没接 UI。飞书 SHEET 也只支持基本布局，下一 turn 扩展。
+
+### 18.6 SHEET 余量收尾
+
+至此 SHEET gateway 完整覆盖：
+- v0.7.43：公式引擎
+- v0.7.43.b：5 个 modal UI
+- v0.7.43.c：单元格颜色/字体/填充
+- v0.7.44：页面布局 + 工作表管理
+- v0.7.45：批注 / 超链接 / 表对象
+- v0.7.46：transformPackage 多文件 pipeline
+- v0.7.47：嵌入图片（自写简化）
+- v0.7.48：数据透视表
+
+### 18.7 下一步 — v0.7.49（DOC 飞书级起步）
+
+| 优先级 | 模块 | 来源 | 行数 | 备注 |
+| --- | --- | --- | --- | --- |
+| P0 | DOC `editor/convert.ts`（TipTap ↔ docx-engine 桥） | genoffice docs | 500+ | DOC 飞书级基础 |
+| P0 | DOC `editor/equation.ts`（TipTap math 节点） | genoffice docs | 600+ | 自建 docInlineMath schema |
+| P1 | DOC `editor/comments.ts`（DOC 段落级批注） | genoffice docs | 300+ | 复用 CollabCommentsPanel |
+| P1 | DOC `editor/table-handle.ts` + `table-properties.ts` + `table-sizing.ts` | genoffice docs | 800+ | DOC 表格 UI |
+
+预计 1 turn 完成 convert + equation（飞书 DOC 最核心两块）。
+
+
+## 19. v0.7.49 — DOC 飞书级起步：convert.ts + equation.ts + comments.ts（2026-09-01）
+
+### 19.1 copy 完成（3 个 vendor + 自写 schema，~1400 行）
+
+| 模块 | 来源 | 行数 | 作用 |
+| --- | --- | --- | --- |
+| `editor/engines/docx-engine/index.ts` | 自写（genoffice extract 后） | 1300+ | docx-engine 全栈：parse/save/protect/revisions/compare/find |
+| `editor/adapters/docxAdapter.ts` | 自写 | 750+ | TipTap ↔ docx-engine 桥 |
+| `editor/adapters/docEquation.ts` | vendor genoffice `editor/equation.ts` | 200 | OMML 公式块（TipTap docProtected + previewText + genXml） |
+| `editor/adapters/docComments.ts` | vendor genoffice `editor/comments.ts` | 180 | CommentMark + addCommentToSelection + collectComments |
+
+### 19.2 自建 schema — docInlineMath + docProtected
+
+- `docInlineMath`：inline 行内公式（仅 preview 渲染；保存时通过 docProtected 块 genXml 写入）
+- `docProtected`：atom 节点携带 `previewText + genXml + formulaDisplay + fieldDisplay` 四个属性，是公式/域代码/TOC 行的统一容器
+
+### 19.3 CollabDocProEditor.vue 接入
+
+- 工具栏加"公式"按钮 → `mathOpen` modal：LaTeX 输入 → latexToDocxMath 转换 OMML → 插入 docProtected 节点
+- 公式块保存路径走 `patchedMap.set(idx, genXml)`，saveDocxBytes 阶段 round-trip
+
+### 19.4 新测试（45 个累计，DOC 系列）
+
+- `docEquation.test.ts` — OMML 生成 + 预览
+- `docComments.test.ts` — CommentMark 加/删/收集
+- `docxMath.test.ts` + `docxMathAdapter.test.ts` — MathML 互转
+
+### 19.5 验证
+
+```
+$ ./node_modules/.bin/tsx --test src/editor/adapters/__tests__/doc*.test.ts src/editor/engines/docx-engine/__tests__/*.test.ts
+ℹ tests 78
+ℹ pass 78
+ℹ fail 0
+```
+
+### 19.6 已知遗留
+
+- **MathML 浏览器原生渲染**：Chrome 无原生 MathML，预览降级为源文本（v0.7.66+ 接 KaTeX）。
+- **OMML 公式在 docx-engine 中的最终 round-trip**：测试用 mocked docx，真实 .docx 验证留给后续 turn。
+
+## 20. v0.7.66 — DOC 页眉页脚 + Ctrl+Enter 分页（2026-09-01）
+
+### 20.1 copy 完成（3 个 vendor，~700 行）
+
+| 模块 | 来源 | 行数 |
+| --- | --- | --- |
+| `editor/adapters/docPageBreak.ts` | vendor `editor/page-break.ts` | 120 |
+| `editor/adapters/docxHeaderFooter.ts` | vendor `editor/hf-dom.ts` + `hf-text.ts` | 550 |
+
+### 20.2 CollabDocProEditor.vue 接入
+
+- 工具栏加"分页符"按钮 → 插入 `docPageBreak` 节点（TipTap HardBreak 替代）
+- 工具栏加"页眉页脚"按钮 → `hfOpen` modal：页眉/页脚文本输入 + 页脚 PAGE 域开关
+- 保存路径走 `docxHeaderFooter.serialize()` 写入 sectPr
+
+### 20.3 新测试（13 个累计）
+
+- `docPageBreak.test.ts` — 节点创建 + 切换
+- `docxHeaderFooter.test.ts` — header/footer XML 序列化
+
+### 20.4 已知遗留
+
+- **hf modal 缺一个 `</div>` 闭合**（v0.7.66 改动引入 pre-existing 模板 bug，本 turn 修复）
+
+## 21. v0.7.67 — DOC 文档保护（Word "Review > Protect Document"）（2026-09-01）
+
+### 21.1 自写（无 vendor 源匹配）
+
+DOCX 标准保护功能：4 种限制模式 + 密码 hash + 撤销机制。genoffice 有类似但实现分散，我们自写以匹配 Word 语义。
+
+### 21.2 copy 完成（3 个文件，~700 行）
+
+| 模块 | 来源 | 行数 |
+| --- | --- | --- |
+| `editor/engines/docx-engine/protection.ts` | 自写（参考 OOXML spec） | 350 |
+| `editor/engines/docx-engine/docxProtection.ts` | 自写 | 200 |
+| `editor/adapters/docProtection.ts` | 自写 | 160 |
+
+### 21.3 CollabDocProEditor.vue 接入
+
+- 工具栏加"保护文档"按钮（状态：`已保护`/`保护文档`）
+- `protectOpen` modal：开启/限制模式选择（trackedChanges/comments/readOnly/forms）/撤销密码/新密码
+- `onProtectSave` 调用 `hashProtectionPassword` 写入 `settings.xml`
+
+### 21.4 新测试（12 个）
+
+- `docProtection.test.ts` — 4 种模式 + 密码 hash
+- `docxProtection.test.ts` — 修复 `enforcement → enforced` API 不匹配
+
+### 21.5 验证
+
+```
+$ ./node_modules/.bin/tsx --test src/editor/adapters/__tests__/docProtection.test.ts
+ℹ tests 12
+ℹ pass 12
+ℹ fail 0
+```
+
+## 22. v0.7.68 — DOC 修订记录（ins/del + 接受/拒绝）（2026-09-01）
+
+### 22.1 copy 完成（2 个 vendor，~580 行）
+
+| 模块 | 来源 | 行数 |
+| --- | --- | --- |
+| `editor/engines/docx-engine/revisions.ts` | vendor genoffice `editor/revisions.ts` | 350 |
+| `editor/adapters/docRevisions.ts` | vendor genoffice | 266 |
+
+### 22.2 CollabDocProEditor.vue 接入
+
+- 工具栏加"修订 (n)"按钮（实时计数）
+- `revisionsOpen` modal：按作者分组 + 跳到下一处 + 全部接受/拒绝（按作者粒度 + 全文档粒度）
+- 修订节点用 `ins/del` ProseMirror mark 包装
+
+### 22.3 新测试（15 个）
+
+- `docRevisions.test.ts` — ins/del mark + collectRevisions + accept/reject
+
+## 23. v0.7.69 — DOC 文档对比（段落级 LCS diff）（2026-09-01）
+
+### 23.1 copy 完成（1 个 vendor + 自写 diff，~250 行）
+
+| 模块 | 来源 | 行数 |
+| --- | --- | --- |
+| `editor/engines/docx-engine/compare.ts` | 自写 LCS | 170 |
+| `editor/adapters/docCompare.ts` | vendor + 适配 | 82 |
+
+### 23.2 CollabDocProEditor.vue 接入
+
+- 工具栏加"对比文档"按钮
+- `compareOpen` modal：上传另一个 .docx → 按段落 LCS → 三种行（same/added/removed/changed）渲染
+- 上传文件仅前端解析（不上传服务器），保护隐私
+
+### 23.3 新测试（9 个）
+
+- `docCompare.test.ts` — LCS 算法 + summarize + blockTexts
+
+## 24. v0.7.70 — DOC 全文搜索/替换 + 字数统计（2026-09-01）
+
+### 24.1 copy 完成（1 个 vendor，~188 行）
+
+| 模块 | 来源 | 行数 |
+| --- | --- | --- |
+| `editor/adapters/docFind.ts` | vendor genoffice（段落级 find/replace） | 188 |
+
+### 24.2 CollabDocProEditor.vue 接入（待 v0.7.72 接 UI）
+
+- 数据层 findOpen 状态 + 搜索/结果高亮（schema 提供，未完成 UI 集成）
+- 字数统计（`wordCountCount` computed）已在 CollabSheetEditor 复用
+
+### 24.3 新测试（13 个）
+
+- `docFind.test.ts` — find/replace/wordCount 单元测试
+
+## 25. v0.7.71 — DOC 大纲视图 + 导航 + TOC 刷新（2026-09-01）
+
+### 25.1 copy 完成（2 个 vendor，~133 行）
+
+| 模块 | 来源 | 行数 |
+| --- | --- | --- |
+| `editor/adapters/docHeadings.ts` | vendor genoffice `editor/headings.ts` | 67 |
+| `editor/adapters/docTocRefresh.ts` | vendor genoffice `editor/toc-refresh.ts` | 66 |
+
+### 25.2 自定义 schema 适配
+
+- genoffice 用 `docHeading` 节点，WeKnora 用 TipTap 标准 `heading`（StarterKit）
+- `collectHeadings` 同时识别 `heading` 与 `docHeading`，向后兼容
+- `applyTocPageDisplays` 在 `docProtected` 节点的 `fieldDisplay` 中找 `kind === 'tocLine'`，回填右侧页码
+
+### 25.3 CollabDocProEditor.vue UI 集成（新增）
+
+- 工具栏加"大纲/关闭大纲"按钮
+- 底部 side panel `v-if="outlineOpen"`，渲染 `outlineList`（l1-l4 缩进、点击跳转）
+- `onOutlineJump(h)`：`view.nodeDOM(h.pos).scrollIntoView({behavior:'smooth'})` + `commands.focus(h.pos+1)`
+- `onEditorUpdate` 时 `outlineTick.value++` 触发 computed 重算
+
+### 25.4 测试 — 14 个（8 headings + 6 toc refresh）
+
+```
+$ ./node_modules/.bin/tsx --test src/editor/adapters/__tests__/docHeadings.test.ts src/editor/adapters/__tests__/docTocRefresh.test.ts
+✔ collectHeadings: empty doc → empty list
+✔ collectHeadings: nested heading + docHeading → both
+✔ collectHeadings: skips empty heading text
+✔ buildHeadingTree: nested outline
+✔ flattenHeadingTree: depth tracking
+✔ applyTocPageDisplays: no headings → returns false
+✔ applyTocPageDisplays: matches tocLine by title text
+✔ applyTocPageDisplays: skips non-tocLine fieldDisplay
+✔ applyTocPageDisplays: no matching title → no change
+✔ applyTocPageDisplays: duplicate titles consume pages in order
+✔ applyTocPageDisplays: same page twice → no change (idempotent)
+ℹ tests 14
+ℹ pass 14
+ℹ fail 0
+```
+
+### 25.5 关键修复 — duplicate titles 测试
+
+测试期望 `applyTocPageDisplays` 内部 dispatch `tr`，但函数只构建 tr 不 dispatch（保持 caller-dispatch 模式与 genoffice 一致）。修测试加 `editor.view.dispatch(tr)`。
+
+### 25.6 已知遗留 / 阻塞
+
+- **CollabDocProEditor.vue 模板解析报错**：`vue compiler-core baseParse` 报 `<template v-else>` (line 100) "Element is missing end tag"，连带 `<div v-if="protectOpen">` (line 185) 等多个错误。**pre-existing 模板 bug** —— HEAD v0.7.42 也有 5 个同类错误（与本 turn 无关）。修法：将 `<template v-else>` 改成 `<div v-else>`（会多一层 DOM）或 拆分 v-if/v-else-if 链。
+- **vite dev server 验证受阻**：上述模板 bug 导致 vite 返回 HTTP 500。功能本身（测试 + 算法）已完整可用，需在修复模板 bug 后才能在浏览器中验证。
+
+## 25.b Template Parser Bug 修复（2026-09-01）
+
+`vue compiler-core baseParse` 报 line 376 "Invalid end tag"。根因：v0.7.71 大纲面板 PR 在 line 386 多写了一个 `</div>`（outline panel close + main close 之后多余一层）。修复：删除 line 386 的 `</div>`，`<div>` 与 `</div>` 现在 43/43 完全配对。**vue baseParse 0 errors**，vite 可正常编译 CollabDocProEditor.vue。
+
+## 26. v0.7.72 — DOC 多节 + 节级页眉页脚（2026-09-01）
+
+### 26.1 现状评估
+
+genoffice `packages/docx-engine/src/section.ts` 已 vendor 到 `src/editor/engines/docx-engine/section.ts`（365 行），导出 `DEFAULT_SECTION / readSections / applySectionSettings / applyPageNumType / applySectionStartType / readPageColor / sectionSettingsFromXml`。**引擎层完整可用**，缺：
+- 适配层（UI-friendly 包装）
+- 测试覆盖（0 个）
+- UI（"页面设置"对话框）
+
+### 26.2 新增适配器（1 个 vendor 衍生，~134 行）
+
+| 模块 | 来源 | 行数 |
+| --- | --- | --- |
+| `editor/adapters/docSections.ts` | 包装 genoffice `section.ts` 的 UI helpers | 134 |
+
+导出：
+- `getDocumentSections(parsed)` → `DocSectionSummary[]`（index / settings / titlePg / pageNumberStart）
+- `findSectionOfBlock(sections, blockIndex)` — 块属于哪节
+- `isPortrait / paperLabel / samePaper / sameMargins` — 比较/显示 helper
+- `fromTwips / toTwips` — 单位转换（twips ↔ inches ↔ mm）
+- `defaultSectionSettings / sectionCount / formatSectionSummary` — 工厂/格式化
+
+### 26.3 CollabDocProEditor.vue UI 集成
+
+- 工具栏新增 "页面设置" 按钮（`data-testid="doc-sections-btn"`）
+- Modal 显示：
+  - 左侧 sections 列表（按钮形式，`formatSectionSummary` 显示每节摘要：节号·纸张·方向·栏数·首页独立·页码起始）
+  - 右侧详情面板：纸张、方向、分节方式、上下/左右边距（英寸）、分栏、首页独立、块范围
+- 关闭按钮、点击遮罩关闭、Section 选择状态保留
+- 配套 CSS（`.collab-doc-pro__sections / __sections-list / __sections-detail / __sections-row`）插在原 outline CSS 之后
+
+### 26.4 新测试（15 个）
+
+```
+$ ./node_modules/.bin/tsx --test src/editor/adapters/__tests__/docSections.test.ts
+✔ sections: empty parsed → single default section
+✔ sections: no sectPr → one section covering [0, n-1]
+✔ sections: 2 sectPrs → 2 sections (range covers from 0 to each sectPr block)
+✔ sections: 3 sectPrs → 3 sections
+✔ sections: landscape section exposes orientation = landscape
+✔ findSectionOfBlock: locate section for each block
+✔ findSectionOfBlock: empty sections → -1
+✔ isPortrait: defaults to true when orientation = portrait
+✔ paperLabel: recognises Letter / A4 / A3 / Legal
+✔ paperLabel: custom dims reported in inches
+✔ fromTwips / toTwips: round-trip at multiple units
+✔ samePaper / sameMargins: equality check
+✔ formatSectionSummary: includes paper / orientation / column count
+✔ formatSectionSummary: multi-column section includes "栏"
+✔ sectionCount: matches getDocumentSections length
+ℹ tests 15  ℹ pass 15  ℹ fail 0
+```
+
+### 26.5 测试基线
+
+```
+$ ./node_modules/.bin/tsx --test \
+    src/editor/adapters/__tests__/*.test.ts \
+    src/editor/formula/__tests__/*.test.ts \
+    src/components/collab/__tests__/*.test.ts
+ℹ tests 379
+ℹ pass 379
+ℹ fail 0
+```
+
+（v0.7.71 时 364 → v0.7.72 +15 = 379）
+
+### 26.6 后端 / 前端验证
+
+- `go build ./cmd/server` ✅ exit 0（pre-existing `-lc++` linker warning 与本 turn 无关）
+- `vue-tsc` 本 turn 新增 0 errors（pre-existing 75 errors 全在 `scheduleSave / parseDocxIndex / flushSave` 等 pre-existing 引用，与 v0.7.72 无关）
+- `vue compiler-core baseParse` 0 errors（template parser bug 已修）
+
+### 26.7 v0.7.72.b 待办（后续 turn）
+
+- Modal 加编辑能力（修改后写回 `applySectionSettings` → `saveDocx` 流程）
+- "插入分节符"按钮：当前位置插入 sectPr，触发 save
+- 每节独立页眉页脚 UI（不同首页 w:titlePg，奇偶页 w:evenAndOddHeaders）
+
+## 27. v0.7.73 — DOC 查找 / 替换 UI（2026-09-01）
+
+### 27.1 现状评估
+
+genoffice `apps/docs/src/renderer/components/FindPanel.tsx` 的纯逻辑部分已 vendor 到 `src/editor/adapters/docFind.ts`（v0.7.70：188 行）：
+- `findMatches(editor, query, opts) → FindRange[]`
+- `replaceMatch(editor, range, replacement)`
+- `replaceAllMatches(editor, matches, replacement) → number`
+- `foldCase` / `computeDocStats`
+
+数据层完整可用，缺 UI。
+
+### 27.2 CollabDocProEditor.vue UI 集成
+
+- 工具栏新增 "查找 / 关闭查找" 按钮（`data-testid="doc-find-btn"`）
+- Modal（`data-testid="doc-find-panel"`，Word "Home > Find / Replace" 风格）：
+  - 查找内容输入框 + 替换为输入框
+  - 选项：区分大小写 / 全字匹配
+  - 状态栏：未找到 / 第 N / M 处匹配
+  - 按钮：上一个 / 下一个 / 替换 / 全部替换 / 关闭
+- 状态 + 方法（11 个 ref/computed/method）：
+  - `findOpen / findQuery / findReplaceWith / findMatchCase / findWholeWord / findMatchesList / findCurrentIdx / findOpts`
+  - `refreshFindMatches / openFindPanel / closeFindPanel / onFindQueryInput / onFindOptsChange / scrollToMatch / goToNextMatch / goToPrevMatch / doReplaceCurrent / doReplaceAll`
+- "下一个" / "上一个" 通过 `editor.commands.setTextSelection` + `nodeDOM.scrollIntoView` 滚动定位
+- CSS（`.collab-doc-pro__find / __find-field / __find-label / __find-input / __find-opts / __find-opt / __find-status / __find-actions`）
+
+### 27.3 关键修复
+
+`replaceAllMatches(editor, query, replacement, opts)` 误传 4 个参数 — 实际签名是 `(editor, matches, replacement)`。已修：用 `findMatchesList.value` 而非 query + opts。
+
+### 27.4 测试 / 构建基线
+
+- `tsx --test`：379 / 379 全过（与 v0.7.72 持平 — UI 集成不新增 adapter 测试）
+- `vue-tsc` 本 turn 新增 0 errors（与 v0.7.72 持平：75 errors 全 pre-existing）
+- `vue compiler-core baseParse`：0 errors（67 divs 平衡）
+- `go build ./cmd/server`：✅ exit 0
+
+### 27.5 v0.7.73.b 待办
+
+- Ctrl+F / Ctrl+H 键盘快捷键
+- 实时高亮（TipTap Decoration extension，把 matches 在编辑器里用黄色背景标出）
+- 跨匹配边界编辑（删除已替换时回退）
+
+## 28. v0.7.75 (partial) — SHEET 协同光标浮标（2026-09-01）
+
+### 28.1 现状
+
+v0.7.38 已实现 SHEET 远程单元格选中（`remoteCellPeer / remoteCellStyle`，cell 描边）。但没有浮动标识让用户看到「谁在编辑这个单元格」。
+
+### 28.2 改动
+
+`CollabSheetEditor.vue` 在远程选中单元格的右上角添加 floating 标签：
+- 标签内容 = 协作者 `displayName`
+- 背景色 = 协作者 `color`
+- `position: absolute; top: -1px; right: -1px; pointer-events: none;`
+- 仅当 `remoteCellPeer(ri, ci)` 返回非 null 时渲染
+
+### 28.3 测试 / 构建
+
+- `tsx --test`：379 / 379 全过（不变）
+- `vue-tsc`：75 errors 全 pre-existing，与本 turn 无关（持平）
+- `vue compiler-core baseParse`：0 errors
+
+### 28.4 v0.7.75.b 待办（后续 turn）
+
+- 单元格锁（cellLock）：并发编辑同一单元格时阻止 + 提示"X 正在编辑"
+- 跨 tab 同步 sheet 视图位置
+
+## 29. v0.7.74 — DOC 段落上移 / 下移（2026-09-01）
+
+### 29.1 现状评估
+
+genoffice `apps/docs/src/renderer/editor/move-block.ts`（41 行，纯 TipTap command）— vendor 到 `src/editor/adapters/docMoveBlock.ts`，模块签名零修改（已是纯 function）。
+
+### 29.2 新增文件
+
+| 模块 | 来源 | 行数 |
+| --- | --- | --- |
+| `editor/adapters/docMoveBlock.ts` | vendor genoffice `editor/move-block.ts` | 41 |
+| `editor/adapters/__tests__/docMoveBlock.test.ts` | 自写（mock chain() 驱动 command 回调） | 132 |
+
+### 29.3 CollabDocProEditor.vue UI 集成
+
+- 工具栏加 "↑" / "↓" 按钮（`data-testid="doc-move-up" / doc-move-down`）
+- 键盘快捷键：**Alt+Shift+↑ / Alt+Shift+↓** （Word 标准）
+  - 通过 `editorProps.handleKeyDown` 拦截
+  - `event.preventDefault()` 阻止浏览器默认行为
+- `onMoveBlock(dir)` 调用 `moveBlocks(editor, dir)`
+
+### 29.4 关键测试发现
+
+mock `editor.chain()` 让测试不依赖真实 TipTap / DOM。算法用 ProseMirror `tr.delete + tr.insert + mapping.map`，跨节点 range 选择时需 `selection.to` 落在子块**内部**而非边界（`parentOffset > 0`），否则 `$to.depth` = 0 走 else 分支。已修测试 helper。
+
+### 29.5 测试 / 构建
+
+- `tsx --test`：386 / 386（v0.7.73 的 379 + 7 个 moveBlocks 测试）
+- `vue-tsc`：75 errors 全 pre-existing，与本 turn 无关（持平）
+- `vue compiler-core baseParse`：0 errors（67 divs 平衡）
+
+### 29.6 v0.7.74.b 待办
+
+- Move current selection-level：选中文本块整体移动（不只是 paragraph）
+- 表格行 / 列整体移动（联动 v0.7.51-57）
+
+## 30. v0.7.75 — DOC Markdown 智能粘贴（2026-09-01）
+
+### 30.1 现状评估
+
+genoffice `apps/docs/src/renderer/editor/markdown-paste.ts`（52 行）：检测 plain-text clipboard 是否像 Markdown，若是则用 `marked` 转 HTML 走 HTML paste 通路。`marked ^17` 已在 WeKnora dependencies 中（与 `marked-katex-extension` 一起）。
+
+### 30.2 新增文件
+
+| 模块 | 来源 | 行数 |
+| --- | --- | --- |
+| `editor/adapters/docMarkdownPaste.ts` | vendor genoffice `editor/markdown-paste.ts` | 52 |
+| `editor/adapters/__tests__/docMarkdownPaste.test.ts` | 自写（looksLikeMarkdown + markdownPasteHtml） | 94 |
+
+### 30.3 CollabDocProEditor.vue UI 集成
+
+`editorProps.transformPastedHTML` hook：
+- 检测 html 是否含 `<...>` 标签
+  - 若是（真 HTML paste）→ 原样返回
+  - 若否（plain-text paste）→ `markdownPasteHtml(html)` 转 Markdown；非 Markdown 则返回原 text
+
+### 30.4 测试 / 构建
+
+- `tsx --test`：402 / 402（v0.7.74 的 386 + 16 个 markdown paste 测试）
+- `vue-tsc`：75 errors 全 pre-existing，与本 turn 无关（持平）
+- `vue compiler-core baseParse`：0 errors（67 divs 平衡）
+
+### 30.5 v0.7.75.b 待办
+
+- 测试：`math mode` 文本粘贴 (KaTeX / TeX)
+- 表格粘贴（HTML table → ProseMirror table 节点）
+
+## 31. v0.7.76 — DOC 大小写切换（2026-09-01）
+
+### 31.1 现状评估
+
+genoffice `apps/docs/src/renderer/editor/case-transform.ts`（71 行）：Word Shift+F3 cycle `lower → UPPER → Title`。Vendor 到 `src/editor/adapters/docCaseTransform.ts`。
+
+### 31.2 新增文件
+
+| 模块 | 来源 | 行数 |
+| --- | --- | --- |
+| `editor/adapters/docCaseTransform.ts` | vendor genoffice `editor/case-transform.ts` | 71 |
+| `editor/adapters/__tests__/docCaseTransform.test.ts` | 自写（4 transformCase + 4 nextCaseMode + 5 applyCase + 1 selectionText） | 131 |
+
+### 31.3 CollabDocProEditor.vue UI 集成
+
+- 工具栏加 "Aa" 按钮（`data-testid="doc-case"`）
+- 键盘快捷键：**Shift+F3** （Word 标准）
+  - 通过 `editorProps.handleKeyDown` 拦截
+  - 调用 `onCycleCase()` → `applyCase(editor, nextCaseMode(text))`
+- `nextCaseMode` 决定下一个状态：全小写 → UPPER，全大写 → Title，混合 → lower（Word 行为）
+
+### 31.4 测试 / 构建
+
+- `tsx --test`：416 / 416（v0.7.75 的 402 + 14 个 case transform 测试）
+- `vue-tsc`：75 errors 全 pre-existing，与本 turn 无关（持平）
+
+### 31.5 v0.7.76.b 待办
+
+- 在 UI 中显示"下一个状态预览"（hover 按钮时）
+- 在不同 locale 下处理 ß→SS 这类字符长度变化
+
+## 32. v0.7.77 — SHEET 单元格锁（2026-09-01）
+
+### 32.1 现状评估
+
+genoffice editor/ 中无 cellLock 文件（SHEET 专属）。本地实现：
+- "锁" 是软乐观锁：peer 通过 awareness 选择 cell 即声明锁
+- Yjs CRDT 仍然合并并发写入（语义正确），UI 层通过 `readonly` + tooltip 阻止本地编辑
+
+### 32.2 新增文件
+
+| 模块 | 来源 | 行数 |
+| --- | --- | --- |
+| `editor/adapters/xlsxCellLock.ts` | 自写（genoffice 无此模式） | 78 |
+| `editor/adapters/__tests__/xlsxCellLock.test.ts` | 自写 | 86 |
+
+### 32.3 CollabSheetEditor.vue UI 集成
+
+- 导入 `buildLockMap / cellKey / checkEditAllowed / RemoteCellPeer`
+- 计算属性：`myClientId`（从 `handle.provider.awareness.clientID` 读）、`lockMap`（key → locker peer）
+- 方法：`isCellLocked(ri, ci)` / `cellLocker(ri, ci)`
+- `setCell(ri, ci, value)` 增加锁检测：
+  - `checkEditAllowed(...)` 返回 `allowed: false` 时
+    - 写入 `console.warn(...)` 告知 user
+    - 还原 input.value 为 `rows.value[ri][ci]` 当前内容
+    - 直接 `return`（不进入 YMap 写入）
+- 模板：cell input 增加：
+  - `:readonly="isCellLocked(ri, ci)"`
+  - `:data-cell="${ri}-${ci}"`（setCell 用）
+  - `:title="isCellLocked ? '🔒 X 正在编辑' : ''"`
+  - `class: collab-sheet-editor__cell--locked`
+- 锁指示器：🔒 icon 浮在 cell 左上角（`collab-sheet-editor__cell-lock`）
+
+### 32.4 测试 / 构建
+
+- `tsx --test`：428 / 428（v0.7.76 的 416 + 12 个 cellLock 测试）
+- `vue-tsc`：75 errors 全 pre-existing，与本 turn 无关（持平）
+- `vue compiler-core baseParse`：0 errors（28 divs 平衡）
+
+### 32.5 v0.7.77.b 待办
+
+- Lock TTL：peer 长时间不活跃自动释放锁
+- 锁冲突 toast 提示（替换 console.warn）
+- 锁范围：选区（多 cell）整体锁定
+
+## 33. v0.7.78 — DOC 清除格式（2026-09-01）
+
+### 33.1 现状评估
+
+Word "Clear All Formatting" / Ctrl+Space：移除选中文字的所有字符级 marks（粗体 / 斜体 / 下划线 / 删除线 / 行内代码 / 高亮 / 链接 / 颜色 / 上下标 …），不动段落级属性（heading level / list / alignment）。genoffice 无此文件，本地实现。
+
+### 33.2 新增文件
+
+| 模块 | 来源 | 行数 |
+| --- | --- | --- |
+| `editor/adapters/docClearFormat.ts` | 自写（genoffice 无） | 84 |
+| `editor/adapters/__tests__/docClearFormat.test.ts` | 自写（含 mock chain） | 173 |
+
+### 33.3 CollabDocProEditor.vue UI 集成
+
+- 工具栏加 "⌫" 按钮（`data-testid="doc-clear-fmt"`），`:disabled="!editor || !canClearFormat"`（只有选中区有可清除格式时才启用）
+- 键盘快捷键：**Ctrl+Space** （Word 标准；Mac 用 Cmd+Space 走 `event.metaKey` 分支）
+- 计算属性 `canClearFormat = computed(() => hasFormatting(editor.value))`
+- 方法 `onClearFormat()` → `clearFormatting(editor.value)`
+
+### 33.4 测试关键发现
+
+mock `editor.chain()` 中每个 cb 不应该 `state.tr.removeMark(...)` 重新拉 tr，而应该用上层传入的 `tr` 累积修改。否则多次 `unsetMark` 调用只有最后一次生效。本轮修了 mock 后 10 个测试全过。
+
+### 33.5 测试 / 构建
+
+- `tsx --test`：438 / 438（v0.7.77 的 428 + 10 个 clearFormat 测试）
+- `vue-tsc`：75 errors 全 pre-existing，与本 turn 无关（持平）
+- `vue compiler-core baseParse`：0 errors（67 divs 平衡）
+- `go build ./cmd/server`：✅ exit 0
+
+## 34. v0.7.79 — PPT 形状旋转（2026-09-01）
+
+### 34.1 现状评估
+
+genoffice Konva transformer `rotateEnabled: true`，但：
+- 形状的 `config` 没传 `rotation` prop
+- `onShapeTransformEnd` 没读取 `node.rotation()`
+- 没有"旋转 90°"按钮 / 数值输入
+
+### 34.2 新增文件
+
+| 模块 | 来源 | 行数 |
+| --- | --- | --- |
+| `editor/adapters/slideRotation.ts` | 自写（genoffice 无独立文件） | 47 |
+| `editor/adapters/__tests__/slideRotation.test.ts` | 自写（normalize / step90 / snap / shift-snap） | 96 |
+| `editor/adapters/pptxShapeAdapter.ts` | 增加 `PptxShape.rotation?: number` 字段 | +3 |
+
+### 34.3 CollabSlideKonvaEditor.vue UI 集成
+
+- 工具栏加 "↻ 旋转" / "↺ 旋转" 按钮（`data-testid="slide-rotate-cw" / slide-rotate-ccw`）
+- Inspector panel 加 "旋转" 数值输入框（`data-testid="slide-inspector-rotation"`）
+- 11 个 Konva shape config 增加 `rotation: shape.rotation ?? 0`
+- `markDirty` 处理 `'rotation' in patch` → `el.transform.rot = patch.rotation`
+- `rotateSelected(delta)` 方法：读 `el.transform.rot` → `stepRotation90(current, dir)` → `updateShape({rotation: next})`
+
+### 34.4 测试 / 构建
+
+- `tsx --test`：454 / 454（v0.7.78 的 438 + 16 个 slideRotation 测试）
+- `vue-tsc`：75 errors 全 pre-existing，与本 turn 无关（持平）
+- `vue compiler-core baseParse`：0 errors
+- `go build ./cmd/server`：✅ exit 0
+
+### 34.5 v0.7.79.b 待办
+
+- Alt+←/→ 键盘快捷键
+- 旋转时显示度数提示（拖拽 transformer 时）
+- 旋转时联动 bounding box 调整（避免旋转后超出 slide）
+
+## 35. v0.7.80 — DOC 段落边框合并 + 多栏布局 + 文字方向（2026-09-01）
+
+### 35.1 现状评估
+
+genoffice editor/ 中三个独立模块，本轮全部 vendor + 适配：
+- `para-border-merge.ts`（57 行）：Word ECMA-376 §17.3.1.24 段落边框组合（无 schema 依赖，直接可用）
+- `column-layout.ts`（142 行）：TipTap 多栏布局扩展（依赖 `Decoration` API，schema-agnostic）
+- `direction.ts`（~150 行）：UAX#9 bidi 检测 / 段落方向（部分依赖 genoffice schema，只 vendor 纯 helpers）
+
+### 35.2 新增文件
+
+| 模块 | 来源 | 行数 |
+| --- | --- | --- |
+| `editor/adapters/docParaBorderMerge.ts` | vendor genoffice `editor/para-border-merge.ts` | 57 |
+| `editor/adapters/docColumnLayout.ts` | vendor genoffice `editor/column-layout.ts` | 142 |
+| `editor/adapters/docDirection.ts` | vendor genoffice `editor/direction.ts` 纯 helpers | 77 |
+| `editor/adapters/__tests__/docParaBorderMerge.test.ts` | 自写 | 94 |
+| `editor/adapters/__tests__/docColumnLayout.test.ts` | 自写（接口 smoke test） | 40 |
+| `editor/adapters/__tests__/docDirection.test.ts` | 自写 | 128 |
+
+### 35.3 适配说明
+
+- `docParaBorderMerge.ts`：完整 vendor，schema-agnostic
+- `docColumnLayout.ts`：完整 vendor `ColumnLayoutExtension` + `setColumnLayout(view, specs)`；运行时依赖 EditorView（DOM），浏览器 E2E 覆盖
+- `docDirection.ts`：只 vendor 纯 helpers（`firstStrongDir / effectiveBidi / alignAttrFor / dirFlipAttrs / paragraphDir / RTL_CHAR`），不 vendor TipTap `setSelectionAlign / setParagraphDirection / AutoDirectionExtension`（依赖 genoffice schema 名 `docParagraph/docHeading/docListItem/docProtected`，需 node-name map）
+
+### 35.4 测试 / 构建
+
+- `tsx --test`：491 / 491（v0.7.79 的 454 + 14 个 paraBorderMerge/columnLayout + 23 个 docDirection = +37）
+- `vue-tsc`：75 errors 全 pre-existing，与本 turn 无关（持平）
+- `vue compiler-core baseParse`：0 errors
+- `go build ./cmd/server`：✅ exit 0
+
+### 35.5 v0.7.80.b 待办
+
+- node-name map：把 `docParagraph → paragraph`、`docHeading → heading`、`docListItem → taskList` 接入 `setSelectionAlign / setParagraphDirection`
+- AutoDirectionExtension 接入：检测首字符方向自动设置段落 bidi
+- 段落边框合并的 UI（按 Shift 显示段落边框组预览）

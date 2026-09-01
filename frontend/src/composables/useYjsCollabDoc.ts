@@ -78,7 +78,10 @@ function selectionKey(from: number, to: number): string {
 export function useYjsCollabDoc(options: YjsCollabDocOptions): YjsCollabDocHandle {
   const ydoc = new Y.Doc()
   const wsUrl = openCollabDocRealtimeURL(options.docId, options.token)
-  const provider = new WebsocketProvider(wsUrl, `collab-doc-${options.docId}`, ydoc, { connect: true })
+  const provider = new WebsocketProvider(wsUrl, `collab-doc-${options.docId}`, ydoc, {
+    connect: true,
+    params: { token: options.token },
+  })
 
   const connected = ref(false)
   const peers = ref<YjsCollabDocPeer[]>([])

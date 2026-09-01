@@ -145,7 +145,15 @@ func Auth(
 
 		// 尝试JWT Token认证
 		bearerPresented := false
-		if token, ok := bearerToken(c); ok {
+		token, tokenOK := bearerToken(c)
+		// Browser WebSocket connections cannot set Authorization headers. The
+		// collaborative-doc realtime route therefore accepts the JWT in its
+		// query string, constrained to that exact route family.
+		if !tokenOK && strings.HasPrefix(c.Request.URL.Path, "/api/v1/collaborative-docs/") && strings.Contains(c.Request.URL.Path, "/realtime/") {
+			token = strings.TrimSpace(c.Query("token"))
+			tokenOK = token != ""
+		}
+		if tokenOK {
 			bearerPresented = true
 			user, jwtTenantID, err := userService.ValidateToken(c.Request.Context(), token)
 			if err == nil && user != nil {

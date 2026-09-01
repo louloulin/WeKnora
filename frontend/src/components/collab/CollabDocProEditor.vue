@@ -117,6 +117,7 @@
     </div>
     <div v-if="loading" class="collab-doc-pro__loading">加载文档中…</div>
     <div v-if="!loading && loadError" class="collab-doc-pro__error">加载失败：{{ loadError }}</div>
+    <div v-if="!loading && !loadError && loadRecovery" class="collab-doc-pro__recovery">{{ loadRecovery }}</div>
     <div v-if="!loading && !loadError" class="collab-doc-pro__main">
       <div class="collab-doc-pro__formatbar" v-if="editor">
         <button class="collab-doc-pro__fmt" :class="{ active: isMarkActive('bold') }" @click="runMark('bold')" type="button" title="粗体 (Ctrl+B)"><b>B</b></button>
@@ -642,6 +643,7 @@ const downloading = ref(false)
 const uploading = ref(false)
 const saveLabel = ref('未修改')
 const saveError = ref<string | null>(null)
+const loadRecovery = ref<string | null>(null)
 const aiOpen = ref(false)
 const aiAnchor = ref({ x: 0, y: 0 })
 const aiOriginal = ref('')
@@ -1547,6 +1549,7 @@ const setup = async () => {
 
   loading.value = true
   loadError.value = null
+  loadRecovery.value = null
   try {
     let bytes: Uint8Array
     try {
@@ -1560,7 +1563,18 @@ const setup = async () => {
       initEditor([])
       return
     }
-    doc = await openDocx(bytes)
+    try {
+      doc = await openDocx(bytes)
+    } catch (parseError: any) {
+      // Historical seed files can be truncated or contain malformed XML.
+      // Keep the document usable by replacing only the in-memory editor
+      // model with the engine's valid blank package; the next explicit save
+      // persists a legal .docx instead of leaving the user on a dead error
+      // screen. User-uploaded invalid files still fail in onUploadDocFile.
+      doc = await buildBlankDocxDoc([])
+      loadRecovery.value = `原文档解析失败，已恢复为空白文档（${parseError?.message || '格式错误'}）`
+      saveLabel.value = '已恢复，待保存'
+    }
     currentProtection.value = doc.parsed.protection ?? null
     pendingProtection.value = currentProtection.value
     initEditor(doc.paragraphs)

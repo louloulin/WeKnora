@@ -109,7 +109,11 @@ export async function downloadCollabDocBytes(id: string): Promise<Blob> {
 export function openCollabDocRealtimeURL(docId: string, token: string): string {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const host = window.location.host
-  return `${proto}//${host}/api/v1/collaborative-docs/${encodeURIComponent(docId)}/realtime?token=${encodeURIComponent(token)}`
+  // y-websocket appends its room name after serverUrl. Keep the server URL
+  // query-free; callers pass token through WebsocketProvider.params so the
+  // final URL is /realtime/<room>?token=<jwt>, not ?token=<jwt>/<room>.
+  void token
+  return `${proto}//${host}/api/v1/collaborative-docs/${encodeURIComponent(docId)}/realtime`
 }
 
 
@@ -311,4 +315,3 @@ export async function downloadCollabDocShare(
   }
   return res.blob()
 }
-

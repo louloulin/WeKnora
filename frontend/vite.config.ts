@@ -136,6 +136,7 @@ export default defineConfig({
         target: DEV_PROXY_TARGET,
         changeOrigin: true,
         secure: false,
+        ws: true,
       },
       '/files': {
         target: DEV_PROXY_TARGET,
@@ -150,6 +151,7 @@ export default defineConfig({
         target: DEV_PROXY_TARGET,
         changeOrigin: true,
         secure: false,
+        ws: true,
         rewrite: (path: string) => `/api/v1${path}`,
       }
     }
@@ -165,6 +167,7 @@ export default defineConfig({
         target: DEV_PROXY_TARGET,
         changeOrigin: true,
         secure: false,
+        ws: true,
       },
       '/files': {
         target: DEV_PROXY_TARGET,
@@ -175,6 +178,7 @@ export default defineConfig({
         target: DEV_PROXY_TARGET,
         changeOrigin: true,
         secure: false,
+        ws: true,
         rewrite: (path: string) => `/api/v1${path}`,
       }
     }

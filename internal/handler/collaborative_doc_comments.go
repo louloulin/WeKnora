@@ -7,6 +7,8 @@
 package handler
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"net/http"
 	"strconv"
 
@@ -38,14 +40,43 @@ func (h *CollabDocCommentHandler) Register(rg *gin.RouterGroup) {
 // helper: extract tenant + user from the gin context (set by the auth
 // middleware earlier in the chain).
 func collabCommentCaller(c *gin.Context) (uint64, uint64, bool) {
-	tenantVal, tenantOK := c.Get("tenant_id")
-	userVal, userOK := c.Get("user_id")
+	tenantVal, tenantOK := c.Get(types.TenantIDContextKey.String())
+	userVal, userOK := c.Get(types.UserIDContextKey.String())
 	if !tenantOK || !userOK {
 		return 0, 0, false
 	}
-	tenantID, _ := tenantVal.(uint64)
-	userID, _ := userVal.(uint64)
+	tenantID := collabCommentUint64(tenantVal)
+	userID := collabCommentUint64(userVal)
 	return tenantID, userID, tenantID > 0 && userID > 0
+}
+
+// The auth middleware stores tenant_id as uint64 and user_id as the user's
+// UUID string. Comment endpoints must use the same stable numeric projection
+// as the document and binary handlers when looking up ACL ownership.
+func collabCommentUint64(value any) uint64 {
+	switch typed := value.(type) {
+	case uint64:
+		return typed
+	case uint:
+		return uint64(typed)
+	case uint32:
+		return uint64(typed)
+	case int:
+		if typed > 0 {
+			return uint64(typed)
+		}
+	case int64:
+		if typed > 0 {
+			return uint64(typed)
+		}
+	case string:
+		if typed == "" {
+			return 0
+		}
+		hash := sha256.Sum256([]byte(typed))
+		return binary.BigEndian.Uint64(hash[:8]) &^ (uint64(1) << 63)
+	}
+	return 0
 }
 
 // helper: extract display name + color from the auth middleware. The
