@@ -25,6 +25,7 @@ import {
   type Block as EngineBlock,
   type ParsedDocFull,
   type SaveBlock,
+  type CommentInfo,
   type SaveOptions,
   type Run as EngineRun,
 } from '../engines/docx-engine/index'
@@ -98,6 +99,12 @@ export interface DocxAdapterParagraph {
   text: string
   /** True when the engine marked the block hidden / structural. */
   hidden: boolean
+  /**
+   * v0.7.50 — comment ids covering this paragraph (run-level commentIds plus
+   * cross-paragraph commentStarts/commentEnds). Used to restore the comment
+   * mark highlight when a doc with existing comments is opened.
+   */
+  commentIds?: string[]
 }
 
 export interface DocxAdapterDocument {
@@ -121,23 +128,61 @@ export async function openDocx(bytes: Uint8Array): Promise<DocxAdapterDocument> 
     level: b.level,
     text: paragraphText(b),
     hidden: !!b.hidden,
+    commentIds: collectCommentIds(b),
   }))
   return { paragraphs, parsed, patched: new Map() }
 }
 
-/** Serialize the (possibly patched) parsed doc back to a .docx blob. */
+/**
+ * Serialize the (possibly patched) parsed doc back to a .docx blob.
+ *
+ * Two call modes:
+ *  - `PatchedParagraph[]` (incremental): every original block maps to one
+ *    SaveBlock; changed blocks emit kind 'xml', the rest stay 'original'.
+ *  - `SaveBlock[]` (full plan, v0.7.51): the caller (pmDocToSavePlan) already
+ *    produced the complete block list including inserts/deletes; it is passed
+ *    through verbatim (doc.patched entries are merged in for safety).
+ */
+export interface SaveDocxBytesOptions {
+  /** Full desired comment list; word/comments.xml is regenerated from it. */
+  comments?: CommentInfo[]
+  /** w:documentProtection editing restriction; null removes. */
+  protection?: SaveOptions["protection"]
+  /** w:writeProtection password-to-modify (honor system). */
+  writeProtection?: SaveOptions["writeProtection"]
+}
+
 export async function saveDocxBytes(
   doc: DocxAdapterDocument,
-  patched?: PatchedParagraph[],
+  patched?: PatchedParagraph[] | SaveBlock[],
+  options: SaveDocxBytesOptions = {},
 ): Promise<Uint8Array> {
-  const extra = new Map<number, string>()
-  if (patched) for (const p of patched) extra.set(p.docxIndex, p.xml)
-  const blocks: SaveBlock[] = doc.parsed.blocks.map((_, i) => {
-    const xml = extra.get(i) ?? doc.patched.get(i)
-    if (xml) return { kind: 'xml', xml, docxIndex: i } as SaveBlock
-    return { kind: 'original', docxIndex: i } as SaveBlock
-  })
+  let blocks: SaveBlock[]
+  if (patched && patched.length > 0 && 'kind' in patched[0]) {
+    const plan = patched as SaveBlock[]
+    const byIndex = new Map<number, SaveBlock>()
+    for (const b of plan) {
+      if (b.kind === 'original' || b.kind === 'xml') {
+        if (b.docxIndex !== undefined) byIndex.set(b.docxIndex, b)
+      }
+    }
+    for (const [idx, xml] of doc.patched) {
+      if (!byIndex.has(idx)) byIndex.set(idx, { kind: 'xml', xml, docxIndex: idx })
+    }
+    blocks = plan
+  } else {
+    const extra = new Map<number, string>()
+    if (patched) for (const p of patched as PatchedParagraph[]) extra.set(p.docxIndex, p.xml)
+    blocks = doc.parsed.blocks.map((_, i) => {
+      const xml = extra.get(i) ?? doc.patched.get(i)
+      if (xml) return { kind: 'xml', xml, docxIndex: i } as SaveBlock
+      return { kind: 'original', docxIndex: i } as SaveBlock
+    })
+  }
   const opts: SaveOptions = {}
+  if (options.comments) opts.comments = options.comments
+  if (options.protection !== undefined) opts.protection = options.protection
+  if (options.writeProtection !== undefined) opts.writeProtection = options.writeProtection
   const bytes = await saveDocx(doc.parsed, blocks, opts)
   doc.patched.clear()
   return bytes
@@ -221,6 +266,18 @@ function collectRuns(block: EngineBlock): EngineRun[] {
     return out
   }
   return []
+}
+
+/** v0.7.50 — merge every comment id touching this block (run-level commentIds
+ *  plus cross-paragraph commentStarts/commentEnds) for mark restoration. */
+export function collectCommentIds(block: EngineBlock): string[] | undefined {
+  const ids = new Set<string>()
+  for (const r of collectRuns(block)) {
+    for (const id of r.commentIds ?? []) ids.add(id)
+  }
+  for (const id of block.commentStarts ?? []) ids.add(id)
+  for (const id of block.commentEnds ?? []) ids.add(id)
+  return ids.size > 0 ? [...ids].sort() : undefined
 }
 
 /**
@@ -345,10 +402,16 @@ export function pmDocToSavePlan(pmDoc: PmNode, doc: DocxAdapterDocument): SavePl
   // so we never silently lose content.
   const supportedNonPara = new Set(['table', 'image', 'taskList'])
 
+  const originalByIndex = new Map<number, EngineBlock>()
+  for (const b of visibleOriginals) {
+    if (b.docxIndex !== null) originalByIndex.set(b.docxIndex, b)
+  }
+
   const usedDocxIndexes = new Set<number>()
   let i = 0
   const visibleNodes = (pmDoc.content ?? []).filter((n) => {
     if (supportedNonPara.has(n.type)) return true
+    if (n.type === 'docProtected') return true
     if (
       n.type === 'paragraph' ||
       n.type === 'heading' ||
@@ -373,11 +436,36 @@ export function pmDocToSavePlan(pmDoc: PmNode, doc: DocxAdapterDocument): SavePl
       if (xml) blocks.push({ kind: 'xml', xml })
       continue
     }
+    // v0.7.51 — docProtected (formula): replace the anchored paragraph XML
+    // with the node's genXml (OMML paragraph) so the formula round-trips.
+    if (node.type === 'docProtected') {
+      const pIdx = node.attrs?.docxIndex as number | null | undefined
+      const genXml = node.attrs?.genXml as string | null | undefined
+      if (typeof pIdx === 'number' && typeof genXml === 'string') {
+        blocks.push({ kind: 'xml', xml: genXml, docxIndex: pIdx })
+        usedDocxIndexes.add(pIdx)
+        textByIndex.set(pIdx, String(node.attrs?.previewText ?? ''))
+      }
+      i++
+      continue
+    }
     const pmRuns = flattenNodeRuns(node)
     const text = pmRuns.map((r) => r.text).join('')
     const runSig = pmRuns.map((r) => runSignature(r)).join('|')
 
-    const original = visibleOriginals[i]
+    // v0.7.51 — prefer the node's own docxIndex (data-docx-index / docxIndex
+    // attr) so paragraph insert/delete keeps each block anchored correctly;
+    // fall back to the positional cursor for nodes without an anchor.
+    const nodeIdx = parseDocxIndexFromNode(node)
+    let original: EngineBlock | undefined
+    if (nodeIdx != null && originalByIndex.has(nodeIdx)) {
+      original = originalByIndex.get(nodeIdx)
+    } else {
+      while (i < visibleOriginals.length && usedDocxIndexes.has(visibleOriginals[i].docxIndex ?? -1)) {
+        i++
+      }
+      original = visibleOriginals[i]
+    }
     const origRuns = original ? collectRuns(original) : []
     const origText = origRuns.map((r) => r.text).join('')
     const origSig = origRuns.map((r) => runSignatureOfEngineRun(r)).join('|')
@@ -388,6 +476,18 @@ export function pmDocToSavePlan(pmDoc: PmNode, doc: DocxAdapterDocument): SavePl
     if (!original) {
       // Brand-new block (user added a paragraph that has no original anchor).
       blocks.push({ kind: 'generated', block: pmNodeToGeneratedBlock(node, pmRuns) })
+      i++
+      continue
+    }
+
+    // v0.7.56 — a paragraph carrying comment marks must regenerate so the
+    // commentRangeStart markers (and the comments.xml link) survive the save.
+    const commentIds = collectCommentIdsFromNode(node)
+    if (commentIds && text === origText && runSig === origSig) {
+      const generated = pmNodeToGeneratedBlock(node, pmRuns)
+      const rawPPr = (original as { rawPPr?: string }).rawPPr
+      if (rawPPr) (generated as { rawPPr?: string }).rawPPr = rawPPr
+      blocks.push({ kind: 'generated', block: generated })
       i++
       continue
     }
@@ -404,15 +504,26 @@ export function pmDocToSavePlan(pmDoc: PmNode, doc: DocxAdapterDocument): SavePl
       blocks.push({ kind: 'original', docxIndex: idx })
     } else if (runSig === origSig) {
       // Text-only edit: keep the original shell, only rewrite <w:t>.
-      const xml = patchParagraphText(doc, idx, text).xml
-      blocks.push({ kind: 'xml', xml, docxIndex: idx })
-      textByIndex.set(idx, text)
+      // Comment-marked paragraphs regenerate instead so the range markers
+      // are re-emitted (patchParagraphText only touches <w:t>).
+      if (commentIds) {
+        const generated = pmNodeToGeneratedBlock(node, pmRuns)
+        const rawPPr = (original as { rawPPr?: string }).rawPPr
+        if (rawPPr) (generated as { rawPPr?: string }).rawPPr = rawPPr
+        blocks.push({ kind: 'generated', block: generated })
+        textByIndex.set(idx, text)
+      } else {
+        const xml = patchParagraphText(doc, idx, text).xml
+        blocks.push({ kind: 'xml', xml, docxIndex: idx })
+        textByIndex.set(idx, text)
+      }
     } else {
       // Edge case: blank-docx path. Original block has no runs and the PM
       // doc only carries unstyled text; signatures vacuously differ but
       // no inline format actually changed. Fall back to the text-only
       // patch path so we keep the original pPr/bookmarks/fields verbatim.
       if (
+        !commentIds &&
         origRuns.length === 0 &&
         pmRuns.every(
           (r) =>
@@ -454,6 +565,15 @@ export function pmDocToSavePlan(pmDoc: PmNode, doc: DocxAdapterDocument): SavePl
   return { blocks, textByIndex }
 }
 
+/** Read the docxIndex anchor from a TipTap node (data-docx-index or docxIndex attr). */
+export function parseDocxIndexFromNode(node: PmNode): number | null {
+  const attrs = node.attrs ?? {}
+  const raw = attrs['data-docx-index'] ?? attrs.docxIndex
+  if (typeof raw === 'number') return raw
+  if (typeof raw === 'string' && raw !== '') return Number(raw)
+  return null
+}
+
 /** Map a TipTap paragraph/heading/list node to an engine GeneratedBlock. */
 export function pmNodeToGeneratedBlock(node: PmNode, pmRuns?: PmRun[]): GeneratedBlock {
   const runs: Run[] = []
@@ -478,7 +598,30 @@ export function pmNodeToGeneratedBlock(node: PmNode, pmRuns?: PmRun[]): Generate
     type = 'listItem'
     list = inferListInfo(node)
   }
-  return { type, level, list, runs }
+  // v0.7.56 — re-emit comment range starts for paragraphs whose text carries
+  // comment marks (ids space-separated on the mark).
+  const commentIds = collectCommentIdsFromNode(node)
+  // v0.7.63 — pass pageBreakBefore from TipTap paragraph/heading attrs to the
+  // engine's ParaFormat so the save emits <w:pageBreakBefore/>.
+  const format = node.attrs?.pageBreakBefore ? { pageBreakBefore: true } : undefined
+  return { type, level, list, runs, commentStarts: commentIds, format }
+}
+
+/** Merge every comment id from the comment marks on a node's text runs. */
+export function collectCommentIdsFromNode(node: PmNode): string[] | undefined {
+  const ids = new Set<string>()
+  const walk = (n: PmNode): void => {
+    if (n.type === 'text' && Array.isArray(n.marks)) {
+      for (const m of n.marks) {
+        if (m.type === 'comment' && typeof m.attrs?.ids === 'string') {
+          for (const id of m.attrs.ids.split(' ').filter(Boolean)) ids.add(id)
+        }
+      }
+    }
+    for (const c of n.content ?? []) walk(c)
+  }
+  walk(node)
+  return ids.size > 0 ? [...ids].sort() : undefined
 }
 
 function flattenNodeRuns(node: PmNode): PmRun[] {
@@ -587,7 +730,7 @@ function paragraphRunsToXml(content: PmNode[] | undefined): string {
     .join('')
 }
 
-function cellToXml(cell: PmNode, header: boolean): string {
+function cellToXml(cell: PmNode, header: boolean, colWidthsDxa: number[]): string {
   const isHeader = header || cell.type === 'tableHeader'
   const cellTag = isHeader ? 'w:tc' : 'w:tc'
   const paragraphs =
@@ -595,7 +738,24 @@ function cellToXml(cell: PmNode, header: boolean): string {
       .filter((p) => p.type === 'paragraph' || p.type === 'heading')
       .map((p) => `<w:p>${paragraphRunsToXml(p.content)}</w:p>`)
       .join('') || '<w:p/>'
-  return `<${cellTag}><w:tcPr><w:tcW w:w="2000" w:type="dxa"/></w:tcPr>${paragraphs}</${cellTag}>`
+  // v0.7.53 — honor TipTap colwidth (px) when present; fall back to 2000 dxa.
+  const colwidth = (cell.attrs?.colwidth as number[] | null) ?? null
+  const widthDxa = colwidth?.length
+    ? Math.max(240, Math.round(colwidth[0] * 15))
+    : colWidthsDxa[0] ?? 2000
+  // v0.7.54 — cell fill (w:shd) + borders (w:tcBorders) from table presets.
+  const fill = (cell.attrs?.fill as string | null) ?? null
+  const borders = (cell.attrs?.borders as Record<string, { style: string; szEighths: number; color: string }> | null) ?? null
+  const shd = fill ? `<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/>` : ''
+  const borderXml = (side: string) => {
+    const b = borders?.[side]
+    if (!b) return ''
+    return `<w:${side} w:val="${b.style}" w:sz="${b.szEighths}" w:space="0" w:color="${b.color}"/>`
+  }
+  const tcBorders = borders
+    ? `<w:tcBorders>${borderXml('top')}${borderXml('left')}${borderXml('bottom')}${borderXml('right')}</w:tcBorders>`
+    : ''
+  return `<${cellTag}><w:tcPr><w:tcW w:w="${widthDxa}" w:type="dxa"/>${shd}${tcBorders}</w:tcPr>${paragraphs}</${cellTag}>`
 }
 
 /** Render a TipTap `table` node to a minimal <w:tbl>...</w:tbl> XML. */
@@ -604,15 +764,32 @@ export function pmTableToTableXml(node: PmNode): string {
   if (rows.length === 0) return ''
   const firstRow = rows[0]
   const cellCount = (firstRow.content ?? []).length || 1
-  const totalWidth = 2000 * cellCount
-  const gridCols = Array.from({ length: cellCount }, () => '<w:gridCol w:w="2000"/>').join('')
+  // v0.7.53 — derive per-column widths from the first row's colwidth attrs
+  // (TipTap resizable writes px values); equal 2000 dxa columns otherwise.
+  const firstCells = (firstRow.content ?? []).filter(
+    (c) => c.type === 'tableCell' || c.type === 'tableHeader',
+  )
+  const colWidthsDxa: number[] = []
+  for (const c of firstCells) {
+    const colwidth = (c.attrs?.colwidth as number[] | null) ?? null
+    if (colwidth?.length) colWidthsDxa.push(...colwidth.map((w) => Math.max(240, Math.round(w * 15))))
+    else colWidthsDxa.push(2000)
+  }
+  while (colWidthsDxa.length < cellCount) colWidthsDxa.push(2000)
+  const totalWidth = colWidthsDxa.reduce((sum, w) => sum + w, 0)
+  const gridCols = colWidthsDxa.map((w) => `<w:gridCol w:w="${w}"/>`).join('')
   const rowsXml = rows
     .map((r) => {
       const cells = (r.content ?? [])
         .filter((c) => c.type === 'tableCell' || c.type === 'tableHeader')
-        .map((c) => cellToXml(c, r === firstRow))
+        .map((c) => cellToXml(c, r === firstRow, colWidthsDxa))
         .join('')
-      return `<w:tr>${cells}</w:tr>`
+      // v0.7.54 — repeatHeader rows emit w:trPr/w:tblHeader so the header
+      // repeats across pages in Word.
+      const trPr = (r.attrs?.repeatHeader as boolean | undefined)
+        ? '<w:trPr><w:tblHeader/></w:trPr>'
+        : ''
+      return `<w:tr>${trPr}${cells}</w:tr>`
     })
     .join('')
   return (
@@ -817,12 +994,14 @@ export async function embedImagesInDocx(
 export async function saveDocxBytesWithImages(
   doc: DocxAdapterDocument,
   pmDoc: PmNode,
+  blocks?: SaveBlock[],
+  options: SaveDocxBytesOptions = {},
 ): Promise<Uint8Array> {
   // 1) Collect image dataURLs and rewrite node.src to filenames
   const assets = collectImagesFromPmDoc(pmDoc)
   // 2) Save the .docx (the drawing XML now references filenames like
   //    "media/image1.png" which don't exist as parts yet)
-  const baseBytes = await saveDocxBytes(doc)
+  const baseBytes = await saveDocxBytes(doc, blocks, options)
   // 3) Add the binary parts + rels + content-type overrides
   return embedImagesInDocx(baseBytes, assets)
 }

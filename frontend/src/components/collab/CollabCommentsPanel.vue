@@ -41,7 +41,14 @@
               class="collab-comments__resolve"
               @click="resolve(thread)"
             >✓ 解决</button>
+            <button
+              v-else
+              class="collab-comments__reopen"
+              @click="reopen(thread)"
+              title="重新打开线程"
+            >↺ 重新打开</button>
             <button class="collab-comments__add-reply" @click="setReply(thread)">回复</button>
+            <button class="collab-comments__delete" @click="remove(thread)">删除</button>
           </div>
           <div
             v-for="msg in thread.messages"
@@ -103,7 +110,7 @@ import { MessagePlugin } from 'tdesign-vue-next'
 import {
   listCollabDocComments,
   createCollabDocComment,
-  updateCollabDocComment,
+  updateCollabDocComment, deleteCollabDocComment,
   type CollabDocComment,
 } from '@/api/collabDoc'
 
@@ -117,6 +124,10 @@ const props = defineProps<{
   /** Initial placeholder for the composer. */
   placeholder?: string
 }>()
+
+// v0.7.49 — notify the parent editor that a thread was created so it can
+// attach the comment mark to the selected text range.
+const emit = defineEmits<{ created: [comment: CollabDocComment]; deleted: [comment: CollabDocComment]; loaded: [comments: CollabDocComment[]] }>()
 
 const open = ref(true)
 const loading = ref(false)
@@ -187,6 +198,7 @@ const refresh = async () => {
   try {
     const res = await listCollabDocComments(props.docId, { limit: 500 })
     comments.value = res.comments || []
+    emit('loaded', comments.value)
     error.value = null
   } catch (e: any) {
     error.value = e?.message || String(e)
@@ -229,13 +241,14 @@ const submitNew = async () => {
   }
   submitting.value = true
   try {
-    await createCollabDocComment(props.docId, {
+    const created = await createCollabDocComment(props.docId, {
       anchor_type: props.anchor.type,
       anchor_ref: props.anchor.ref,
       body: newDraft.value.trim(),
     })
     newDraft.value = ''
     await refresh()
+    emit('created', created)
     MessagePlugin.success('评论已添加')
   } catch (e: any) {
     error.value = e?.message || String(e)
@@ -258,9 +271,48 @@ const resolveThread = async (thread: Thread) => {
   }
 }
 
+const reopenThread = async (thread: Thread) => {
+  submitting.value = true
+  try {
+    const head = thread.messages[0]
+    await updateCollabDocComment(props.docId, head.id, { resolved: false })
+    await refresh()
+  } catch (e: any) {
+    error.value = e?.message || String(e)
+  } finally {
+    submitting.value = false
+  }
+}
+
+const reopen = (thread: Thread) => {
+  reopenThread(thread)
+}
+
 const resolve = (thread: Thread) => {
   if (!window.confirm(`确认解决线程 (${thread.messages.length} 条消息) ?`)) return
   resolveThread(thread)
+}
+
+// v0.7.52 — delete the whole thread (replies cascade via FK) and notify the
+// parent editor so the comment mark is stripped from the text.
+const removeThread = async (thread: Thread) => {
+  submitting.value = true
+  try {
+    const head = thread.messages[0]
+    await deleteCollabDocComment(props.docId, head.id)
+    await refresh()
+    emit('deleted', head)
+    MessagePlugin.success('评论已删除')
+  } catch (e: any) {
+    error.value = e?.message || String(e)
+  } finally {
+    submitting.value = false
+  }
+}
+
+const remove = (thread: Thread) => {
+  if (!window.confirm(`确认删除线程 (${thread.messages.length} 条消息) ?`)) return
+  removeThread(thread)
 }
 
 onMounted(() => {

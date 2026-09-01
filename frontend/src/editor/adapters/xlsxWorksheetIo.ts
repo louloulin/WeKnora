@@ -126,6 +126,8 @@ export interface MutablePackage {
   readText(path: string): Promise<string>
   write(path: string, content: string): void
   add(path: string, content: string): void
+  /// Write raw binary content (e.g. embedded images) at the given path.
+  addBinary(path: string, bytes: Uint8Array): void
   remove(path: string): void
 }
 
@@ -167,6 +169,11 @@ export async function transformPackage(
     },
     add(path, content) {
       zip.file(path, content)
+      dirty.value = true
+    },
+    addBinary(path, bytes) {
+      // JSZip infers base64 from a Uint8Array.
+      zip.file(path, bytes)
       dirty.value = true
     },
     remove(path) {
