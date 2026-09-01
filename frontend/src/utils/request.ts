@@ -20,6 +20,13 @@ const instance = axios.create({
   },
 });
 
+
+// v0.7.92 — alias the configured axios instance so callers can use
+// the request.get / request.post shortcut style (the slides API in
+// @/api/slides already follows this pattern). Existing named
+// exports (get, post, put, del, patch) stay untouched.
+export const request = instance
+
 // 获取当前用户语言（用于 Accept-Language header）
 export function getCurrentLanguage(): string {
   return i18n.global.locale?.value || localStorage.getItem('locale') || 'zh-CN'

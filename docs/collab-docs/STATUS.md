@@ -2684,3 +2684,48 @@ Dev-mode `X-Collab-Doc-Markdown: <markdown>` header 跳过 docreader 直接喂 M
 - `X-Collab-Doc-Markdown` header 是 dev/CI bypass，prod 应走真实 docreader（端口 50051 gRPC）。需要部署 docreader Python sidecar 才能去掉 fallback "queued" 路径。
 - `kb.embedding_model_id` 仍需在 KB 设置中配置才能启用向量索引；目前 chunks 落库但无 embedding。
 - pre-existing `WikiDatabaseView.vue:224 Invalid end tag` 与本任务无关。
+
+## 41. v0.7.92 — SLIDE OOXML 主题画廊 + slides API pre-existing 修复（2026-09-02）
+
+### 41.1 新增文件
+
+| 文件 | 说明 |
+| --- | --- |
+| `frontend/src/editor/slides/themes/genofficeThemes.ts` | 直接 vendor `genoffice/apps/slides/src/renderer/themes.ts`（157 行），保留 8 个 OOXML scheme 主题预设（office/ember/indigo/forest/cream/rose/graphite/midnight）|
+| `frontend/src/components/collab/CollabSlideThemePanel.vue` | 113 行 Vue 主题 swatch 网格，发 `theme:apply` 事件 |
+| `frontend/wk-slide-theme.mjs` | Playwright 验证：8 个 swatch + 点击触发 `wk-slide-theme-apply` 事件 |
+
+### 41.2 修改文件
+
+| 文件 | 变更 |
+| --- | --- |
+| `frontend/src/views/collab/CollabSlidesView.vue` | 在 deck 列表下方加 `<CollabSlideThemePanel>`，发 `wk-slide-theme-apply` window event 让 Konva editor 监听 |
+| `frontend/src/utils/request.ts` | 修复 pre-existing bug：导出 `export const request = instance`，满足 `@/api/slides/index.ts` 已有的 `import { request } from '@/utils/request'` |
+
+### 41.3 浏览器验证（`frontend/wk-slide-theme.mjs`）
+
+```
+theme panel visible: 1
+theme button count: 9 (panel + 8 themes)
+theme button ids: [panel, slide-theme-office, ember, indigo, forest, cream, rose, graphite, midnight]
+wk-slide-theme-apply event fired: true
+ALL OK — slide theme gallery renders + apply event
+```
+
+截图：`/tmp/wk-shots/slide-theme-gallery.png`（full-page）、`/tmp/wk-shots/slide-theme-indigo.png`
+
+### 41.4 已存在的 vendor 模块（之前 STATUS 漏列）
+
+通过搜索 `Vendored from genoffice` 发现 WeKnora 已有大量 genoffice 模块 vendor：
+- `docHeadings.ts`（NavPane 思路）— v0.7.71 DOC outline panel 已落地
+- `docProtection.ts`, `docSections.ts`, `docCompare.ts`, `docFind.ts`, `docDirection.ts`, `docTocRefresh.ts`, `docRevisions.ts`
+- `xlsxTableAdd.ts`, `xlsxCellLock.ts`, `xlsxWorksheetIo.ts`
+- `csvImport.ts`
+- + 并发 session 的 25+ 单元测试
+
+DOC outline sidebar 实际 **已实现**（v0.7.71），不是未做。
+
+### 41.5 已知遗留
+
+- `wk-slide-theme-apply` 事件目前没有 Konva editor 监听 — Konva editor 的"应用主题"按钮需要在未来集成（不在本轮范围，因为并发 session WIP 文件 `CollabSlideKonvaEditor.vue` 不能动）。
+- SLIDE 主题应用需要 backend 配合（写 theme*.xml + 重映射 srgbClr），当前 swatch 仅前端预览，未触发后端保存。
