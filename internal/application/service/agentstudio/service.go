@@ -89,6 +89,11 @@ func NewAgentStudioService(repo typesRepo, executor AgentExecutor) *AgentStudioS
 	}
 }
 
+// NewAgentStudioServiceFromExternal is a placeholder kept for
+// reference; the actual cross-package wiring lives in
+// NewAgentStudioServiceWithExternal below.
+func NewAgentStudioServiceFromExternal() *AgentStudioService { return nil }
+
 // Vault exposes the credential vault.
 func (s *AgentStudioService) Vault() *Vault { return s.vault }
 
@@ -192,4 +197,116 @@ func (s *AgentStudioService) GetRun(ctx context.Context, tenantID uint64, id uin
 // ListRuns returns runs for one agent with pagination.
 func (s *AgentStudioService) ListRuns(ctx context.Context, tenantID uint64, agentID string, limit, offset int) ([]*types.AgentRun, int64, error) {
 	return s.repo.ListRunsByAgent(ctx, tenantID, agentID, limit, offset)
+}
+
+
+// AgentStudioRepositoryMirror is the part of
+// interfaces.AgentStudioRepository that typesRepo uses. The
+// container provides the exported interface; we accept it here
+// (same method set, just exposed for cross-package wiring).
+type AgentStudioRepositoryMirror interface {
+	CreateTrigger(ctx context.Context, t *types.AgentTrigger) error
+	GetTrigger(ctx context.Context, tenantID uint64, id uint64) (*types.AgentTrigger, error)
+	ListTriggersByAgent(ctx context.Context, tenantID uint64, agentID string) ([]*types.AgentTrigger, error)
+	ListActiveCronTriggers(ctx context.Context, before time.Time, limit int) ([]*types.AgentTrigger, error)
+	UpdateTrigger(ctx context.Context, t *types.AgentTrigger) error
+	DeleteTrigger(ctx context.Context, tenantID uint64, id uint64) error
+	CreateRun(ctx context.Context, r *types.AgentRun) error
+	GetRun(ctx context.Context, tenantID uint64, id uint64) (*types.AgentRun, error)
+	ListRunsByAgent(ctx context.Context, tenantID uint64, agentID string, limit, offset int) ([]*types.AgentRun, int64, error)
+	UpdateRun(ctx context.Context, r *types.AgentRun) error
+	CreateCredential(ctx context.Context, c *types.AgentCredential) error
+	GetCredential(ctx context.Context, tenantID uint64, name string) (*types.AgentCredential, error)
+	ListCredentials(ctx context.Context, tenantID uint64) ([]*types.AgentCredential, error)
+	DeleteCredential(ctx context.Context, tenantID uint64, name string) error
+	TouchCredentialUsage(ctx context.Context, tenantID uint64, name string) error
+	AppendLedger(ctx context.Context, e *types.AgentCreditLedgerEntry) error
+	SumChargesSince(ctx context.Context, tenantID uint64, agentID string, unit string, since time.Time) (int64, error)
+	CountInvocationsSince(ctx context.Context, tenantID uint64, agentID string, since time.Time) (int64, error)
+	CreatePolicy(ctx context.Context, p *types.AgentQuotaPolicy) error
+	GetActivePolicy(ctx context.Context, tenantID uint64) (*types.AgentQuotaPolicy, error)
+	ListPolicies(ctx context.Context, tenantID uint64) ([]*types.AgentQuotaPolicy, error)
+	ActivatePolicy(ctx context.Context, tenantID uint64, name string, version int64) error
+}
+
+// NewAgentStudioServiceWithExternal wires the service from any
+// repository that satisfies the same method set as the internal
+// typesRepo. The container passes interfaces.AgentStudioRepository
+// (or any compatible mock). AgentExecutor may be nil — the service
+// uses a stub executor when nil.
+func NewAgentStudioServiceWithExternal(repo AgentStudioRepositoryMirror, executor AgentExecutor) *AgentStudioService {
+	return NewAgentStudioService(adapterToTypesRepo(repo), executor)
+}
+
+type externalRepoAdapter struct{ inner AgentStudioRepositoryMirror }
+
+func (a *externalRepoAdapter) CreateTrigger(ctx context.Context, t *types.AgentTrigger) error {
+	return a.inner.CreateTrigger(ctx, t)
+}
+func (a *externalRepoAdapter) GetTrigger(ctx context.Context, tenantID uint64, id uint64) (*types.AgentTrigger, error) {
+	return a.inner.GetTrigger(ctx, tenantID, id)
+}
+func (a *externalRepoAdapter) ListTriggersByAgent(ctx context.Context, tenantID uint64, agentID string) ([]*types.AgentTrigger, error) {
+	return a.inner.ListTriggersByAgent(ctx, tenantID, agentID)
+}
+func (a *externalRepoAdapter) ListActiveCronTriggers(ctx context.Context, before time.Time, limit int) ([]*types.AgentTrigger, error) {
+	return a.inner.ListActiveCronTriggers(ctx, before, limit)
+}
+func (a *externalRepoAdapter) UpdateTrigger(ctx context.Context, t *types.AgentTrigger) error {
+	return a.inner.UpdateTrigger(ctx, t)
+}
+func (a *externalRepoAdapter) DeleteTrigger(ctx context.Context, tenantID uint64, id uint64) error {
+	return a.inner.DeleteTrigger(ctx, tenantID, id)
+}
+func (a *externalRepoAdapter) CreateRun(ctx context.Context, r *types.AgentRun) error {
+	return a.inner.CreateRun(ctx, r)
+}
+func (a *externalRepoAdapter) GetRun(ctx context.Context, tenantID uint64, id uint64) (*types.AgentRun, error) {
+	return a.inner.GetRun(ctx, tenantID, id)
+}
+func (a *externalRepoAdapter) ListRunsByAgent(ctx context.Context, tenantID uint64, agentID string, limit, offset int) ([]*types.AgentRun, int64, error) {
+	return a.inner.ListRunsByAgent(ctx, tenantID, agentID, limit, offset)
+}
+func (a *externalRepoAdapter) UpdateRun(ctx context.Context, r *types.AgentRun) error {
+	return a.inner.UpdateRun(ctx, r)
+}
+func (a *externalRepoAdapter) CreateCredential(ctx context.Context, c *types.AgentCredential) error {
+	return a.inner.CreateCredential(ctx, c)
+}
+func (a *externalRepoAdapter) GetCredential(ctx context.Context, tenantID uint64, name string) (*types.AgentCredential, error) {
+	return a.inner.GetCredential(ctx, tenantID, name)
+}
+func (a *externalRepoAdapter) ListCredentials(ctx context.Context, tenantID uint64) ([]*types.AgentCredential, error) {
+	return a.inner.ListCredentials(ctx, tenantID)
+}
+func (a *externalRepoAdapter) DeleteCredential(ctx context.Context, tenantID uint64, name string) error {
+	return a.inner.DeleteCredential(ctx, tenantID, name)
+}
+func (a *externalRepoAdapter) TouchCredentialUsage(ctx context.Context, tenantID uint64, name string) error {
+	return a.inner.TouchCredentialUsage(ctx, tenantID, name)
+}
+func (a *externalRepoAdapter) AppendLedger(ctx context.Context, e *types.AgentCreditLedgerEntry) error {
+	return a.inner.AppendLedger(ctx, e)
+}
+func (a *externalRepoAdapter) SumChargesSince(ctx context.Context, tenantID uint64, agentID string, unit string, since time.Time) (int64, error) {
+	return a.inner.SumChargesSince(ctx, tenantID, agentID, unit, since)
+}
+func (a *externalRepoAdapter) CountInvocationsSince(ctx context.Context, tenantID uint64, agentID string, since time.Time) (int64, error) {
+	return a.inner.CountInvocationsSince(ctx, tenantID, agentID, since)
+}
+func (a *externalRepoAdapter) CreatePolicy(ctx context.Context, p *types.AgentQuotaPolicy) error {
+	return a.inner.CreatePolicy(ctx, p)
+}
+func (a *externalRepoAdapter) GetActivePolicy(ctx context.Context, tenantID uint64) (*types.AgentQuotaPolicy, error) {
+	return a.inner.GetActivePolicy(ctx, tenantID)
+}
+func (a *externalRepoAdapter) ListPolicies(ctx context.Context, tenantID uint64) ([]*types.AgentQuotaPolicy, error) {
+	return a.inner.ListPolicies(ctx, tenantID)
+}
+func (a *externalRepoAdapter) ActivatePolicy(ctx context.Context, tenantID uint64, name string, version int64) error {
+	return a.inner.ActivatePolicy(ctx, tenantID, name, version)
+}
+
+func adapterToTypesRepo(r AgentStudioRepositoryMirror) typesRepo {
+	return &externalRepoAdapter{inner: r}
 }

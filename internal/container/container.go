@@ -678,7 +678,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewCollabDocAuditHandler))
 	// v0.7.21 — Custom Agent Studio wiring (飞书妙搭 / Notion Custom Agents parity).
 	must(container.Provide(repository.NewAgentStudioRepository, dig.As(new(interfaces.AgentStudioRepository))))
-	must(container.Provide(asvc.NewAgentStudioService))
+	// NewAgentStudioService takes the package-local typesRepo and
+	// AgentExecutor interfaces. Use the cross-package constructor
+	// that accepts the exported interface from interfaces/.
+	must(container.Provide(func(repo interfaces.AgentStudioRepository) *asvc.AgentStudioService {
+		return asvc.NewAgentStudioServiceWithExternal(repo, nil)
+	}))
 	must(container.Provide(handler.NewAgentStudioHandler))
 
 	// v0.7.20 — wiki sync blocks wiring (Notion Synced Blocks / 飞书同步块 parity).
