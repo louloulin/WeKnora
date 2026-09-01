@@ -692,7 +692,9 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(func(repo interfaces.DLPAuthZRepository) *dlpsvc.DLPScanner {
 		return dlpsvc.NewDLPScannerWithExternal(repo)
 	}))
-	must(container.Provide(authzsvc.NewAuthZAdmin))
+	must(container.Provide(func(repo interfaces.DLPAuthZRepository) *authzsvc.AuthZAdmin {
+		return authzsvc.NewAuthZAdminWithExternal(repo)
+	}))
 	must(container.Provide(handler.NewDLPAuthZHandler))
 
 	// v0.7.23 — Doc ↔ KB AI Bridge (Doc ↔ KB summaries only;

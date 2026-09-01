@@ -244,3 +244,39 @@ func (c *versionCache) invalidate(tenantID uint64, policyKey string) {
 	defer c.mu.Unlock()
 	delete(c.entries, cacheKey(tenantID, policyKey))
 }
+
+
+// AuthZRepoMirror lets the container pass any repo whose method set
+// matches interfaces.DLPAuthZRepository (the AuthZ admin uses the
+// same table-backed interface).
+type AuthZRepoMirror interface {
+	CreateAuthZPolicyVersion(ctx context.Context, p *types.AuthZPolicyVersion) error
+	GetAuthZPolicyVersion(ctx context.Context, tenantID uint64, id uint64) (*types.AuthZPolicyVersion, error)
+	GetLatestAuthZPolicy(ctx context.Context, tenantID uint64, policyKey string) (*types.AuthZPolicyVersion, error)
+	ListAuthZPolicyVersions(ctx context.Context, tenantID uint64, policyKey string) ([]*types.AuthZPolicyVersion, error)
+	ListAuthZPolicyKeys(ctx context.Context, tenantID uint64) ([]string, error)
+}
+
+type authZAdapter struct{ inner AuthZRepoMirror }
+
+func (a *authZAdapter) CreateAuthZPolicyVersion(ctx context.Context, p *types.AuthZPolicyVersion) error {
+	return a.inner.CreateAuthZPolicyVersion(ctx, p)
+}
+func (a *authZAdapter) GetAuthZPolicyVersion(ctx context.Context, tenantID uint64, id uint64) (*types.AuthZPolicyVersion, error) {
+	return a.inner.GetAuthZPolicyVersion(ctx, tenantID, id)
+}
+func (a *authZAdapter) GetLatestAuthZPolicy(ctx context.Context, tenantID uint64, policyKey string) (*types.AuthZPolicyVersion, error) {
+	return a.inner.GetLatestAuthZPolicy(ctx, tenantID, policyKey)
+}
+func (a *authZAdapter) ListAuthZPolicyVersions(ctx context.Context, tenantID uint64, policyKey string) ([]*types.AuthZPolicyVersion, error) {
+	return a.inner.ListAuthZPolicyVersions(ctx, tenantID, policyKey)
+}
+func (a *authZAdapter) ListAuthZPolicyKeys(ctx context.Context, tenantID uint64) ([]string, error) {
+	return a.inner.ListAuthZPolicyKeys(ctx, tenantID)
+}
+
+// NewAuthZAdminWithExternal wires the service from any repo whose
+// method set matches AuthZRepoMirror.
+func NewAuthZAdminWithExternal(repo AuthZRepoMirror) *AuthZAdmin {
+	return NewAuthZAdmin(&authZAdapter{inner: repo})
+}
