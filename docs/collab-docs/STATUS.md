@@ -3002,3 +3002,91 @@ notes round-trip ok: PASS
   因为演示文稿中以文本框和矩形为主）
 - 翻页时未实现 fade/slide 等过渡动画（与 PowerPoint 的"转场"独立，演示过程是直切）
 - 未实现点击黑屏区域 → 下一页（只支持 keyboard + 工具栏按钮）
+
+## 45. v0.7.97 — SLIDE 布局切换 UI（master / layout binding）（2026-09-02）
+
+### 45.1 背景
+
+SLIDE 编辑器已经支持形状编辑、主题、转场、动画、备注、演示模式。
+缺一个关键能力：**布局（layout）切换**。腾讯文档/Keynote/PowerPoint 都有"布局"工具栏，
+让用户选择标题页 / 标题正文 / 两栏 / 空白 等预设母版布局。
+
+genoffice 已 vendor：
+- `engine.setSlideLayout` (pptx-engine/index.ts:2233)
+- `engine.resetSlideLayout` (pptx-engine/index.ts:2298)
+- `engine.listSlideLayouts` (layout.ts:102)
+- `engine.ensureBuiltinLayout` (builtin-layouts.ts:167)
+
+但 WeKnora 前端从未接通 UI。
+
+### 45.2 实现
+
+**`frontend/src/editor/adapters/pptxShapeAdapter.ts`**：
+- import + re-export `setSlideLayout` / `resetSlideLayout` / `listSlideLayouts`
+- 新增 `listSlideLayouts(deck)` → 列出 archive 内所有 slideLayouts (path / name / placeholders 数)
+- 新增 `setSlideLayout(deck, slideIndex, layoutPath)` → 调 engine，返回 boolean
+- 新增 `resetSlideLayout(deck, slideIndex)` → 调 engine，返回 boolean
+
+**`frontend/src/components/collab/CollabSlideKonvaEditor.vue`**：
+- 工具栏 ▶ 演示按钮后加 `<select data-testid="slide-layout-select">布局: ...</select>`
+- `availableLayouts` computed：调用 `listSlideLayouts(deck)`，列出当前 deck 内已有 layout
+- `missingBuiltins` computed：对比 6 个 hardcoded builtin names（Title Slide / Title and Content / Section Header / Two Content / Title Only / Blank），列出未注入的
+- `onLayoutSelect(e)` handler：
+  - value 以 `builtin:` 开头 → 调 `ensureBuiltinLayout` 注入 → 用返回的 path 继续
+  - 否则直接用 value 当 layoutPath
+  - 调 `setSlideLayout(deck, activeIndex, layoutPath)`
+  - 成功 → `savetagClass.dirty = true` + `saveLabel = '布局已切换 · 待保存'` + `scheduleSave()` (1.5s debounce)
+
+### 45.3 新增文件
+
+- `frontend/wk-slide-layout.mjs`：Playwright 双 context + PPTX rels 解压验证脚本
+
+### 45.4 真实双端浏览器验证
+
+`node frontend/wk-slide-layout.mjs`：
+
+```
+baseline slide1 layout target: ../slideLayouts/slideLayout1.xml (Blank)
+baseline layouts in package: ['ppt/slideLayouts/slideLayout1.xml', 'ppt/slideLayouts/slideLayout2.xml']
+
+layout option count: 7
+ - value=ppt/slideLayouts/slideLayout1.xml text=Blank（0 占位）
+ - value=ppt/slideLayouts/slideLayout2.xml text=Title and Content（2 占位）
+ - value=builtin:titleSlide text=+ Title Slide（内置）
+ - value=builtin:sectionHeader text=+ Section Header（内置）
+ - value=builtin:twoContent text=+ Two Content（内置）
+ - value=builtin:titleOnly text=+ Title Only（内置）
+
+picking: builtin:titleContent  → ensureBuiltinLayout 注入 slideLayout2 (Title and Content)
+after apply slide1 layout target: ../slideLayouts/slideLayout2.xml
+after apply layouts in package: ['ppt/slideLayouts/slideLayout1.xml', 'ppt/slideLayouts/slideLayout2.xml']
+
+picking: ppt/slideLayouts/slideLayout1.xml (Blank)
+after blank slide1 layout target: ../slideLayouts/slideLayout1.xml
+bob slide1 layout target: ../slideLayouts/slideLayout1.xml
+
+ALL OK — slide layout switcher
+```
+
+验证覆盖：
+- 工具栏布局下拉列出已有 layout + 未注入的内置 builtin (optgroup)
+- 选择 builtin → engine 注入新 layout part + 修改 slide rels 指向
+- 选择已有 layout → engine 修改 slide rels 指向
+- 自动保存 round-trip 到 PPTX 文件，rels 文件 Target 属性真实变化
+- Bob peer 重新下载同一文档，slide1.xml.rels Target 与 Alice 一致
+- after1TitleContent 内容包含 "Title and Content"（确认新 layout XML 真的注入并被引用）
+
+截图：
+- `/tmp/wk-shots/slide-layout-after.png` (Alice)
+- `/tmp/wk-shots/slide-layout-bob.png` (Bob)
+
+### 45.5 类型检查
+
+`vue-tsc -p tsconfig.app.json --noEmit` 对 `CollabSlideKonvaEditor.vue` + `pptxShapeAdapter.ts` 输出 0 新错误。
+
+### 45.6 已知遗留
+
+- 未实现自定义 layout 模板上传（只能选 builtin + 已存在的 layout）
+- 切换 layout 时 placeholder 默认位置会被覆盖，遗留的形状保持在原位
+  （与 PowerPoint 行为一致）
+- 未实现 layout 缩略图预览（只显示 name + 占位数）

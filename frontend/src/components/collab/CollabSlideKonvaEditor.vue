@@ -65,6 +65,26 @@
         @click="onEnterPresent"
         title="全屏演示 (F5)"
       >▶ 演示</button>
+      <label class="collab-slide-konva__layout-select">
+        布局:
+        <select
+          class="collab-slide-konva__layout-dropdown"
+          data-testid="slide-layout-select"
+          :disabled="!slides.length || loading"
+          @change="onLayoutSelect"
+          title="切换幻灯片布局"
+        >
+          <option value="">— 选择布局 —</option>
+          <option v-for="layout in availableLayouts" :key="layout.path" :value="layout.path">
+            {{ layout.name }}（{{ layout.placeholders }} 占位）
+          </option>
+          <optgroup v-if="missingBuiltins.length" label="内置布局（未注入）">
+            <option v-for="b in missingBuiltins" :key="b.key" :value="'builtin:' + b.key">
+              + {{ b.name }}（内置）
+            </option>
+          </optgroup>
+        </select>
+      </label>
       <button @click="deleteSelected" type="button" :disabled="!selectedId" data-testid="slide-delete-selected">删除</button>
       <button @click="duplicateSelected" type="button" :disabled="!selectedId" title="复制所选">⎘ 复制</button>
       <button @click="bringForward" type="button" :disabled="!selectedId" title="上移一层">↑ 上移</button>
@@ -705,6 +725,10 @@ import {
   setSlideAnimationsOnDeck,
   getSlideTransitionOnDeck,
   setSlideTransitionOnDeck,
+  setSlideLayout,
+  resetSlideLayout,
+  listSlideLayouts,
+  ensureBuiltinLayout,
   applyThemeToDeck,
   recolorDeck,
   type PptxShape,
@@ -1693,6 +1717,60 @@ const onSlideThemeApply = async (e: Event) => {
     scheduleSave()
   } else {
     MessagePlugin.warning(`主题 ${preset.name} 未匹配到任何 theme*.xml 或 srgbClr`)
+  }
+}
+
+// --- v0.7.97 — slide layout switcher (master / layout binding) ---
+const sizeW = computed(() => deck.value?.slides[0]?.width ?? SLIDE_W_INCH * 914400)
+const sizeH = computed(() => deck.value?.slides[0]?.height ?? SLIDE_H_INCH * 914400)
+const availableLayouts = computed(() => {
+  if (!deck.value) return []
+  return listSlideLayouts(deck.value as unknown as PptxShapeDeck)
+})
+const missingBuiltins = computed(() => {
+  const present = new Set(availableLayouts.value.map((l) => l.name))
+  const catalog = [
+    { key: 'titleSlide', name: 'Title Slide' },
+    { key: 'titleContent', name: 'Title and Content' },
+    { key: 'sectionHeader', name: 'Section Header' },
+    { key: 'twoContent', name: 'Two Content' },
+    { key: 'titleOnly', name: 'Title Only' },
+    { key: 'blank', name: 'Blank' },
+  ]
+  return catalog.filter((b) => !present.has(b.name))
+})
+const onLayoutSelect = (e: Event) => {
+  const v = (e.target as HTMLSelectElement).value
+  ;(e.target as HTMLSelectElement).value = ''
+  if (!v || !deck.value) return
+  let layoutPath = v
+  // Inject builtin if requested
+  if (v.startsWith('builtin:')) {
+    const key = v.slice('builtin:'.length)
+    const inserted = ensureBuiltinLayout(
+      deck.value as unknown as PptxShapeDeck,
+      sizeW.value,
+      sizeH.value,
+      key,
+    )
+    if (!inserted) {
+      MessagePlugin.error(`内置布局 ${key} 注入失败`)
+      return
+    }
+    layoutPath = inserted
+  }
+  const ok = setSlideLayout(
+    deck.value as unknown as PptxShapeDeck,
+    activeIndex.value,
+    layoutPath,
+  )
+  if (ok) {
+    savetagClass.dirty = true
+    saveLabel.value = '布局已切换 · 待保存'
+    scheduleSave()
+    MessagePlugin.success(`已切换到布局 ${layoutPath}`)
+  } else {
+    MessagePlugin.error('布局切换失败')
   }
 }
 

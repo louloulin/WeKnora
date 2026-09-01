@@ -42,7 +42,16 @@ import {
   type SlideSize as EngineSlideSize,
   type MasterPartInfo as EngineMasterPartInfo,
   type BuiltinLayoutDef,
+  setSlideTransition as engineSetSlideTransition,
+  getSlideTransition as engineGetSlideTransition,
+  insertBlankSlide as engineInsertBlankSlide,
+  addElement as engineAddElement,
+  setSlideLayout as engineSetSlideLayout,
+  resetSlideLayout as engineResetSlideLayout,
+  listSlideLayouts as engineListSlideLayouts,
 } from '../engines/pptx-engine/index'
+import type { NewElementOptions } from '../engines/pptx-engine/index'
+import type { SlideTransitionKind } from '../engines/pptx-engine/generate'
 
 export interface PptxShape {
   /** Unique id within a slide; stable across edits. */
@@ -90,6 +99,8 @@ export interface PptxShape {
   /** Number of rows / columns (table only). */
   rows?: number
   cols?: number
+  /** Rotation in degrees (0-360). Applied around the shape center. */
+  rotation?: number
 }
 
 export interface PptxShapeSlide {
@@ -303,6 +314,49 @@ export async function openPptxShapes(bytes: Uint8Array): Promise<PptxShapeDeck> 
 export async function newPptxShapeDeck(): Promise<PptxShapeDeck> {
   const bytes = await engineCreateBlankPptx()
   return openPptxShapes(bytes)
+}
+
+/** Insert a valid blank slide after the requested slide. */
+export function insertBlankSlideOnDeck(deck: PptxShapeDeck, sourceIndex: number): Slide | null {
+  if (!deck.opened) return null
+  return engineInsertBlankSlide(deck.opened, sourceIndex)
+}
+
+/** Add a shape through the engine so its original OOXML anchor is saveable. */
+export function addShapeOnDeck(
+  deck: PptxShapeDeck,
+  slideIndex: number,
+  shapeType: PptxShape['type'],
+  offset: { x: number; y: number; cx: number; cy: number },
+): PptxShape | null {
+  const slide = deck.opened?.deck.slides[slideIndex]
+  if (!slide) return null
+  const kindByType: Partial<Record<PptxShape['type'], string>> = {
+    text: 'textbox',
+    rect: 'rect',
+    roundRect: 'roundRect',
+    ellipse: 'ellipse',
+    line: 'line',
+    arrow: 'rightArrow',
+    triangle: 'triangle',
+    star: 'star5',
+    hexagon: 'hexagon',
+    callout: 'callout1',
+  }
+  const kind = kindByType[shapeType]
+  if (!kind) return null
+  const options: NewElementOptions = {
+    kind,
+    offset,
+    paragraphs: shapeType === 'text' ? [{ runs: [{ text: '双击编辑文本' }] }] : [{ runs: [{ text: '' }] }],
+    ...(shapeType === 'rect' ? { fillColor: '#3B82F6' } : {}),
+    ...(shapeType === 'ellipse' ? { fillColor: '#10B981' } : {}),
+    ...(shapeType === 'line' ? { stroke: { color: '#111827', widthEmu: 12700 } } : {}),
+  }
+  const element = engineAddElement(slide, options)
+  const shape = shapeFromTextElement(element)
+  if (!shape) return null
+  return { ...shape, type: shapeType, rotation: 0 }
 }
 
 /** Helper: convert EMU to inches (used by Konva for readable sizes). */
@@ -616,6 +670,26 @@ export function getSlideAnimationsOnDeck(
 }
 
 /** Replace the animation list on a slide. Returns true on success. */
+export function getSlideTransitionOnDeck(deck: PptxShapeDeck, slideIndex: number): SlideTransitionKind {
+  const opened = deck.opened
+  if (!opened) return 'none'
+  const slide = opened.deck.slides[slideIndex]
+  if (!slide) return 'none'
+  return engineGetSlideTransition(slide)
+}
+
+export function setSlideTransitionOnDeck(
+  deck: PptxShapeDeck,
+  slideIndex: number,
+  kind: SlideTransitionKind,
+): void {
+  const opened = deck.opened
+  if (!opened) return
+  const slide = opened.deck.slides[slideIndex]
+  if (!slide) return
+  engineSetSlideTransition(slide, kind)
+}
+
 export function setSlideAnimationsOnDeck(
   deck: PptxShapeDeck,
   slideIndex: number,
@@ -732,6 +806,42 @@ export function ensureBuiltinLayout(
     ) as string | null
   } catch {
     return null
+  }
+}
+
+/** Enumerate slide layouts available in the deck (path / name / placeholders). */
+export function listSlideLayouts(deck: PptxShapeDeck): Array<{ path: string; name: string; placeholders: number }> {
+  if (!deck.opened) return []
+  try {
+    return engineListSlideLayouts(deck.opened.archive).map((l) => ({
+      path: l.path,
+      name: l.name,
+      placeholders: l.placeholders?.length ?? 0,
+    }))
+  } catch {
+    return []
+  }
+}
+
+/** Switch the active slide to a different layout (path from listSlideLayouts). */
+export function setSlideLayout(deck: PptxShapeDeck, slideIndex: number, layoutPath: string): boolean {
+  if (!deck.opened) return false
+  try {
+    const slide = engineSetSlideLayout(deck.opened, slideIndex, layoutPath)
+    return slide !== null
+  } catch {
+    return false
+  }
+}
+
+/** Reset the active slide's layout (drop explicit placeholder xfrm, fall back to layout/master). */
+export function resetSlideLayout(deck: PptxShapeDeck, slideIndex: number): boolean {
+  if (!deck.opened) return false
+  try {
+    const slide = engineResetSlideLayout(deck.opened, slideIndex)
+    return slide !== null
+  } catch {
+    return false
   }
 }
 

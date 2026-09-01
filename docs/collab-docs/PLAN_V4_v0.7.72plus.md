@@ -286,3 +286,27 @@ Alice 切到 Sheet2 写 A1=Bob 在 Sheet2 看到，Sheet1 不会串表。已 PAS
 - v0.7.98 SHEET 命名区域 UI (xlsxDefinedNames.ts 已就位)
 - v0.7.99 DOC 修订对比 viewer (audit timeline 增强)
 - 持续收敛 genoffice vendor (doc* / xlsx* / pivot* adapters + 配套 vitest 按模块分组)
+
+## 11. v0.7.97 — SLIDE 布局切换 UI（已交付，2026-09-02）
+
+### 已完成
+
+- pptxShapeAdapter 暴露 listSlideLayouts / setSlideLayout / resetSlideLayout
+- 工具栏布局下拉 (data-testid="slide-layout-select")
+- availableLayouts computed 列出 deck 内 layout
+- missingBuiltins computed 列出未注入的 6 个 builtin (Title Slide / Title and Content / Section Header / Two Content / Title Only / Blank)
+- onLayoutSelect handler: builtin: 前缀先 ensureBuiltinLayout 注入,再 setSlideLayout 切换,标 dirty + scheduleSave 1.5s debounce
+
+### 真实双端验证
+
+`frontend/wk-slide-layout.mjs` 已 PASS:
+- 选 builtin:titleContent → ensureBuiltinLayout 注入 slideLayout2 → setSlideLayout 切到 slideLayout2 → 自动保存 → 重下载 PPTX 解压 → slide1.xml.rels Target 变成 ../slideLayouts/slideLayout2.xml
+- 选 slideLayout1 (Blank) → 切回 → Target 变成 ../slideLayouts/slideLayout1.xml
+- Bob peer 重下载,rels Target 与 Alice 一致
+- new layout 内容包含 "Title and Content"
+
+### 下一阶段
+
+- v0.7.98 SHEET 命名区域 UI (xlsxDefinedNames.ts 已就位)
+- v0.7.99 DOC 修订对比 viewer (audit timeline 增强)
+- 持续收敛 genoffice vendor (doc* / xlsx* / pivot* / slide* adapters + 配套 vitest)
