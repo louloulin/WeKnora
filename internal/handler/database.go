@@ -95,7 +95,10 @@ func (h *DatabaseHandler) resolveKB(c *gin.Context) (uint64, string, string, boo
 	if !ok {
 		return 0, "", "", false
 	}
-	kbID := c.Param("kb_id")
+	kbID := c.Param("id")
+	if kbID == "" {
+		kbID = c.Param("kb_id")
+	}
 	if kbID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "kb_id required"})
 		return 0, "", "", false

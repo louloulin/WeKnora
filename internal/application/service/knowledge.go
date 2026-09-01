@@ -150,6 +150,63 @@ func NewKnowledgeService(
 	}, nil
 }
 
+// KnowledgeServiceConcrete is an exported alias of the package-private
+// knowledgeService struct. The dig container needs to register the
+// concrete pointer type so it can use dig.As to expose the same instance
+// as both interfaces.KnowledgeService and interfaces.KBRetriever —
+// dig.As cannot be applied to constructors whose result is already an
+// interface (result-object constructors).
+type KnowledgeServiceConcrete = knowledgeService
+
+// NewKnowledgeServiceConcrete is a single-return variant of
+// NewKnowledgeService for the DI container. It panics on error so that
+// dig can consume it as a regular constructor (dig does not support
+// functions with multiple return values).
+func NewKnowledgeServiceConcrete(
+	config *config.Config,
+	repo interfaces.KnowledgeRepository,
+	documentReader interfaces.DocumentReader,
+	kbService interfaces.KnowledgeBaseService,
+	tenantRepo interfaces.TenantRepository,
+	tenantService interfaces.TenantService,
+	chunkService interfaces.ChunkService,
+	chunkRepo interfaces.ChunkRepository,
+	tagRepo interfaces.KnowledgeTagRepository,
+	tagService interfaces.KnowledgeTagService,
+	fileSvc interfaces.FileService,
+	storageResolver interfaces.StorageBackendResolver,
+	resourceCatalog interfaces.ResourceCatalog,
+	modelService interfaces.ModelService,
+	task interfaces.TaskEnqueuer,
+	taskInspector interfaces.TaskInspector,
+	graphEngine interfaces.RetrieveGraphRepository,
+	retrieveEngine interfaces.RetrieveEngineRegistry,
+	ownership retriever.TenantStoreOwnership,
+	redisClient *redis.Client,
+	kbShareService interfaces.KBShareService,
+	imageResolver *docparser.ImageResolver,
+	wikiRepo interfaces.WikiPageRepository,
+	wikiService interfaces.WikiPageService,
+	taskPendingRepo interfaces.TaskPendingOpsRepository,
+	spanTracker SpanTracker,
+	audit interfaces.AuditLogService,
+) *KnowledgeServiceConcrete {
+	svc, err := NewKnowledgeService(
+		config, repo, documentReader, kbService, tenantRepo, tenantService,
+		chunkService, chunkRepo, tagRepo, tagService, fileSvc,
+		storageResolver, resourceCatalog, modelService, task, taskInspector,
+		graphEngine, retrieveEngine, ownership, redisClient, kbShareService,
+		imageResolver, wikiRepo, wikiService, taskPendingRepo, spanTracker, audit,
+	)
+	if err != nil {
+		panic(fmt.Errorf("NewKnowledgeService: %w", err))
+	}
+	if svc == nil {
+		panic(fmt.Errorf("NewKnowledgeService: nil service without error"))
+	}
+	return svc.(*KnowledgeServiceConcrete)
+}
+
 // tracker returns a usable SpanTracker — falls back to a no-op when the
 // service was constructed without one (test harness, lite mode w/o repo).
 // All pipeline call sites go through this so they never need a nil check.

@@ -99,7 +99,7 @@ type User struct {
 	// OIDCManagedSystemAdmin records whether the system-admin grant came from
 	// the configured OIDC platform permission. Manual grants are never revoked
 	// by a later OIDC claim change.
-	OIDCManagedSystemAdmin bool `json:"-" gorm:"default:false;index"`
+	OIDCManagedSystemAdmin bool `json:"-" gorm:"column:oidc_managed_system_admin;default:false;index"`
 	// Per-user UI/feature preferences.
 	// Stored as JSON (jsonb on Postgres, TEXT on SQLite) via the
 	// driver.Valuer / sql.Scanner methods on UserPreferences.

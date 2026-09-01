@@ -432,8 +432,44 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(service.NewOrganizationService))
 	must(container.Provide(service.NewKBShareService)) // KBShareService must be registered before KnowledgeService and KnowledgeTagService
 	must(container.Provide(service.NewAgentShareService))
-	must(container.Provide(service.NewKnowledgeService))
-	must(container.Provide(service.NewSpanTracker))
+	must(container.Provide(func(
+		cfg *config.Config,
+		repo interfaces.KnowledgeRepository,
+		documentReader interfaces.DocumentReader,
+		kbService interfaces.KnowledgeBaseService,
+		tenantRepo interfaces.TenantRepository,
+		tenantService interfaces.TenantService,
+		chunkService interfaces.ChunkService,
+		chunkRepo interfaces.ChunkRepository,
+		tagRepo interfaces.KnowledgeTagRepository,
+		tagService interfaces.KnowledgeTagService,
+		fileSvc interfaces.FileService,
+		storageResolver interfaces.StorageBackendResolver,
+		resourceCatalog interfaces.ResourceCatalog,
+		modelService interfaces.ModelService,
+		task interfaces.TaskEnqueuer,
+		taskInspector interfaces.TaskInspector,
+		graphEngine interfaces.RetrieveGraphRepository,
+		retrieveEngine interfaces.RetrieveEngineRegistry,
+		ownership retriever.TenantStoreOwnership,
+		redisClient *redis.Client,
+		kbShareService interfaces.KBShareService,
+		imageResolver *docparser.ImageResolver,
+		wikiRepo interfaces.WikiPageRepository,
+		wikiService interfaces.WikiPageService,
+		taskPendingRepo interfaces.TaskPendingOpsRepository,
+		spanTracker service.SpanTracker,
+		audit interfaces.AuditLogService,
+	) *service.KnowledgeServiceConcrete {
+		return service.NewKnowledgeServiceConcrete(
+			cfg, repo, documentReader, kbService, tenantRepo, tenantService,
+			chunkService, chunkRepo, tagRepo, tagService, fileSvc,
+			storageResolver, resourceCatalog, modelService, task, taskInspector,
+			graphEngine, retrieveEngine, ownership, redisClient, kbShareService,
+			imageResolver, wikiRepo, wikiService, taskPendingRepo, spanTracker, audit,
+		)
+	}, dig.As(new(interfaces.KnowledgeService), new(interfaces.KBRetriever))))
+	must(container.Provide(service.NewSpanTracker, dig.As(new(service.SpanTracker))))
 	must(container.Provide(service.NewChunkService))
 	must(container.Provide(service.NewKnowledgeTagService))
 	must(container.Provide(embedding.NewBatchEmbedder))
@@ -512,7 +548,8 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// KnowledgeService.CreateKnowledgeFromManual path so connector
 	// messages go through the same draft → publish → chunk →
 	// embed pipeline as user-authored manual knowledge.
-	must(container.Provide(repository.NewConnectorRepository))
+	must(container.Provide(repository.NewConnectorRepository, dig.As(new(interfaces.IngestConnectorRepository))))
+	must(container.Provide(repository.NewIngestJobRepositoryAdapter, dig.As(new(interfaces.IngestJobRepository))))
 	must(container.Provide(func(ks interfaces.KnowledgeService) connsvc.KnowledgeIngester {
 		return connsvc.NewKnowledgeIngester(ks)
 	}))
@@ -591,11 +628,19 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(handler.NewFormulaHandler))
 	// v0.7.27 Build #33 — automation / button engine.
 	must(container.Provide(repository.NewAutomationRepository, dig.As(new(interfaces.AutomationRepository))))
-	must(container.Provide(autosvc.NewAgentStudioAdapter))
+	must(container.Provide(autosvc.NewAgentStudioAdapter, dig.As(new(autosvc.AgentRunner))))
 	must(container.Provide(autosvc.NewService))
 	must(container.Provide(handler.NewAutomationHandler))
 	// v0.7.29 Build #35 — knowledge graph + KGSupertags foundation.
 	must(container.Provide(repository.NewKGRepository, dig.As(new(interfaces.KGRepository))))
+	must(container.Provide(func() kg.LLMClient {
+		// Lite-mode stub. The KG pipeline is not exercised in lite mode
+		// because ENABLE_GRAPH_RAG=false; the NER/RE/Autofill stages
+		// never run. Returning a closure that produces an empty
+		// response lets the providers register without crashing the
+		// DI graph.
+		return nil
+	}, dig.As(new(kg.LLMClient))))
 	must(container.Provide(kg.NewNERPipeline))
 	must(container.Provide(kg.NewREPipeline))
 	must(container.Provide(kg.NewKGSupertagService))
@@ -608,7 +653,10 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	// v0.7.31 Build #36 — Multi-region + Data Residency foundation.
 	must(container.Provide(repository.NewRegionRepository, dig.As(new(interfaces.RegionRepository))))
 	must(container.Provide(func(repo interfaces.RegionRepository, cfg *config.Config) *regionsvc.Resolver {
-		defaultRegion := types.Region(cfg.Region.DefaultRegion)
+		var defaultRegion types.Region
+		if cfg.Region != nil {
+			defaultRegion = types.Region(cfg.Region.DefaultRegion)
+		}
 		if !defaultRegion.IsValid() {
 			defaultRegion = types.RegionDev
 		}
@@ -699,7 +747,7 @@ func BuildContainer(container *dig.Container) *dig.Container {
 
 	// v0.7.23 — Doc ↔ KB AI Bridge (Doc ↔ KB summaries only;
 	// WeKnora Base / Database is wired by Build #26 above).
-	must(container.Provide(repository.NewDockbRepository))
+	must(container.Provide(repository.NewDockbRepository, dig.As(new(interfaces.DocKBSummaryRepository))))
 	must(container.Provide(func(repo interfaces.DocKBSummaryRepository) *dockbsvc.SummariserService {
 		return dockbsvc.NewSummariserService(repo, dockbsvc.NoopSummariser{})
 	}))
@@ -786,13 +834,13 @@ func BuildContainer(container *dig.Container) *dig.Container {
 		repo interfaces.WikiSearchV2Repository,
 		kb interfaces.KnowledgeBaseService,
 		acl service.WikiAclService,
-	) interfaces.WikiSearchV2Service {
-		return service.NewWikiSearchV2Service(service.WikiSearchV2ServiceParams{
+	) *service.WikiSearchV2ServiceConcrete {
+		return service.NewWikiSearchV2ServiceConcrete(service.WikiSearchV2ServiceParams{
 			Repo: repo,
 			KB:   kb,
 			ACL:  acl,
 		})
-	}))
+	}, dig.As(new(interfaces.WikiSearchV2Service), new(interfaces.WikiRetriever))))
 	must(container.Provide(func(
 		kbSvc interfaces.KnowledgeBaseService,
 		searchSvc interfaces.WikiSearchV2Service,

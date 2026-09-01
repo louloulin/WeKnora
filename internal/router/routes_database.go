@@ -15,8 +15,8 @@ func RegisterDatabaseRoutes(
 	g *rbacGuards,
 ) {
 	// Top-level list/create under a knowledge base.
-	v1.GET("/knowledge-bases/:kb_id/databases", g.OwnedKBOrAdminFromKbIDParam(), h.List)
-	v1.POST("/knowledge-bases/:kb_id/databases", g.Admin(), h.Create)
+	v1.GET("/knowledge-bases/:id/databases", g.OwnedKBOrAdminFromKbIDParam(), h.List)
+	v1.POST("/knowledge-bases/:id/databases", g.Admin(), h.Create)
 
 	// Database-scoped reads.
 	v1.GET("/databases/:id", g.OwnedKBOrAdmin(), h.Get)

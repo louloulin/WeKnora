@@ -54,6 +54,20 @@ func NewWikiSearchV2Service(p WikiSearchV2ServiceParams) interfaces.WikiSearchV2
 	return &wikiSearchV2Service{repo: p.Repo, kb: p.KB, acl: p.ACL}
 }
 
+// WikiSearchV2ServiceConcrete is an exported alias of the package-private
+// wikiSearchV2Service struct. The dig container needs to register the
+// concrete pointer type so it can use dig.As to expose the same instance
+// as both interfaces.WikiSearchV2Service and interfaces.WikiRetriever —
+// dig.As cannot be applied to constructors whose result is already an
+// interface (result-object constructors).
+type WikiSearchV2ServiceConcrete = wikiSearchV2Service
+
+// NewWikiSearchV2ServiceConcrete is a single-return variant of
+// NewWikiSearchV2Service for the DI container.
+func NewWikiSearchV2ServiceConcrete(p WikiSearchV2ServiceParams) *WikiSearchV2ServiceConcrete {
+	return &wikiSearchV2Service{repo: p.Repo, kb: p.KB, acl: p.ACL}
+}
+
 // Search validates the request, calls the repo, and applies per-hit ACL
 // filtering. A hit whose ACL decision is not `allow` is dropped silently
 // (not even a `<mark>` stub) so the caller never learns the page exists.

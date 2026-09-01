@@ -209,3 +209,38 @@ LIMIT ? OFFSET ?`, tenantID, limit, offset).Scan(&rows).Error; err != nil {
 SELECT COUNT(*) FROM ingest_jobs WHERE tenant_id = ?`, tenantID).Scan(&total).Error
 	return rows, total, nil
 }
+
+// IngestJobRepositoryAdapter wraps *connectorRepository to expose the
+// IngestJobRepository interface. The base repo's Create/Get/etc. methods
+// are typed for *IngestConnector (matching IngestConnectorRepository), so
+// Go's lack of method overloading prevents reusing the same names for
+// *IngestJob. Forwarding here keeps both interfaces satisfied by the
+// single gorm-backed *connectorRepository.
+type IngestJobRepositoryAdapter struct {
+	repo *connectorRepository
+}
+
+func (a *IngestJobRepositoryAdapter) Create(ctx context.Context, job *types.IngestJob) error {
+	return a.repo.CreateJob(ctx, job)
+}
+
+func (a *IngestJobRepositoryAdapter) UpdateJob(ctx context.Context, job *types.IngestJob) error {
+	return a.repo.UpdateJob(ctx, job)
+}
+
+func (a *IngestJobRepositoryAdapter) Get(ctx context.Context, id uint64) (*types.IngestJob, error) {
+	return a.repo.GetJob(ctx, id)
+}
+
+func (a *IngestJobRepositoryAdapter) ListByConnector(ctx context.Context, tenantID string, connectorID uint64, limit, offset int) ([]*types.IngestJob, int, error) {
+	return a.repo.ListJobsByConnector(ctx, tenantID, connectorID, limit, offset)
+}
+
+func (a *IngestJobRepositoryAdapter) ListByTenant(ctx context.Context, tenantID string, limit, offset int) ([]*types.IngestJob, int, error) {
+	return a.repo.ListJobsByTenant(ctx, tenantID, limit, offset)
+}
+
+// NewIngestJobRepositoryAdapter wraps the connector repo as a IngestJobRepository.
+func NewIngestJobRepositoryAdapter(db *gorm.DB) *IngestJobRepositoryAdapter {
+	return &IngestJobRepositoryAdapter{repo: NewConnectorRepository(db)}
+}
