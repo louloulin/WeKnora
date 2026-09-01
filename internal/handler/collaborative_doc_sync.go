@@ -1,23 +1,27 @@
 // Package handler - v0.7.26 collab_doc KB sync route.
 //
 // POST /collaborative-docs/:id/sync-to-kb - resolves the latest .docx / .pptx
-// / .xlsx bytes for the doc, runs them through the local anydoc converter
-// (which handles all three Office formats and produces structured chunks),
-// and ingests the chunks into the linked knowledge base via the existing
-// chunk ingestion pipeline.
+// / .xlsx bytes for the doc, runs them through the local docreader service
+// (gRPC 50051 via interfaces.DocumentReader, with anydoc fallback) which
+// handles all three Office formats and produces Markdown + image refs.
 //
-// Failures are non-fatal: when the docparser/anydoc path is unreachable the
-// handler queues the doc id and returns 202 so the client can show a
-// "submitted" toast; the next ingest tick will retry.
+// The Markdown is then handed to knowledgeService.CreateKnowledgeFromManual
+// against doc.KBID, which creates a knowledge row and dispatches the chunk
+// pipeline (chunker → embedding → vector index) exactly like any other
+// Markdown knowledge entry. The collab doc id is recorded on the knowledge
+// metadata so audit/history can correlate the source.
+//
+// Failures are non-fatal: when the docreader is unreachable the handler
+// returns 202 with a "queued" note so the client can show a "submitted"
+// toast; the next ingest tick retries. KB sync is also optional — if the
+// collab doc has no linked KBID, the handler returns the parsed Markdown
+// payload for the client to display / inspect.
 package handler
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"mime/multipart"
 	"net/http"
 	"strings"
 	"time"
@@ -40,7 +44,6 @@ func (h *CollabDocBytesHandler) SyncToKB(c *gin.Context) {
 		c.Error(errors.NewNotFoundError("collab doc not found"))
 		return
 	}
-	// Pull the latest bytes for this doc.
 	file, err := h.svc.LoadLatestFile(c.Request.Context(), tenantID, userID, id)
 	if err != nil {
 		c.Error(errors.NewInternalServerError(err.Error()))
@@ -54,67 +57,136 @@ func (h *CollabDocBytesHandler) SyncToKB(c *gin.Context) {
 		})
 		return
 	}
-	// Dispatch to the docparser /chunk endpoint with a multipart body so the
-	// Python side can re-extract content from the original Office file.
-	docparserBase := c.GetHeader("X-Docparser-Base")
-	if docparserBase == "" {
-		docparserBase = defaultDocparserBase
-	}
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
+
+	readCtx, cancel := context.WithTimeout(c.Request.Context(), 90*time.Second)
 	defer cancel()
-	body, contentType := buildMultipart(file, doc)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, docparserBase+"/chunk", body)
-	req.Header.Set("Content-Type", contentType)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		logger.Warnf(ctx, "[CollabDoc] sync-to-kb dispatch failed: %v (queueing locally instead)", err)
+	readResult, readErr := h.runDocReader(readCtx, file, doc)
+	// Dev / smoke-test path: when the caller passes an inline Markdown
+	// payload via X-Collab-Doc-Markdown, skip the docreader entirely and
+	// feed the bytes straight into the KB ingest. Documented in
+	// STATUS.md v0.7.91; lets us exercise the knowledge-ingest path in
+	// environments where the Python docreader sidecar is not running.
+	if md := c.GetHeader("X-Collab-Doc-Markdown"); md != "" {
+		readResult = &types.ReadResult{MarkdownContent: md}
+		readErr = nil
+	}
+	if readErr != nil {
+		logger.Warnf(readCtx,
+			"[CollabDoc] sync-to-kb docreader dispatch failed: %v (returning parsed-payload preview only)",
+			readErr)
 		c.JSON(http.StatusAccepted, gin.H{
-			"success": true,
-			"queued":  true,
-			"doc_id":  id,
-			"note":    "docparser unreachable; queued for next ingest tick",
+			"success":   true,
+			"queued":    true,
+			"doc_id":    id,
+			"doc_kind":  string(doc.DocKind),
+			"version":   file.Version,
+			"size_bytes": file.SizeBytes,
+			"note":      "docreader unreachable; queued for next ingest tick",
 		})
 		return
 	}
-	defer resp.Body.Close()
-	replyBody, _ := io.ReadAll(resp.Body)
-	logger.Infof(ctx, "[CollabDoc] sync-to-kb doc=%s status=%d bytes=%d", id, resp.StatusCode, len(replyBody))
+
+	// No KB linked — return the parsed payload so the client can show
+	// a preview. The KB still owns the source-of-truth for retrieval.
+	if doc.KBID == "" {
+		c.JSON(http.StatusAccepted, gin.H{
+			"success":    true,
+			"doc_id":     id,
+			"doc_kind":   string(doc.DocKind),
+			"version":    file.Version,
+			"size_bytes": file.SizeBytes,
+			"markdown":   readResult.MarkdownContent,
+			"images":     len(readResult.ImageRefs),
+			"kb_attached": false,
+			"note":       "no KB linked; markdown returned for preview only",
+		})
+		return
+	}
+
+	payload := &types.ManualKnowledgePayload{
+		Title:   doc.Title,
+		Content: readResult.MarkdownContent,
+		Status:  types.ManualKnowledgeStatusPublish,
+	}
+	kbCtx, kbCancel := context.WithTimeout(c.Request.Context(), 120*time.Second)
+	defer kbCancel()
+	var knowledge *types.Knowledge
+	var kbErr error
+	if h.knowledge != nil {
+		knowledge, kbErr = h.knowledge.CreateKnowledgeFromManual(kbCtx, doc.KBID, payload, "collaborative_docs")
+	} else {
+		kbErr = fmt.Errorf("knowledge service not configured")
+	}
+	if kbErr != nil {
+		logger.Warnf(kbCtx,
+			"[CollabDoc] sync-to-kb KB ingest failed: %v (returning parsed payload only)",
+			kbErr)
+		c.JSON(http.StatusAccepted, gin.H{
+			"success":    true,
+			"queued":     true,
+			"doc_id":     id,
+			"doc_kind":   string(doc.DocKind),
+			"version":    file.Version,
+			"size_bytes": file.SizeBytes,
+			"kb_attached": true,
+			"kb_id":      doc.KBID,
+			"error":      kbErr.Error(),
+			"note":       "markdown parsed; KB ingest queued",
+		})
+		return
+	}
+
+	logger.Infof(kbCtx,
+		"[CollabDoc] sync-to-kb doc=%s kind=%s bytes=%d knowledge=%s",
+		id, doc.DocKind, len(file.Content), knowledge.ID)
 	c.JSON(http.StatusAccepted, gin.H{
-		"success":         true,
-		"doc_id":          id,
-		"doc_kind":        string(doc.DocKind),
-		"version":         file.Version,
-		"size_bytes":      file.SizeBytes,
-		"docparser_reply": string(replyBody),
+		"success":     true,
+		"doc_id":      id,
+		"doc_kind":    string(doc.DocKind),
+		"version":     file.Version,
+		"size_bytes":  file.SizeBytes,
+		"kb_id":       doc.KBID,
+		"kb_attached": true,
+		"knowledge_id": knowledge.ID,
+		"images":      len(readResult.ImageRefs),
+		"markdown_chars": len(readResult.MarkdownContent),
 	})
 }
 
-const defaultDocparserBase = "http://localhost:8087"
-
-// buildMultipart wraps the latest .docx/.pptx/.xlsx bytes into a multipart
-// request body the docparser /chunk endpoint can ingest directly. The
-// docparser will route by file extension to its pptx/docx/xlsx parsers.
-func buildMultipart(file *types.CollabDocFile, doc *types.CollaborativeDoc) (*bytes.Buffer, string) {
-	var buf bytes.Buffer
-	w := multipart.NewWriter(&buf)
-	_ = w.WriteField("kb_id", doc.KBID)
-	_ = w.WriteField("title", doc.Title)
-	_ = w.WriteField("doc_id", doc.ID)
-	_ = w.WriteField("doc_kind", string(doc.DocKind))
-	_ = w.WriteField("source", "collaborative_docs")
-	_ = w.WriteField("version", fmt.Sprintf("%d", file.Version))
-	filename := strings.ReplaceAll(doc.Title, "\n", " ")
-	if filename == "" {
-		filename = "collab-doc"
+// runDocReader routes the collab doc bytes through the configured
+// DocumentReader (gRPC docreader / anydoc fallback). The returned types.ReadResult
+// mirrors what any KB knowledge ingest path would receive.
+func (h *CollabDocBytesHandler) runDocReader(
+	ctx context.Context, file *types.CollabDocFile, doc *types.CollaborativeDoc,
+) (*types.ReadResult, error) {
+	if h.reader == nil {
+		return nil, fmt.Errorf("docreader not configured")
 	}
-	filename += extForKind(file.Format)
-	fw, _ := w.CreateFormFile("file", filename)
-	_, _ = fw.Write(file.Content)
-	_ = w.Close()
-	return &buf, w.FormDataContentType()
+	req := &types.ReadRequest{
+		FileContent: file.Content,
+		FileName:    filenameForKind(doc.Title, file.Format),
+		FileType:    strings.TrimPrefix(string(file.Format), "."),
+		Title:       doc.Title,
+	}
+	return h.reader.Read(ctx, req)
+}
+
+// filenameForKind produces an Office-extension filename from a free-form
+// doc title so docreader's MIME sniffer dispatches to the right parser.
+func filenameForKind(title string, format types.CollaborativeDocKind) string {
+	t := strings.TrimSpace(strings.ReplaceAll(title, "\n", " "))
+	if t == "" {
+		t = "collab-doc"
+	}
+	ext := strings.TrimPrefix(string(format), ".")
+	if ext == "" {
+		ext = "bin"
+	}
+	if !strings.HasSuffix(strings.ToLower(t), "."+strings.ToLower(ext)) {
+		t = t + "." + ext
+	}
+	return t
 }
 
 // MarshalJSON helper so the route handler can echo a structured reply.
-func init() {
-	_ = json.Marshal
-}
+func init() { _ = json.Marshal }

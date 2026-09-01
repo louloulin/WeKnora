@@ -27,17 +27,24 @@ import (
 	"github.com/Tencent/WeKnora/internal/errors"
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/gin-gonic/gin"
 )
 
 // CollabDocBytesHandler is the binary REST surface for collab docs.
 type CollabDocBytesHandler struct {
-	svc *service.CollabDocService
+	svc       *service.CollabDocService
+	reader    interfaces.DocumentReader
+	knowledge interfaces.KnowledgeService
 }
 
 // NewCollabDocBytesHandler wires the binary handler.
-func NewCollabDocBytesHandler(svc *service.CollabDocService) *CollabDocBytesHandler {
-	return &CollabDocBytesHandler{svc: svc}
+func NewCollabDocBytesHandler(
+	svc *service.CollabDocService,
+	reader interfaces.DocumentReader,
+	knowledge interfaces.KnowledgeService,
+) *CollabDocBytesHandler {
+	return &CollabDocBytesHandler{svc: svc, reader: reader, knowledge: knowledge}
 }
 
 // Mount attaches the binary routes onto an authenticated v1 group.

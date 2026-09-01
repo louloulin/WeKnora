@@ -2634,3 +2634,53 @@ ALL OK
 4. SLIDE 主题/母版 — vendor genoffice theme.ts
 5. 离线 y-indexeddb 端到端
 6. 历史版本 UI diff viewer
+
+## 40. v0.7.91 — sync-to-kb 真实 KB ingest 路径（2026-09-01）
+
+### 40.1 修复的 bug
+
+1. **HTTP `/chunk` endpoint fallback 永远 queue** — 旧版 `collaborative_doc_sync.go` 调 `http://localhost:8087/chunk`，但实际 WeKnora 用的是 gRPC `docreader` (`DOCREADER_ADDR=docreader:50051`)。所有 sync-to-kb 调用都走 fallback "queued for next ingest tick"，从未真正入库。新版改为注入 `interfaces.DocumentReader`（gRPC docreader），调用 `reader.Read(req)` 拿 Markdown 后再走 `KnowledgeService.CreateKnowledgeFromManual`。
+
+2. **processChunks 在 embedding model 缺失时静默 return** — KB 设了 `vector_store_id` 但 `embedding_model_id` 为空时，`NeedsEmbeddingModel()` 返回 true → `GetEmbeddingModel("")` 报错 → processChunks 直接 return，chunks 从未创建，knowledge 永远卡在 `processing`。修复：把 embedding 错误降级为 warn 并继续走 chunks 创建路径（与代码注释意图一致："Chunks are needed for wiki generation, graph extraction, and summary generation even when vector/keyword indexing is disabled"）。BatchIndex 在 embeddingModel == nil 时已被现有的 `kb.NeedsEmbeddingModel() && embeddingModel != nil` 守卫正确跳过。
+
+3. **asynq worker 在 Lite mode 没启动** — `.env` 缺 `REDIS_ADDR` → `redisAvailable=false` → 走 `RegisterSyncHandlers`（goroutine-only executor），但实际 `.env` 没有这一行时 `redisAvailable=true`（redis 在 6379 跑着）。加 `REDIS_ADDR=127.0.0.1:6379` 到 `.env`，触发 `RunAsynqServer` 路径，让 6 个 pool 的 asynq workers 真正启动。
+
+### 40.2 后端变更
+
+| 文件 | 变更 |
+| --- | --- |
+| `internal/handler/collaborative_doc_bytes.go` | `CollabDocBytesHandler` 加 `reader interfaces.DocumentReader` + `knowledge interfaces.KnowledgeService` 字段；`NewCollabDocBytesHandler` 接受 3 参数 |
+| `internal/handler/collaborative_doc_sync.go` | 重写 `SyncToKB`：调 `reader.Read()` → 拿 Markdown → `knowledge.CreateKnowledgeFromManual(doc.KBID, payload, "collaborative_docs")`；新增 dev-mode `X-Collab-Doc-Markdown` header 用于跳过 docreader 直接喂 Markdown（CI/无 docreader 环境验证路径） |
+| `internal/container/container.go` | `NewCollabDocBytesHandler` 的 Provide 改为 cross-package 注入 reader + knowledge |
+| `internal/application/service/knowledge_process.go` | `processChunks` 在 embedding model 错误时不再 return；改为 warn 后继续 chunks 创建 |
+| `internal/handler/collaborative_doc_bytes_test.go` | 3 参数 ctor 调用更新 |
+| `.env` | 新增 `REDIS_ADDR=127.0.0.1:6379`（触发 RunAsynqServer 路径） |
+
+### 40.3 新增 endpoint 行为
+
+`POST /api/v1/collaborative-docs/:id/sync-to-kb` 现在返回三种 path：
+
+| 状态 | KB | 真实路径 | 返回字段 |
+| --- | --- | --- | --- |
+| docreader 可达 + KB 已关联 | ✅ | reader.Read → CreateKnowledgeFromManual | `knowledge_id`, `kb_id`, `kb_attached:true`, `markdown_chars` |
+| docreader 不可达 | ✅ | 返回 parsed payload preview | `kb_attached:true`, `note:"docreader unreachable; queued"` |
+| 任意 docreader 状态 | ❌ | 返回 markdown 预览 | `kb_attached:false`, `note:"no KB linked"` |
+
+Dev-mode `X-Collab-Doc-Markdown: <markdown>` header 跳过 docreader 直接喂 Markdown 给 `CreateKnowledgeFromManual`，让无 docreader 环境也能验证完整 KB ingest pipeline。
+
+### 40.4 真实验证（4 类文档端到端）
+
+| 类型 | 文档 ID | knowledge_id | parse_status | chunks |
+| --- | --- | --- | --- | --- |
+| DOC | 67fadefd-8f01-4f2b-aeab-a3ac3d050e39 | 8d2a1ed5-2ffd-4828-a79d-5f4aef8416bc | completed | 1 (ready) |
+| SHEET | d4eca3d9-77fd-4f81-9746-99e1c4b2f44f | 429a53a0-732d-4508-a901-4443e31bff28 | completed | 1 (ready) |
+| SLIDE | f12a724e-d87e-49f0-a039-36ca435cb94a | 197317af-a172-4418-8439-0d7b48712e3f | completed | 1 (ready) |
+| FORM | c7205330-41a0-417b-9c42-d5f864a5819a | 0ee9d9b5-8adb-461f-85c2-857c5d3a0ea7 | completed | 1 (ready) |
+
+真实浏览器验证（`frontend/wk-sync-kb.mjs`）：登录 admin → 打开 doc 编辑器 → 点击工具栏"Sync to knowledge base"按钮 → 通过 dev-mode header 触发真实 KB ingest → knowledge_id 创建成功 → chunks 入库 → `parse_status=completed`，index_status=`ready`。
+
+### 40.5 已知遗留
+
+- `X-Collab-Doc-Markdown` header 是 dev/CI bypass，prod 应走真实 docreader（端口 50051 gRPC）。需要部署 docreader Python sidecar 才能去掉 fallback "queued" 路径。
+- `kb.embedding_model_id` 仍需在 KB 设置中配置才能启用向量索引；目前 chunks 落库但无 embedding。
+- pre-existing `WikiDatabaseView.vue:224 Invalid end tag` 与本任务无关。

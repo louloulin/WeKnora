@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -245,6 +246,7 @@ func (s *knowledgeService) processChunks(ctx context.Context,
 	kb *types.KnowledgeBase, knowledge *types.Knowledge, chunks []types.ParsedChunk,
 	opts ...ProcessChunksOptions,
 ) {
+	_ = os.Stderr // keep import used
 	// Get options
 	var options ProcessChunksOptions
 	if len(opts) > 0 {
@@ -259,14 +261,21 @@ func (s *knowledgeService) processChunks(ctx context.Context,
 		return
 	}
 
-	// Get embedding model for vectorization — only needed when vector/keyword indexing is enabled
+	// Get embedding model for vectorization — only needed when vector/keyword indexing is enabled.
+	// v0.7.91 — a missing / unconfigured embedding model is non-fatal when the KB
+	// is being kept around without vector/keyword retrieval (chunks still get
+	// persisted for wiki / graph / summary; downstream BatchIndex is skipped).
+	// Without this fallback, a KB with vector_store_id set but embedding_model_id
+	// unset would silently drop every chunk — including real KB ingest paths
+	// like collab-doc sync-to-kb. Earlier we logged the error and returned,
+	// leaving parse_status stuck on "processing" forever.
 	var embeddingModel embedding.Embedder
+	var embedErr error
 	if kb.NeedsEmbeddingModel() {
-		var err error
-		embeddingModel, err = s.modelService.GetEmbeddingModel(ctx, kb.EmbeddingModelID)
-		if err != nil {
-			logger.GetLogger(ctx).WithField("error", err).Errorf("processChunks get embedding model failed")
-			return
+		embeddingModel, embedErr = s.modelService.GetEmbeddingModel(ctx, kb.EmbeddingModelID)
+		if embedErr != nil {
+			logger.GetLogger(ctx).WithField("error", embedErr).Warnf("processChunks get embedding model failed; continuing without embeddings")
+			embeddingModel = nil
 		}
 	} else {
 		logger.Infof(ctx, "Vector/keyword indexing disabled for KB %s, skipping embedding model", kb.ID)

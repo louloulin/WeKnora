@@ -46,7 +46,10 @@ func buildTestStack(t *testing.T) (*gin.Engine, *types.CollaborativeDoc, string)
 	authz := &collTestAuthorizer{}
 	svc := newServiceWithDB(db, authz)
 	mdH := NewCollabDocHandler(svc)
-	bytesH := NewCollabDocBytesHandler(svc)
+	// v0.7.91 — wire real docreader + knowledge for the sync-to-kb test.
+	// nil mocks are safe: the handler short-circuits to "queued" path
+	// when either dependency is unreachable.
+	bytesH := NewCollabDocBytesHandler(svc, nil, nil)
 	r := gin.New()
 	rg := r.Group("/api/v1")
 	mdH.Mount(rg)

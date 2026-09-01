@@ -722,7 +722,17 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	}))
 	must(container.Provide(handler.NewCollabDocFormResponseHandler))
 	must(container.Provide(handler.NewCollabDocHandler))
-	must(container.Provide(handler.NewCollabDocBytesHandler))
+	// v0.7.91 — wire real docreader + knowledge service into the collab
+	// doc binary handler so sync-to-kb routes the Office bytes through
+	// the configured gRPC docreader and lands in the linked KB instead
+	// of always returning the "queued" fallback.
+	must(container.Provide(func(
+		svc *service.CollabDocService,
+		reader interfaces.DocumentReader,
+		knowledge interfaces.KnowledgeService,
+	) *handler.CollabDocBytesHandler {
+		return handler.NewCollabDocBytesHandler(svc, reader, knowledge)
+	}))
 	must(container.Provide(handler.NewCollabDocRealtimeWSHandler))
 	must(container.Provide(handler.NewCollabDocCommentHandler))
 	must(container.Provide(handler.NewCollabDocAuditHandler))
