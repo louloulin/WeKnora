@@ -639,9 +639,12 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(func(
 		snapRepo interfaces.WikiRealtimeSnapshotRepository,
 		sessRepo interfaces.WikiRealtimeSessionRepository,
-		checker *authz.CompositeChecker,
+		checker authz.Checker,
 	) *service.WikiRealtimeService {
-		return service.NewWikiRealtimeService(snapRepo, sessRepo, service.NewWikiRealtimeAuthzAdapter(checker))
+		if concrete, ok := checker.(*authz.CompositeChecker); ok {
+			return service.NewWikiRealtimeService(snapRepo, sessRepo, service.NewWikiRealtimeAuthzAdapter(concrete))
+		}
+		return service.NewWikiRealtimeService(snapRepo, sessRepo, service.NewWikiRealtimeAuthzAdapter(nil))
 	}))
 	must(container.Provide(func(svc *service.WikiRealtimeService) *handler.WikiRealtimeWSHandler {
 		return handler.NewWikiRealtimeWSHandler(svc)
@@ -698,9 +701,13 @@ func BuildContainer(container *dig.Container) *dig.Container {
 	must(container.Provide(func(
 		repo interfaces.WikiSyncBlockRepository,
 		refs interfaces.WikiSyncBlockRefRepository,
-		checker *authz.CompositeChecker,
+		checker authz.Checker,
 	) *service.WikiSyncBlockService {
-		return service.NewWikiSyncBlockService(repo, refs, service.NewWikiSyncBlockAuthzAdapter(checker))
+		var concrete *authz.CompositeChecker
+		if c, ok := checker.(*authz.CompositeChecker); ok {
+			concrete = c
+		}
+		return service.NewWikiSyncBlockService(repo, refs, service.NewWikiSyncBlockAuthzAdapter(concrete))
 	}))
 	must(container.Provide(func(svc *service.WikiSyncBlockService) *handler.WikiSyncBlockHandler {
 		return handler.NewWikiSyncBlockHandler(svc)

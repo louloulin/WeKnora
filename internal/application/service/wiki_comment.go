@@ -10,6 +10,7 @@ import (
 	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/google/uuid"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
 
 // WikiPageCommentService is the business logic layer for wiki page
@@ -18,7 +19,7 @@ import (
 // batch backfill). It mirrors the layering used by wiki_template.go
 // and wiki_acl.go in this package.
 type WikiPageCommentService struct {
-	repo *repository.WikiCommentRepository
+	repo interfaces.WikiCommentRepository
 	// pageLookup is a small interface so tests can stub the page
 	// existence check without spinning up the full wiki service.
 	pageLookup WikiPageExistenceLookup
@@ -32,7 +33,7 @@ type WikiPageExistenceLookup interface {
 }
 
 // NewWikiPageCommentService wires the service.
-func NewWikiPageCommentService(repo *repository.WikiCommentRepository, pageLookup WikiPageExistenceLookup) *WikiPageCommentService {
+func NewWikiPageCommentService(repo interfaces.WikiCommentRepository, pageLookup WikiPageExistenceLookup) *WikiPageCommentService {
 	return &WikiPageCommentService{repo: repo, pageLookup: pageLookup}
 }
 
