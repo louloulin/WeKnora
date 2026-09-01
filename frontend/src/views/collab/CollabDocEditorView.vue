@@ -47,6 +47,11 @@
         </div>
       </div>
       <div class="collab-editor-view__main">
+        <CollabSlideThemePanel
+          v-if="doc.doc_kind === 'slide'"
+          class="collab-editor-view__slide-theme"
+          @theme:apply="onSlideThemeApply"
+        />
         <CollabDocProEditor v-if="doc.doc_kind === 'doc'" :doc-id="doc.id" :title="doc.title" :token="token" :display-name="displayName" />
         <CollabSheetEditor v-else-if="doc.doc_kind === 'sheet'" :doc-id="doc.id" :title="doc.title" :token="token" :display-name="displayName" />
         <CollabSlideKonvaEditor
@@ -80,8 +85,10 @@ import CollabSlideKonvaEditor from '@/components/collab/CollabSlideKonvaEditor.v
 import CollabFormEditor from '@/components/collab/CollabFormEditor.vue'
 import CollabAuditTimeline from '@/components/collab/CollabAuditTimeline.vue'
 import CollabSharePasswordPanel from '@/components/collab/CollabSharePasswordPanel.vue'
+import CollabSlideThemePanel from '@/components/collab/CollabSlideThemePanel.vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { useAuthStore } from '@/stores/auth'
+import type { SlideThemePreset } from '@/editor/slides/themes/genofficeThemes'
 
 const route = useRoute()
 const doc = ref<CollabDoc | null>(null)
@@ -153,10 +160,24 @@ const onSyncToKB = async () => {
   }
 }
 
+const onSlideThemeApply = (preset: SlideThemePreset) => {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(
+    new CustomEvent('wk-slide-theme-apply', { detail: preset }),
+  )
+}
+
 onMounted(load)
 </script>
 
 <style scoped>
+.collab-editor-view__slide-theme {
+  margin: 8px 12px 0;
+  padding: 8px;
+  border: 1px solid var(--td-component-stroke);
+  border-radius: 6px;
+  background: var(--td-bg-color-container);
+}
 .collab-editor-view { display: flex; height: 100%; }
 .collab-editor-view__sidebar { width: 240px; padding: 16px; border-right: 1px solid var(--td-component-stroke); display: flex; flex-direction: column; gap: 12px; background: var(--td-bg-color-container); }
 .collab-editor-view__back { font-size: 13px; color: var(--td-brand-color-7); text-decoration: none; }

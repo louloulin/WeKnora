@@ -237,3 +237,27 @@ Alice 切到 Sheet2 写 A1=Bob 在 Sheet2 看到，Sheet1 不会串表。已 PAS
 - v0.7.95 SLIDE 主题真正落盘（Konva editor 监听 `wk-slide-theme-apply` →
   `applyThemeToDeck` + `recolorDeck` → 写回 `theme*.xml` → 重保存 round-trip）
 - 后续命名区域 / 跨 sheet 公式 / 表格样式 / 跨 sheet 引用
+
+## 9. v0.7.95 — SLIDE 主题真正落盘（已交付，2026-09-02）
+
+### 已完成
+
+- `CollabDocEditorView` 顶部条件挂 `<CollabSlideThemePanel>`（仅 slide 类型可见）
+- `CollabSlideKonvaEditor` 监听 `wk-slide-theme-apply` window event
+- 收到 preset → `applyThemeToDeck` 改写 theme*.xml + `recolorDeck` 重映射 srgbClr
+- 标 dirty + `scheduleSave()` 1.5s debounce 自动保存
+- Konva 端 `[...slides]` 触发重绘
+
+### 真实双端验证
+
+`frontend/wk-slide-theme-persist.mjs` 已 PASS：
+- alice 点 indigo swatch → 自动保存 → 重下载 PPTX → 解压 → theme1.xml 12 个
+  clrScheme 全部匹配 indigo 预设 → bob 端重下载同样匹配
+- 多主题切换 (office → forest) 测试也 PASS
+
+### 下一阶段
+
+- v0.7.96 SHEET 跨 sheet 公式 + 命名区域
+- v0.7.97 SLIDE 主题 Yjs 协同（让多端实时看到主题切换）
+- 持续收敛 genoffice vendor：把已 copy 的 doc*/xlsx*/pivot*/slide* adapters + 配套
+  vitest 按模块分组提交，避免一次性 PR 引入回归

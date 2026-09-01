@@ -61,6 +61,10 @@
       <button @click="duplicateSelected" type="button" :disabled="!selectedId" title="复制所选">⎘ 复制</button>
       <button @click="bringForward" type="button" :disabled="!selectedId" title="上移一层">↑ 上移</button>
       <button @click="sendBackward" type="button" :disabled="!selectedId" title="下移一层">↓ 下移</button>
+      <button @click="bringToFront" type="button" :disabled="!selectedId" title="置于顶层">⤒ 顶层</button>
+      <button @click="sendToBack" type="button" :disabled="!selectedId" title="置于底层">⤓ 底层</button>
+      <button @click="rotateSelected(-90)" type="button" :disabled="!selectedId" title="逆时针旋转 90° (Alt+←)" data-testid="slide-rotate-ccw">↺ 旋转</button>
+      <button @click="rotateSelected(90)" type="button" :disabled="!selectedId" title="顺时针旋转 90° (Alt+→)" data-testid="slide-rotate-cw">↻ 旋转</button>
       <span class="collab-slide-konva__divider" />
       <button @click="onUndo" type="button" :disabled="!canUndo" title="撤销 (Ctrl+Z)">↶ 撤销</button>
       <button @click="onRedo" type="button" :disabled="!canRedo" title="重做 (Ctrl+Shift+Z)">↷ 重做</button>
@@ -76,6 +80,7 @@
     </div>
     <div v-if="loading" class="collab-slide-konva__loading">加载演示文稿中…</div>
     <div v-else class="collab-slide-konva__body">
+      <p v-if="recoveryMessage" class="collab-slide-konva__recovery">{{ recoveryMessage }}</p>
       <aside class="collab-slide-konva__thumbs">
         <button
           v-for="(s, i) in slides"
@@ -121,6 +126,7 @@
                   fontSize: shape.fontSize || 18,
                   fill: shape.fill ? '#' + shape.fill : '#1f2937',
                   draggable: true,
+                  rotation: shape.rotation ?? 0,
                   name: 'shape',
                 }"
                 @dragend="(e: any) => onShapeDragEnd(shape.id, e)"
@@ -142,6 +148,7 @@
                   stroke: shape.stroke ? '#' + shape.stroke : '#1e3a8a',
                   strokeWidth: 1,
                   draggable: true,
+                  rotation: shape.rotation ?? 0,
                   name: 'shape',
                 }"
                 @dragend="(e: any) => onShapeDragEnd(shape.id, e)"
@@ -163,6 +170,7 @@
                   stroke: shape.stroke ? '#' + shape.stroke : '#064e3b',
                   strokeWidth: 1,
                   draggable: true,
+                  rotation: shape.rotation ?? 0,
                   name: 'shape',
                 }"
                 @dragend="(e: any) => onShapeDragEnd(shape.id, e)"
@@ -181,6 +189,7 @@
                   strokeWidth: shape.strokeWidth ? Math.max(1, emuToPx(shape.strokeWidth)) : 2,
                   draggable: true,
                   name: 'shape',
+                  rotation: shape.rotation ?? 0,
                 }"
                 @dragend="(e: any) => onShapeDragEnd(shape.id, e)"
                 @transformend="(e: any) => onShapeTransformEnd(shape.id, e)"
@@ -201,6 +210,7 @@
                   strokeWidth: 1,
                   draggable: true,
                   name: 'shape',
+                  rotation: shape.rotation ?? 0,
                 }"
                 @dragend="(e: any) => onShapeDragEnd(shape.id, e)"
                 @transformend="(e: any) => onShapeTransformEnd(shape.id, e)"
@@ -219,6 +229,7 @@
                   strokeWidth: 1,
                   draggable: true,
                   name: 'shape',
+                  rotation: shape.rotation ?? 0,
                 }"
                 @dragend="(e: any) => onShapeDragEnd(shape.id, e)"
                 @transformend="(e: any) => onShapeTransformEnd(shape.id, e)"
@@ -237,6 +248,7 @@
                   strokeWidth: 1,
                   draggable: true,
                   name: 'shape',
+                  rotation: shape.rotation ?? 0,
                 }"
                 @dragend="(e: any) => onShapeDragEnd(shape.id, e)"
                 @transformend="(e: any) => onShapeTransformEnd(shape.id, e)"
@@ -255,6 +267,7 @@
                   strokeWidth: 1,
                   draggable: true,
                   name: 'shape',
+                  rotation: shape.rotation ?? 0,
                 }"
                 @dragend="(e: any) => onShapeDragEnd(shape.id, e)"
                 @transformend="(e: any) => onShapeTransformEnd(shape.id, e)"
@@ -273,6 +286,7 @@
                   strokeWidth: 1,
                   draggable: true,
                   name: 'shape',
+                  rotation: shape.rotation ?? 0,
                 }"
                 @dragend="(e: any) => onShapeDragEnd(shape.id, e)"
                 @transformend="(e: any) => onShapeTransformEnd(shape.id, e)"
@@ -291,6 +305,7 @@
                   strokeWidth: 1,
                   draggable: true,
                   name: 'shape',
+                  rotation: shape.rotation ?? 0,
                 }"
                 @dragend="(e: any) => onShapeDragEnd(shape.id, e)"
                 @transformend="(e: any) => onShapeTransformEnd(shape.id, e)"
@@ -305,6 +320,7 @@
                   y: emuToPx(shape.y),
                   draggable: true,
                   name: 'shape',
+                  rotation: shape.rotation ?? 0,
                 }"
                 @dragend="(e: any) => onShapeDragEnd(shape.id, e)"
                 @transformend="(e: any) => onShapeTransformEnd(shape.id, e)"
@@ -458,8 +474,12 @@
             <span>线宽</span>
             <input v-model.number="inspectorStrokeWidth" type="number" min="0" max="20" step="0.5" @change="onInspectorStrokeWidthChange" />
           </label>
+          <label class="collab-slide-konva__inspector-num">
+            <span>旋转</span>
+            <input v-model.number="inspectorRotation" type="number" min="0" max="359" step="1" @change="onInspectorRotationChange" data-testid="slide-inspector-rotation" />
+          </label>
         </div>
-        <div class="collab-slide-konva__inspector-row collab-slide-konva__inspector-toggles" v-if="selectedShape.kind === 'text' || selectedShape.kind === 'rect' || selectedShape.kind === 'ellipse'">
+        <div class="collab-slide-konva__inspector-row collab-slide-konva__inspector-toggles" v-if="selectedShape.type === 'text' || selectedShape.type === 'rect' || selectedShape.type === 'ellipse'">
           <button type="button" :class="{ active: inspectorBold }" @click="toggleBold" title="粗体"><b>B</b></button>
           <button type="button" :class="{ active: inspectorItalic }" @click="toggleItalic" title="斜体"><i>I</i></button>
         </div>
@@ -494,6 +514,25 @@
         <span>🎬 动画 (第 {{ activeIndex + 1 }} 页)</span>
         <span class="collab-slide-konva__animations-status">{{ animations.length }} 个效果</span>
       </header>
+      <!-- v0.7.64 — slide transition (inter-slide effect) -->
+      <div class="collab-slide-konva__animations-toolbar">
+        <label class="collab-slide-konva__animations-label">转场:
+          <select v-model="transitionInput" @change="onTransitionCommit" class="collab-slide-konva__animations-select" title="幻灯片切换效果">
+            <option value="none">无</option>
+            <option value="fade">淡入淡出</option>
+            <option value="push">推出</option>
+            <option value="wipe">擦除</option>
+            <option value="split">分割</option>
+            <option value="circle">圆形展开</option>
+            <option value="cover">覆盖</option>
+            <option value="pull">拉入</option>
+            <option value="dissolve">溶解</option>
+            <option value="zoom">缩放</option>
+            <option value="morph">变形</option>
+            <option value="random">随机</option>
+          </select>
+        </label>
+      </div>
       <div class="collab-slide-konva__animations-toolbar">
         <select v-model="newEffect" class="collab-slide-konva__animations-select" title="效果">
           <option value="fade">淡入</option>
@@ -560,12 +599,18 @@ import { useYjsCollabDoc } from '@/composables/useYjsCollabDoc'
 import {
   openPptxShapes,
   newPptxShapeDeck,
+  insertBlankSlideOnDeck,
+  addShapeOnDeck,
   savePptxShapeBytes,
   addTableToSlide,
   setSlideNotesOnDeck,
   emuToPx,
   getSlideAnimationsOnDeck,
   setSlideAnimationsOnDeck,
+  getSlideTransitionOnDeck,
+  setSlideTransitionOnDeck,
+  applyThemeToDeck,
+  recolorDeck,
   type PptxShape,
   type PptxShapeSlide,
   type PptxShapeDeck,
@@ -573,12 +618,17 @@ import {
   type AnimEffectKind,
   type AnimTrigger,
 } from '@/editor/adapters/pptxShapeAdapter'
+import type { SlideTransitionKind } from '@/editor/engines/pptx-engine/generate'
 import type { Slide } from '@/editor/engines/pptx-engine/types'
+import type { SlideThemePreset } from '@/editor/slides/themes/genofficeThemes'
+import { addSlideComment, getSlideComments } from '@/editor/engines/pptx-engine/comments'
+import type { CollabDocComment } from '@/api/collabDoc'
 import {
   downloadCollabDocBytes,
   uploadCollabDocBytes,
 } from '@/api/collabDoc'
 import { MessagePlugin } from 'tdesign-vue-next'
+import { stepRotation90, normalizeRotation, formatRotation } from '@/editor/adapters/slideRotation'
 import CollabCommentsPanel from '@/components/collab/CollabCommentsPanel.vue'
 
 
@@ -594,6 +644,7 @@ const props = defineProps<{
 const kindLabel = '演示文稿'
 const loading = ref(true)
 const error = ref<string | null>(null)
+const recoveryMessage = ref<string | null>(null)
 const saveError = ref<string | null>(null)
 const uploading = ref(false)
 const downloading = ref(false)
@@ -884,6 +935,16 @@ const onInspectorStrokePicker = (v: string) => {
     onInspectorStrokeChange()
 }
 const onInspectorStrokeWidthChange = () => updateShape(selectedId.value!, { strokeWidth: inspectorStrokeWidth.value })
+// v0.7.79 — inspector rotation input
+const inspectorRotation = ref(0)
+watch(selectedShape, (s) => {
+  inspectorRotation.value = Math.round(s?.rotation ?? 0)
+})
+const onInspectorRotationChange = () => {
+  if (!selectedId.value) return
+  const next = normalizeRotation(Number(inspectorRotation.value) || 0)
+  updateShape(selectedId.value, { rotation: next } as any)
+}
 const toggleBold = () => { inspectorBold.value = !inspectorBold.value; updateShape(selectedId.value!, { bold: inspectorBold.value } as any) }
 const toggleItalic = () => { inspectorItalic.value = !inspectorItalic.value; updateShape(selectedId.value!, { italic: inspectorItalic.value } as any) }
 
@@ -916,8 +977,14 @@ const refreshAnimations = () => {
   animations.value = getSlideAnimationsOnDeck(deck.value, activeIndex.value)
 }
 
-watch(activeIndex, refreshAnimations)
-watch(() => deck.value?.opened, refreshAnimations, { immediate: false })
+watch(activeIndex, () => {
+  refreshAnimations()
+  loadTransitionForActive()
+})
+watch(() => deck.value?.opened, () => {
+  refreshAnimations()
+  loadTransitionForActive()
+}, { immediate: false })
 
 const addAnimation = () => {
   if (!deck.value || selectedId.value == null) return
@@ -932,7 +999,7 @@ const addAnimation = () => {
   ]
   if (setSlideAnimationsOnDeck(deck.value, activeIndex.value, next)) {
     animations.value = next
-    saveStatus.value = '动画已暂存(保存 .pptx 时落盘)'
+    saveLabel.value = '动画已暂存（保存 .pptx 时落盘）'
   }
 }
 
@@ -1045,7 +1112,7 @@ const markDirty = (id: string, patch: Partial<PptxShape>) => {
   const el = slide.elements.find((e: any) => e.id === id) as any
   if (!el) return
   el.dirty = true
-  if ('x' in patch || 'y' in patch || 'w' in patch || 'h' in patch) {
+  if ('x' in patch || 'y' in patch || 'w' in patch || 'h' in patch || 'rotation' in patch) {
     el.dirtyTransform = true
     el.transform = el.transform || { offset: { x: 0, y: 0, cx: 0, cy: 0 }, rot: 0, flipH: false, flipV: false }
     const off = el.transform.offset || { x: 0, y: 0, cx: 0, cy: 0 }
@@ -1053,6 +1120,7 @@ const markDirty = (id: string, patch: Partial<PptxShape>) => {
     if (patch.y !== undefined) off.y = patch.y
     if (patch.w !== undefined) off.cx = patch.w
     if (patch.h !== undefined) off.cy = patch.h
+    if (patch.rotation !== undefined) el.transform.rot = patch.rotation
     el.transform.offset = off
   }
   if ('text' in patch) {
@@ -1157,39 +1225,20 @@ const addShape = (type: PptxShape['type']) => {
       yshapes = new Y.Array<Y.Map<unknown>>()
       yslide.set('shapes', yshapes)
     }
-    const id = `shape-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+    const created = addShapeOnDeck(deck.value as unknown as PptxShapeDeck, activeIndex.value, type, {
+      x: 914400,
+      y: 914400,
+      cx: type === 'line' ? 1828800 : 1828800,
+      cy: type === 'line' ? 0 : 914400,
+    })
+    if (!created) return
+    const id = created.id
     const m = new Y.Map<unknown>()
-    const base = {
-      id, type,
-      x: 914400, y: 914400,
-      w: type === 'line' ? 1828800 : 1828800,
-      h: type === 'line' ? 0 : 914400,
-      text: type === 'text' ? '双击编辑文本' : '',
-      fill: type === 'rect' ? '3B82F6' : type === 'ellipse' ? '10B981' : '',
-      stroke: type === 'line' ? '111827' : '',
-      fontSize: 18,
+    const base = { ...created, id, type }
+    for (const [k, v] of Object.entries(base)) {
+      if (v !== undefined) m.set(k, v as any)
     }
-    for (const [k, v] of Object.entries(base)) m.set(k, v as any)
     yshapes.push([m])
-    // Mirror into engine slide model so save picks it up.
-    const slide = deck.value?.opened?.deck.slides[activeIndex.value]
-    if (slide) {
-      const newEl: any = {
-        id,
-        type: type === 'text' ? 'text' : 'shape',
-        anchor: { spIndex: slide.elements.length },
-        transform: { x: base.x, y: base.y, cx: base.w, cy: base.h },
-        dirty: true,
-        dirtyTransform: true,
-        presetGeometry: type === 'ellipse' ? 'ellipse' : type === 'line' ? 'line' : 'rect',
-        fill: base.fill ? { color: base.fill } : undefined,
-        stroke: base.stroke ? { color: base.stroke } : undefined,
-        text: type === 'text' || type === 'rect' || type === 'ellipse'
-          ? { paragraphs: [{ runs: [{ text: base.text }] }] }
-          : undefined,
-      }
-      slide.elements.push(newEl)
-    }
     selectedId.value = id
     scheduleSave()
   })
@@ -1198,7 +1247,10 @@ const addShape = (type: PptxShape['type']) => {
 const addSlide = () => {
   if (!ydeck || !deck.value?.opened) return
   ydeck.doc?.transact(() => {
-    const newIndex = slides.value.length
+    const sourceIndex = activeIndex.value
+    const inserted = insertBlankSlideOnDeck(deck.value as unknown as PptxShapeDeck, sourceIndex)
+    if (!inserted) return
+    const newIndex = sourceIndex + 1
     const width = deck.value!.opened!.deck.size.cx
     const height = deck.value!.opened!.deck.size.cy
     const yslide = new Y.Map<unknown>()
@@ -1207,18 +1259,8 @@ const addSlide = () => {
     yslide.set('height', height)
     yslide.set('background', '')
     yslide.set('shapes', new Y.Array<Y.Map<unknown>>())
-    ydeck!.push([yslide])
-    // Mirror in engine so save picks it up.
-    const newSlide: any = {
-      path: `ppt/slides/slide${newIndex + 1}.xml`,
-      originalXml: '',
-      bodyPrefix: '',
-      bodySuffix: '',
-      elements: [],
-      structureDirty: true,
-    }
-    deck.value!.opened!.deck.slides.push(newSlide)
-    slides.value.push({ index: newIndex, width, height, shapes: [], raw: newSlide })
+    ydeck!.insert(newIndex, [yslide])
+    slides.value.splice(newIndex, 0, { index: newIndex, width, height, shapes: [], raw: inserted })
     activeIndex.value = newIndex
     scheduleSave()
   })
@@ -1355,6 +1397,71 @@ const reorderSelected = (dir: 1 | -1) => {
 const bringForward = () => reorderSelected(1)
 const sendBackward = () => reorderSelected(-1)
 
+const bringToFront = () => {
+  if (!selectedId.value || !ydeck) return
+  const id = selectedId.value
+  ydeck.doc?.transact(() => {
+    const yslide = ydeck!.get(activeIndex.value) as Y.Map<unknown> | undefined
+    if (!yslide) return
+    const yshapes = yslide.get('shapes') as Y.Array<Y.Map<unknown>> | undefined
+    if (!yshapes) return
+    const arr = yshapes.toArray()
+    const i = arr.findIndex((m) => m.get('id') === id)
+    if (i < 0 || i === arr.length - 1) return
+    yshapes.delete(i, 1)
+    yshapes.insert(arr.length - 1, [arr[i]])
+    const slide = deck.value?.opened?.deck.slides[activeIndex.value]
+    if (slide) {
+      const ei = slide.elements.findIndex((e: any) => e.id === id)
+      if (ei >= 0 && ei < slide.elements.length - 1) {
+        const el = slide.elements.splice(ei, 1)[0]
+        slide.elements.push(el)
+        slide.structureDirty = true
+      }
+    }
+    scheduleSave()
+  })
+}
+
+// v0.7.79 — PPT shape rotation. Rotates the selected shape by ±90°.
+const rotateSelected = (delta: number) => {
+  if (!deck.value || selectedId.value == null) return
+  const slide = deck.value.opened?.deck.slides[activeIndex.value]
+  if (!slide) return
+  const el = slide.elements.find((e: any) => e.id === selectedId.value) as any
+  if (!el) return
+  const current = Number(el.transform?.rot ?? 0)
+  const direction = delta > 0 ? 1 : -1
+  const next = stepRotation90(current, direction)
+  updateShape(selectedId.value, { rotation: next } as any)
+}
+
+const sendToBack = () => {
+  if (!selectedId.value || !ydeck) return
+  const id = selectedId.value
+  ydeck.doc?.transact(() => {
+    const yslide = ydeck!.get(activeIndex.value) as Y.Map<unknown> | undefined
+    if (!yslide) return
+    const yshapes = yslide.get('shapes') as Y.Array<Y.Map<unknown>> | undefined
+    if (!yshapes) return
+    const arr = yshapes.toArray()
+    const i = arr.findIndex((m) => m.get('id') === id)
+    if (i <= 0) return
+    yshapes.delete(i, 1)
+    yshapes.insert(0, [arr[i]])
+    const slide = deck.value?.opened?.deck.slides[activeIndex.value]
+    if (slide) {
+      const ei = slide.elements.findIndex((e: any) => e.id === id)
+      if (ei > 0) {
+        const el = slide.elements.splice(ei, 1)[0]
+        slide.elements.unshift(el)
+        slide.structureDirty = true
+      }
+    }
+    scheduleSave()
+  })
+}
+
 const scheduleSave = () => {
   savetagClass.dirty = true
   saveLabel.value = '编辑中…'
@@ -1362,11 +1469,61 @@ const scheduleSave = () => {
   saveTimer.value = window.setTimeout(() => onForceSave(), 1500)
 }
 
+const transitionInput = ref<SlideTransitionKind>('none')
+const onTransitionCommit = () => {
+  if (!deck.value) return
+  setSlideTransitionOnDeck(deck.value as unknown as PptxShapeDeck, activeIndex.value, transitionInput.value)
+  scheduleSave()
+}
+const loadTransitionForActive = () => {
+  if (!deck.value) return
+  transitionInput.value = getSlideTransitionOnDeck(deck.value as unknown as PptxShapeDeck, activeIndex.value)
+}
+// v0.7.61 — PPT comment round-trip: cache backend comments + write to .pptx on save.
+let cachedSlideComments: CollabDocComment[] = []
+const onSlideCommentsLoaded = (comments: CollabDocComment[]) => {
+  cachedSlideComments = comments
+}
+
+const writeSlideCommentsToArchive = (opened: any) => {
+  if (cachedSlideComments.length === 0) return
+  // Group by slide index from anchor_ref JSON.
+  const bySlide = new Map<number, CollabDocComment[]>()
+  for (const c of cachedSlideComments) {
+    if (c.anchor_type !== 'slide') continue
+    let slideIdx = -1
+    try {
+      const o = JSON.parse(c.anchor_ref || '{}')
+      slideIdx = typeof o.slide === 'number' ? o.slide : -1
+    } catch {}
+    if (slideIdx < 0) continue
+    const arr = bySlide.get(slideIdx) || []
+    arr.push(c)
+    bySlide.set(slideIdx, arr)
+  }
+  for (const [slideIdx, comments] of bySlide) {
+    const slide = opened.deck.slides[slideIdx]
+    if (!slide) continue
+    // Skip comments already present in the archive (by author+text) to avoid duplicates.
+    const existing = getSlideComments(opened, slide.path)
+    const existingKeys = new Set(existing.map((c: any) => `${c.author}|${c.text}`))
+    for (const c of comments) {
+      const key = `${c.author_name || ''}|${c.body || ''}`
+      if (existingKeys.has(key)) continue
+      addSlideComment(opened, slideIdx, {
+        author: c.author_name || 'Unknown',
+        text: c.body || '',
+      })
+    }
+  }
+}
+
 const onForceSave = async () => {
   if (!deck.value) return
   savetagClass.saving = true
   saveLabel.value = '保存中…'
   try {
+    if (deck.value.opened) writeSlideCommentsToArchive(deck.value.opened)
     const bytes = await savePptxShapeBytes(deck.value as unknown as PptxShapeDeck)
     await uploadCollabDocBytes(props.docId, bytes, `${props.title || 'collab-doc'}.pptx`)
     savetagClass.dirty = false
@@ -1406,6 +1563,46 @@ const onDownload = async () => {
   }
 }
 
+// Slide theme persistence (v0.7.95): listen to wk-slide-theme-apply from
+// CollabSlideThemePanel. Rewrite theme*.xml in every theme part, remap explicit
+// srgbClr, mark dirty and trigger auto-save so the new palette round-trips
+// back to collab-doc storage.
+const onSlideThemeApply = async (e: Event) => {
+  const preset = (e as CustomEvent<SlideThemePreset>).detail
+  if (!preset || !deck.value || !deck.value.opened) return
+  const spec = {
+    name: preset.id,
+    colors: preset.colors,
+    ...(preset.majorFont ? { majorFont: preset.majorFont } : {}),
+    ...(preset.minorFont ? { minorFont: preset.minorFont } : {}),
+  }
+  const themePatched = applyThemeToDeck(
+    deck.value as unknown as PptxShapeDeck,
+    spec,
+  )
+  const remapped = recolorDeck(
+    deck.value as unknown as PptxShapeDeck,
+    spec,
+  )
+  // Force re-render: rebuild slides array reference so Vue-Konva picks up the
+  // new fill / stroke values
+  if (deck.value.slides.length > 0) {
+    slides.value = [...deck.value.slides]
+  }
+  if (themePatched > 0 || remapped > 0) {
+    savetagClass.dirty = true
+    saveLabel.value = '主题已应用 · 待保存'
+    MessagePlugin.success(`主题 ${preset.name} 已应用: ${themePatched} theme*, ${remapped} srgbClr 重映射`)
+    scheduleSave()
+  } else {
+    MessagePlugin.warning(`主题 ${preset.name} 未匹配到任何 theme*.xml 或 srgbClr`)
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('wk-slide-theme-apply', onSlideThemeApply as EventListener)
+}
+
 const triggerUpload = () => fileInput.value?.click()
 
 const onUploadFile = async (e: Event) => {
@@ -1414,7 +1611,9 @@ const onUploadFile = async (e: Event) => {
   uploading.value = true
   try {
     const bytes = new Uint8Array(await file.arrayBuffer())
-    await onLoadBytes(bytes)
+    if (!await onLoadBytes(bytes)) {
+      throw new Error(error.value || '无法解析 PPTX 文件')
+    }
     // Push to server immediately so a tab refresh sees the same content.
     await uploadCollabDocBytes(props.docId, bytes, file.name)
   } catch (e: any) {
@@ -1425,20 +1624,36 @@ const onUploadFile = async (e: Event) => {
   }
 }
 
-const onLoadBytes = async (bytes: Uint8Array) => {
+const onLoadBytes = async (bytes: Uint8Array): Promise<boolean> => {
   loading.value = true
   try {
     const fresh = await openPptxShapes(bytes)
     deck.value = fresh
     slides.value = fresh.slides
     activeIndex.value = 0
+    error.value = null
+    recoveryMessage.value = null
     seedYjs()
     syncFromY()
     loading.value = false
+    return true
   } catch (e: any) {
     error.value = e?.message || String(e)
     loading.value = false
+    return false
   }
+}
+
+const initializeBlankDeck = async (message?: string) => {
+  const fresh = await newPptxShapeDeck()
+  deck.value = fresh
+  slides.value = fresh.slides
+  activeIndex.value = 0
+  error.value = null
+  recoveryMessage.value = message ?? null
+  loading.value = false
+  seedYjs()
+  syncFromY()
 }
 
 // --- Lifecycle ---
@@ -1491,18 +1706,14 @@ handle.provider.awareness.on('change', () => {
     if (existing.ok) {
       const buf = new Uint8Array(await existing.arrayBuffer())
       if (buf.byteLength > 100) {
-        await onLoadBytes(buf)
+        if (await onLoadBytes(buf)) return
+        await initializeBlankDeck('原演示文稿无法解析，已恢复为新的空白演示文稿；首次编辑后会保存为有效 PPTX。')
         return
       }
     }
   } catch { /* fall through */ }
   // No existing pptx — start with engine blank.
-  const fresh = await newPptxShapeDeck()
-  deck.value = fresh
-  slides.value = fresh.slides
-  loading.value = false
-  seedYjs()
-  syncFromY()
+  await initializeBlankDeck()
 })()
 
 if (ydoc) {
@@ -1521,7 +1732,10 @@ if (typeof window !== 'undefined') window.addEventListener('keydown', onKeydown)
 
 onBeforeUnmount(() => {
   if (saveTimer.value) window.clearTimeout(saveTimer.value)
-  if (typeof window !== 'undefined') window.removeEventListener('keydown', onKeydown)
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('keydown', onKeydown)
+    window.removeEventListener('wk-slide-theme-apply', onSlideThemeApply as EventListener)
+  }
   handle?.destroy()
 })
 </script>
@@ -1555,6 +1769,8 @@ onBeforeUnmount(() => {
 .collab-slide-konva__inspector label { display: block; font-size: 11px; margin-bottom: 8px; color: var(--td-text-color-secondary); }
 .collab-slide-konva__inspector input, .collab-slide-konva__inspector textarea { width: 100%; font-size: 12px; padding: 4px 6px; border: 1px solid var(--td-component-stroke); border-radius: 4px; margin-top: 4px; }
 .collab-slide-konva__error { color: var(--td-error-color-7); padding: 8px 12px; }
+.collab-slide-konva__recovery { color: var(--td-warning-color-7); padding: 8px 12px; margin: 0; }
+.collab-slide-konva__recovery { color: var(--td-warning-color-7); padding: 8px 12px; margin: 0; }
 .collab-slide-konva__loading { padding: 24px; }
 
 .collab-slide-konva__notes {

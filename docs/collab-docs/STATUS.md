@@ -2826,3 +2826,86 @@ ALL OK -- per-sheet Yjs cells sync
 
 - 未实现跨 sheet 公式引用实时更新（v0.7.95+）
 - 未实现命名区域（named range）的 Yjs 同步
+
+## 43. v0.7.95 — SLIDE 主题真正落盘 + 编辑器内主题面板（2026-09-02）
+
+### 43.1 背景
+
+v0.7.92 在 `/collab-slides`（列表页 `CollabSlidesView`）渲染了 8 个 OOXML scheme 主题 swatch
+并发出 `wk-slide-theme-apply` window event。但 `/collab-documents/:id` 编辑器路由
+`CollabDocEditorView` 没有挂主题面板也没有监听该 event，导致"主题应用"无法触达真正
+的 deck 编辑实例，PPT 文件从未被改写。
+
+### 43.2 改造
+
+**`frontend/src/views/collab/CollabDocEditorView.vue`**：
+- 在 `collab-editor-view__main` 顶部条件挂载 `<CollabSlideThemePanel>`（仅当 `doc.doc_kind === 'slide'`）
+- 新增 `onSlideThemeApply(preset)` 把 preset 派发为 `wk-slide-theme-apply` window event
+- 新增 scoped style `collab-editor-view__slide-theme`
+- import `CollabSlideThemePanel` + `type SlideThemePreset`
+
+**`frontend/src/components/collab/CollabSlideKonvaEditor.vue`**：
+- 新增导入 `applyThemeToDeck`, `recolorDeck`, `type SlideThemePreset`
+- 新增 `onSlideThemeApply(e: Event)`：
+  1. preset → `EngineThemeSpec`（含 name / colors / majorFont? / minorFont?）
+  2. `applyThemeToDeck(deck, spec)` 改写每个 theme part 的 `<a:clrScheme>` / `<a:fontScheme>`
+  3. `recolorDeck(deck, spec)` 重映射 deck 内显式 `srgbClr`（中性走 dk1↔lt1，色相走 accent1..6）
+  4. `[...deck.value.slides]` 触发 Konva 重绘
+  5. `savetagClass.dirty = true` + `saveLabel = '主题已应用 · 待保存'` + `scheduleSave()`
+- setup 中 `window.addEventListener('wk-slide-theme-apply', onSlideThemeApply)`
+- `onBeforeUnmount` 中 `removeEventListener`
+
+### 43.3 新增文件
+
+- `frontend/wk-slide-theme-persist.mjs`：Playwright 双 context + 后端 API 解压 PPTX 验证脚本
+  - 包含 inline PKZIP extractor + zlib inflate + clrScheme regex 解析
+
+### 43.4 真实双端浏览器验证
+
+`node frontend/wk-slide-theme-persist.mjs`：
+
+```
+slide editor visible: true
+theme panel in editor view: true
+indigo swatch visible: true
+waiting for saveLabel to be 已保存 ...
+saveLabel: 已保存
+match table:
+  dk1 baseline 1F2A44 → 1F2A44 bob 1F2A44 OK
+  lt1 baseline FFFFFF → FFFFFF bob FFFFFF OK
+  dk2 baseline 3B4C77 → 3B4C77 bob 3B4C77 OK
+  lt2 baseline E8ECF6 → E8ECF6 bob E8ECF6 OK
+  accent1..6 baseline → after indigo OK
+  hlink baseline 2E4FA3 → 2E4FA3 bob 2E4FA3 OK
+  folHlink baseline 954F72 → 954F72 bob 954F72 OK
+ALL OK — slide theme persists across save + peer
+```
+
+并附加 `/tmp/wk-slide-theme-multi.mjs` 多主题切换测试：
+
+```
+before office apply clrScheme: indigo (1F2A44, 2E4FA3, ...)
+after  office apply clrScheme: 000000, 44546A, 4472C4, ED7D31, ... (office scheme)
+after  forest apply clrScheme: 1E2B20, 375E43, 217346, 4EA72E, ... (forest scheme)
+```
+
+即三种主题 (office/forest/indigo) 都真实写入 `ppt/theme/theme1.xml` 的
+`<a:clrScheme>` 12 个槽位，并随 debounce 1.5s 自动保存 round-trip 到
+`/api/v1/collaborative-docs/:id/download` 的 PPTX 文件。
+
+截图：
+- `/tmp/wk-shots/slide-theme-editor-pre.png` (Alice)
+- `/tmp/wk-shots/slide-theme-editor-post.png` (Alice 应用 indigo 后)
+- `/tmp/wk-shots/slide-theme-editor-final.png` (Alice 最终)
+- `/tmp/wk-shots/slide-theme-editor-final-bob.png` (Bob 端同步)
+
+### 43.5 类型检查
+
+`vue-tsc -p tsconfig.app.json --noEmit` 对本轮改动文件 (`CollabSlideKonvaEditor.vue`,
+`CollabDocEditorView.vue`) 输出 0 新错误。
+
+### 43.6 已知遗留
+
+- 主题应用目前只写入 `theme*.xml`，slide master / layout 不重写 (与 genoffice 行为一致)
+- 显式 `srgbClr` 重映射按频率映射到 accent1..6，hue 改变但 lightness 保持
+- 主题面板位于编辑器顶部固定位置，未实现右击 / Design Tab 折叠面板
