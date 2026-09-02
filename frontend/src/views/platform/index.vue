@@ -28,8 +28,8 @@
 <style scoped>
 .workspace-context-strip {
   position: fixed;
-  top: 14px;
-  right: 20px;
+  top: 12px;
+  right: 24px;
   z-index: 20;
   pointer-events: auto;
 }
@@ -269,6 +269,7 @@ onUnmounted(() => {
     min-height: 0;
     /* 统一整页背景，让左侧菜单与右侧内容区视觉连贯 */
     background: var(--app-page-bg);
+    color: var(--app-text);
 }
 
 /* 右侧路由区：占满剩余宽度与整列高度，并把 min-height:0 传给子页面以便内部 flex 滚动 */
@@ -280,6 +281,7 @@ onUnmounted(() => {
     flex-direction: column;
     overflow: hidden;
     background: var(--app-page-bg);
+    position: relative;
 }
 
 .platform-route-outlet > :deep(*) {

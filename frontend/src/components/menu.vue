@@ -1901,6 +1901,32 @@ html[theme-mode="dark"] .aside_box .logo_box .logo {
     filter: invert(1) hue-rotate(180deg);
 }
 
+html[theme-mode="dark"] .aside_box {
+    background: var(--app-surface-inset);
+    border-right-color: var(--app-border);
+    box-shadow: 1px 0 0 rgba(0, 0, 0, 0.24);
+}
+
+html[theme-mode="dark"] .aside_box .menu_box--sticky {
+    background: var(--app-surface-inset);
+}
+
+html[theme-mode="dark"] .aside_box .menu_item_active,
+html[theme-mode="dark"] .aside_box .session-chat-row--active .session-list-row {
+    background: color-mix(in srgb, var(--app-brand) 14%, var(--app-surface-inset)) !important;
+}
+
+html[theme-mode="dark"] .aside_box .menu_item:hover,
+html[theme-mode="dark"] .aside_box .session-chat-row:hover .session-list-row {
+    background: var(--app-surface-raised);
+}
+
+html[theme-mode="dark"] .aside_box .menu_title,
+html[theme-mode="dark"] .aside_box :deep(.submenu_item),
+html[theme-mode="dark"] .aside_box .batch-inline-footer {
+    color: var(--app-text);
+}
+
 // Dark mode: 滚动条在深色背景下需要更亮的颜色才看得见
 html[theme-mode="dark"] .aside_box .menu_top:hover {
     scrollbar-color: rgba(255, 255, 255, 0.22) transparent;

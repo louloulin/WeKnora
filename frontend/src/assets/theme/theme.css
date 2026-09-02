@@ -129,6 +129,22 @@
     --app-text: #111827;
     --app-text-muted: #6b7280;
     --app-overlay: rgba(15, 23, 42, 0.42);
+    --app-surface-subtle: #f8fafc;
+    --app-surface-inset: #eef2f7;
+    --app-warning-bg: #fff7e6;
+    --app-warning-text: #ad6800;
+    --app-error-bg: #fff1f0;
+    --app-error-text: #cf1322;
+    --app-success-bg: #f0fff4;
+    --app-success-text: #237804;
+    --app-info-bg: #e6f4ff;
+    --app-info-text: #0958d9;
+    --color-bg: var(--app-page-bg);
+    --color-bg-elevated: var(--app-surface-raised);
+    --color-bg-muted: var(--app-surface-subtle);
+    --color-border: var(--app-border);
+    --color-text-secondary: var(--app-text-muted);
+    --color-primary: var(--app-brand);
 }
 
 :root:root[theme-mode="dark"] {
@@ -146,8 +162,19 @@
     --app-surface-subtle: #1d2024;
     --app-surface-inset: #151719;
     --app-warning-bg: rgba(245, 158, 11, 0.12);
+    --app-warning-text: #f5c46b;
     --app-error-bg: rgba(239, 68, 68, 0.12);
+    --app-error-text: #ff9c9c;
     --app-success-bg: rgba(34, 197, 94, 0.12);
+    --app-success-text: #7ee2a8;
+    --app-info-bg: rgba(59, 130, 246, 0.14);
+    --app-info-text: #91bbff;
+    --color-bg: var(--app-page-bg);
+    --color-bg-elevated: var(--app-surface-raised);
+    --color-bg-muted: var(--app-surface-subtle);
+    --color-border: var(--app-border);
+    --color-text-secondary: var(--app-text-muted);
+    --color-primary: var(--app-brand);
 }
 
 html,
@@ -451,4 +478,89 @@ select:-webkit-autofill {
 
 :root[theme-mode="dark"] .workspace-context-strip {
     color: var(--app-text);
+}
+
+/* 业务模块的旧变量别名：统一映射到平台主题，避免深色主题回退到白底。 */
+:root[theme-mode="dark"] {
+    --color-bg: var(--app-page-bg);
+    --color-bg-elevated: var(--app-surface-raised);
+    --color-bg-muted: var(--app-surface-subtle);
+    --color-border: var(--app-border);
+    --color-text-secondary: var(--app-text-muted);
+    --color-primary: var(--app-brand);
+}
+
+:root[theme-mode="dark"] .ai-assistant-panel__msg-bubble {
+    background: var(--app-surface-subtle);
+}
+
+:root[theme-mode="dark"] .ai-assistant-panel__btn:hover:not(:disabled) {
+    color: var(--app-text);
+}
+
+:root[theme-mode="dark"] .ai-assistant-panel__inline-cite,
+:root[theme-mode="dark"] .ai-assistant-panel__error {
+    background: var(--app-warning-bg);
+    color: var(--app-warning-text);
+    border-color: color-mix(in srgb, var(--app-warning-text) 32%, transparent);
+}
+
+:root[theme-mode="dark"] .ai-assistant-panel__error {
+    background: var(--app-error-bg);
+    color: var(--app-error-text);
+    border-color: color-mix(in srgb, var(--app-error-text) 32%, transparent);
+}
+
+:root[theme-mode="dark"] .pill-decision.dec-allow,
+:root[theme-mode="dark"] .pill-active,
+:root[theme-mode="dark"] .job-succeeded {
+    background: var(--app-success-bg);
+    color: var(--app-success-text);
+}
+
+:root[theme-mode="dark"] .pill-decision.dec-deny,
+:root[theme-mode="dark"] .pill-inactive,
+:root[theme-mode="dark"] .job-failed {
+    background: var(--app-error-bg);
+    color: var(--app-error-text);
+}
+
+:root[theme-mode="dark"] .pill-decision.dec-conditional,
+:root[theme-mode="dark"] .job-running {
+    background: var(--app-warning-bg);
+    color: var(--app-warning-text);
+}
+
+:root[theme-mode="dark"] .job-queued,
+:root[theme-mode="dark"] .pill-sev[data-sev="low"] {
+    background: var(--app-info-bg);
+    color: var(--app-info-text);
+}
+
+:root[theme-mode="dark"] .credential-warning {
+    background: var(--app-warning-bg);
+    border-color: color-mix(in srgb, var(--app-warning-text) 32%, transparent);
+    color: var(--app-warning-text);
+}
+
+:root[theme-mode="dark"] .credential-warning .warning-text {
+    color: var(--app-warning-text);
+}
+
+:root[theme-mode="dark"] .wiki-verified-badge.verified {
+    background: var(--app-success-bg);
+    color: var(--app-success-text);
+    border-color: color-mix(in srgb, var(--app-success-text) 32%, transparent);
+}
+
+:root[theme-mode="dark"] .wiki-verified-badge.stale {
+    background: var(--app-error-bg);
+    color: var(--app-error-text);
+    border-color: color-mix(in srgb, var(--app-error-text) 32%, transparent);
+}
+
+:root[theme-mode="dark"] .wiki-verified-badge.due-soon {
+    background: var(--app-warning-bg);
+    color: var(--app-warning-text);
+    border-color: color-mix(in srgb, var(--app-warning-text) 32%, transparent);
 }
