@@ -67,6 +67,7 @@ import MindMapSidebar from './MindMapSidebar.vue'
 import MindMapMiniMap from './MindMapMiniMap.vue'
 import MindMapAIAssistant from './MindMapAIAssistant.vue'
 import { mindmapApi, type MindMap, type MindMapNode, type MindMapLayout } from '../../api/mindmap'
+import { loadMindmapColors } from '../../utils/mindmapTheme'
 
 interface Props {
   mapId: string
@@ -92,16 +93,8 @@ const viewport = ref({ zoom: 1, panX: 0, panY: 0 })
 const mapTitle = computed(() => map.value?.title || '思维导图')
 const selectedNode = computed(() => nodes.value.find((n) => n.id === selectedId.value) || null)
 
-const themeColors: Record<string, { bg: string; fg: string; line: string; accent: string }> = {
-  feishu: { bg: '#1f2328', fg: '#e6edf3', line: '#58a6ff', accent: '#58a6ff' },
-  notion: { bg: '#ffffff', fg: '#37352f', line: '#d9d9d7', accent: '#2383e2' },
-  tana: { bg: '#f7f6f3', fg: '#2f2f2f', line: '#cc8c2c', accent: '#cc8c2c' },
-  coda: { bg: '#fff5ec', fg: '#2d2d2d', line: '#ffcda1', accent: '#ff6c2c' },
-  dark: { bg: '#0d1117', fg: '#e6edf3', line: '#8b949e', accent: '#a371f7' },
-}
-
 function loadColors() {
-  return themeColors[theme.value] || themeColors.feishu
+  return loadMindmapColors(theme.value)
 }
 
 async function reload() {

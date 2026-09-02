@@ -89,8 +89,11 @@ async function main() {
   // 5. select back the master and rename it
   await page.locator('[data-testid="slide-master-item-0"]').click()
   await page.waitForTimeout(300)
+  // Use a fresh unique name each run so re-runs against an already-renamed
+  // pptx (state carried over from prior sessions) don't see "no change".
+  const uniqueName = `E2E Master ${Date.now()}`
   const nameInput = page.locator('[data-testid="slide-master-name-input"]')
-  await nameInput.fill('E2E Test Master')
+  await nameInput.fill(uniqueName)
   await page.waitForTimeout(200)
   const renameBtn = page.locator('[data-testid="slide-master-rename-btn"]')
   if (await renameBtn.isDisabled()) throw new Error('rename button should be enabled after typing')
@@ -114,7 +117,7 @@ async function main() {
   if (!entries[masterPath]) throw new Error('slideMaster1.xml missing in pptx')
   const xml = entries[masterPath]
   console.log('slideMaster1.xml length:', xml.length)
-  if (!/name="E2E Test Master"/.test(xml)) throw new Error('renamed master name not in pptx')
+  if (!xml.includes(`name="${uniqueName}"`)) throw new Error('renamed master name not in pptx')
 
   if (errs.length) console.log('PAGE ERRORS:', errs)
   console.log('ALL OK — slide master view: list + select + rename + persist')

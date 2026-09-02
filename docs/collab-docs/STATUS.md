@@ -4294,3 +4294,64 @@ ALL OK — slide animations: per-row edit + reorder + <p:timing> persisted
 - **母版画布渲染仅 info / XML preview，没有 Konva 编辑画布**：genoffice MasterView 用同一 SlideCanvas 渲染 master，跟编辑 slide 用同一画布。本轮仅交付了 info + 重命名（最小可用）—— 完整画布编辑器（genoffice 的 `masterEditTransform / masterEditText / masterEditFill / masterDeleteElement` 一整套 IPC + Konva 路径）属于 v0.7.113.x polish / v0.7.114 范围。
 - **cSld 重命名只改 `<p:cSld name>` 自身**：PowerPoint 还会在 `[Content_Types].xml` 和 presentation.xml 的 `<p:sldId>` 之外无对应 name 字段，所以 cSld rename 是「局部」patch，不影响 slide binding。需要全局重命名（rename + 同步所有引用 layout 的 slide）属于 v0.7.113.x polish。
 - **master / layout 切换不持久化「current selected」**：modal 关闭后再次打开默认选中 master[0]。跨打开持久化用户偏好属于 v0.7.113.x polish。
+
+### 64.1 目标
+
+v0.7.111 完成了 `mindmapFormat.ts` (formatDate / formatLongDate / isMindMapLayout) + 7 单测。本轮 **Phase 2 polish**：把 `MindMapEditor.vue` 内 inline 的 `themeColors` 调色板（5 个主题 × 4 颜色）和 `loadColors` 抽到 `mindmapTheme.ts`，加独立单测。
+
+这是目标上下文里「维护 MINDMAP / WIKI 已实现能力继续打磨」的最小有意义一步：抽出可测的纯数据函数，去 inline 重复。
+
+### 64.2 改动
+
+`frontend/src/utils/mindmapTheme.ts`（新文件，45 行）：
+
+- 导出 `MindMapThemeColors` interface（4 键：bg / fg / line / accent）
+- 导出 `MINDMAP_THEME_COLORS: Record<string, ...>` 5 个内置主题（feishu / notion / tana / coda / dark）
+- 导出 `MINDMAP_THEME_NAMES: readonly string[]` 主题名清单
+- 导出 `MINDMAP_DEFAULT_THEME = 'feishu'`
+- 导出 `loadMindmapColors(theme: string | null | undefined)` — 输入已知主题返回对应 palette；未知 / 空 / null / undefined 一律 fallback 到 feishu
+
+`frontend/src/utils/__tests__/mindmapTheme.test.ts`（新文件，5 cases）：
+
+- 调色板覆盖每个主题且每键是 hex string
+- 主题名清单 = 5 个
+- loadMindmapColors 对已知主题返回对应 palette
+- loadMindmapColors 对未知名 fallback 到 feishu
+- loadMindmapColors 对空 / null / undefined fallback 到 feishu
+- dark theme sanity（bg 是 `#0` 或 `#1` 或 `#2` 开头，luminance 偏低）
+
+`frontend/src/components/mindmap/MindMapEditor.vue`：
+
+- 新增 `import { loadMindmapColors } from '../../utils/mindmapTheme'`
+- 删除 inline `themeColors` palette（10 行）+ `loadColors` 函数（3 行）
+- `loadColors` 现在是一行：`return loadMindmapColors(theme.value)`
+
+`frontend/wk-slide-master-view.mjs`（已有 v0.7.113 E2E，test-idempotency polish）：
+
+- 修固定名 `E2E Test Master` 改为 `E2E Master ${Date.now()}`，避免已累命名导致 dirty state 不翻转
+
+### 64.3 验证
+
+```
+$ tsx --test src/utils/__tests__/mindmapTheme.test.ts
+ℹ tests 5
+ℹ pass 5
+ℹ fail 0
+
+$ tsx --test src/editor/adapters/__tests__/*.test.ts src/editor/formula/__tests__/*.test.ts src/components/collab/__tests__/*.test.ts src/utils/__tests__/*.test.ts
+ℹ tests 564
+ℹ pass 564
+ℹ fail 0  (+5 vs 559 baseline)
+
+$ go build ./internal/...
+clean
+
+$ node wk-slide-master-view.mjs   # 回归 v0.7.113 (test-idempotency polish)
+ALL OK — slide master view: list + select + rename + persist
+```
+
+### 64.4 已知遗留
+
+- **MindMap canvas 交互层未抽**：`onCanvasDblClick / onWheel / resetView / draw` 仍在 `MindMapEditor.vue` 内（201+ 行）。画布事件 + 渲染函数抽到 `mindmapCanvas.ts` 属于 v0.7.111.y polish。
+- **WikiTiptapEditor 命令层未抽**：`run(name) / runHeading(level) / promptForLink()` 仍在 `WikiTiptapEditor.vue`。属于 v0.7.111.z polish。
+- **WIKI 端打磨未启动**：从 `src/components/wiki/*.vue` 文件名清单看，有 `WikiAclDialog / WikiBacklinksPanel / WikiDatabaseView / WikiInlineAIMenu / WikiKBChipRow` 等模块，无独立 helper 测试。属于 v0.7.115 范围。
