@@ -103,6 +103,8 @@
       <button @click="distributeSelected('v')" type="button" :disabled="selectedIds.length < 3" title="垂直等距分布" data-testid="slide-distribute-v">⇕ 分布</button>
       <button @click="matchSize('w')" type="button" :disabled="selectedIds.length < 2" title="匹配宽度（以首个选中为基准）" data-testid="slide-match-width">⤢ 匹配宽</button>
       <button @click="matchSize('h')" type="button" :disabled="selectedIds.length < 2" title="匹配高度（以首个选中为基准）" data-testid="slide-match-height">⤡ 匹配高</button>
+      <button @click="groupSelected" type="button" :disabled="!canGroupSelected" title="组合选中的形状（多选时启用）" data-testid="slide-group">⊞ 组合</button>
+      <button @click="ungroupSelected" type="button" :disabled="!canUngroupSelected" title="解散当前组（当所有选中属于同一组时启用）" data-testid="slide-ungroup">⊟ 解散组</button>
       <span class="collab-slide-konva__divider" />
       <button @click="onUndo" type="button" :disabled="!canUndo" title="撤销 (Ctrl+Z)">↶ 撤销</button>
       <button @click="onRedo" type="button" :disabled="!canRedo" title="重做 (Ctrl+Shift+Z)">↷ 重做</button>
@@ -458,6 +460,20 @@
                 stroke: '#58a6ff',
                 strokeWidth: 1.5,
                 dash: [6, 3],
+                listening: false,
+              }"
+            />
+            <!-- v0.7.104 — group bbox: drawn only when all selected shapes share one groupId -->
+            <v-rect
+              v-if="groupBboxPx"
+              :config="{
+                x: groupBboxPx.x,
+                y: groupBboxPx.y,
+                width: groupBboxPx.w,
+                height: groupBboxPx.h,
+                stroke: '#2da44e',
+                strokeWidth: 2,
+                dash: [10, 4],
                 listening: false,
               }"
             />
@@ -897,6 +913,25 @@ const remoteSelectionBounds = (shapeId: string): { x: number; y: number; w: numb
 }
 /** v0.7.101 — local multi-selection: shapes selected besides the primary. */
 const multiSelectedIds = computed(() => selectedIds.value.filter((id) => id !== selectedId.value))
+
+/** v0.7.104 — bounding box for the current group (only when all selected shapes share a groupId). */
+const groupBboxPx = computed(() => {
+  const shapes = selectedShapes.value
+  if (!shapes.length) return null
+  const gid = selectedShapeGroupId.value
+  if (!gid) return null
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (const s of shapes) {
+    minX = Math.min(minX, s.x); minY = Math.min(minY, s.y)
+    maxX = Math.max(maxX, s.x + s.w); maxY = Math.max(maxY, s.y + s.h)
+  }
+  return {
+    x: emuToPx(minX),
+    y: emuToPx(minY),
+    w: emuToPx(maxX - minX),
+    h: emuToPx(maxY - minY),
+  }
+})
 const shapeBoundsPx = (shapeId: string): { x: number; y: number; w: number; h: number } | null => {
   const shape = activeShapes.value.find((s) => s.id === shapeId)
   if (!shape) return null
@@ -1038,6 +1073,15 @@ const onShapeClick = (id: string, e: any) => {
     selectedId.value = id
   } else {
     selectOnly(id)
+    // v0.7.104 — coalesce all shapes that share the clicked shape's groupId
+    // so users can move / resize a group by clicking any member.
+    const target = activeShapes.value.find((s) => s.id === id)
+    const gid = target?.groupId
+    if (gid) {
+      const mates = activeShapes.value.filter((s) => s.groupId === gid).map((s) => s.id)
+      selectedIds.value = mates
+      selectedId.value = id
+    }
   }
   updateTransformer()
 }
@@ -1047,14 +1091,20 @@ const updateTransformer = async () => {
   const stage = stageRef.value?.getStage?.()
   const tr = transformerRef.value?.getNode?.()
   if (!stage || !tr) return
-  if (!selectedId.value) {
+  if (!selectedId.value && selectedIds.value.length === 0) {
     tr.nodes([])
     tr.getLayer()?.batchDraw?.()
     return
   }
-  const node = stage.findOne(`#${selectedId.value}`)
-  if (node) {
-    tr.nodes([node])
+  // v0.7.101/104 — bind the transformer to every selected shape so users
+  // can resize a multi-selection (or an entire group) with a single handle.
+  const ids = selectedIds.value.length ? selectedIds.value : (selectedId.value ? [selectedId.value] : [])
+  const nodes = ids.map((id) => stage.findOne(`#${id}`)).filter(Boolean) as any[]
+  if (nodes.length) {
+    tr.nodes(nodes)
+    tr.getLayer()?.batchDraw?.()
+  } else {
+    tr.nodes([])
     tr.getLayer()?.batchDraw?.()
   }
 }
@@ -1064,6 +1114,22 @@ const onShapeDragEnd = (id: string, e: any) => {
   if (!node) return
   const newX = Math.round((node.x() / PX_PER_INCH) * 914400)
   const newY = Math.round((node.y() / PX_PER_INCH) * 914400)
+  // v0.7.104 — Konva moves all multi-selected nodes together; mirror the
+  // delta onto each peer so the saved model stays in sync.
+  const ids = selectedIds.value.length ? selectedIds.value : [id]
+  const source = activeShapes.value.find((s) => s.id === id)
+  if (source && ids.length > 1) {
+    const dx = newX - source.x
+    const dy = newY - source.y
+    const patches: Array<{ id: string; patch: Partial<PptxShape> }> = []
+    for (const sid of ids) {
+      const s = activeShapes.value.find((sh) => sh.id === sid)
+      if (!s) continue
+      patches.push({ id: sid, patch: { x: s.x + dx, y: s.y + dy } })
+    }
+    updateShapes(patches)
+    return
+  }
   updateShape(id, { x: newX, y: newY })
 }
 
@@ -1072,7 +1138,33 @@ const onShapeTransformEnd = (id: string, e: any) => {
   if (!node) return
   const scaleX = node.scaleX()
   const scaleY = node.scaleY()
-  // Reset scale and bake into width/height.
+  const ids = selectedIds.value.length ? selectedIds.value : [id]
+  const isMulti = ids.length > 1
+
+  // Reset scales for every dragged node before baking them into width/height.
+  // Each node carries its own scale from Konva (they all move together).
+  const stage = stageRef.value?.getStage?.()
+  if (isMulti && stage) {
+    const peerNodes = ids.map((sid) => stage.findOne(`#${sid}`)).filter(Boolean) as any[]
+    for (const pn of peerNodes) {
+      // Bake scale into the model before resetting Konva's scale.
+      const sx = pn.scaleX()
+      const sy = pn.scaleY()
+      pn.scaleX(1)
+      pn.scaleY(1)
+      const newW = Math.round((pn.width() * sx / PX_PER_INCH) * 914400)
+      const newH = Math.round((pn.height() * sy / PX_PER_INCH) * 914400)
+      const newX = Math.round((pn.x() / PX_PER_INCH) * 914400)
+      const newY = Math.round((pn.y() / PX_PER_INCH) * 914400)
+      const sh = activeShapes.value.find((s) => s.id === pn.id())
+      if (!sh) continue
+      updateShape(pn.id(), { x: newX, y: newY, w: newW, h: newH })
+    }
+    updateTransformer()
+    return
+  }
+
+  // Single-node path (legacy behaviour preserved).
   node.scaleX(1)
   node.scaleY(1)
   const newW = Math.round((node.width() * scaleX / PX_PER_INCH) * 914400)
@@ -1339,6 +1431,57 @@ const matchSize = (axis: 'w' | 'h') => {
     if (axis === 'w' && s.w !== ref.w) patches.push({ id: s.id, patch: { w: ref.w } })
     if (axis === 'h' && s.h !== ref.h) patches.push({ id: s.id, patch: { h: ref.h } })
   }
+  updateShapes(patches)
+}
+
+// v0.7.104 — group / ungroup
+// Returns the common groupId for the current selection if all selected shapes
+// share a non-empty groupId; otherwise returns null.
+const selectedShapeGroupId = computed<string | null>(() => {
+  const shapes = selectedShapes.value
+  if (!shapes.length) return null
+  const ids = shapes.map((s) => s.groupId || '').filter((g) => !!g)
+  if (ids.length !== shapes.length) return null
+  const first = ids[0]
+  return ids.every((g) => g === first) ? first : null
+})
+
+// Group button is enabled when 2+ shapes are selected AND none of them is already in a group.
+const canGroupSelected = computed(() => {
+  const shapes = selectedShapes.value
+  if (shapes.length < 2) return false
+  return shapes.every((s) => !s.groupId)
+})
+
+// Ungroup button is enabled when all selected shapes share a single groupId.
+const canUngroupSelected = computed(() => !!selectedShapeGroupId.value)
+
+const makeGroupId = () => `g_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`
+
+// Group every selected shape under a new shared groupId. Same Yjs transact
+// path as updateShapes so CRDT peers converge in one transaction.
+const groupSelected = () => {
+  const shapes = selectedShapes.value
+  if (shapes.length < 2) return
+  if (shapes.some((s) => !!s.groupId)) return
+  const gid = makeGroupId()
+  const patches: Array<{ id: string; patch: Partial<PptxShape> }> = shapes.map((s) => ({ id: s.id, patch: { groupId: gid } }))
+  updateShapes(patches)
+}
+
+// Ungroup: clear groupId on every selected shape that currently belongs to the
+// selection's shared groupId. Shapes from a different group are left alone
+// (the only way they're in selectedShapes is if onShapeClick coalesced a group
+// into the selection, which it does — so this matches user expectation).
+const ungroupSelected = () => {
+  const shapes = selectedShapes.value
+  if (!shapes.length) return
+  const gid = selectedShapeGroupId.value
+  if (!gid) return
+  const patches: Array<{ id: string; patch: Partial<PptxShape> }> = shapes
+    .filter((s) => s.groupId === gid)
+    .map((s) => ({ id: s.id, patch: { groupId: '' } }))
+  if (!patches.length) return
   updateShapes(patches)
 }
 

@@ -101,6 +101,12 @@ export interface PptxShape {
   cols?: number
   /** Rotation in degrees (0-360). Applied around the shape center. */
   rotation?: number
+  /** v0.7.104 — group id. Shapes sharing the same non-empty groupId are
+   *  treated as a single group in the editor (multi-select, joint resize,
+   *  unified bbox). Persisted in memory; PPTX round-trip ignores the field
+   *  (genoffice writes a real <p:grpSp> when groupElements() is called,
+   *  which is the persistence path for v0.7.107+). */
+  groupId?: string
 }
 
 export interface PptxShapeSlide {
