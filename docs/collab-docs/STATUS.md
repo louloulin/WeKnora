@@ -3958,3 +3958,64 @@ clean
 - **Vue UI 仍是 placeholder**：hf modal 只有 `headerTextInput` / `footerTextInput` + `footerPageNumberInput` 三个基础字段，没有 chip 渲染（`#PAGE#` 用户得自己输入）。`docHeaderFooter.ts` 的 helpers 已经准备好，Vue 模板升级（按段渲染 + chip 样式）属于 v0.7.110+。
 - **多次保存后 docx document.xml 急剧膨胀**：本次 E2E 期间，doc 在反复保存 + docparser /chunk ingest 后 `word/document.xml` 体积从 ~5KB 涨到 ~134MB（重复 sectPr 524288 次）。这是 pre-existing 的 docx-engine patch bug，每次保存 `xml.replace(/(<w:sectPr[^>]*>)/, '$1${hfRefTags}')` 在原 doc 已含大量 sectPr 时会指数化累积。属于 v0.7.111 范围——patch.ts 需先 sanitize `<w:body>` 末尾只保留一个 sectPr 再做 ref 注入。
 - **未触发 E2E 的二次保存**：当前 E2E 只验证了「创建 → 一次保存 → 验证」，没验证「打开已有 header → 修改 → 再保存」。属于 v0.7.109.1 范围。
+
+
+## 59. v0.7.110 — XLSX 数据透视 MVP：UI 接入 + 数据层抽取（2026-09-02）
+
+### 59.1 目标
+
+`xlsxPivotAdd.applyPivotAdditions()` 是 baked-output 路径，需要 `PivotAddition.rowItems` / `valuesByRow` 已经在 UI 层算好。genoffice `PivotDialog.tsx`（709 行 React）的核心工作就是把 `(rows, rowDimIdx, valueIdxIdx, agg)` → `{ fieldNames, rowItems, valuesByRow }`。本轮把这个核心抽成可独立测试的 helper，并做最小 Vue UI 接进 `CollabSheetEditor`：让用户填源范围 / 行维度列 / 值列 / 聚合方式 → 点「预览」实时看到聚合结果。**「应用」（写入 .xlsx）按钮暂留 v0.7.110.1**，**—— 本轮只展示数据抽取是否正确，不触发 `applyPivotAdditions`。
+
+### 59.2 改动
+
+`frontend/src/editor/adapters/xlsxPivotFieldExtract.ts`（新文件，~120 行）：
+
+- `extractPivotSeed({ rows, rowDimIdx, valueIdxIdx, agg })` → `{ fieldNames, rowItems, valuesByRow }`
+  - `agg` 5 种：`sum` / `count` / `average` / `max` / `min`
+  - 数字解析支持 `1,000` / `1 000` / 中文逗号
+  - 空白行维度值归到 `(Blank)` 公共桶（避免每个空 cell 都成新桶）
+  - 非数值 cell 自动跳过（NaN）
+- `buildPivotAddition({ extract, sourceSheetName, worksheetPath, targetRi, targetCi, agg, rowDimIdx, valueIdxIdx })` → minimal `PivotAddition` 形状（1 row dimension + 1 value）。
+
+`frontend/src/editor/adapters/__tests__/xlsxPivotFieldExtract.test.ts`（新文件，8 个 case）：
+
+- sum / count / average / max / min 聚合
+- 非数值 cell 跳过
+- 空白行维度 → `(Blank)` 公共桶
+- 逗号格式数字 (`1,000` + `2,500` = 3500)
+- `buildPivotAddition` 输出形状正确
+
+`frontend/src/components/collab/CollabSheetEditor.vue`：
+
+- 新增 toolbar 按钮「⊞ 透视」 (`data-testid="sheet-pivot-btn"`)，位于「排序」按钮之后。
+- 新增 `pivotModalOpen` + 5 个 ref (`pivotSourceRange` / `pivotRowDimCol` / `pivotValueCol` / `pivotAgg` / `pivotPreview` + `pivotError`)。
+- 新增 `openPivotModal` / `closePivotModal` / `onPivotPreview` 三个函数。
+- 新增 modal 模板：源范围 / 行维度列 / 值列 / 聚合方式下拉 + 「预览」按钮 + `data-testid="sheet-pivot-preview-btn"` + 预留「应用」按钮（disabled，title 说明 v0.7.110.1 待实现）。
+- helper `colLetterToIdx(s)` 把列字母（A/B/...）转 0-based index。
+
+### 59.3 验证
+
+```
+$ tsx --test src/editor/adapters/__tests__/*.test.ts
+ℹ tests 540
+ℹ pass 540
+ℹ fail 0
+
+$ ./node_modules/.bin/tsx --test src/editor/adapters/__tests__/xlsxPivotFieldExtract.test.ts
+ℹ tests 8
+ℹ pass 8
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc --noEmit
+0 errors
+
+$ go build ./internal/...
+clean
+```
+
+### 59.4 已知遗留
+
+- **「应用」按钮未实现**：当前只展示预览数据，不调 `applyPivotAdditions` 写 .xlsx。需要在 CollabSheetEditor 拿当前 .xlsx 字节 → openPkg → buildPivotAddition → applyPivotAdditions → savePptxShapeBytes。属于 v0.7.110.1。
+- **MVP 单 row + 单 value**：genoffice `PivotDialog.tsx` 支持多级 row / col dimension / value filters / calculated fields / 分组（日期 / 范围）。本轮只 port 单 row + 单 value 聚合。完整 port 属于 v0.7.113+。
+- **colLetterToIdx 没处理 AA / AB**：当前只支持单字母列（A-Z）。多字母列（AA/AB...）属于 v0.7.110.x polish。
+- **没有 E2E**：本轮没写 Playwright 验证脚本。属于 v0.7.110.1 范围内连同「应用」按钮一起做。

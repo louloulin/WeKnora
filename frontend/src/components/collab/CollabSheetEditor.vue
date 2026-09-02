@@ -50,6 +50,8 @@
       <button class="collab-sheet-editor__feature" @click="openHyperlinkModal" type="button" title="超链接">链接</button>
       <button class="collab-sheet-editor__feature" @click="openFindModal" type="button" title="查找替换" data-testid="sheet-find-btn">查找</button>
       <button class="collab-sheet-editor__feature" @click="openSortModal" type="button" title="按列排序" data-testid="sheet-sort-btn">排序</button>
+      <!-- v0.7.110 — XLSX 数据透视 (单 row + 单 value MVP) -->
+      <button class="collab-sheet-editor__feature" @click="openPivotModal" type="button" title="数据透视表" data-testid="sheet-pivot-btn">透视</button>
       <button class="collab-sheet-editor__feature" @click="openNamesModal" type="button" title="命名区域管理" data-testid="sheet-names-btn">命名</button>
       <button class="collab-sheet-editor__feature" @click="openTableModal" type="button" title="插入表对象">表格</button>
       <span class="collab-sheet-editor__peers">
@@ -557,6 +559,37 @@
       placeholder="对选中的单元格添加评论…"
     />
   </div>
+
+
+    <!-- v0.7.110 — XLSX 数据透视 modal -->
+    <div v-if="pivotModalOpen" class="collab-sheet-editor__modal-bg" @click="closePivotModal">
+      <div class="collab-sheet-editor__modal" @click.stop>
+        <h3>数据透视 (MVP: 单 row + 单 value)</h3>
+        <p class="collab-sheet-editor__modal-hint">
+          输入源数据范围、row dimension 列、value 列和聚合方式。
+          预览展示当前选中数据能聚合出的结果；应用 → 写入 Pivot1 表到工作表右侧。
+        </p>
+        <label>源数据范围：<input v-model="pivotSourceRange" data-testid="sheet-pivot-source" /></label>
+        <label>行维度列：<input v-model="pivotRowDimCol" maxlength="3" data-testid="sheet-pivot-rowdim" /></label>
+        <label>值列：<input v-model="pivotValueCol" maxlength="3" data-testid="sheet-pivot-valuecol" /></label>
+        <label>聚合方式：
+          <select v-model="pivotAgg" data-testid="sheet-pivot-agg">
+            <option value="sum">求和</option>
+            <option value="count">计数</option>
+            <option value="average">平均</option>
+            <option value="max">最大</option>
+            <option value="min">最小</option>
+          </select>
+        </label>
+        <pre v-if="pivotPreview" class="collab-sheet-editor__modal-pre" data-testid="sheet-pivot-preview">{{ pivotPreview }}</pre>
+        <p v-if="pivotError" class="collab-sheet-editor__modal-error" data-testid="sheet-pivot-error">{{ pivotError }}</p>
+        <div class="collab-sheet-editor__modal-actions">
+          <button type="button" @click="closePivotModal">取消</button>
+          <button type="button" @click="onPivotPreview" data-testid="sheet-pivot-preview-btn">预览</button>
+          <button type="button" disabled title="v0.7.110.1 应用 — 当前仅展示预览数据，不写入 .xlsx" data-testid="sheet-pivot-apply-btn">应用（v0.7.110.1）</button>
+        </div>
+      </div>
+    </div>
 </template>
 
 <script setup lang="ts">
@@ -1148,6 +1181,80 @@ const onNoteClear = () => {
 }
 
 // ===== v0.7.100 — Sort handlers =====
+
+// v0.7.110 — XLSX 数据透视 (MVP: 单 row + 单 value)
+const pivotModalOpen = ref(false)
+const pivotSourceRange = ref('A1:D20')
+const pivotRowDimCol = ref('A')
+const pivotValueCol = ref('B')
+const pivotAgg = ref<'sum' | 'count' | 'average' | 'max' | 'min'>('sum')
+const pivotPreview = ref<string | null>(null)
+const pivotError = ref<string | null>(null)
+
+const colLetterToIdx = (s: string): number => {
+  let n = 0
+  for (const ch of s.toUpperCase()) {
+    if (ch < 'A' || ch > 'Z') return -1
+    n = n * 26 + (ch.charCodeAt(0) - 64)
+  }
+  return n - 1
+}
+
+const openPivotModal = () => {
+  pivotModalOpen.value = true
+  pivotPreview.value = null
+  pivotError.value = null
+}
+
+const closePivotModal = () => {
+  pivotModalOpen.value = false
+}
+
+const onPivotPreview = async () => {
+  pivotError.value = null
+  pivotPreview.value = null
+  try {
+    const m = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i.exec(pivotSourceRange.value.trim())
+    if (!m) {
+      pivotError.value = '范围格式应为 A1:D20'
+      return
+    }
+    const startCol = colLetterToIdx(m[1]!)
+    const endCol = colLetterToIdx(m[3]!)
+    const startRow = parseInt(m[2]!, 10)
+    const endRow = parseInt(m[4]!, 10)
+    if (startCol < 0 || endCol < startCol || endRow < startRow) {
+      pivotError.value = '范围无效'
+      return
+    }
+    const rowDimIdx = colLetterToIdx(pivotRowDimCol.value)
+    const valueIdxIdx = colLetterToIdx(pivotValueCol.value)
+    if (rowDimIdx < 0 || valueIdxIdx < 0) {
+      pivotError.value = '列字母无效'
+      return
+    }
+    const sourceRows = sheets.value[activeSheet.value]?.rows ?? []
+    if (startRow - 1 >= sourceRows.length) {
+      pivotError.value = '起始行超出当前工作表范围'
+      return
+    }
+    const rows: string[][] = []
+    for (let r = startRow; r <= endRow; r++) {
+      const sourceRow = sourceRows[r - 1] ?? []
+      const arr: string[] = []
+      for (let c = startCol; c <= endCol; c++) {
+        arr.push(sourceRow[c] ?? '')
+      }
+      rows.push(arr)
+    }
+    const extract = extractPivotSeed({ rows, rowDimIdx, valueIdxIdx, agg: pivotAgg.value })
+    const lines = extract.rowItems.map((k) => `${k}: ${extract.valuesByRow[k]}`)
+    pivotPreview.value = lines.join('\n')
+  } catch (e: any) {
+    pivotError.value = e?.message || String(e)
+  }
+}
+
 const openSortModal = () => {
   sortColInput.value = 'A'
   sortDirectionInput.value = 'asc'
