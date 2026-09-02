@@ -3472,3 +3472,50 @@ ALL OK — sheet named ranges
 - 未实现"从选区创建"（Create from Selection）— 需要选中区域 → 自动起名。genoffice/Excel 都支持。
 - 未暴露命名区域给单元格编辑器的下拉补全（输入 `=` 后选名称）。需要把 `wb.definedNames` 注入 cell-input 的自动补全候选。
 - sheet 重命名时，公式里的 sheet 名需要同步改（adapter `renameSheetReferencesInDefinedNames` 已存在但 save 路径未调用）。
+
+
+### 51. v0.7.103 — DOC 修订对比 viewer 增强（2026-09-02）
+
+### 51.1 目标
+
+把既有的 DOC track-changes 修订面板从"按作者整组接受/拒绝"升级为"逐条接受/拒绝 + 跳转"的 Word / 腾讯文档式 viewer。每条修订单独显示 kind + 文本片段 + 三个按钮（跳转/接受/拒绝）。
+
+### 51.2 改动
+
+`frontend/src/components/collab/CollabDocProEditor.vue`：
+
+- 注册 `ins` / `del` ProseMirror marks（`Mark.create({ name, renderHTML })`）。原 schema 缺这两个 mark，导致 `collectRevisions` 在编辑器内无法检测实时产生的 ins/del——只能在导入已含 w:ins/w:del 的 docx 时发现历史修订。补齐后编辑器内可实时创建 / 检测。
+- 导入 `acceptCurrentRevision` / `rejectCurrentRevision`（adapter 已存在但未在 UI 暴露）。
+- 新增 `onRevisionItemGoto / onRevisionItemAccept / onRevisionItemReject`：先把选区移到该 revision，再调对应 adapter 方法（`acceptCurrentRevision` 以选区所在修订为操作目标）。每次操作后 `revisionTick++` 触发重算 + `scheduleSave()`。
+- 重构修订列表模板：每条 revision 现在是 `__revisions-item-head`，包含彩色 kind 标签（ins/blockIns=绿、del/blockDel=红划线）、`code` 文本片段、三个 `__revisions-mini` 按钮（`data-testid="doc-rev-goto/accept/reject-{group}-{idx}"`）。
+- 新增配套 CSS（`__revisions-item-head`、`__revisions-mini`、`__revisions-kind--ins/del`）。
+- 加最小测试钩子：`new Editor` 后把 `editor.value` 赋给 `window.__wkDocEditor`，让 E2E 测试能注入受控的 ins/del marks（无其他 UI 入口能产生 marks）。
+
+### 51.3 真实双端浏览器验证
+
+`frontend/wk-doc-revisions-viewer.mjs`（已提交）：admin 登录 → 等 `window.__wkDocEditor` 暴露 → 通过 `tr.addMark` 注入 2 个 ins + 1 个 del → 点 "修订 (N)" → 验证面板渲染 3 条 per-item 按钮（goto/accept/reject 都可见）→ 点 idx-0 accept（计数 3→2）→ 点新 idx-0 reject（计数 2→1）→ 点 idx-0 goto（验证 `editor.state.selection` 非零范围 `{from:15, to:22}`）→ 等 4s 保存 → 下载 docx → 解压 `word/document.xml` → 验证三段文本（INS1/DEL1/INS2）均已落盘（accept ins 保留文本、reject del 保留文本，w:ins/w:del 包装是 docx-engine 序列化器的后续任务）。结果：
+
+```
+revisions panel opened: true
+initial per-item buttons: 3
+per-item buttons rendered (accept/goto/reject): true true true
+after accept first: 2
+after reject: 1
+after goto: { from: 15, to: 22 }
+page errors: 0
+ALL OK — doc revision viewer
+```
+
+截图：`/tmp/wk-shots/doc-revisions-viewer-01.png`、`/tmp/wk-shots/doc-revisions-viewer-99.png`。
+
+### 51.4 回归
+
+- `tsx --test` 504/504 ✅（docRevisions.test.ts 已覆盖 accept/reject/goto 的纯逻辑）
+- `vue-tsc` 本轮 0 新错误
+- `go build` ✅
+
+### 51.5 已知遗留
+
+- docx 序列化器尚未把 PM 的 `ins`/`del` marks 写成 `w:ins`/`w:del` 包装元素——文本落盘但 tracked-change 标记在 Word 里重新打开不会显示。属于 `docx-engine/patch.ts` + `parse.ts` 的序列化增强任务，留待 v0.7.106+。
+- 未做字符级 inline diff（"changed" 段落内部红绿对照）——现在只到段落级（v0.7.69 的 compare panel）与逐条级（本轮 viewer），未做段内 word-level diff。
+- per-revision 面板未显示 author / date——目前按作者分组显示，组内每条只显示 kind + 文本。要展示 author 需要把 mark.attrs.author 透出到 `revisions` computed（adapter 已读 `r.author`，UI 暂未渲染）。

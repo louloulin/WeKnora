@@ -296,8 +296,15 @@
               </div>
               <ul class="collab-doc-pro__revisions-items">
                 <li v-for="(rev, i) in group.items" :key="i" class="collab-doc-pro__revisions-item">
-                  <span class="collab-doc-pro__revisions-kind">{{ revisionLabel(rev.kind) }}</span>
-                  <span class="collab-doc-pro__revisions-snippet">{{ rev.snippet }}</span>
+                  <div class="collab-doc-pro__revisions-item-head">
+                    <span class="collab-doc-pro__revisions-kind" :class="'collab-doc-pro__revisions-kind--' + rev.kind">{{ revisionLabel(rev.kind) }}</span>
+                    <code class="collab-doc-pro__revisions-snippet">{{ rev.snippet || '（空）' }}</code>
+                    <span class="collab-doc-pro__revisions-item-actions">
+                      <button type="button" class="collab-doc-pro__revisions-mini" :data-testid="`doc-rev-goto-${idx}-${i}`" @click="onRevisionItemGoto(rev)" title="跳到此处">跳转</button>
+                      <button type="button" class="collab-doc-pro__revisions-mini accept" :data-testid="`doc-rev-accept-${idx}-${i}`" @click="onRevisionItemAccept(rev)" title="仅接受此修订">接受</button>
+                      <button type="button" class="collab-doc-pro__revisions-mini reject" :data-testid="`doc-rev-reject-${idx}-${i}`" @click="onRevisionItemReject(rev)" title="仅拒绝此修订">拒绝</button>
+                    </span>
+                  </div>
                 </li>
               </ul>
               <div class="collab-doc-pro__math-actions">
@@ -551,7 +558,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
-import { Editor, EditorContent } from '@tiptap/vue-3'
+import { Editor, EditorContent, Mark } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import { DocTable, DocTableRow, DocTableCell, DocTableHeader } from '@/editor/adapters/docTableExtras'
@@ -615,6 +622,8 @@ import {
   collectRevisions,
   gotoRevision,
   revisionLabel,
+  acceptCurrentRevision,
+  rejectCurrentRevision,
 } from '@/editor/adapters/docRevisions'
 import {
   compareParagraphs,
@@ -897,6 +906,28 @@ const onRevisionGoto = (rev: RevisionSnippet) => {
   if (!editor.value) return
   editor.value.commands.setTextSelection({ from: rev.from, to: rev.to })
   revisionsOpen.value = false
+}
+// v0.7.103 — per-revision viewer: goto + accept/reject a single revision.
+const onRevisionItemGoto = (rev: RevisionSnippet) => {
+  if (!editor.value) return
+  editor.value.commands.setTextSelection({ from: rev.from, to: rev.to })
+  editor.value.commands.focus()
+}
+const onRevisionItemAccept = (rev: RevisionSnippet) => {
+  if (!editor.value) return
+  onRevisionItemGoto(rev)
+  if (acceptCurrentRevision(editor.value)) {
+    revisionTick.value++
+    scheduleSave()
+  }
+}
+const onRevisionItemReject = (rev: RevisionSnippet) => {
+  if (!editor.value) return
+  onRevisionItemGoto(rev)
+  if (rejectCurrentRevision(editor.value)) {
+    revisionTick.value++
+    scheduleSave()
+  }
 }
 
 // v0.7.69 — DOC compare (Word Review > Compare)
@@ -1593,6 +1624,18 @@ const initEditor = (paragraphs: DocxAdapterParagraph[]) => {
       DocInlineMath,
       DocProtected,
       CommentMark,
+      // v0.7.103 — register ins / del marks so docRevisions collectRevisions can
+      // detect tracked-change runs and accept/reject can operate on them.
+      Mark.create({
+        name: 'ins', inclusive: false,
+        addAttributes: () => ({ author: { default: 'admin' }, date: { default: null } }),
+        renderHTML: (attrs) => ['ins', { 'data-author': attrs.author }, 0],
+      }),
+      Mark.create({
+        name: 'del', inclusive: false,
+        addAttributes: () => ({ author: { default: 'admin' }, date: { default: null } }),
+        renderHTML: (attrs) => ['del', { 'data-author': attrs.author }, 0],
+      }),
       Link,
       Underline,
       Highlight.configure({ multicolor: true }),
@@ -1680,6 +1723,8 @@ const initEditor = (paragraphs: DocxAdapterParagraph[]) => {
       }
     },
   })
+  // v0.7.103 — expose editor on window for E2E tests to inject tracked revisions.
+  if (typeof window !== 'undefined') (window as any).__wkDocEditor = editor.value
 }
 
 const paragraphsToContent = (paragraphs: DocxAdapterParagraph[]) => {
@@ -1894,6 +1939,17 @@ onBeforeUnmount(teardown)
 </script>
 
 <style scoped>
+
+.collab-doc-pro__revisions-item-head { display: flex; align-items: center; gap: 6px; padding: 4px 0; flex-wrap: wrap; }
+.collab-doc-pro__revisions-item-actions { display: inline-flex; gap: 4px; margin-left: auto; }
+.collab-doc-pro__revisions-mini { background: transparent; border: 1px solid var(--td-component-stroke); border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
+.collab-doc-pro__revisions-mini:hover { background: #f0f3f7; }
+.collab-doc-pro__revisions-mini.accept { color: var(--td-success-color, #2da44e); border-color: #2da44e; }
+.collab-doc-pro__revisions-mini.reject { color: var(--td-error-color, #d54941); border-color: #d54941; }
+.collab-doc-pro__revisions-kind--ins, .collab-doc-pro__revisions-kind--blockIns { color: #2da44e; background: rgba(45,164,78,0.10); padding: 1px 6px; border-radius: 3px; font-size: 11px; }
+.collab-doc-pro__revisions-kind--del, .collab-doc-pro__revisions-kind--blockDel { color: #d54941; background: rgba(213,73,65,0.10); padding: 1px 6px; border-radius: 3px; font-size: 11px; text-decoration: line-through; }
+.collab-doc-pro__revisions-snippet { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; color: var(--td-text-color-secondary); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .collab-doc-pro__math-bg {
   position: fixed; inset: 0;
   background: rgba(0,0,0,0.4);

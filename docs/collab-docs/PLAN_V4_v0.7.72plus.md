@@ -439,3 +439,24 @@ Alice 切到 Sheet2 写 A1=Bob 在 Sheet2 看到，Sheet1 不会串表。已 PAS
 - v0.7.104 SLIDE 组 / 取消组 + 多选同时 resize（Konva multi-node transform）
 - v0.7.105 SHEET 命名区域补全：单元格公式 `=` 后的名称下拉 / 从选区创建 / sheet 重命名同步
 - 持续收敛 genoffice vendor
+
+
+## 17. v0.7.103 — DOC 修订对比 viewer 增强（已交付，2026-09-02）
+
+### 已完成
+
+- ProseMirror 注册 `ins` / `del` marks（之前缺，编辑器内实时修订检测不到）
+- 修订面板逐条 viewer：跳转 / 接受 / 拒绝
+- 接受/拒绝基于选区定位（先 setTextSelection 再 acceptCurrentRevision）
+- window.__wkDocEditor 测试钩子（让 E2E 能注入受控 marks）
+
+### 真实双端验证
+
+`frontend/wk-doc-revisions-viewer.mjs` 已 PASS：注入 ins/del → 面板 3 条 → accept 3→2 → reject 2→1 → goto 移动选区 → 保存 → docx 文本持久化。
+
+### 下一阶段
+
+- v0.7.104 SLIDE 组 / 取消组 + 多选同时 resize
+- v0.7.105 SHEET 命名区域补全：单元格公式 `=` 名称下拉 / 从选区创建 / sheet 重命名同步
+- v0.7.106 DOC 修订序列化：PM ins/del → w:ins/w:del + author 渲染到面板
+- 持续收敛 genoffice vendor
