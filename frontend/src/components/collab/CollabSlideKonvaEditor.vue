@@ -784,6 +784,11 @@ import type { Slide } from '@/editor/engines/pptx-engine/types'
 // v0.7.107 — wire the engine's groupElements / ungroupElement into the save path
 // so a local grouping operation writes a real <p:grpSp> to ppt/slides/slideN.xml.
 import { groupElements, ungroupElement } from '@/editor/engines/pptx-engine/index'
+import {
+  projectGroupsToEngine,
+  markLocalGrouped,
+  markLocalUngrouped,
+} from '../../editor/adapters/slideGroupSync'
 import type { SlideThemePreset } from '@/editor/slides/themes/genofficeThemes'
 import { addSlideComment, getSlideComments } from '@/editor/engines/pptx-engine/comments'
 import type { CollabDocComment } from '@/api/collabDoc'
@@ -827,6 +832,11 @@ const selectedIds = ref<string[]>([])
 // returns its own internal id for the new <p:grpSp>; we stash it so the next
 // ungroup call can pass that id (not the Yjs groupId) to engineUngroupElement.
 const engineGroupIdByYjsGroupId = reactive<Record<string, string>>({})
+// v0.7.108 — track which Yjs groupIds we have already projected onto the
+// engine side per slide. Used by syncFromY to detect new (grouped on a remote
+// peer) and disappeared (ungrouped on a remote peer) groups and apply
+// groupElements / ungroupElement accordingly.
+const lastSyncedYjsGroupIdsBySlideIdx = new Map<number, Set<string>>()
 
 // --- Table insertion prompt ---
 const showTablePrompt = ref(false)
@@ -1521,6 +1531,10 @@ const groupSelected = () => {
       // eslint-disable-next-line no-console
       console.warn('[CollabSlideKonvaEditor] engine groupElements failed', e)
     }
+    // v0.7.108 — record this gid as already projected so the very next
+    // syncFromY (fired by the local Yjs observe) does not double-trigger
+    // groupElements for the same set of sourceIds.
+    markLocalGrouped(lastSyncedYjsGroupIdsBySlideIdx, slideIdx, gid)
   }
 }
 
@@ -1543,15 +1557,19 @@ const ungroupSelected = () => {
   updateShapes(patches)
   if (deck.value?.opened) {
     const engineGid = engineGroupIdByYjsGroupId[gid]
+    const slideIdx = activeIndex.value
     if (engineGid) {
       try {
-        ungroupElement(deck.value.opened, activeIndex.value, engineGid)
+        ungroupElement(deck.value.opened, slideIdx, engineGid)
       } catch (e) {
         // eslint-disable-next-line no-console
         console.warn('[CollabSlideKonvaEditor] engine ungroupElement failed', e)
       }
       delete engineGroupIdByYjsGroupId[gid]
     }
+    // v0.7.108 — drop the gid from the projection set so the local
+    // syncFromY observes no diff and does not call ungroupElement again.
+    markLocalUngrouped(lastSyncedYjsGroupIdsBySlideIdx, slideIdx)
   }
 }
 
@@ -1675,6 +1693,22 @@ const syncFromY = () => {
         }
         img.src = shape.mediaData
       }
+    }
+  }
+  // v0.7.108 — propagate groupId changes to the engine so a remote peer's
+  // group / ungroup also rebuilds slide.elements into a <p:grpSp>. Local
+  // groupSelected / ungroupSelected already call the engine themselves and
+  // mark the gid via markLocalGrouped / markLocalUngrouped, so the syncFromY
+  // triggered by the local Yjs observe sees no diff.
+  if (deck.value?.opened) {
+    for (const slide of remote) {
+      projectGroupsToEngine({
+        shapes: slide.shapes,
+        slideIdx: slide.index,
+        opened: deck.value.opened,
+        state: lastSyncedYjsGroupIdsBySlideIdx,
+        engineMap: engineGroupIdByYjsGroupId,
+      })
     }
   }
 }

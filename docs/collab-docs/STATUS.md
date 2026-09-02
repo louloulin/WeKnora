@@ -3838,3 +3838,55 @@ ALL OK — doc track changes serialize w:ins/w:del with author + date
 - **`del` mark id 持久化**：id 仅在内存中自增；远端 peer 看到的同一 del 会有不同的 id。Yjs 端不分发 mark（只有节点属性同步），无法做到严格稳定 id。Word 也不会用同一 id，实践中不构成问题。
 - **deleteContentBackward 等其它删除命令**：`Backspace` / `Delete` / `deleteRange` / `deleteNode` 等命令最终都会变成 ReplaceStep from<to empty slice，目前 hook 已覆盖；命令层面无需单独处理。
 
+
+
+## 57. v0.7.108 — SLIDE 跨客户端 group 分发（Yjs → engine 投影）（2026-09-02）
+
+### 57.1 目标
+
+v0.7.107 把本地 `groupSelected()` 接到了 `engine.groupElements`，save 路径写出真正的 `<p:grpSp>`。但**远端 peer 收不到这条** —— 它通过 Yjs 看到 shape 的 `groupId` 字段变了，但自己的 `deck.opened.deck.slides[i].elements` 仍然把 N 个 child 写成独立的 `<p:sp>`，下一次远端保存时 grpSp 就丢了。本轮在 `syncFromY` 里把 groupId 集合 diff 后投影到 engine。
+
+### 57.2 改动
+
+`frontend/src/editor/adapters/slideGroupSync.ts`（新文件，~80 行）：
+
+- 纯函数 `projectGroupsToEngine({ shapes, slideIdx, opened, state, engineMap })`：对比 `state[slideIdx]`（上次投影的 groupId Set）与当前 shapes 携带的 groupId Set：
+  - **新增**：调 `engine.groupElements(opened, slideIdx, sourceIds)`，把返回的 `result.groupId`（engine 内部 element id）写入 `engineMap[gid]`，记入本次 `diff.grouped`。
+  - **消失**：用 `engineMap[gid]` 查 engine 端 element id，调 `engine.ungroupElement(opened, slideIdx, engineGid)` 提升 children 到顶层；清掉 `engineMap[gid]`，记入 `diff.ungrouped`。
+  - **未变**：跳过（幂等）。
+- `markLocalGrouped(state, slideIdx, gid)` / `markLocalUngrouped(state, slideIdx)`：本地 groupSelected / ungroupSelected 调完 engine 后登记一次，避免紧随的 `syncFromY`（本地 Yjs observe 触发）再次投影。
+
+`frontend/src/components/collab/CollabSlideKonvaEditor.vue`：
+
+- 新增 `lastSyncedYjsGroupIdsBySlideIdx: Map<number, Set<string>>` 跟踪每张 slide 已投影的 groupId。
+- `import { projectGroupsToEngine, markLocalGrouped, markLocalUngrouped } from '../../editor/adapters/slideGroupSync'`。
+- `groupSelected()`：在 `groupElements` 成功后调 `markLocalGrouped(state, slideIdx, gid)`。
+- `ungroupSelected()`：在 `ungroupElement` 成功后调 `markLocalUngrouped(state, slideIdx)`。
+- `syncFromY()` 末尾：循环所有 slide 调 `projectGroupsToEngine({...})`，Yjs / 本地 / 远端的 group 操作都会走这条路径，行为统一。
+
+### 57.3 单元测试
+
+`frontend/src/editor/adapters/__tests__/slideGroupSync.test.ts`（新文件，6 个 case）：
+
+- `newly added gid triggers groupElements`：pre-group → state 已投影 → 再 sync diff 为 0
+- `same shapes called twice does not double-group`：state 记录 gid 后再次投影 → 不重复调
+- `gid with <2 sourceIds is skipped`：单个 source 不调 groupElements
+- `disappeared gid triggers ungroupElement`：gid 消失 → ungroupElement + engineMap 清掉
+- `markLocalGrouped suppresses re-projection`：本地预先登记后 syncFromY 不重复调
+- `markLocalUngrouped suppresses re-unprojection`：本地预先登记 ungroup 后 syncFromY 不重复调
+
+合计 6/6 ✅。
+
+### 57.4 回归
+
+- `tsx --test` 520/520 ✅（新增 6 个 + 原 514）
+- `vue-tsc --noEmit` 0 错误
+- `go build ./internal/...` clean
+- `wk-slide-grp-sp-save.mjs` (v0.7.107) 仍 PASS ✅（本地 group/ungroup 路径未变）
+- `wk-doc-track-changes.mjs` (v0.7.106.1) 仍 PASS ✅
+- `wk-sheet-names-autocomplete.mjs` (v0.7.105) 仍 PASS ✅
+
+### 57.5 已知遗留
+
+- **当前实现只在单端 save 时保证 grpSp 落盘**：跨客户端 group 状态现在能正确投影到 engine（远端 peer 自己的 save 不会再丢 grpSp），但**还没有真实双浏览器协同 E2E 验证脚本**（E2E 需要稳定的 dual-context y-websocket setup，本地没有现成 harness）。属于 v0.7.108.1 范围——用 Playwright 双 context 跑一次。
+- **groupId 命名空间仍是 per-slide**：跨 slide group 仍不支持（设计意图）。
