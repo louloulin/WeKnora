@@ -101,26 +101,26 @@ function cellComponentFor(field: DatabaseField) {
 </script>
 
 <style scoped>
-.table-view { background: #fff; border-radius: 8px; border: 1px solid var(--border-color, #e6e8eb); overflow: auto; }
+.table-view { background: var(--app-surface-bg, #181a1d); border-radius: 8px; border: 1px solid var(--app-border, #30343a); overflow: auto; }
 .db-table { width: 100%; border-collapse: collapse; }
 .db-table th, .db-table td {
   padding: 8px 10px;
-  border-bottom: 1px solid var(--border-color, #e6e8eb);
-  border-right: 1px solid var(--border-color, #f0f1f3);
+  border-bottom: 1px solid var(--app-border, #30343a);
+  border-right: 1px solid var(--app-border, #30343a);
   text-align: left;
   font-size: 13px;
 }
 .db-table th {
-  background: var(--bg-secondary, #f7f8fa);
+  background: var(--app-surface-raised, #202327);
   font-weight: 600;
-  color: var(--text-primary, #222);
+  color: var(--app-text, #f3f4f6);
   position: sticky; top: 0;
 }
-.db-table .field-type { color: var(--text-secondary, #999); font-weight: 400; font-size: 11px; margin-left: 6px; }
-.db-table input { width: 100%; border: 0; padding: 4px 6px; background: transparent; font-size: 13px; }
-.db-table input:focus { outline: 2px solid var(--primary-light, #cce0ff); border-radius: 4px; }
+.db-table .field-type { color: var(--app-text-muted, #a1a1aa); font-weight: 400; font-size: 11px; margin-left: 6px; }
+.db-table input { width: 100%; border: 0; padding: 4px 6px; background: transparent; color: var(--app-text, #f3f4f6); font-size: 13px; }
+.db-table input:focus { outline: 2px solid var(--app-brand, #06b04d); border-radius: 4px; }
 .col-actions { width: 80px; }
-.empty-row td { text-align: center; color: var(--text-secondary, #999); padding: 32px; }
-.add-field .link { background: transparent; border: 0; color: var(--primary-color, #2b6fd6); cursor: pointer; padding: 4px 6px; }
-.link { background: transparent; border: 0; color: var(--primary-color, #2b6fd6); cursor: pointer; padding: 2px 6px; }
+.empty-row td { text-align: center; color: var(--app-text-muted, #a1a1aa); padding: 32px; }
+.add-field .link { background: transparent; border: 0; color: var(--app-brand, #06b04d); cursor: pointer; padding: 4px 6px; }
+.link { background: transparent; border: 0; color: var(--app-brand, #06b04d); cursor: pointer; padding: 2px 6px; }
 </style>

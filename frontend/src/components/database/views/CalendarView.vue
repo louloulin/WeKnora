@@ -97,14 +97,14 @@ const cells = computed<Cell[]>(() => {
 </script>
 
 <style scoped>
-.calendar-view { background: #fff; border: 1px solid var(--border-color, #e6e8eb); border-radius: 8px; padding: 16px; }
+.calendar-view { background: var(--app-surface-bg, #181a1d); border: 1px solid var(--app-border, #30343a); border-radius: 8px; padding: 16px; }
 .calendar-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .calendar-header h3 { margin: 0; }
 .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-.calendar-dow { font-size: 11px; color: var(--text-secondary, #999); text-align: center; padding: 4px; }
-.calendar-cell { min-height: 80px; padding: 4px; border: 1px solid var(--border-color, #f0f1f3); border-radius: 4px; font-size: 12px; }
-.calendar-cell.muted { background: var(--bg-secondary, #fafafa); color: var(--text-secondary, #ccc); }
+.calendar-dow { font-size: 11px; color: var(--app-text-muted, #a1a1aa); text-align: center; padding: 4px; }
+.calendar-cell { min-height: 80px; padding: 4px; border: 1px solid var(--app-border, #30343a); border-radius: 4px; font-size: 12px; }
+.calendar-cell.muted { background: var(--app-surface-raised, #202327); color: var(--app-text-muted, #a1a1aa); }
 .calendar-cell-date { font-weight: 600; margin-bottom: 4px; }
-.calendar-event { background: var(--primary-light, #e8f3ff); color: var(--primary-color, #2b6fd6); padding: 2px 4px; border-radius: 3px; margin-bottom: 2px; font-size: 11px; }
-.link { background: transparent; border: 0; color: var(--primary-color, #2b6fd6); cursor: pointer; padding: 4px 8px; }
+.calendar-event { background: color-mix(in srgb, var(--app-brand, #06b04d) 20%, transparent); color: var(--app-brand, #06b04d); padding: 2px 4px; border-radius: 3px; margin-bottom: 2px; font-size: 11px; }
+.link { background: transparent; border: 0; color: var(--app-brand, #06b04d); cursor: pointer; padding: 4px 8px; }
 </style>

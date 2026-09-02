@@ -123,6 +123,7 @@
     --app-surface-bg: #ffffff;
     --app-surface-raised: #ffffff;
     --app-control-bg: #ffffff;
+    --app-brand: #06b04d;
     --app-border: #e5e7eb;
     --app-border-strong: #d1d5db;
     --app-text: #111827;
@@ -136,6 +137,7 @@
     --app-surface-bg: #181a1d;
     --app-surface-raised: #202327;
     --app-control-bg: #202327;
+    --app-brand: #07c05f;
     --app-border: #30343a;
     --app-border-strong: #41464e;
     --app-text: #f3f4f6;
@@ -147,6 +149,8 @@ html,
 body,
 #app {
     color-scheme: var(--app-color-scheme, light);
+    background: var(--app-page-bg, #f3f4f6);
+    color: var(--app-text, #111827);
 }
 
 body,

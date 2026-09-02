@@ -67,8 +67,8 @@ function getIcon(row: DatabaseRow): string {
   gap: 16px;
 }
 .gallery-card {
-  background: #fff;
-  border: 1px solid var(--border-color, #e6e8eb);
+  background: var(--app-surface-bg, #181a1d);
+  border: 1px solid var(--app-border, #30343a);
   border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
@@ -76,20 +76,20 @@ function getIcon(row: DatabaseRow): string {
 }
 .gallery-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
 .gallery-card-cover {
-  background: var(--bg-secondary, #f7f8fa);
+  background: var(--app-surface-raised, #202327);
   height: 96px;
   display: flex; align-items: center; justify-content: center;
 }
 .gallery-card-icon {
-  font-size: 36px; font-weight: 700; color: var(--primary-color, #2b6fd6);
+  font-size: 36px; font-weight: 700; color: var(--app-brand, #06b04d);
 }
 .gallery-card-title { padding: 10px 12px 4px; font-weight: 500; }
 .gallery-card-meta {
   padding: 2px 12px;
   font-size: 12px;
-  color: var(--text-secondary, #666);
+  color: var(--app-text-muted, #a1a1aa);
   display: flex; gap: 4px;
 }
-.gallery-card-meta-name { color: var(--text-secondary, #999); }
-.gallery-empty { grid-column: 1 / -1; color: var(--text-secondary, #999); text-align: center; padding: 48px; }
+.gallery-card-meta-name { color: var(--app-text-muted, #a1a1aa); }
+.gallery-empty { grid-column: 1 / -1; color: var(--app-text-muted, #a1a1aa); text-align: center; padding: 48px; }
 </style>

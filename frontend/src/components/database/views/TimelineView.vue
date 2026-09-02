@@ -81,16 +81,16 @@ function barWidth(row: DatabaseRow): number {
 </script>
 
 <style scoped>
-.timeline-view { background: #fff; border: 1px solid var(--border-color, #e6e8eb); border-radius: 8px; padding: 16px; }
+.timeline-view { background: var(--app-surface-bg, #181a1d); border: 1px solid var(--app-border, #30343a); border-radius: 8px; padding: 16px; }
 .timeline-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .timeline-header h3 { margin: 0; }
-.timeline-count { color: var(--text-secondary, #999); font-size: 12px; }
+.timeline-count { color: var(--app-text-muted, #a1a1aa); font-size: 12px; }
 .timeline-rows { display: flex; flex-direction: column; gap: 8px; }
-.timeline-row { display: grid; grid-template-columns: 120px 1fr 240px; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border-color, #f0f1f3); }
+.timeline-row { display: grid; grid-template-columns: 120px 1fr 240px; align-items: center; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--app-border, #30343a); }
 .timeline-row-date-start { font-weight: 600; font-size: 13px; }
-.timeline-row-date-end { font-size: 11px; color: var(--text-secondary, #999); }
-.timeline-row-bar { background: var(--bg-secondary, #f7f8fa); height: 8px; border-radius: 4px; overflow: hidden; }
-.timeline-row-bar-fill { background: var(--primary-color, #2b6fd6); height: 100%; border-radius: 4px; }
+.timeline-row-date-end { font-size: 11px; color: var(--app-text-muted, #a1a1aa); }
+.timeline-row-bar { background: var(--app-surface-raised, #202327); height: 8px; border-radius: 4px; overflow: hidden; }
+.timeline-row-bar-fill { background: var(--app-brand, #06b04d); height: 100%; border-radius: 4px; }
 .timeline-row-title { font-size: 13px; }
-.timeline-empty { color: var(--text-secondary, #999); padding: 32px; text-align: center; }
+.timeline-empty { color: var(--app-text-muted, #a1a1aa); padding: 32px; text-align: center; }
 </style>

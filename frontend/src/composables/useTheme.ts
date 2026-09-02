@@ -12,7 +12,7 @@ const THEME_KEY = 'theme'
 function loadTheme(): ThemeMode {
   const v = loadPreference(THEME_KEY)
   if (v === 'light' || v === 'dark' || v === 'system') return v
-  return 'light'
+  return 'dark'
 }
 
 // Shared reactive state across all consumers

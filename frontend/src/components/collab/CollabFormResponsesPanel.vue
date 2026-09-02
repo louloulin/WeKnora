@@ -226,8 +226,8 @@ function formatTime(s: string): string {
 
 <style scoped>
 .collab-form-responses {
-  background: white;
-  border: 1px solid #d0d7de;
+  background: var(--app-surface-bg);
+  border: 1px solid var(--app-border);
   border-radius: 8px;
   padding: 16px;
   margin-top: 12px;
@@ -237,7 +237,7 @@ function formatTime(s: string): string {
   align-items: center;
   gap: 12px;
   margin-bottom: 12px;
-  border-bottom: 1px solid #d0d7de;
+  border-bottom: 1px solid var(--app-border);
   padding-bottom: 8px;
 }
 .collab-form-responses__header h3 {
@@ -251,16 +251,16 @@ function formatTime(s: string): string {
 }
 .collab-form-responses__tabs button {
   background: none;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--app-border);
   padding: 4px 10px;
   border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
 }
 .collab-form-responses__tabs button.active {
-  background: #0969da;
+  background: var(--app-brand);
   color: white;
-  border-color: #0969da;
+  border-color: var(--app-brand);
 }
 .collab-form-responses__close {
   background: none;
@@ -276,7 +276,7 @@ function formatTime(s: string): string {
 .collab-form-responses__list td {
   text-align: left;
   padding: 6px 8px;
-  border-bottom: 1px solid #eaeef2;
+  border-bottom: 1px solid var(--app-border);
   font-size: 13px;
 }
 .collab-form-responses__answers {
@@ -293,11 +293,11 @@ function formatTime(s: string): string {
   font-size: 14px;
 }
 .collab-form-responses__qsummary h4 small {
-  color: #57606a;
+  color: var(--app-text-muted);
   font-weight: normal;
 }
 .collab-form-responses__csv-btn {
-  background: #0969da;
+  background: var(--app-brand);
   color: white;
   border: none;
   padding: 8px 16px;
@@ -305,7 +305,7 @@ function formatTime(s: string): string {
   cursor: pointer;
 }
 .collab-form-responses__empty {
-  color: #57606a;
+  color: var(--app-text-muted);
   text-align: center;
   padding: 24px;
 }
