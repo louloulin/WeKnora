@@ -418,3 +418,24 @@ Alice 切到 Sheet2 写 A1=Bob 在 Sheet2 看到，Sheet1 不会串表。已 PAS
 - v0.7.103 DOC 修订对比 viewer（audit timeline 增强）
 - v0.7.104 SLIDE 组 / 取消组 + 多选同时 resize（Konva multi-node transform）
 - 持续收敛 genoffice vendor（doc* / xlsx* / pivot* / slide* adapters + 配套 vitest）
+
+
+## 16. v0.7.102 — SHEET 命名区域 UI（已交付，2026-09-02）
+
+### 已完成
+
+- `XlsxAdapterWorkbook.definedNames` 字段 + open 解析 + save 落盘
+- `parseDefinedNames` / `parseDefinedNamesFromZip` / `applyDefinedNamesToBytes` 三个 helper
+- Yjs `sheet:definedNames` 实时协同（ref 镜像 + observeDeep 回写 wb）
+- "命名"按钮 + modal 列表 / 增 / 删 + Excel 命名规则校验
+
+### 真实双端验证
+
+`frontend/wk-sheet-names-ranges.mjs` 已 PASS：add workbook-scoped + sheet-scoped + delete → 解压 workbook.xml 验证 `<definedNames>` 正确。
+
+### 下一阶段
+
+- v0.7.103 DOC 修订对比 viewer（audit timeline 增强）
+- v0.7.104 SLIDE 组 / 取消组 + 多选同时 resize（Konva multi-node transform）
+- v0.7.105 SHEET 命名区域补全：单元格公式 `=` 后的名称下拉 / 从选区创建 / sheet 重命名同步
+- 持续收敛 genoffice vendor

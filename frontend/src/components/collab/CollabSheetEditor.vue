@@ -50,6 +50,7 @@
       <button class="collab-sheet-editor__feature" @click="openHyperlinkModal" type="button" title="超链接">链接</button>
       <button class="collab-sheet-editor__feature" @click="openFindModal" type="button" title="查找替换" data-testid="sheet-find-btn">查找</button>
       <button class="collab-sheet-editor__feature" @click="openSortModal" type="button" title="按列排序" data-testid="sheet-sort-btn">排序</button>
+      <button class="collab-sheet-editor__feature" @click="openNamesModal" type="button" title="命名区域管理" data-testid="sheet-names-btn">命名</button>
       <button class="collab-sheet-editor__feature" @click="openTableModal" type="button" title="插入表对象">表格</button>
       <span class="collab-sheet-editor__peers">
         <span
@@ -88,6 +89,7 @@
         <h3 v-else-if="featureDialog === 'hyperlink'">超链接 ({{ activeSheetName }})</h3>
         <h3 v-else-if="featureDialog === 'find'">查找替换 ({{ activeSheetName }})</h3>
         <h3 v-else-if="featureDialog === 'sort'">按列排序 ({{ activeSheetName }})</h3>
+        <h3 v-else-if="featureDialog === 'names'">命名区域 (workbook)</h3>
         <h3 v-else-if="featureDialog === 'table'">插入表格对象 ({{ activeSheetName }})</h3>
 
         <template v-if="featureDialog === 'freeze'">
@@ -372,6 +374,34 @@
           </div>
         </template>
 
+        <!-- v0.7.102 — workbook-level Named Ranges (Excel Defined Names) -->
+        <template v-else-if="featureDialog === 'names'">
+          <div class="collab-sheet-editor__modal-body">
+            <ul v-if="definedNamesList.length" class="collab-sheet-editor__names-list" data-testid="sheet-names-list">
+              <li v-for="(entry, idx) in definedNamesList" :key="idx">
+                <code class="collab-sheet-editor__names-name">{{ entry.name }}</code>
+                <span class="collab-sheet-editor__names-formula">= {{ entry.formula }}{{ entry.sheetIndex !== undefined ? ` (sheet #${entry.sheetIndex})` : ' (workbook)' }}</span>
+                <button type="button" class="collab-sheet-editor__names-del" @click="deleteDefinedName(idx)" :data-testid="`sheet-names-del-${idx}`">删除</button>
+              </li>
+            </ul>
+            <p v-else class="collab-sheet-editor__names-empty" data-testid="sheet-names-empty">暂无命名区域。添加一个：</p>
+            <div class="collab-sheet-editor__names-add">
+              <label>名称：<input type="text" v-model="newDefinedName" placeholder="MyRange" data-testid="sheet-names-input-name" /></label>
+              <label>公式 (A1)：<input type="text" v-model="newDefinedFormula" placeholder="Sheet1!$A$1:$D$10" data-testid="sheet-names-input-formula" /></label>
+              <label>范围：
+                <select v-model.number="newDefinedScope" data-testid="sheet-names-input-scope">
+                  <option :value="-1">workbook (全局)</option>
+                  <option v-for="(s, si) in sheets" :key="si" :value="si">{{ s.name }} (sheet #{{ si }})</option>
+                </select>
+              </label>
+              <button type="button" @click="addDefinedName" :disabled="!newDefinedName.trim() || !newDefinedFormula.trim()" data-testid="sheet-names-add-btn">添加</button>
+            </div>
+          </div>
+          <div class="collab-sheet-editor__modal-actions">
+            <button type="button" @click="featureDialog = null">关闭</button>
+          </div>
+        </template>
+
         <!-- v0.7.45 — Table modal -->
         <template v-else-if="featureDialog === 'table'">
           <div class="collab-sheet-editor__modal-body">
@@ -513,7 +543,9 @@ import {
   newXlsxWorkbook,
   type XlsxAdapterWorkbook,
   type XlsxAdapterCell,
+  parseDefinedNames,
 } from '@/editor/adapters/xlsxAdapter'
+import type { DefinedNameEntry } from '@/editor/adapters/xlsxDefinedNames'
 import {
   downloadCollabDocBytes,
   uploadCollabDocBytes,
@@ -572,7 +604,7 @@ const sheetRenameDraftBySheet = ref<Record<number, string>>({})
 const notesBySheet = ref<Record<number, SheetNote[]>>({})
 const hyperlinksBySheet = ref<Record<number, HyperlinkEdit[]>>({})
 const tablesBySheet = ref<Record<number, TableAddition[]>>({})
-const featureDialog = ref<null | 'freeze' | 'filter' | 'cf' | 'dv' | 'spark' | 'pageSetup' | 'sheetManage' | 'note' | 'hyperlink' | 'find' | 'sort' | 'table'>(null)
+const featureDialog = ref<null | 'freeze' | 'filter' | 'cf' | 'dv' | 'spark' | 'pageSetup' | 'sheetManage' | 'note' | 'hyperlink' | 'find' | 'sort' | 'table' | 'names'>(null)
 
 // Modal-input reactive state — re-used across all 5 modals.
 const freezeRowsInput = ref(1)
@@ -620,6 +652,10 @@ const sortColInput = ref('A')
 const sortDirectionInput = ref<'asc' | 'desc'>('asc')
 const sortStartRowInput = ref(1)
 const sortEndRowInput = ref(0)
+// v0.7.102 — workbook-level named ranges modal state
+const newDefinedName = ref('')
+const newDefinedFormula = ref('')
+const newDefinedScope = ref<-1 | number>(-1)
 const linkColInput = ref('')
 const linkTargetInput = ref('')
 
@@ -1061,6 +1097,65 @@ const onSortCommit = () => {
   scheduleSave()
 }
 
+// ===== v0.7.102 — Defined Names (workbook-level named ranges) =====
+/** Snapshot the Yjs defined-names array back into a plain JS list (for wb save). */
+const readDefinedNamesFromY = (arr: Y.Array<Y.Map<unknown>>): DefinedNameEntry[] => {
+  const out: DefinedNameEntry[] = []
+  arr.toArray().forEach((m) => {
+    const name = String(m.get('name') ?? '').trim()
+    const formula = String(m.get('formula') ?? '').trim()
+    if (!name || !formula) return
+    const sheetRaw = m.get('sheetIndex')
+    const sheetIndex = typeof sheetRaw === 'number' && sheetRaw >= 0 ? sheetRaw : undefined
+    out.push({ name, formula, sheetIndex })
+  })
+  return out
+}
+/** Reactive list of defined names, derived from Yjs (live across collaborators). */
+/** v0.7.102 — reactive list of defined names, refreshed by the Yjs observer
+ *  (a plain computed won't track Y.Array mutations, so we mirror into a ref). */
+const definedNamesList = ref<DefinedNameEntry[]>([])
+const openNamesModal = () => {
+  newDefinedName.value = ''
+  newDefinedFormula.value = ''
+  newDefinedScope.value = -1
+  featureDialog.value = 'names'
+}
+const addDefinedName = () => {
+  if (!ydefinedNames || !handle) return
+  const name = newDefinedName.value.trim()
+  const formula = newDefinedFormula.value.trim()
+  if (!name || !formula) return
+  // Excel name rules: letters / _ / \ start, then letters / digits / _ / . / \.
+  // Reject if it looks like a cell reference or a reserved literal.
+  if (!/^[\p{L}_\\][\p{L}\p{N}_.\\]*$/u.test(name) ||
+      /^(?:[A-Za-z]{1,3}[0-9]+|[Rr][0-9]*[Cc][0-9]*)$/.test(name) ||
+      name.toLowerCase() === 'true' || name.toLowerCase() === 'false' ||
+      name.startsWith('_xlnm')) {
+    MessagePlugin.error(`"${name}" 不是合法的命名区域名称`)
+    return
+  }
+  const scope = newDefinedScope.value
+  handle.ydoc.transact(() => {
+    const m = new Y.Map<unknown>()
+    m.set('name', name)
+    m.set('formula', formula)
+    if (scope >= 0) m.set('sheetIndex', scope)
+    ydefinedNames!.push([m])
+  })
+  newDefinedName.value = ''
+  newDefinedFormula.value = ''
+  scheduleSave()
+}
+const deleteDefinedName = (idx: number) => {
+  if (!ydefinedNames) return
+  if (idx < 0 || idx >= ydefinedNames.length) return
+  ydefinedNames.doc?.transact(() => {
+    ydefinedNames!.delete(idx, 1)
+  })
+  scheduleSave()
+}
+
 // ===== v0.7.99 — Find & Replace handlers =====
 const openFindModal = () => {
   findSearchInput.value = ''
@@ -1346,6 +1441,8 @@ let sheetCellRoot: Y.Map<SheetCellMap> | null = null
 // (sheet:cells) ymap; per-sheet cell namespace is the next milestone.
 let ysheets: Y.Array<string> | null = null
 let ysheetSnapshot: Y.Map<string> | null = null
+// v0.7.102 — workbook-level named ranges (Excel Defined Names), synced via Yjs
+let ydefinedNames: Y.Array<Y.Map<unknown>> | null = null
 let wb: XlsxAdapterWorkbook = newXlsxWorkbook()
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -1400,6 +1497,7 @@ const setup = async () => {
   sheetCellRoot = handle.ydoc.getMap<SheetCellMap>('sheet:cells:by-sheet')
   ysheets = handle.ydoc.getArray<string>('sheet:names')
   ysheetSnapshot = handle.ydoc.getMap<string>('sheet:names:manifest')
+  ydefinedNames = handle.ydoc.getArray<Y.Map<unknown>>('sheet:definedNames')
 
   loading.value = true
   try {
@@ -1459,6 +1557,27 @@ const setup = async () => {
           ymap!.clear()
         })
       }
+    }
+    // v0.7.102 — seed Yjs defined names from the workbook's parsed names on first load.
+    if (ydefinedNames && ydefinedNames.length === 0 && wb.definedNames.length > 0 && handle) {
+      handle.ydoc.transact(() => {
+        for (const entry of wb.definedNames) {
+          const m = new Y.Map<unknown>()
+          m.set('name', entry.name)
+          m.set('formula', entry.formula)
+          if (entry.sheetIndex !== undefined) m.set('sheetIndex', entry.sheetIndex)
+          ydefinedNames!.push([m])
+        }
+      })
+    }
+    // Observe remote defined-name changes and persist into wb so saves round-trip.
+    if (ydefinedNames) {
+      ydefinedNames.observeDeep(() => {
+        wb.definedNames = readDefinedNamesFromY(ydefinedNames!)
+        definedNamesList.value = wb.definedNames
+      })
+      // Seed the ref from the current Yjs state so the modal renders immediately.
+      definedNamesList.value = readDefinedNamesFromY(ydefinedNames)
     }
   const applyRemoteSheetNames = () => {
     const manifest = ysheetSnapshot?.get('names')
@@ -2072,5 +2191,14 @@ onBeforeUnmount(teardown)
 .collab-sheet-editor__modal-actions button:last-child:hover { background: #2c974b; }
 
 </style>
+
+.collab-sheet-editor__names-list { list-style: none; padding: 0; margin: 0 0 12px; max-height: 180px; overflow-y: auto; }
+.collab-sheet-editor__names-list li { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--td-component-stroke); }
+.collab-sheet-editor__names-name { font-weight: 600; color: var(--td-brand-color-7); min-width: 80px; }
+.collab-sheet-editor__names-formula { flex: 1; color: var(--td-text-color-secondary); font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; }
+.collab-sheet-editor__names-del { background: transparent; border: 1px solid var(--td-component-stroke); color: var(--td-error-color); border-radius: 4px; cursor: pointer; padding: 2px 8px; font-size: 12px; }
+.collab-sheet-editor__names-empty { color: var(--td-text-color-secondary); margin: 0 0 12px; font-size: 13px; }
+.collab-sheet-editor__names-add { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; border-top: 1px solid var(--td-component-stroke); }
+.collab-sheet-editor__names-add label { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 .collab-sheet-editor__cell-input.is-formula { color: var(--td-brand-color-7); font-family: 'JetBrains Mono', ui-monospace, monospace; }
 .collab-sheet-editor__cell-input.is-percent { text-align: right; }

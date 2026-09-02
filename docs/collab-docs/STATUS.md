@@ -3426,3 +3426,49 @@ ALL OK — SHEET sort
 - 未实现前端组合快捷键（Cmd+G / Cmd+Shift+G），多选当前仅支持 shift-点选 + 工具栏按钮。
 - Transformer 仅作用于 primary；多选形状同时 resize 需要 Konva multi-node transform 编排（每节点独立 bake），留待 v0.7.104+。
 - 删除 / 复制 / 上移下移 / 旋转 / 主题动画仍只对 primary 生效；未扩展到 selectedIds 全部。
+
+
+### 50. v0.7.102 — SHEET 命名区域 UI（2026-09-02）
+
+### 50.1 目标
+
+genoffice / Excel 的 workbook-level "Named Ranges"（命名区域）。`xlsxDefinedNames.ts` adapter 之前已就位并通过 vitest，但未串到 wb 模型 / UI / Yjs 协同。本轮完成端到端打通：open 解析 / UI 增删改 / Yjs 实时同步 / save 落盘到 `xl/workbook.xml` 的 `<definedNames>`。
+
+### 50.2 改动
+
+`frontend/src/editor/adapters/xlsxAdapter.ts`：
+- 给 `XlsxAdapterWorkbook` 加 `definedNames: DefinedNameEntry[]` 字段。
+- `openXlsx` 新增 `parseDefinedNamesFromZip` 从 `xl/workbook.xml` 解析（跳过 `_xlnm.*` 内置名）。
+- `saveXlsxBytes` 在 SheetJS + `applyCellStyles` 之后跑 `applyDefinedNamesToBytes`：用 JSZip 读 `xl/workbook.xml` → `applyDefinedNamesState` 合并（保留 `_xlnm` / hidden / preserve）→ 回写 zip。
+- 新增 `parseDefinedNames`（导出），供前端解析 workbook.xml 字符串。
+
+`frontend/src/components/collab/CollabSheetEditor.vue`：
+- 新增 `ydefinedNames: Y.Array<Y.Map<{name, formula, sheetIndex?}>>` 走 `sheet:definedNames` Yjs key。
+- 初始化时把 `wb.definedNames` seed 进 Yjs（仅当 Yjs 空 + wb 非空，避免覆盖远端）。
+- `observeDeep` 把 Yjs 状态回写到 `wb.definedNames` 和 `definedNamesList`（ref，computed 不会追踪 Y.Array mutation）。
+- 工具栏新增"命名"按钮（`data-testid="sheet-names-btn"`），`featureDialog` 加 `'names'` 分支，渲染列表 + 增删表单。
+- `addDefinedName`：Excel 命名规则校验（Unicode 字母起始 + 数字/`_`/`.`/`\`；拒绝 cell ref 形态与 `true/false/_xlnm`）；通过后 Yjs transact push。
+- `deleteDefinedName(idx)`：Yjs transact delete(idx, 1) + `scheduleSave()`。
+- `definedNamesList` 是 ref（不是 computed）— Y.Array mutation 不触发 Vue computed，需要 observer 写入。
+
+### 50.3 真实双端浏览器验证
+
+`frontend/wk-sheet-names-ranges.mjs`（已提交）：admin 登录 → 打开 SHEET → 点"命名"按钮 → 清理上一次遗留的命名 → 添加 workbook-scoped `RevA = Sheet1!$A$1:$D$10` + sheet-scoped `TaxA = Sheet1!$B$2:$B$5`（localSheetId=0）→ 删除 `RevA`（idx 0）→ 等 5s 保存 → 下载 xlsx → 解压 `xl/workbook.xml` → 验证 `<definedNames>` 只剩 `TaxA` 且带 `localSheetId="0"`。结果：
+```
+after defined names: [ { name: 'TaxA', formula: 'Sheet1!$B$2:$B$5', sheetIndex: 0 } ]
+hasTaxA: true, noRevA: true, page errors: 0
+ALL OK — sheet named ranges
+```
+
+### 50.4 回归
+
+- `tsx --test` 504/504 ✅（xlsxVendored.test.ts 中 `applyDefinedNamesState` 已覆盖）
+- `go build` ✅
+- `vue-tsc` 本轮 0 新错误
+
+### 50.5 已知遗留
+
+- 公式仅以纯字符串存进 `<definedName>`，未做语法校验（如 `$A$1:$D$10` 形态 / 跨 sheet 引用 `Sheet1!...`）。Excel 打开时会拒绝非法引用，但前端未拦。
+- 未实现"从选区创建"（Create from Selection）— 需要选中区域 → 自动起名。genoffice/Excel 都支持。
+- 未暴露命名区域给单元格编辑器的下拉补全（输入 `=` 后选名称）。需要把 `wb.definedNames` 注入 cell-input 的自动补全候选。
+- sheet 重命名时，公式里的 sheet 名需要同步改（adapter `renameSheetReferencesInDefinedNames` 已存在但 save 路径未调用）。

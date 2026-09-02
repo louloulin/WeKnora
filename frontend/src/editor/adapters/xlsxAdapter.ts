@@ -13,6 +13,10 @@
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
 import { StylesheetEditor, type WorkbookStyleEdit } from './xlsxStyles'
+import {
+  applyDefinedNamesState,
+  type DefinedNameEntry,
+} from './xlsxDefinedNames'
 
 export interface XlsxAdapterSheet {
   name: string
@@ -43,6 +47,8 @@ export interface XlsxAdapterCell {
 export interface XlsxAdapterWorkbook {
   sheets: XlsxAdapterSheet[]
   originalBytes: Uint8Array | null
+  /// v0.7.102 — workbook-level named ranges (Excel "Defined Names").
+  definedNames: DefinedNameEntry[]
 }
 
 export async function openXlsx(bytes: Uint8Array): Promise<XlsxAdapterWorkbook> {
@@ -69,7 +75,8 @@ export async function openXlsx(bytes: Uint8Array): Promise<XlsxAdapterWorkbook> 
     }
     return { name, rows }
   })
-  return { sheets, originalBytes: new Uint8Array(bytes) }
+  const definedNames = await parseDefinedNamesFromZip(bytes)
+  return { sheets, originalBytes: new Uint8Array(bytes), definedNames }
 }
 
 interface ParsedStyleEntry {
@@ -256,7 +263,8 @@ export async function saveXlsxBytes(wb: XlsxAdapterWorkbook): Promise<Uint8Array
   }
   const buffer = XLSX.write(out, { type: 'array', bookType: 'xlsx' })
   const initial = new Uint8Array(buffer as ArrayBuffer)
-  return await applyCellStyles(initial, wb)
+  const styled = await applyCellStyles(initial, wb)
+  return await applyDefinedNamesToBytes(styled, wb)
 }
 
 /** Minimal xl/styles.xml used when the SheetJS output doesn't carry one
@@ -371,7 +379,7 @@ export function newXlsxWorkbook(): XlsxAdapterWorkbook {
   const empty = Array.from({ length: 6 }, () =>
     Array.from({ length: 6 }, () => ({ v: '' as string | number | boolean | null })),
   )
-  return { sheets: [{ name: 'Sheet1', rows: empty }], originalBytes: null }
+  return { sheets: [{ name: 'Sheet1', rows: empty }], originalBytes: null, definedNames: [] }
 }
 
 /**
@@ -496,4 +504,69 @@ export async function applyXlsxFreeze(
     transforms[sheetName] = (xml) => injectSheetView(xml, buildSheetViewXml(pane))
   }
   return transformWorkbook(bytes, transforms)
+}
+
+// ---------------------------------------------------------------------------
+// v0.7.102 — workbook-level Defined Names (Excel named ranges)
+//
+// Defined names live in xl/workbook.xml under <definedNames>. SheetJS does
+// not round-trip them, so we read/write the workbook.xml directly using the
+// xlsxDefinedNames adapter. The wb model carries an array of DefinedNameEntry
+// (name, formula, optional sheetIndex) that the editor can mutate; save merges
+// them into workbook.xml preserving entries the editor cannot model.
+// ---------------------------------------------------------------------------
+
+/** Parse modeled defined names out of xl/workbook.xml in the given xlsx zip.
+ *  Built-in `_xlnm.*` and hidden names are kept out of the returned model —
+ *  the save side round-trips them byte-verbatim via preserveNames. */
+async function parseDefinedNamesFromZip(bytes: Uint8Array): Promise<DefinedNameEntry[]> {
+  try {
+    const zip = await JSZip.loadAsync(bytes)
+    const workbookXml = await zip.file('xl/workbook.xml')?.async('text')
+    if (!workbookXml) return []
+    return parseDefinedNames(workbookXml)
+  } catch {
+    return []
+  }
+}
+
+/** Parse defined names from a workbook.xml string (no zip I/O). */
+export function parseDefinedNames(workbookXml: string): DefinedNameEntry[] {
+  const out: DefinedNameEntry[] = []
+  const section = /<definedNames\b[^>]*>([\s\S]*?)<\/definedNames>|<definedNames\b[^>]*\/>/.exec(workbookXml)
+  if (!section) return out
+  const inner = section[1] ?? ''
+  const re = /<definedName\b([^>]*)\/?>([\s\S]*?)<\/definedName>|<definedName\b([^>]*)\/>/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(inner))) {
+    const attrs = m[1] ?? m[3] ?? ''
+    const formula = (m[2] ?? '').trim()
+    const nameMatch = /\bname="([^"]*)"/.exec(attrs)
+    if (!nameMatch) continue
+    const name = nameMatch[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    if (name.startsWith('_xlnm')) continue
+    const hidden = /\bhidden="(?:1|true)"/.test(attrs)
+    if (hidden) continue
+    const sheetMatch = /\blocalSheetId="(-?\d+)"/.exec(attrs)
+    const sheetIndex = sheetMatch ? Number(sheetMatch[1]) : undefined
+    out.push({ name, formula, sheetIndex })
+  }
+  return out
+}
+
+/** Rewrite xl/workbook.xml in the given xlsx zip to include wb.definedNames.
+ *  Built-in and hidden entries are preserved verbatim. Returns the new bytes. */
+async function applyDefinedNamesToBytes(bytes: Uint8Array, wb: XlsxAdapterWorkbook): Promise<Uint8Array> {
+  if (!wb.definedNames || wb.definedNames.length === 0) return bytes
+  const zip = await JSZip.loadAsync(bytes)
+  const workbookEntry = zip.file('xl/workbook.xml')
+  if (!workbookEntry) return bytes
+  const workbookXml = await workbookEntry.async('text')
+  const next = applyDefinedNamesState(workbookXml, {
+    names: wb.definedNames,
+    preserveNames: [],
+  })
+  if (next === workbookXml) return bytes
+  zip.file('xl/workbook.xml', next)
+  return await zip.generateAsync({ type: 'uint8array' })
 }
