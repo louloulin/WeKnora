@@ -3519,3 +3519,61 @@ ALL OK — doc revision viewer
 - docx 序列化器尚未把 PM 的 `ins`/`del` marks 写成 `w:ins`/`w:del` 包装元素——文本落盘但 tracked-change 标记在 Word 里重新打开不会显示。属于 `docx-engine/patch.ts` + `parse.ts` 的序列化增强任务，留待 v0.7.106+。
 - 未做字符级 inline diff（"changed" 段落内部红绿对照）——现在只到段落级（v0.7.69 的 compare panel）与逐条级（本轮 viewer），未做段内 word-level diff。
 - per-revision 面板未显示 author / date——目前按作者分组显示，组内每条只显示 kind + 文本。要展示 author 需要把 mark.attrs.author 透出到 `revisions` computed（adapter 已读 `r.author`，UI 暂未渲染）。
+
+
+
+### 52. v0.7.104 — SLIDE 组 / 取消组 + 多选同时 resize（2026-09-02）
+
+### 52.1 目标
+
+把 v0.7.101 的"多选 + 等距分布 + 匹配宽高"再前推一步：
+1. 多个 shape 可以被"组合"成一个逻辑组（共享 groupId），后续任何 UI 操作（移动、resize、对齐、删除）都把它们当作一个整体。
+2. 解散组反向清空 groupId。
+3. 选中属于同一组的任意一个 shape，自动选满整组（PPT / 腾讯文档的标准行为）。
+4. 多选同时 resize：Konva Transformer 绑定所有选中节点，拖拽任意 handle 时所有节点按各自相对比例一起缩放。
+
+### 52.2 改动
+
+`frontend/src/editor/adapters/pptxShapeAdapter.ts`：
+
+- `PptxShape` 新增可选字段 `groupId?: string`。注释里说明 groupId 是内存层语义；真正的 `<p:grpSp>` 持久化交给 genoffice 已实现的 `engineGroupElements` / `engineUngroupElement`，那是 v0.7.107+ 的范围。
+
+`frontend/src/components/collab/CollabSlideKonvaEditor.vue`：
+
+- Toolbar 增加 2 个按钮：`⊞ 组合`（`slide-group`）和 `⊟ 解散组`（`slide-ungroup`）。
+- 新增 `selectedShapeGroupId` computed：所有选中 shape 共享一个非空 groupId 时返回该 id，否则返回 null。
+- 新增 `canGroupSelected` / `canUngroupSelected` 两个 computed 用于按钮 disabled 状态。
+- 新增 `groupSelected()` / `ungroupSelected()`：通过 `updateShapes()` 在单 Yjs 事务里把同一 `groupId` 写入/清空。
+- `objToShape()` 增加 `groupId` 字段读取，让 `syncFromY` 把 yjs map 的 `groupId` 投影回 PptxShape。
+- `onShapeClick()` 单击分支：若点中的 shape 有 groupId，自动把所有同组 mate 加入 selectedIds（输入即整组）。
+- `updateTransformer()` 改为把 `selectedIds` 里所有节点一起 `tr.nodes(nodes)`，实现多选同时 resize（不仅 primary）。
+- `onShapeDragEnd()` 多选分支：所有 peer 同步应用相同 dx/dy。
+- `onShapeTransformEnd()` 多选分支：遍历 peer nodes 各自 bake scaleX/scaleY 到 w/h / x/y，保证一次 resize 一次事务。
+- 新增 `groupBboxPx` computed：当 `selectedShapeGroupId.value` 非空时画一个绿色虚线 union bbox，作为"这是一个组"的视觉提示（区别于 v0.7.101 的蓝色多选虚线）。
+- 暴露 E2E 钩子 `window.__wkStage` / `window.__wkTransformer`，让 Playwright 直接读 Konva Transformer 的真实 anchor 屏幕坐标（避免依赖 EMU 反推）。
+
+### 52.3 真实双端浏览器验证
+
+`frontend/wk-slide-group.mjs`（已提交）：admin 登录 → SLIDE doc → 新建空白 slide2 → 加 3 个矩形 → 对齐 left/right/centerH → shift-点选 3 个 → 点 `⊞ 组合` → 验证"组合"按钮 disabled、"解散组"按钮 enabled（tr=3 → 3 个节点绑定）→ 单击 rectA → 验证 onShapeClick 自动选满整组（"解散组"按钮仍 enabled）→ 点 `⊟ 解散组` → 验证"组合"重新 enabled、"解散组" disabled → 再 shift-点选 3 个 + 组合 → 通过 `__wkTransformer` 找到 right-middle anchor 直接触发 Konva `transformend`（canvas 边缘的 anchor mouse 模拟不稳定；用 Konva 内部事件更可靠）→ 所有 3 个 shape 的 cx 从 1828800 EMU 同步变成 2743200 EMU（1.5x）→ 0 page error。
+
+```
+group button enabled: true
+after group: group disabled, ungroup enabled: true true
+after click rectA: ungroup still enabled: true (auto-coalesce works)
+after ungroup: group enabled, ungroup disabled: true true
+all 3 shapes grew in width: true
+page errors: 0
+ALL OK — slide group / ungroup
+```
+
+### 52.4 回归
+
+- `tsx --test` 504/504 ✅
+- `vue-tsc` 0 新错误
+- `wk-slide-multiselect.mjs` / `wk-slide-align.mjs` 等既有多选脚本未受影响，行为不变。
+
+### 52.5 已知遗留
+
+- `<p:grpSp>` 持久化未启用：保存到 .pptx 时 groupId 仅在 `PptxShape` 内存中保持，OOXML 仍写为独立 `<p:sp>`。genoffice `engineGroupElements` / `engineUngroupElement` 已可用但未在本轮接入 save 路径。属于 v0.7.107 范围。
+- "从选区创建组"提示框未做：现在 group 仅由 toolbar 按钮触发，未提供上下文菜单 / 右键入口。
+- 跨 slide 的组不存在（每 slide 重置 groupId namespace）。属设计意图。

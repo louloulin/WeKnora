@@ -1090,6 +1090,12 @@ const updateTransformer = async () => {
   await nextTick()
   const stage = stageRef.value?.getStage?.()
   const tr = transformerRef.value?.getNode?.()
+  // v0.7.104 — E2E hook: expose stage + transformer so Playwright can read
+  // anchor screen coords directly (avoids guessing from EMU math).
+  if (typeof window !== 'undefined') {
+    ;(window as any).__wkStage = stage
+    ;(window as any).__wkTransformer = tr
+  }
   if (!stage || !tr) return
   if (!selectedId.value && selectedIds.value.length === 0) {
     tr.nodes([])
@@ -1351,6 +1357,8 @@ const objToShape = (o: Record<string, unknown>): PptxShape => {
     rows: o.rows ? Number(o.rows) : undefined,
     cols: o.cols ? Number(o.cols) : undefined,
     cellTexts,
+    // v0.7.104 — group id mirror
+    groupId: o.groupId ? String(o.groupId) : undefined,
   }
 }
 

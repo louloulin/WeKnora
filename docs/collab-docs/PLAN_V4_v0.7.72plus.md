@@ -460,3 +460,29 @@ Alice 切到 Sheet2 写 A1=Bob 在 Sheet2 看到，Sheet1 不会串表。已 PAS
 - v0.7.105 SHEET 命名区域补全：单元格公式 `=` 名称下拉 / 从选区创建 / sheet 重命名同步
 - v0.7.106 DOC 修订序列化：PM ins/del → w:ins/w:del + author 渲染到面板
 - 持续收敛 genoffice vendor
+
+
+
+## 18. v0.7.104 — SLIDE 组 / 取消组 + 多选同时 resize（已交付，2026-09-02）
+
+### 已完成
+
+- `PptxShape.groupId?: string` 字段（内存层组语义）
+- Toolbar：`⊞ 组合` / `⊟ 解散组` 按钮，`:disabled` 走 `canGroupSelected` / `canUngroupSelected` computed
+- `groupSelected()` / `ungroupSelected()` 走 `updateShapes` 单事务（CRDT 一致）
+- `onShapeClick` 单击分支：若点中的 shape 有 groupId，自动选满整组
+- `updateTransformer` 把 `selectedIds` 所有节点绑定到一个 Konva.Transformer
+- `onShapeTransformEnd` 多选分支：所有 peer 各自 bake scaleX/scaleY 到 w/h
+- 绿色虚线 union bbox（区别于 v0.7.101 多选蓝色虚线）
+- E2E 钩子 `window.__wkStage` / `window.__wkTransformer`
+
+### 真实双端验证
+
+`frontend/wk-slide-group.mjs` 已 PASS：shift-点选 3 → 组合 → 自动选满整组 → 解散组 → 重新组合 → Konva `transformend` 触发，所有 3 个 shape 的 cx 从 1828800 EMU 同步变成 2743200 EMU（1.5x）；0 page error。
+
+### 下一阶段
+
+- v0.7.105 SHEET 命名区域补全：单元格公式 `=` 名称下拉 / 从选区创建 / sheet 重命名同步
+- v0.7.106 DOC 修订序列化：PM ins/del → w:ins/w:del + author 渲染到面板
+- v0.7.107 SLIDE `<p:grpSp>` 持久化：save 路径调 `engineGroupElements` / `engineUngroupElement`
+- 持续收敛 genoffice vendor（docx 页眉页脚 / xlsx pivot UI / pptx 母版 / 动画时间线）
