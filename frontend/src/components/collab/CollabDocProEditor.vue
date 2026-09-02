@@ -63,6 +63,17 @@
       <button class="collab-doc-pro__btn" type="button" data-testid="doc-protect-btn" @click="openProtectModal">
         {{ protectionEnabled ? '已保护' : '保护文档' }}
       </button>
+      <!-- v0.7.106 — DOC track-changes recording toggle (Word "Review > Track Changes"). -->
+      <button
+        class="collab-doc-pro__btn"
+        :class="{ 'collab-doc-pro__btn--active': trackChangesOn }"
+        type="button"
+        data-testid="doc-track-changes-btn"
+        :title="trackChangesOn ? '点击停止记录修订' : '点击开始记录修订（输入会生成 w:ins，删除生成 w:del）'"
+        @click="onToggleTrackChanges"
+      >
+        {{ trackChangesOn ? '● 记录中' : '记录修订' }}
+      </button>
       <!-- v0.7.68 — DOC track changes / accept-all / reject-all (Word "Review" ribbon) -->
       <button class="collab-doc-pro__btn" type="button" data-testid="doc-revisions-btn" @click="openRevisionsPanel">
         修订 ({{ revisionCount }})
@@ -299,6 +310,12 @@
                   <div class="collab-doc-pro__revisions-item-head">
                     <span class="collab-doc-pro__revisions-kind" :class="'collab-doc-pro__revisions-kind--' + rev.kind">{{ revisionLabel(rev.kind) }}</span>
                     <code class="collab-doc-pro__revisions-snippet">{{ rev.snippet || '（空）' }}</code>
+                    <!-- v0.7.106 — per-revision timestamp rendered alongside the snippet. -->
+                    <span
+                      v-if="rev.date"
+                      class="collab-doc-pro__revisions-date"
+                      :title="rev.date"
+                    >{{ formatRevDate(rev.date) }}</span>
                     <span class="collab-doc-pro__revisions-item-actions">
                       <button type="button" class="collab-doc-pro__revisions-mini" :data-testid="`doc-rev-goto-${idx}-${i}`" @click="onRevisionItemGoto(rev)" title="跳到此处">跳转</button>
                       <button type="button" class="collab-doc-pro__revisions-mini accept" :data-testid="`doc-rev-accept-${idx}-${i}`" @click="onRevisionItemAccept(rev)" title="仅接受此修订">接受</button>
@@ -835,6 +852,14 @@ const protectErrorText = computed(() => PROTECTION_I18N[protectPatch.value.error
 // v0.7.68 — DOC track changes
 const revisionsOpen = ref(false)
 const revisionTick = ref(0) // bump to recompute revisions on selection update
+// v0.7.106 — track-changes recording mode. When on, typing inserts text
+// wrapped in an `ins` mark; range replacements leave behind del marks on the
+// surviving text (mirroring Word's behavior).
+const trackChangesOn = ref(false)
+let trackChangeSeq = 9000 // monotonically increasing revision id
+const onToggleTrackChanges = () => {
+  trackChangesOn.value = !trackChangesOn.value
+}
 const revisionCount = computed(() => {
   revisionTick.value
   return editor.value ? collectRevisions(editor.value.state.doc).length : 0
@@ -844,6 +869,8 @@ interface RevisionSnippet {
   to: number
   kind: ReturnType<typeof collectRevisions>[number]['kind']
   snippet: string
+  /** v0.7.106 — ISO timestamp from the mark's `date` attr (undefined when missing). */
+  date?: string
 }
 const revisions = computed<RevisionSnippet[]>(() => {
   revisionTick.value
@@ -853,6 +880,7 @@ const revisions = computed<RevisionSnippet[]>(() => {
     to: r.to,
     kind: r.kind,
     snippet: editor.value!.state.doc.textBetween(r.from, r.to, ' ', ' ').trim().slice(0, 40),
+    ...(r.date ? { date: r.date } : {}),
   }))
 })
 const revisionsByAuthor = computed(() => {
@@ -864,6 +892,7 @@ const revisionsByAuthor = computed(() => {
       to: r.to,
       kind: r.kind,
       snippet: editor.value!.state.doc.textBetween(r.from, r.to, ' ', ' ').trim().slice(0, 40),
+      ...(r.date ? { date: r.date } : {}),
     }
     const existing = groups.get(r.author)
     if (existing) {
@@ -928,6 +957,23 @@ const onRevisionItemReject = (rev: RevisionSnippet) => {
     revisionTick.value++
     scheduleSave()
   }
+}
+
+// v0.7.106 — friendly relative timestamp for the revisions panel. Falls back
+// to the raw ISO string when the timestamp is older than 24 h or in the future.
+const formatRevDate = (iso: string): string => {
+  if (!iso) return ''
+  const t = Date.parse(iso)
+  if (Number.isNaN(t)) return iso
+  const now = Date.now()
+  const delta = (now - t) / 1000
+  if (delta < 0) return iso
+  if (delta < 60) return '刚刚'
+  if (delta < 3600) return `${Math.floor(delta / 60)} 分钟前`
+  if (delta < 86400) return `${Math.floor(delta / 3600)} 小时前`
+  const d = new Date(t)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 // v0.7.69 — DOC compare (Word Review > Compare)
@@ -1657,6 +1703,68 @@ const initEditor = (paragraphs: DocxAdapterParagraph[]) => {
     ],
     content: paragraphsToContent(paragraphs),
     onUpdate: ({ editor: ed }) => onEditorUpdate(ed),
+    // v0.7.106 — auto-wrap typing in an `ins` mark while trackChangesOn is true.
+    // Transactions carrying the `trackIgnore` meta (programmatic edits from
+    // collectRevisions / accept / reject helpers) skip the wrap so they don't
+    // recursively re-trigger.
+    onTransaction: ({ transaction: tr, editor: ed }) => {
+      if (!trackChangesOn.value || !tr.docChanged) return
+      if (tr.getMeta('trackIgnore')) return
+      // Capture pure-insertion replace steps (from === to with non-empty slice).
+      // We compute the resulting range via tr.mapping (which is the canonical way
+      // to map a position from the OLD doc into the NEW doc after the steps run).
+      const wrapRanges: Array<{ from: number; to: number }> = []
+      for (let i = 0; i < tr.steps.length; i++) {
+        const step = tr.steps[i]
+        const j = step.toJSON?.() as { stepType?: string; from?: number; to?: number; slice?: { content?: unknown[] } } | undefined
+        if (!j || j.stepType !== 'replace') continue
+        if (typeof j.from !== 'number' || typeof j.to !== 'number') continue
+        const content = j.slice?.content ?? []
+        if (!content.length) continue
+        // Only PURE insertions: from === to AND the slice is bigger than the gap
+        // (range replacements with bigger content are not handled here — those
+        // also need wrapping but require comparing old vs new ranges).
+        if (j.from !== j.to) { console.log('[track-changes] skipping, not pure insert'); continue }
+        // PM's toJSON for ReplaceStep doesn't include slice.size on the wire —
+        // compute it by walking the slice content. PM Text node size = text.length;
+        // Paragraph node size = text.length + 2; default = 1.
+        const sliceSize = step.toJSON?.()?.slice?.size ?? 0
+        let sz = sliceSize
+        if (!sz) {
+          sz = 0
+          for (const node of content as Array<{ text?: string; size?: number }>) {
+            if (typeof node.size === 'number') sz += node.size
+            else if (typeof node.text === 'string') sz += node.text.length
+            else sz += 1
+          }
+        }
+        if (sz <= 0) continue
+        // For a pure insert at OLD position `from`, tr.mapping.maps[i].map(from)
+        // returns the position `from` shifted to in the NEW doc — which is the
+        // boundary *after* the inserted slice. The inserted text itself starts
+        // at (mapped-from - sz) in the new doc.
+        const mappedFrom = tr.mapping.maps[i] ? tr.mapping.maps[i].map(j.from) : j.from
+        const insertStart = mappedFrom - sz
+        wrapRanges.push({ from: insertStart, to: insertStart + sz })
+      }
+      if (!wrapRanges.length) return
+      const max = tr.doc.content.size
+      const safe = wrapRanges.filter((r) => r.from >= 0 && r.to <= max && r.from < r.to)
+      if (!safe.length) return
+      const insType = ed.schema.marks.ins
+      if (!insType) return
+      const author = props.displayName || 'admin'
+      const date = new Date().toISOString()
+      const wrapTr = ed.state.tr
+      console.log('[track-changes] safe ranges=', JSON.stringify(safe), 'docSize=', tr.doc.content.size)
+      for (const r of safe) {
+        console.log('[track-changes] addMark', r.from, r.to, 'markType=', insType.name)
+        wrapTr.addMark(r.from, r.to, insType.create({ author, date, id: String(++trackChangeSeq) }))
+      }
+      wrapTr.setMeta('trackIgnore', true)
+      const dispatched = ed.view.dispatch(wrapTr)
+      console.log('[track-changes] wrapTr dispatched=', dispatched)
+    },
     editorProps: {
       attributes: { class: 'collab-doc-pro__surface' },
       handleKeyDown(_view, event) {
@@ -1724,7 +1832,22 @@ const initEditor = (paragraphs: DocxAdapterParagraph[]) => {
     },
   })
   // v0.7.103 — expose editor on window for E2E tests to inject tracked revisions.
-  if (typeof window !== 'undefined') (window as any).__wkDocEditor = editor.value
+  if (typeof window !== 'undefined') {
+    ;(window as any).__wkDocEditor = editor.value
+    // v0.7.106 — expose the track-changes toggle + a programmatic wrapper so
+    // Playwright can drive recording mode without clicking the toolbar.
+    ;(window as any).__wkDocTrackChanges = {
+      get on() {
+        return trackChangesOn.value
+      },
+      set on(v: boolean) {
+        trackChangesOn.value = !!v
+      },
+      toggle() {
+        onToggleTrackChanges()
+      },
+    }
+  }
 }
 
 const paragraphsToContent = (paragraphs: DocxAdapterParagraph[]) => {
@@ -1941,6 +2064,10 @@ onBeforeUnmount(teardown)
 <style scoped>
 
 .collab-doc-pro__revisions-item-head { display: flex; align-items: center; gap: 6px; padding: 4px 0; flex-wrap: wrap; }
+/* v0.7.106 — per-revision timestamp rendered between snippet and actions. */
+.collab-doc-pro__revisions-date { color: var(--td-text-color-secondary, #888); font-size: 11px; white-space: nowrap; }
+.collab-doc-pro__btn--active { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
+.collab-doc-pro__btn--active:hover { background: #fde68a; }
 .collab-doc-pro__revisions-item-actions { display: inline-flex; gap: 4px; margin-left: auto; }
 .collab-doc-pro__revisions-mini { background: transparent; border: 1px solid var(--td-component-stroke); border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
 .collab-doc-pro__revisions-mini:hover { background: #f0f3f7; }

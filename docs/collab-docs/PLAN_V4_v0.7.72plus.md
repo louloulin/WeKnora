@@ -524,3 +524,51 @@ Alice 切到 Sheet2 写 A1=Bob 在 Sheet2 看到，Sheet1 不会串表。已 PAS
 - v0.7.108 SHEET 命名区域严格化：预填 A1 绝对引用 (`$A$1`) + 重名冲突提示 + per-sheet scope 列入 suggestion
 - 持续收敛 genoffice vendor（DOC headers/footers / XLSX pivot UI / PPTX master view / 动画时间线 UI）
 
+
+## 20. v0.7.106 — DOC 修订序列化：PM `ins`/`del` marks → OOXML `w:ins`/`w:del` + author/date 渲染到面板（已交付，2026-09-02）
+
+### 已完成
+
+- `docxAdapter`：
+  - `PmRun` 加 `ins?: RevisionInfo` / `del?: RevisionInfo`，`applyMark()` 处理 `ins / del` cases
+  - `runSignature` / `runSignatureOfEngineRun` 把 revision kind + author 编入签名（修"ins 标记但文本不变"的 fast-path 漏写 bug）
+  - 新增 `hasRevisionMarks(node)`：命中则走 `kind: 'generated'` 而不是 `patchParagraphText` 的 text-only 路径
+  - `pmNodeToGeneratedBlock()` 把 PmRun.ins / del 透传到 Run.ins / Run.del，由 docx-engine 已有 `w:ins/w:del` 包装逻辑（`generate.ts:2223-2255`）直接接住
+- `CollabDocProEditor`：
+  - Toolbar 新增 `data-testid="doc-track-changes-btn"` 切换按钮 + `--active` 高亮
+  - 编辑器 `onTransaction` 钩子：识别纯插入 step（from === to 且 slice 非空），用 `tr.mapping.maps[i].map(from) - sliceSize` 算插入文本在 NEW doc 的起始，给范围补 `ins` mark（author/date/id）；事务 `trackIgnore` meta 防递归
+  - 修订面板每条 `RevisionSnippet` 加 `date?` + `formatRevDate()` 相对时间（刚刚 / X 分钟前 / X 小时前 / 绝对日期）
+  - 新增 E2E 钩子 `window.__wkDocTrackChanges`（get/set on + toggle）
+- `_testZipExtract.ts`：内置 zip 抽取 `word/document.xml`（避免引入 zip 依赖到测试套件）
+
+### 真实双端验证
+
+`frontend/wk-doc-track-changes.mjs` ALL OK：
+
+- ins mark 自动 wrap + revisions panel "刚刚" + OOXML `<w:ins w:author="admin" w:date="...">`
+- del mark 程序化 addMark + OOXML `<w:del w:author="admin" w:date="..."><w:delText>...</w:delText></w:del>`
+- 0 page error
+
+### 单元测试
+
+`frontend/src/editor/adapters/__tests__/docxSavePlanRevisions.test.ts` 5 个 case：
+
+- `pmNodeToGeneratedBlock` 透传 author/date/id
+- 连续相同 ins runs 不互相覆盖
+- `pmDocToSavePlan` 不回退到 `kind: 'original'`
+- ins / del mark 在 generate 后仍存在
+- saveDocxBytes round-trip 写出 `<w:ins>` / `<w:del>` / `<w:delText>` + w:author + w:date
+
+### 关键 bug 复盘
+
+1. **fast-path 丢修订**：`runSignature` 不带 revision kind，ins/del 标记变化被签名忽略 → 段落走 `patchParagraphText` 仅改 `<w:t>`，w:ins/w:del 包装被擦掉。修复：把 `ins:author:date` 编进签名 + 新增 `hasRevisionMarks` 短路到 generate。
+2. **tr.mapping.map(from) 给出"插入后"位置**：`map(j.from)` 返回 NEW doc 中 `from` 被推到的新位置（=插入边界之后），所以 `insertStart = mappedFrom - sliceSize` 才是插入文本的起始。
+4. **PM step JSON 没有 slice.size**：必须 `step.toJSON?.()?.slice?.content` 累积每个 node.size（或 text.length）算出来，不能依赖顶层 `slice.size`。
+
+### 下一阶段
+
+- v0.7.106.1 删除自动套 del mark：把 deleteSelection 转 ReplaceStep 同内容 + addMark
+- v0.7.107 SLIDE `<p:grpSp>` 持久化：save 路径接入 genoffice `engineGroupElements` / `engineUngroupElement`
+- v0.7.108 SHEET 命名区域严格化：预填 $A$1 + 重名冲突提示 + per-sheet scope
+- 持续收敛 genoffice vendor（DOC headers/footers / XLSX pivot UI / PPTX master view / 动画时间线 UI）
+

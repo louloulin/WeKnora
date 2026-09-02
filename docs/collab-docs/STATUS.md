@@ -3647,3 +3647,73 @@ ALL OK — sheet names autocomplete
 - A1 公式未做严格绝对化：`Sales!$A1:$B5` 而不是 `Sales!$A$1:$B$5`。Excel / 腾讯文档都接受两种写法，但严格 parity 应该在 v0.7.106 修。
 - "从选区创建"的默认名 `Range_A1_B5` 没有处理命名冲突：同名重名时按钮直接覆盖而非提示。
 
+
+## 54. v0.7.106 — DOC 修订序列化：PM `ins`/`del` marks → OOXML `w:ins`/`w:del` + author/date 渲染到面板（2026-09-02）
+
+### 54.1 目标
+
+v0.7.68 已在 TipTap schema 注册了 `ins` / `del` 文字 marks，v0.7.103 给 DOC 编辑器加了按作者分组的修订面板。但保存路径 `pmDocToSavePlan` 之前**完全忽略了 `ins` / `del` 标记**——任何被记录的修订会随 `.docx` 落盘时一起被丢弃，Word 重新打开后看不到任何 w:ins/w:del。本轮把 PM 标记 ↔ OOXML `w:ins` / `w:del` 包装打通，附带把 `record-changes` 录制模式（Word "Review > Track Changes" 等价）落地，author/date 渲染到修订面板。
+
+### 54.2 改动
+
+`frontend/src/editor/adapters/docxAdapter.ts`：
+
+- `PmRun` 新增 `ins?: RevisionInfo` / `del?: RevisionInfo`，把 PM marks 上的 author/date/id 透传到 engine `Run`。
+- `applyMark()` 新增 `case 'ins'` / `case 'del'`：构造 `RevisionInfo { author, date?, id? }`。
+- `runSignature()` / `runSignatureOfEngineRun()` 把 revision kind + author 加入签名，使得一段原本"文本不变"的段落若获得 ins 标记，签名会变化、走 regenerate 路径而不是 text-only fast path。
+- 新增 `hasRevisionMarks(node)`：递归检测 PM 子树中是否带 ins / del marks；命中时 `pmDocToSavePlan` 强制走 `kind: 'generated'` 分支（绕过 `patchParagraphText` 的 `<w:t>` 文本补丁，否则会丢修订包装）。
+- `pmNodeToGeneratedBlock()`：循环构造 `Run` 时若 PmRun 有 ins/del，复制到 Run 上，让 docx-engine 的 `generate.ts` 第 2223-2255 行 `w:ins/w:del` 包装逻辑接管（原本就有，只需要 Run 上有 `ins / del` 字段即可触发）。
+
+`frontend/src/components/collab/CollabDocProEditor.vue`：
+
+- Toolbar 新增 `data-testid="doc-track-changes-btn"` 切换按钮：显示「● 记录中」/「记录修订」，激活时套用 `--active` 高亮样式。
+- 新增 `trackChangesOn` ref + `trackChangeSeq` 计数 + `onToggleTrackChanges()` 切换 handler。
+- 编辑器 `onTransaction` 钩子：track-changes 开 + 事务 `docChanged` 且非 `trackIgnore` 时，遍历 `tr.steps`：识别纯插入步骤（from === to 且 slice 非空），用 `tr.mapping.maps[i].map(from) - sliceSize` 算出插入文本在 NEW doc 中的起始位置，给该范围补 `ins` mark（带 author = props.displayName、date = ISO、id = ++trackChangeSeq）；补完后再 dispatch 一个 `setMeta('trackIgnore', true)` 的 addMark 事务，避免递归触发。
+- 修订面板按 author 分组的 `RevisionSnippet` 加 `date?: string` 字段；UI 行内新增 `formatRevDate()` 相对时间显示（"刚刚" / "X 分钟前" / "X 小时前" / `YYYY-MM-DD HH:MM`），鼠标悬停 title 展示完整 ISO。
+- 新增 E2E 钩子 `window.__wkDocTrackChanges`：`{ get on, set on, toggle() }`，让 Playwright 直接驱动录制开关不必点击 toolbar。
+
+`frontend/src/editor/adapters/__tests__/_testZipExtract.ts`（新文件）：
+
+- 内置最小化 zip 解压器：从 .docx (zip) 缓冲里抽出 `word/document.xml` 文本；不引入额外依赖。
+
+### 54.3 真实双端浏览器验证
+
+`frontend/wk-doc-track-changes.mjs`（新文件，已提交）：admin 登录 → DOC doc → `__wkDocTrackChanges.on = true` → 在第一段用 `chain().focus().insertContent(' v0.7.106-TRACKED ')` 注入 → 验证编辑器 state 中有 1 个文本节点带 ins mark → 打开修订面板验证 group 数 + 第一条 `formatRevDate` 显示"刚刚" → 程序化给同一段文本加 `del` mark（author=admin, id=9001）→ 验证又有 1 个文本节点带 del mark → 点"立即保存" → 下载 .docx → 解压 word/document.xml → 验证：
+
+```
+text nodes with ins mark after typing: 1
+text nodes with del mark after apply:  1
+revisions list visible: 1
+first revision date label: 刚刚
+OOXML has <w:ins>:        true
+OOXML has <w:del>:        true
+OOXML has w:author=admin: true
+OOXML has w:date=ISO:     true
+OOXML has <w:delText>TRACKED: true
+page errors: 0
+ALL OK — doc track changes serialize w:ins/w:del with author + date
+```
+
+### 54.4 单元测试
+
+新增 `frontend/src/editor/adapters/__tests__/docxSavePlanRevisions.test.ts`（5 个 case）：
+
+1. `pmNodeToGeneratedBlock` 把 ins/del marks 写到 `Run.ins / Run.del`（含 author / date / id 透传）
+2. 连续相同 (author, date, id) 的 ins runs 不会互相覆盖
+3. `pmDocToSavePlan` 对带 ins/del 的段落发出 `kind: 'generated'`，不会回退到 `kind: 'original'` 的 text-only fast path
+4. ins / del 标记在 generate 后仍然存在（author + date 不丢）
+5. `saveDocxBytes` 端端到端 round-trip：解压 word/document.xml 验证 `<w:ins>` / `<w:del>` + `w:author="alice"` / `w:author="bob"` + `w:date="2026-09-02T10:00:00.000Z"` + `<w:delText>removed</w:delText>` 全部存在
+
+### 54.5 回归
+
+- `vue-tsc --noEmit` 0 新错误
+- `tsx --test` 510/510 ✅（新增 5 个 + 原 505）
+- `wk-doc-track-changes.mjs` ALL OK ✅
+- `wk-sheet-names-autocomplete.mjs` (v0.7.105) 仍 PASS ✅（验证未影响其他模块）
+
+### 54.6 已知遗留
+
+- **删除自动套 del mark 未做**：本轮只覆盖了纯插入步骤的 ins 自动 wrap。Word 风格"删除时保留原文字 + 给 del mark"需要把 deleteSelection 转换成 ReplaceStep with same-text + addMark，操作上等价于 undo；属于 v0.7.106.1 范围。E2E 改为程序化 addMark 验证序列化路径已通。
+- **跨段落批注的 date 显示**：目前每条 revision 单独 fetch `formatRevDate`，同一时刻的多条会显示一致的"刚刚"；按 group 显示"X 处，5 分钟前"留给 v0.7.108+。
+- **trackChangeSeq 持久化**：id 仅在内存中累加，刷新页面后从 9000 重新开始，会让历史修订的 id 不稳定。生产环境若需要稳定 id 应存到 Yjs awareness / settings，属于 v0.7.107+ 范围。
+

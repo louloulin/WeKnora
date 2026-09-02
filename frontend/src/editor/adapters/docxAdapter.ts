@@ -328,7 +328,7 @@ export async function buildBlankDocxDoc(
 // paragraph/heading/list/quote/code-block paths. Image/textbox/chart/math/
 // sdt-shell handling is deferred to v0.7.28+.
 
-import type { GeneratedBlock, Run } from '../engines/docx-engine/index'
+import type { GeneratedBlock, Run, RevisionInfo } from '../engines/docx-engine/index'
 
 /** Minimal ProseMirror/TipTap JSON shape this adapter understands. */
 export interface PmNode {
@@ -359,6 +359,10 @@ interface PmRun {
   strike?: boolean
   code?: boolean
   link?: { href: string; tooltip?: string }
+  /** v0.7.106 — track-changes wrapper; presence means the run came from a tracked insertion. */
+  ins?: RevisionInfo
+  /** v0.7.106 — track-changes wrapper; presence means the run came from a tracked deletion (text was w:delText). */
+  del?: RevisionInfo
 }
 
 /**
@@ -480,6 +484,20 @@ export function pmDocToSavePlan(pmDoc: PmNode, doc: DocxAdapterDocument): SavePl
       continue
     }
 
+    // v0.7.106 — a paragraph carrying tracked-change marks must regenerate so
+    // the <w:ins> / <w:del> wrappers actually round-trip; the text-only fast
+    // path below only rewrites <w:t> and would silently drop them.
+    const hasRevs = hasRevisionMarks(node)
+    if (hasRevs) {
+      const generated = pmNodeToGeneratedBlock(node, pmRuns)
+      const rawPPr = (original as { rawPPr?: string }).rawPPr
+      if (rawPPr) (generated as { rawPPr?: string }).rawPPr = rawPPr
+      blocks.push({ kind: 'generated', block: generated })
+      textByIndex.set(idx, text)
+      i++
+      continue
+    }
+
     // v0.7.56 — a paragraph carrying comment marks must regenerate so the
     // commentRangeStart markers (and the comments.xml link) survive the save.
     const commentIds = collectCommentIdsFromNode(node)
@@ -579,14 +597,19 @@ export function pmNodeToGeneratedBlock(node: PmNode, pmRuns?: PmRun[]): Generate
   const runs: Run[] = []
   const effectiveRuns = pmRuns ?? flattenNodeRuns(node)
   for (const r of effectiveRuns) {
-    runs.push({
+    // v0.7.106 — propagate ins / del from PM marks into Run so the engine
+    // emits <w:ins> / <w:del> wrappers when saving back to .docx.
+    const run: Run = {
       text: r.text,
       bold: r.bold,
       italic: r.italic,
       underline: r.underline,
       strike: r.strike,
       link: r.link,
-    })
+    }
+    if (r.ins) run.ins = r.ins
+    if (r.del) run.del = r.del
+    runs.push(run)
   }
   let type: 'paragraph' | 'heading' | 'listItem' = 'paragraph'
   let level: number | undefined
@@ -670,10 +693,28 @@ function applyMark(r: PmRun, m: PmMark): void {
         tooltip: m.attrs?.title as string | undefined,
       }
       break
+    // v0.7.106 — track-changes marks map to OOXML w:ins / w:del wrappers.
+    // genoffice's generate.ts wraps consecutive runs sharing the same
+    // (author,date,id) in a single <w:ins> / <w:del> element. We carry
+    // the same author/date through the PmRun so the engine can wrap
+    // correctly when the user accepts/rejects via the revisions panel.
+    case 'ins': r.ins = revisionInfoFromMark(m); break
+    case 'del': r.del = revisionInfoFromMark(m); break
   }
 }
 
+/** Build a RevisionInfo from a TipTap ins/del mark. */
+function revisionInfoFromMark(m: PmMark): RevisionInfo {
+  const author = typeof m.attrs?.author === 'string' ? m.attrs.author : ''
+  const date = typeof m.attrs?.date === 'string' ? m.attrs.date : undefined
+  const id = typeof m.attrs?.id === 'string' ? m.attrs.id : undefined
+  return { author, ...(date ? { date } : {}), ...(id ? { id } : {}) }
+}
+
 function runSignature(r: PmRun): string {
+  // v0.7.106 — include revision kind + author so a paragraph that picks up a
+  // tracked-change mark diffs against the original block (otherwise the save
+  // path would fast-path to a text-only <w:t> rewrite and lose the w:ins/w:del).
   const parts = [
     r.bold ? 'b' : '',
     r.italic ? 'i' : '',
@@ -681,6 +722,8 @@ function runSignature(r: PmRun): string {
     r.strike ? 's' : '',
     r.code ? 'c' : '',
     r.link?.href ?? '',
+    r.ins ? `ins:${r.ins.author}:${r.ins.date ?? ''}` : '',
+    r.del ? `del:${r.del.author}:${r.del.date ?? ''}` : '',
   ]
   return parts.join(',')
 }
@@ -693,8 +736,29 @@ function runSignatureOfEngineRun(r: EngineRun): string {
     r.strike ? 's' : '',
     (r as { code?: boolean }).code ? 'c' : '',
     (r as { link?: { href: string } }).link?.href ?? '',
+    (r as { ins?: RevisionInfo }).ins ? `ins:${(r as { ins: RevisionInfo }).ins.author}:${(r as { ins: RevisionInfo }).ins.date ?? ''}` : '',
+    (r as { del?: RevisionInfo }).del ? `del:${(r as { del: RevisionInfo }).del.author}:${(r as { del: RevisionInfo }).del.date ?? ''}` : '',
   ]
   return parts.join(',')
+}
+
+/**
+ * v0.7.106 — does the PM node carry any tracked-change marks? When true,
+ * save must go through `generated` (the engine regenerates the paragraph
+ * from Runs and emits <w:ins> / <w:del> wrappers). The text-only fast path
+ * (`patchParagraphText` / patch <w:t>) silently drops them.
+ */
+function hasRevisionMarks(node: PmNode): boolean {
+  const walk = (n: PmNode): boolean => {
+    if (Array.isArray(n.marks)) {
+      for (const m of n.marks) {
+        if (m.type === 'ins' || m.type === 'del') return true
+      }
+    }
+    for (const c of n.content ?? []) if (walk(c)) return true
+    return false
+  }
+  return walk(node)
 }
 
 function inferListInfo(_node: PmNode): GeneratedBlock['list'] {
