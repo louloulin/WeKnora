@@ -4019,3 +4019,57 @@ clean
 - **MVP 单 row + 单 value**：genoffice `PivotDialog.tsx` 支持多级 row / col dimension / value filters / calculated fields / 分组（日期 / 范围）。本轮只 port 单 row + 单 value 聚合。完整 port 属于 v0.7.113+。
 - **colLetterToIdx 没处理 AA / AB**：当前只支持单字母列（A-Z）。多字母列（AA/AB...）属于 v0.7.110.x polish。
 - **没有 E2E**：本轮没写 Playwright 验证脚本。属于 v0.7.110.1 范围内连同「应用」按钮一起做。
+
+
+## 60. v0.7.111 — MindMap / WIKI 打磨 (Phase 1)：formatDate 提取 + 单元测试（2026-09-02）
+
+### 60.1 目标
+
+MindMap / WIKI 是已实现功能但缺少独立 helper 模块和单元测试的领域。本轮：
+
+1. 把 `MindMapListView.vue` 内的 `formatDate` inline helper 提到独立 `src/utils/mindmapFormat.ts`，便于测试时区敏感行为。
+2. 加 `formatLongDate` (full datetime) 和 `isMindMapLayout` (layout name guard) 两个 sibling helper，方便后续 MindMap 编辑器复用。
+3. 加 7 个单元测试覆盖空 / 非法 / 合法输入和 layout 校验。
+
+### 60.2 改动
+
+`frontend/src/utils/mindmapFormat.ts`（新文件，~30 行）：
+
+- `formatShortDate(iso)`：ISO → `9月2日` 格式（toLocaleString zh-CN），空 / NaN / catch 全部 fallback 到 ''。
+- `formatLongDate(iso)`：ISO → `2026/09/02 10:00` 完整格式。
+- `isMindMapLayout(s)`：类型守卫 `s is 'tree' | 'fishbone' | 'timeline' | 'radial' | 'free'`。
+
+`frontend/src/utils/__tests__/mindmapFormat.test.ts`（新文件，7 个 case）：
+
+- `formatShortDate('')` / `formatShortDate('not-a-date')` → ''
+- `formatShortDate('2026-09-02T10:00:00Z')` → 含数字非空字符串
+- `formatLongDate` 同样覆盖空 / 合法
+- `isMindMapLayout` 5 种已知 layout + 未知 / 空字符串 false
+
+`frontend/src/views/mindmap/MindMapListView.vue`：
+
+- 移除 inline `formatDate` 函数（11 行），改用 `import { formatShortDate } from '../../utils/mindmapFormat'`。
+- 模板从 `{{ formatDate(m.updated_at) }}` 改为 `{{ formatShortDate(m.updated_at) }}`。
+
+### 60.3 验证
+
+```
+$ tsx --test src/editor/adapters/__tests__/*.test.ts src/editor/formula/__tests__/*.test.ts src/components/collab/__tests__/*.test.ts src/utils/__tests__/*.test.ts
+ℹ tests 547
+ℹ pass 547
+ℹ fail 0
+
+$ ./node_modules/.bin/tsx --test src/utils/__tests__/mindmapFormat.test.ts
+ℹ tests 7
+ℹ pass 7
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc --noEmit
+0 errors
+```
+
+### 60.4 已知遗留
+
+- **MindMap 端其他 helper 还未提取**：`MindMapEditor.vue` 内含 layout 计算 + 自动布局 + 节点渲染等多个 inline 函数。完整提取属于 v0.7.112+。
+- **WIKI 端打磨未启动**：WikiBrowser / WikiTiptapEditor / WikiPropertiesPanel 等尚无独立 helper 测试模块。属于 v0.7.112+。
+- **timezone 行为依赖 Node 默认 locale**：在 zh-CN locale 缺失的环境中 toLocaleString 可能 fallback 到 'en-US'，导致测试不稳定。属于 v0.7.111.x polish（可加 vitest + 设置 TZ=Asia/Shanghai 环境变量）。

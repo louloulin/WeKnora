@@ -15,7 +15,7 @@
         <div class="meta">
           <span class="layout">{{ m.layout }}</span>
           <span class="theme">{{ m.theme }}</span>
-          <span class="updated">{{ formatDate(m.updated_at) }}</span>
+          <span class="updated">{{ formatShortDate(m.updated_at) }}</span>
         </div>
       </li>
     </ul>
@@ -26,6 +26,8 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { mindmapApi, type MindMap } from '../../api/mindmap'
+// v0.7.111 — extract date helpers for testability.
+import { formatShortDate } from '../../utils/mindmapFormat'
 
 const router = useRouter()
 const maps = ref<MindMap[]>([])
@@ -50,14 +52,7 @@ function open(m: MindMap) {
   router.push(`/mindmaps/${m.id}`)
 }
 
-function formatDate(s: string) {
-  if (!s) return ''
-  try {
-    return new Date(s).toLocaleString('zh-CN', { month: 'short', day: 'numeric' })
-  } catch {
-    return ''
-  }
-}
+// v0.7.111 — formatDate moved to utils/mindmapFormat (formatShortDate).
 </script>
 
 <style scoped>
