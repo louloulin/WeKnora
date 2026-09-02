@@ -93,12 +93,16 @@
       <button @click="sendToBack" type="button" :disabled="!selectedId" title="置于底层">⤓ 底层</button>
       <button @click="rotateSelected(-90)" type="button" :disabled="!selectedId" title="逆时针旋转 90° (Alt+←)" data-testid="slide-rotate-ccw">↺ 旋转</button>
       <button @click="rotateSelected(90)" type="button" :disabled="!selectedId" title="顺时针旋转 90° (Alt+→)" data-testid="slide-rotate-cw">↻ 旋转</button>
-      <button @click="alignSelected('left')" type="button" :disabled="!selectedId" title="左对齐" data-testid="slide-align-left">⇤</button>
-      <button @click="alignSelected('centerH')" type="button" :disabled="!selectedId" title="水平居中" data-testid="slide-align-center-h">↔</button>
-      <button @click="alignSelected('right')" type="button" :disabled="!selectedId" title="右对齐" data-testid="slide-align-right">⇥</button>
-      <button @click="alignSelected('top')" type="button" :disabled="!selectedId" title="顶端对齐" data-testid="slide-align-top">⫶</button>
-      <button @click="alignSelected('centerV')" type="button" :disabled="!selectedId" title="垂直居中" data-testid="slide-align-center-v">↕</button>
-      <button @click="alignSelected('bottom')" type="button" :disabled="!selectedId" title="底端对齐" data-testid="slide-align-bottom">⫷</button>
+      <button @click="alignSelected('left')" type="button" :disabled="!selectedIds.length" title="左对齐" data-testid="slide-align-left">⇤</button>
+      <button @click="alignSelected('centerH')" type="button" :disabled="!selectedIds.length" title="水平居中" data-testid="slide-align-center-h">↔</button>
+      <button @click="alignSelected('right')" type="button" :disabled="!selectedIds.length" title="右对齐" data-testid="slide-align-right">⇥</button>
+      <button @click="alignSelected('top')" type="button" :disabled="!selectedIds.length" title="顶端对齐" data-testid="slide-align-top">⫶</button>
+      <button @click="alignSelected('centerV')" type="button" :disabled="!selectedIds.length" title="垂直居中" data-testid="slide-align-center-v">↕</button>
+      <button @click="alignSelected('bottom')" type="button" :disabled="!selectedIds.length" title="底端对齐" data-testid="slide-align-bottom">⫷</button>
+      <button @click="distributeSelected('h')" type="button" :disabled="selectedIds.length < 3" title="水平等距分布" data-testid="slide-distribute-h">⇔ 分布</button>
+      <button @click="distributeSelected('v')" type="button" :disabled="selectedIds.length < 3" title="垂直等距分布" data-testid="slide-distribute-v">⇕ 分布</button>
+      <button @click="matchSize('w')" type="button" :disabled="selectedIds.length < 2" title="匹配宽度（以首个选中为基准）" data-testid="slide-match-width">⤢ 匹配宽</button>
+      <button @click="matchSize('h')" type="button" :disabled="selectedIds.length < 2" title="匹配高度（以首个选中为基准）" data-testid="slide-match-height">⤡ 匹配高</button>
       <span class="collab-slide-konva__divider" />
       <button @click="onUndo" type="button" :disabled="!canUndo" title="撤销 (Ctrl+Z)">↶ 撤销</button>
       <button @click="onRedo" type="button" :disabled="!canRedo" title="重做 (Ctrl+Shift+Z)">↷ 重做</button>
@@ -439,6 +443,21 @@
                 stroke: rs.color,
                 strokeWidth: 2,
                 dash: [8, 4],
+                listening: false,
+              }"
+            />
+            <!-- v0.7.101 — local multi-selection outlines (primary has transformer) -->
+            <v-rect
+              v-for="sid in multiSelectedIds"
+              :key="'msel-' + sid"
+              :config="{
+                x: (shapeBoundsPx(sid)?.x ?? 0),
+                y: (shapeBoundsPx(sid)?.y ?? 0),
+                width: (shapeBoundsPx(sid)?.w ?? 0),
+                height: (shapeBoundsPx(sid)?.h ?? 0),
+                stroke: '#58a6ff',
+                strokeWidth: 1.5,
+                dash: [6, 3],
                 listening: false,
               }"
             />
@@ -783,6 +802,8 @@ const slides = ref<PptxShapeSlide[]>([])
 const deck = ref<PptxShapeDeck | null>(null)
 const pictureImages = reactive<Record<string, HTMLImageElement>>({})
 const selectedId = ref<string | null>(null)
+// v0.7.101 — multi-select set (primary = last clicked, kept in selectedId).
+const selectedIds = ref<string[]>([])
 
 // --- Table insertion prompt ---
 const showTablePrompt = ref(false)
@@ -815,7 +836,7 @@ const confirmAddTable = () => {
     m.set('sourceType', 'graphicFrame')
     m.set('preset', 'table')
     yshapes.push([m])
-    selectedId.value = newTable.id
+    selectOnly(newTable.id)
     scheduleSave()
   })
   showTablePrompt.value = false
@@ -865,6 +886,18 @@ const remoteSelections = ref<Array<{ clientId: number; shapeId: string; color: s
 /** Look up a shape's display bounds in CSS pixels; returns null when the shape
  *  isn't on the active slide (e.g. peer switched slides). */
 const remoteSelectionBounds = (shapeId: string): { x: number; y: number; w: number; h: number } | null => {
+  const shape = activeShapes.value.find((s) => s.id === shapeId)
+  if (!shape) return null
+  return {
+    x: emuToPx(shape.x),
+    y: emuToPx(shape.y),
+    w: emuToPx(shape.w),
+    h: emuToPx(shape.h),
+  }
+}
+/** v0.7.101 — local multi-selection: shapes selected besides the primary. */
+const multiSelectedIds = computed(() => selectedIds.value.filter((id) => id !== selectedId.value))
+const shapeBoundsPx = (shapeId: string): { x: number; y: number; w: number; h: number } | null => {
   const shape = activeShapes.value.find((s) => s.id === shapeId)
   if (!shape) return null
   return {
@@ -952,34 +985,41 @@ const publishCursor = (px: number, py: number) => {
   const yEmu = Math.round((py / PX_PER_INCH) * 914400)
   handle.provider.awareness.setLocalStateField('cursor', { slide: activeIndex.value, x: xEmu, y: yEmu })
 }
-/** Publish selection: which shape (if any) the user has selected on the
- *  current slide. Other collaborators see a colored dashed outline around
- *  the same shape (rendered via `remoteSelections`). */
-const publishSelection = (shapeId: string | null) => {
+/** Publish selection: which shapes (if any) the user has selected on the
+ *  current slide. Other collaborators see colored dashed outlines around
+ *  the same shapes (rendered via `remoteSelections`). */
+const publishSelection = (shapeIds: string[]) => {
   if (!handle) return
   handle.provider.awareness.setLocalStateField('selection', {
     slide: activeIndex.value,
-    shapeId: shapeId ?? '',
+    shapeId: shapeIds[shapeIds.length - 1] ?? '',
+    shapeIds,
   })
 }
 const transformerRef = ref<any>(null)
 
 // --- v0.7.29 — comments anchor (current slide + selected shape if any) ---
 const commentAnchor = ref<{ type: 'doc' | 'slide' | 'sheet'; ref: string } | null>(null)
-watch([activeIndex, selectedId], ([s, id]) => {
+watch([activeIndex, selectedId, selectedIds], ([s, id, ids]) => {
   commentAnchor.value = {
     type: 'slide',
     ref: JSON.stringify({ slide: s, shapeId: id ?? '' }),
   }
-  publishSelection(id)
+  publishSelection(ids.length ? ids : (id ? [id] : []))
 }, { immediate: true })
+
+/** Set the selection to exactly one shape (or clear it). */
+const selectOnly = (id: string | null) => {
+  selectedId.value = id
+  selectedIds.value = id ? [id] : []
+}
 
 const onStageClick = (e: any) => {
   const stage = stageRef.value?.getStage?.()
   // Click on empty stage clears selection.
   const target = e?.target
   if (!target || target === stage) {
-    selectedId.value = null
+    selectOnly(null)
     updateTransformer()
   }
   if (stage) {
@@ -988,8 +1028,17 @@ const onStageClick = (e: any) => {
   }
 }
 
-const onShapeClick = (id: string, _e: any) => {
-  selectedId.value = id
+const onShapeClick = (id: string, e: any) => {
+  const multi = e?.evt?.shiftKey || e?.evt?.ctrlKey || e?.evt?.metaKey
+  if (multi) {
+    const set = new Set(selectedIds.value)
+    if (set.has(id)) set.delete(id)
+    else set.add(id)
+    selectedIds.value = [...set]
+    selectedId.value = id
+  } else {
+    selectOnly(id)
+  }
   updateTransformer()
 }
 
@@ -1036,7 +1085,7 @@ const onShapeTransformEnd = (id: string, e: any) => {
 
 const onTextEdit = (id: string, _e: any) => {
   // Promote to inspector edit mode — minimal but works.
-  selectedId.value = id
+  selectOnly(id)
 }
 
 // --- Inspector inputs ---
@@ -1107,6 +1156,8 @@ const refreshAnimations = () => {
 watch(activeIndex, () => {
   refreshAnimations()
   loadTransitionForActive()
+  // v0.7.101 — clear selection when switching slides (ids are slide-local).
+  selectOnly(null)
 })
 watch(() => deck.value?.opened, () => {
   refreshAnimations()
@@ -1212,27 +1263,106 @@ const objToShape = (o: Record<string, unknown>): PptxShape => {
 }
 
 // --- v0.7.98 — shape alignment to slide bounds ---
+// v0.7.101 — multi-select: align to bounding box, distribute, match size.
 type AlignDirection = 'left' | 'centerH' | 'right' | 'top' | 'centerV' | 'bottom'
-const alignSelected = (direction: AlignDirection) => {
+const selectedShapes = computed(() => {
   const slide = activeSlide.value
-  const id = selectedId.value
-  if (!slide || !id) return
-  const shape = slide.shapes.find((s) => s.id === id)
-  if (!shape) return
+  if (!slide) return []
+  const ids = new Set(selectedIds.value.length ? selectedIds.value : (selectedId.value ? [selectedId.value] : []))
+  return slide.shapes.filter((s) => ids.has(s.id))
+})
+
+const alignSelected = (direction: AlignDirection) => {
+  const shapes = selectedShapes.value
+  if (!shapes.length) return
+  const slide = activeSlide.value!
   const sw = slide.width ?? SLIDE_W_INCH * 914400
   const sh = slide.height ?? SLIDE_H_INCH * 914400
-  let nx = shape.x
-  let ny = shape.y
-  switch (direction) {
-    case 'left': nx = 0; break
-    case 'centerH': nx = Math.round((sw - shape.w) / 2); break
-    case 'right': nx = sw - shape.w; break
-    case 'top': ny = 0; break
-    case 'centerV': ny = Math.round((sh - shape.h) / 2); break
-    case 'bottom': ny = sh - shape.h; break
+  // Single selection aligns to slide bounds; multi aligns to bounding box.
+  let container: { x: number; y: number; w: number; h: number }
+  if (shapes.length === 1) {
+    container = { x: 0, y: 0, w: sw, h: sh }
+  } else {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (const s of shapes) {
+      minX = Math.min(minX, s.x); minY = Math.min(minY, s.y)
+      maxX = Math.max(maxX, s.x + s.w); maxY = Math.max(maxY, s.y + s.h)
+    }
+    container = { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
   }
-  if (nx === shape.x && ny === shape.y) return
-  updateShape(id, { x: nx, y: ny })
+  const patches: Array<{ id: string; patch: Partial<PptxShape> }> = []
+  for (const s of shapes) {
+    let nx = s.x
+    let ny = s.y
+    switch (direction) {
+      case 'left': nx = container.x; break
+      case 'centerH': nx = Math.round(container.x + (container.w - s.w) / 2); break
+      case 'right': nx = container.x + container.w - s.w; break
+      case 'top': ny = container.y; break
+      case 'centerV': ny = Math.round(container.y + (container.h - s.h) / 2); break
+      case 'bottom': ny = container.y + container.h - s.h; break
+    }
+    if (nx !== s.x || ny !== s.y) patches.push({ id: s.id, patch: { x: nx, y: ny } })
+  }
+  updateShapes(patches)
+}
+
+// v0.7.101 — horizontal/vertical equal spacing (≥3 shapes).
+const distributeSelected = (axis: 'h' | 'v') => {
+  const shapes = selectedShapes.value
+  if (shapes.length < 3) return
+  const indexed = shapes
+    .map((s, i) => ({ s, i }))
+    .sort((a, b) => (axis === 'h' ? a.s.x - b.s.x : a.s.y - b.s.y))
+  const first = indexed[0]!
+  const last = indexed[indexed.length - 1]!
+  const totalSpan = axis === 'h' ? last.s.x + last.s.w - first.s.x : last.s.y + last.s.h - first.s.y
+  const totalSize = indexed.reduce((sum, { s }) => sum + (axis === 'h' ? s.w : s.h), 0)
+  const gap = (totalSpan - totalSize) / (indexed.length - 1)
+  const patches: Array<{ id: string; patch: Partial<PptxShape> }> = []
+  let cursor = axis === 'h' ? first.s.x : first.s.y
+  for (const { s, i } of indexed) {
+    patches.push({ id: s.id, patch: (axis === 'h' ? { x: Math.round(cursor) } : { y: Math.round(cursor) }) as Partial<PptxShape> })
+    cursor += (axis === 'h' ? s.w : s.h) + gap
+  }
+  updateShapes(patches)
+}
+
+// v0.7.101 — match width/height to the primary (last-clicked) selected shape.
+const matchSize = (axis: 'w' | 'h') => {
+  const shapes = selectedShapes.value
+  if (shapes.length < 2) return
+  const ref = shapes.find((s) => s.id === selectedId.value) ?? shapes[0]
+  const patches: Array<{ id: string; patch: Partial<PptxShape> }> = []
+  for (const s of shapes) {
+    if (s.id === ref.id) continue
+    if (axis === 'w' && s.w !== ref.w) patches.push({ id: s.id, patch: { w: ref.w } })
+    if (axis === 'h' && s.h !== ref.h) patches.push({ id: s.id, patch: { h: ref.h } })
+  }
+  updateShapes(patches)
+}
+
+/** Batch-update several shapes in a single Yjs transaction. */
+const updateShapes = (patches: Array<{ id: string; patch: Partial<PptxShape> }>) => {
+  if (!patches.length || !ydeck || !activeSlide.value) return
+  const slideIdx = activeIndex.value
+  ydeck.doc?.transact(() => {
+    const yslide = ydeck!.get(slideIdx) as Y.Map<unknown> | undefined
+    if (!yslide) return
+    const yshapes = yslide.get('shapes') as Y.Array<Y.Map<unknown>> | undefined
+    if (!yshapes) return
+    const arr = yshapes.toArray()
+    for (const { id, patch } of patches) {
+      const i = arr.findIndex((m) => m.get('id') === id)
+      if (i < 0) continue
+      const m = arr[i]
+      for (const [k, v] of Object.entries(patch)) {
+        if (v !== undefined) m.set(k, v as any)
+      }
+      markDirty(id, patch)
+    }
+    scheduleSave()
+  })
 }
 
 const updateShape = (id: string, patch: Partial<PptxShape>) => {
@@ -1390,7 +1520,7 @@ const addShape = (type: PptxShape['type']) => {
       if (v !== undefined) m.set(k, v as any)
     }
     yshapes.push([m])
-    selectedId.value = id
+    selectOnly(id)
     scheduleSave()
   })
 }
@@ -1473,7 +1603,7 @@ const deleteSelected = () => {
         slide.structureDirty = true
       }
     }
-    selectedId.value = null
+    selectOnly(null)
     scheduleSave()
   })
 }
@@ -1514,7 +1644,7 @@ const duplicateSelected = () => {
       slide.elements.splice(ei + 1, 0, newEl)
       slide.structureDirty = true
     }
-    selectedId.value = newId
+    selectOnly(newId)
     scheduleSave()
   })
 }
@@ -1929,13 +2059,16 @@ handle.provider.awareness.on('change', () => {
       })
     }
     const sel = state.selection
-    if (sel && sel.slide === activeIndex.value && sel.shapeId) {
-      selections.push({
-        clientId,
-        shapeId: sel.shapeId,
-        color: u.color || '#58a6ff',
-        name: u.name || '匿名用户',
-      })
+    if (sel && sel.slide === activeIndex.value) {
+      const ids = Array.isArray(sel.shapeIds) && sel.shapeIds.length ? sel.shapeIds : (sel.shapeId ? [sel.shapeId] : [])
+      for (const shapeId of ids) {
+        selections.push({
+          clientId,
+          shapeId,
+          color: u.color || '#58a6ff',
+          name: u.name || '匿名用户',
+        })
+      }
     }
   })
   peers.value = out

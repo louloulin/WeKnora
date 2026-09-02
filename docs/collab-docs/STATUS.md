@@ -3371,3 +3371,58 @@ ALL OK — SHEET sort
 - 仅单列排序，未实现多关键字排序（按多列依次比较）
 - 未实现"排序时保留格式/批注/超链接随行移动"（当前只重排单元格值）
 - 未实现撤销（undo）支持
+
+
+### 49. v0.7.101 — SLIDE 多选 + 等距分布 + 匹配宽高（2026-09-02）
+
+### 49.1 目标
+
+参考 genoffice `arrange-actions.ts` 的 align/distribute 几何逻辑，为 PPT 编辑器补齐腾讯文档级的多选布局能力：shift-点选多形状、单选对齐到幻灯片边界 / 多选对齐到包围盒、水平/垂直等距分布（≥3）、匹配宽高（以最后点选为基准）。
+
+### 49.2 改动
+
+`frontend/src/components/collab/CollabSlideKonvaEditor.vue`：
+
+- 新增 `selectedIds: string[]` 状态；保留 `selectedId` 作为主选（最后点选），用于 transformer / 检查器 / 复制 / 旋转 / 删除等单形状操作。
+- 新增 `selectOnly(id)` 帮助函数统一写入 selectedId + selectedIds；addShape / duplicateSelected / deleteSelected / confirmAddTable / onTextEdit 全部切换到 `selectOnly`，确保双状态同步。
+- `onShapeClick` 检测 `e.evt.shiftKey/ctrlKey/metaKey`：shift 模式切换 id 进出 selectedIds；非 shift 模式走 `selectOnly(id)`。Konva canvas 上 shift-点选即可累加。
+- `onStageClick` 空舞台点击走 `selectOnly(null)` 清空。
+- 新增 `activeIndex` watch 切换幻灯片时自动 `selectOnly(null)`（旧 id 已不在当前幻灯片）。
+- `selectedShapes` computed：从 activeShapes 按 selectedIds 过滤，单选时回退到 selectedId（保证现有单选 align 路径不变）。
+- `alignSelected` 重写：单选 → 对齐到 slide bounds（与 v0.7.98 行为完全一致，已被 wk-slide-align.mjs 回归验证）；多选 → 计算 bbox 作为容器，按方向移动所有形状。
+- 新增 `distributeSelected('h'|'v')`：≥3 形状，按 x/y 排序后首尾为锚，总跨度 - 总尺寸 = 总间隙，gap / (n-1) 等距。复用 genoffice `distribute-h/v` 的纯几何推导。
+- 新增 `matchSize('w'|'h')`：以 primary（最后点选）为参考，其他选中形状的 w/h 改为参考值（跳过参考本身）。
+- 新增 `updateShapes(patches[])`：单 Yjs transact 批量写入 + markDirty + scheduleSave，避免多形状操作产生多次事务。
+- 工具栏：6 个 align 按钮的 `:disabled` 从 `!selectedId` 改为 `!selectedIds.length`；新增 `slide-distribute-h`（⇔ 分布）、`slide-distribute-v`（⇕ 分布）、`slide-match-width`（⤢ 匹配宽）、`slide-match-height`（⤡ 匹配高）。
+- Konva 层新增本地多选虚线框 `multiSelectedIds`（primary 走 transformer，其他形状画 1.5px 蓝色虚线）。
+- 协作 awareness：`publishSelection` 改为发布 `{ slide, shapeId, shapeIds }`；remoteSelections handler 遍历 shapeIds 数组，每个形状独立画虚线框（v0.7.30 单选扩展到多选）。
+
+### 49.3 真实双端浏览器验证
+
+`frontend/wk-slide-multiselect.mjs`（已提交）：
+
+- 在新建空白幻灯片上添加 3 个矩形，分别 align-left / align-right / align-centerH（PPTX 解压 slide12.xml 验证：x=[0, 10363200, 5181600]）。
+- 通过 Konva transformer 左中锚拖拽 -60px 把 rectB 宽度从 1828800 EMU 撑到 2397339 EMU（验证 transformer 拖拽链路）。
+- shift-点选三个矩形（用 `page.keyboard.down('Shift')` 替代 `mouse.click({modifiers})` —— Konva 的 `e.evt.shiftKey` 在后者不可靠，前者 100% 触发）。
+- 验证 distribute-h 按钮 `:disabled=false`、match-width 按钮 `:disabled=false`。
+- 点击 `slide-distribute-h` → PPTX 解压：gaps=[3067791, 3067790]（差 1 EMU 为 round 误差），等距成立。
+- 点击 `slide-match-width` → PPTX 解压：cx=[2397339, 2397339, 2397339]，全部对齐到 primary 的新宽度。
+- 点击 `slide-align-left`（多选）→ PPTX 解压：x=[0, 0, 0]，全部对齐到 bbox 最小 x。
+- `page errors: 0`、`ALL OK — slide multi-select`。
+
+截图：`/tmp/wk-shots/slide-multiselect-01.png`（多选虚线框）、`/tmp/wk-shots/slide-multiselect-99.png`（最终布局）。
+
+### 49.4 回归
+
+- `tsx --test` 504/504 pass（适配器 / 协作组件）。
+- `go build ./internal/... ./cmd/server` ✅。
+- `vue-tsc` 本轮文件 0 新错误。
+- `wk-slide-align.mjs` 回归（单选 align 6 个方向全部 ✅），证明 selectedShapes 回退到 selectedId 时行为完全等价于 v0.7.98。
+- `wk-4kinds.mjs` 四类文档烟测（doc/sheet/slide/form 全部 0 page error）。
+
+### 49.5 已知遗留
+
+- 未实现组（group）/ 取消组：genoffice 有 `groupSelected` / `ungroupSelected`，本轮未移植（需要表格级 groupKey 抽象，留待 v0.7.103+）。
+- 未实现前端组合快捷键（Cmd+G / Cmd+Shift+G），多选当前仅支持 shift-点选 + 工具栏按钮。
+- Transformer 仅作用于 primary；多选形状同时 resize 需要 Konva multi-node transform 编排（每节点独立 bake），留待 v0.7.104+。
+- 删除 / 复制 / 上移下移 / 旋转 / 主题动画仍只对 primary 生效；未扩展到 selectedIds 全部。

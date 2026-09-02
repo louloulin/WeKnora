@@ -385,3 +385,36 @@ Alice 切到 Sheet2 写 A1=Bob 在 Sheet2 看到，Sheet1 不会串表。已 PAS
 - v0.7.102 SHEET 命名区域 UI (xlsxDefinedNames.ts + 需在 wb 接口暴露 workbookXml)
 - v0.7.103 DOC 修订对比 viewer (audit timeline 增强)
 - 持续收敛 genoffice vendor (doc* / xlsx* / pivot* / slide* adapters + 配套 vitest)
+
+
+## 15. v0.7.101 — SLIDE 多选 + 等距分布 + 匹配宽高（已交付，2026-09-02）
+
+### 已完成
+
+- `selectedIds: string[]` + `selectOnly(id)` 帮助函数统一管理 primary / 多选状态
+- `onShapeClick` shift-点选切换；`activeIndex` 切换自动清空
+- `selectedShapes` computed：单选回退到 selectedId，保证 v0.7.98 单选 align 行为不变
+- `alignSelected` 重写：多选 → bbox 容器；单选 → slide bounds
+- `distributeSelected('h'|'v')`：≥3 形状等距分布（genoffice 几何推导直接复用）
+- `matchSize('w'|'h')`：以 primary 为参考；初版 bug（`shapes.slice(1)` 漏掉 shapes[0]）已修复为按 id 跳过
+- `updateShapes(patches[])` 批量 Yjs transact
+- 工具栏：6 align 按钮 `:disabled` 改用 `selectedIds.length`；新增 distribute-h/v + match-width/height 4 个按钮
+- Konva 本地多选虚线框 + awareness `shapeIds[]` 广播 → remoteSelections 遍历渲染
+
+### 真实双端验证
+
+`frontend/wk-slide-multiselect.mjs` 已 PASS：
+- 新建空白幻灯片 → 3 矩形 left/right/centerH（PPTX 解压验证）
+- Transformer 左中锚拖拽 -60px → rectB 宽度 1828800→2397339
+- shift-点选 3 个（`keyboard.down('Shift')` 模式，因为 Konva `e.evt.shiftKey` 对 `mouse.click({modifiers})` 不可靠）
+- distribute-h → PPTX gaps=[3067791, 3067790] 等距
+- match-width → PPTX cx 全部 = 2397339
+- 多选 align-left → PPTX x 全部 = 0
+- 0 page error
+
+### 下一阶段
+
+- v0.7.102 SHEET 命名区域 UI（xlsxDefinedNames.ts 已就位，需在 wb 接口暴露 workbookXml）
+- v0.7.103 DOC 修订对比 viewer（audit timeline 增强）
+- v0.7.104 SLIDE 组 / 取消组 + 多选同时 resize（Konva multi-node transform）
+- 持续收敛 genoffice vendor（doc* / xlsx* / pivot* / slide* adapters + 配套 vitest）
