@@ -485,6 +485,38 @@ export function setSlideNotesOnDeck(
   }
 }
 
+// v0.7.112 — patch a single animation by index on the current slide.
+// Reuses setSlideAnimationsOnDeck (which writes the full <p:timing> via the
+// engine). No-op when index is out of range.
+export function patchSlideAnimationOnDeck(
+  deck: PptxShapeDeck,
+  slideIndex: number,
+  idx: number,
+  patch: Partial<Pick<SlideAnimationRecord, "effect" | "trigger" | "durationMs" | "delayMs" | "spId">>,
+): boolean {
+  const cur = getSlideAnimationsOnDeck(deck, slideIndex)
+  if (idx < 0 || idx >= cur.length) return false
+  const next = cur.map((a, i) => (i === idx ? { ...a, ...patch } : a))
+  return setSlideAnimationsOnDeck(deck, slideIndex, next)
+}
+
+// v0.7.112 — swap an animation with its neighbour (-1 = up, +1 = down).
+export function reorderSlideAnimationOnDeck(
+  deck: PptxShapeDeck,
+  slideIndex: number,
+  idx: number,
+  dir: -1 | 1,
+): boolean {
+  const cur = getSlideAnimationsOnDeck(deck, slideIndex)
+  const j = idx + dir
+  if (idx < 0 || j < 0 || idx >= cur.length || j >= cur.length) return false
+  const next = cur.slice()
+  const tmp = next[idx]!
+  next[idx] = next[j]!
+  next[j] = tmp
+  return setSlideAnimationsOnDeck(deck, slideIndex, next)
+}
+
 // ----------------------------------------------------------------------------
 // v0.7.32 — Slide comments (OOXML <p:cmLst>) — file-level review comments
 // that survive a round-trip through PowerPoint.
@@ -727,6 +759,25 @@ export function setSlideAnimationsOnDeck(
 // ----------------------------------------------------------------------------
 // v0.7.32 — PPT master / theme / layouts
 // ----------------------------------------------------------------------------
+
+// v0.7.112 — resolve the engine's stable cNvPr@id (spid) of a WeKnora shape
+// on the given slide. Returns null when the element is missing or its
+// original XML does not carry a <p:cNvPr id> (e.g. group / table root).
+import { elementSpid as engineElementSpid } from '../engines/pptx-engine/index'
+
+export function getShapeSpIdOnDeck(
+  deck: PptxShapeDeck,
+  slideIndex: number,
+  elementId: string,
+): number | null {
+  if (!deck.opened) return null
+  const slide = deck.opened.deck.slides[slideIndex]
+  if (!slide) return null
+  const el = (slide.elements ?? []).find((e) => (e as { id?: string }).id === elementId)
+  if (!el) return null
+  return engineElementSpid(el)
+}
+
 
 export interface MasterPartInfo {
   partPath: string

@@ -4140,3 +4140,77 @@ ALL OK — sheet pivot apply + persisted pivot parts
 - **Pivot 落在源区右侧 1 行 1 列 gap**：未提供自定义落地点。属于 v0.7.110.x polish。
 - **multi-letter col (AA/AB) 未处理**：`colLetterToIdx` 只支持 A-Z，A1:C5 之外的多字母范围会失败。属于 v0.7.110.x polish。
 - **apply 失败的级联 rollback**：当前 applyPivotAdditions 中途写入失败不会撤销之前的 cache parts。Excel 打开残文件会 reject。要么整体打包暂存，要么用临时 doc 试写。属于 v0.7.112+ 范围。
+
+### 62.1 目标
+
+v0.7.38 起累计到 v0.7.64 已实现 SLIDE 动画面板（增删动画 + 转场），但有两个 issue：
+
+1. 单元 / E2E 没锁住 — 没有 v0.7.38 之后的回归
+2. **pre-existing bug**：`addAnimation` 把字符串 `selectedId.value` 直接 `Number(...)` 当 spid 用，`Number.isFinite` 必为 `false`，动画从未真正添加
+
+本轮三件事：
+- 加 spid 解析 helper（`getShapeSpIdOnDeck`），让 addAnimation 真的能写
+- 给动画面板每个动画加 effect / trigger / durationMs / delayMs 4 个细粒度编辑字段 + ↑↓ reorder + 加 testid
+- 写 `wk-slide-animations.mjs` E2E 锁住 per-row 编辑 + reorder + `<p:timing>` 落盘
+
+### 62.2 改动
+
+`frontend/src/editor/adapters/pptxShapeAdapter.ts`：
+
+- 新增 `getShapeSpIdOnDeck(deck, slideIdx, elementId)`：从 `slide.elements` 找 WeKnora shape 对应的 `SlideElement`，调引擎 `elementSpid` 抽取 `<p:cNvPr id="N">` 作为 spid。element 缺失 / 无 cNvPr 时返回 null。
+- 新增 `patchSlideAnimationOnDeck(deck, slideIdx, idx, patch)`：把 `{ effect?, trigger?, durationMs?, delayMs?, spId? }` 合并到指定 idx 的动画。复用 `setSlideAnimationsOnDeck` 全量替换路径。
+- 新增 `reorderSlideAnimationOnDeck(deck, slideIdx, idx, dir)`：上下移动动画（dir = -1 / 1）。边界外返回 false。
+
+`frontend/src/components/collab/CollabSlideKonvaEditor.vue`：
+
+- import 新增 helpers
+- 「添加动画 / 清除」按钮加 `data-testid="slide-anim-add-btn|clear-btn"`
+- 列表 `<li>` 替换成 per-row 编辑行：effect 选 / trigger 选 / duration 输入 / delay 输入 / ↑ / ↓ / × 6 个按钮，全部 `[data-testid="slide-anim-{field}-{idx}"]`
+- `addAnimation` 改用 `getShapeSpIdOnDeck` 替换 `Number(selectedId.value)` 的 pre-existing bug
+- 新增 `onAnimationPatch(idx, key, value)`：per-row 字段更新后调 `patchSlideAnimationOnDeck`
+- 新增 `moveAnimation(idx, dir)`：reorder 按钮点击后调 `reorderSlideAnimationOnDeck`
+- 5 个 handler（add / patch / move / remove / clear）全部 `scheduleSave()`，解决「动画只暂存不落盘」的 pre-existing bug
+
+`frontend/src/editor/adapters/__tests__/pptxAnimations.test.ts`（已有文件，追加 4 个 case）：
+
+- `patchSlideAnimationOnDeck mutates a single animation by index`
+- `patchSlideAnimationOnDeck rejects out-of-range index`
+- `reorderSlideAnimationOnDeck swaps neighbours up / down`
+- `reorderSlideAnimationOnDeck rejects edges`
+
+`frontend/wk-slide-animations.mjs`（新 E2E，146 行）：
+
+- admin 登录 → 打开 fresh SLIDE → clear 任何遗留 → 加 2 个动画（fade / onClick / 1000ms / 0ms） → 把 effect #0 改 flyIn → duration #0 改 2500ms → delay #1 改 800ms → ↓ reorder #0 → 等 saveLabel「已保存」 → 下载 .pptx → 解压 → 解析 `ppt/slides/slide1.xml` → 找 `<p:timing>` → 验证 `presetID="10"` (fade) + `presetID="2"` (flyIn) + `dur="2500"` + `dur="1000"` 都存在
+
+### 62.3 验证
+
+```
+$ tsx --test src/editor/adapters/__tests__/pptxAnimations.test.ts
+ℹ tests 7
+ℹ pass 7
+ℹ fail 0  (+4 vs 3 baseline)
+
+$ tsx --test src/editor/adapters/__tests__/*.test.ts src/editor/formula/__tests__/*.test.ts src/components/collab/__tests__/*.test.ts src/utils/__tests__/*.test.ts
+ℹ tests 553
+ℹ pass 553
+ℹ fail 0  (+4 vs 549 baseline)
+
+$ go build ./internal/...
+clean
+
+$ node wk-slide-animations.mjs
+animations after add: 2
+effect order after reorder: [ 'fade', 'flyIn' ]
+duration row0 (was originally flyIn): 1000 row1 (was originally fade): 2500
+saveLabel 已保存: true
+slide1.xml length: 25235
+presetIDs: [ '10', '2' ]
+ALL OK — slide animations: per-row edit + reorder + <p:timing> persisted
+```
+
+### 62.4 已知遗留
+
+- **Pre-existing 多 client 同步**：动画数据在 deck 内存里 edit，但 Yjs doc 里还没有动画维度的 CRDT 同步。多 client 同时编辑一个 slide 的动画时可能冲突。属于 v0.7.112.x + Yjs `Y.Array<SlideAnimationRecord>` port 范围。
+- **PPT 母版视图（genoffice `MasterView.tsx` 303 行）**：引擎 `master-edit.ts` 早就支持 `listMasterParts + parseMasterPart + applyMasterEdits` 路径，但 Vue UI 未实现。属于 v0.7.113 范围（建议 copy genoffice MasterView 的 props 形状，画布跟现有 `SlideCanvas` 兼容，但缩略图需要单独 share render path）。
+- **v0.7.62 (现存 animations UI)：行编辑太多列 → 屏幕窄时拥挤**：建议 v0.7.112.x polish 把 effect/trigger/duration/delay 折叠到「高级」抽屉里。
+- **v0.7.64 transition**：转场选择器只触发 `onTransitionCommit` 但未持久化到 .pptx —— verified 已落盘（ppt/slides/slide1.xml 的 `<p:transition>` 节）。需要补充 E2E。

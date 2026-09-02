@@ -713,25 +713,81 @@
           type="button"
           class="collab-slide-konva__animations-btn"
           :disabled="selectedId == null"
-          @click="addAnimation"
-          title="为选中形状添加动画"
-        >+ 添加动画</button>
-        <button
-          type="button"
-          class="collab-slide-konva__animations-btn"
-          :disabled="animations.length === 0"
-          @click="clearAnimations"
-        >清除</button>
+        @click="addAnimation"
+        title="为选中形状添加动画"
+        data-testid="slide-anim-add-btn"
+      >+ 添加动画</button>
+      <button
+        type="button"
+        class="collab-slide-konva__animations-btn"
+        :disabled="animations.length === 0"
+        @click="clearAnimations"
+        data-testid="slide-anim-clear-btn"
+      >清除</button>
       </div>
       <ol v-if="animations.length" class="collab-slide-konva__animations-list">
-        <li v-for="(a, idx) in animations" :key="`${a.spId}-${idx}`" class="collab-slide-konva__animations-item">
+        <li v-for="(a, idx) in animations" :key="`${a.spId}-${idx}`" class="collab-slide-konva__animations-item" :data-testid="`slide-anim-item-${idx}`">
           <span class="collab-slide-konva__animations-num">{{ idx + 1 }}</span>
-          <span class="collab-slide-konva__animations-name">
-            {{ effectLabel(a.effect) }}
-            <small>{{ triggerLabel(a.trigger) }}</small>
-          </span>
-          <span class="collab-slide-konva__animations-target">spId {{ a.spId }}</span>
-          <button type="button" class="collab-slide-konva__animations-del" @click="removeAnimation(idx)">×</button>
+          <select
+            class="collab-slide-konva__animations-select"
+            :value="a.effect"
+            @change="onAnimationPatch(idx, 'effect', ($event.target as HTMLSelectElement).value)"
+            :data-testid="`slide-anim-effect-${idx}`"
+            title="效果"
+          >
+            <option v-for="o in animEffectOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+          </select>
+          <select
+            class="collab-slide-konva__animations-select"
+            :value="a.trigger"
+            @change="onAnimationPatch(idx, 'trigger', ($event.target as HTMLSelectElement).value)"
+            :data-testid="`slide-anim-trigger-${idx}`"
+            title="触发"
+          >
+            <option v-for="o in animTriggerOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+          </select>
+          <input
+            type="number"
+            min="0"
+            step="50"
+            class="collab-slide-konva__animations-input"
+            :value="a.durationMs"
+            @change="onAnimationPatch(idx, 'durationMs', Number(($event.target as HTMLInputElement).value))"
+            title="时长 (ms)"
+            :data-testid="`slide-anim-duration-${idx}`"
+          />
+          <input
+            type="number"
+            min="0"
+            step="50"
+            class="collab-slide-konva__animations-input"
+            :value="a.delayMs"
+            @change="onAnimationPatch(idx, 'delayMs', Number(($event.target as HTMLInputElement).value))"
+            title="延迟 (ms)"
+            :data-testid="`slide-anim-delay-${idx}`"
+          />
+          <button
+            type="button"
+            class="collab-slide-konva__animations-btn"
+            :disabled="idx === 0"
+            @click="moveAnimation(idx, -1)"
+            title="上移"
+            :data-testid="`slide-anim-up-${idx}`"
+          >↑</button>
+          <button
+            type="button"
+            class="collab-slide-konva__animations-btn"
+            :disabled="idx === animations.length - 1"
+            @click="moveAnimation(idx, 1)"
+            title="下移"
+            :data-testid="`slide-anim-down-${idx}`"
+          >↓</button>
+          <button
+            type="button"
+            class="collab-slide-konva__animations-del"
+            @click="removeAnimation(idx)"
+            :data-testid="`slide-anim-del-${idx}`"
+          >×</button>
         </li>
       </ol>
       <p v-else class="collab-slide-konva__animations-empty">
@@ -764,6 +820,9 @@ import {
   emuToPx,
   getSlideAnimationsOnDeck,
   setSlideAnimationsOnDeck,
+  patchSlideAnimationOnDeck,
+  reorderSlideAnimationOnDeck,
+  getShapeSpIdOnDeck,
   getSlideTransitionOnDeck,
   setSlideTransitionOnDeck,
   setSlideLayout,
@@ -1281,6 +1340,26 @@ const triggerLabel = (t: AnimTrigger): string => {
   return map[t] || t
 }
 
+// v0.7.112 — per-animation edit dropdowns share these option lists.
+const animEffectOptions: Array<{ value: AnimEffectKind; label: string }> = [
+  { value: 'fade', label: '淡入' },
+  { value: 'flyIn', label: '飞入' },
+  { value: 'zoom', label: '缩放' },
+  { value: 'spin', label: '旋转' },
+  { value: 'bounce', label: '弹跳' },
+  { value: 'appear', label: '出现' },
+  { value: 'disappear', label: '消失' },
+  { value: 'pulse', label: '脉冲' },
+  { value: 'colorPulse', label: '变色脉冲' },
+  { value: 'teeter', label: '摇摆' },
+  { value: 'growShrink', label: '缩放' },
+]
+const animTriggerOptions: Array<{ value: AnimTrigger; label: string }> = [
+  { value: 'onClick', label: '点击时' },
+  { value: 'withPrevious', label: '与上一动画同时' },
+  { value: 'afterPrevious', label: '上一动画之后' },
+]
+
 const refreshAnimations = () => {
   if (!deck.value || !deck.value.opened) {
     animations.value = []
@@ -1302,8 +1381,8 @@ watch(() => deck.value?.opened, () => {
 
 const addAnimation = () => {
   if (!deck.value || selectedId.value == null) return
-  const spId = Number(selectedId.value)
-  if (!Number.isFinite(spId)) {
+  const spId = getShapeSpIdOnDeck(deck.value, activeIndex.value, selectedId.value)
+  if (spId == null) {
     MessagePlugin.warning('无法为所选形状添加动画:缺少 spId')
     return
   }
@@ -1313,7 +1392,7 @@ const addAnimation = () => {
   ]
   if (setSlideAnimationsOnDeck(deck.value, activeIndex.value, next)) {
     animations.value = next
-    saveLabel.value = '动画已暂存（保存 .pptx 时落盘）'
+    scheduleSave()
   }
 }
 
@@ -1322,6 +1401,7 @@ const removeAnimation = (idx: number) => {
   const next = animations.value.filter((_, i) => i !== idx)
   if (setSlideAnimationsOnDeck(deck.value, activeIndex.value, next)) {
     animations.value = next
+    scheduleSave()
   }
 }
 
@@ -1329,6 +1409,31 @@ const clearAnimations = () => {
   if (!deck.value) return
   if (setSlideAnimationsOnDeck(deck.value, activeIndex.value, [])) {
     animations.value = []
+    scheduleSave()
+  }
+}
+
+// v0.7.112 — per-animation edit handlers: patch one field, then refresh.
+const onAnimationPatch = (
+  idx: number,
+  key: 'effect' | 'trigger' | 'durationMs' | 'delayMs',
+  value: string | number,
+) => {
+  if (!deck.value) return
+  const patch: Record<string, string | number> = {}
+  patch[key] = value
+  if (patchSlideAnimationOnDeck(deck.value, activeIndex.value, idx, patch)) {
+    refreshAnimations()
+    scheduleSave()
+  }
+}
+
+// v0.7.112 — move an animation up (-1) / down (+1) within the slide list.
+const moveAnimation = (idx: number, dir: -1 | 1) => {
+  if (!deck.value) return
+  if (reorderSlideAnimationOnDeck(deck.value, activeIndex.value, idx, dir)) {
+    refreshAnimations()
+    scheduleSave()
   }
 }
 watch(selectedShape, (s) => {
