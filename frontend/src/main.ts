@@ -46,16 +46,12 @@ async function bootstrap() {
   const pinia = createPinia();
   app.use(pinia);
 
-  // Capabilities (can_create_tenant, auto_accept_invitation) are not cached
-  // in localStorage — reconcile once before first paint when a session exists.
+  // Do not block the first paint on /auth/me. A stale token or an unavailable
+  // backend must not leave the login route as an empty #app for 30 seconds.
+  // Protected routes still hydrate through the router guard; this refresh is
+  // only a best-effort reconciliation for an already persisted session.
   const authStore = useAuthStore();
-  if (localStorage.getItem("weknora_token")) {
-    try {
-      await authStore.refreshFromAuthMe();
-    } catch {
-      // best-effort; capabilities stay at defaults until the next refresh
-    }
-  }
+  const hasStoredToken = Boolean(localStorage.getItem("weknora_token"));
 
   app.use(router);
   app.use(i18n);
@@ -65,6 +61,20 @@ async function bootstrap() {
   await router.isReady();
   app.mount("#app");
   installAutofillGuard();
+
+  if (hasStoredToken) {
+    void authStore.refreshFromAuthMe().then((restored) => {
+      if (!restored || !authStore.isLoggedIn) return;
+      const currentPath = router.currentRoute.value.path;
+      if (currentPath === "/login") {
+        void router.replace(
+          authStore.hasValidTenant
+            ? "/platform/knowledge-bases"
+            : "/onboarding/workspace",
+        );
+      }
+    });
+  }
 }
 
 bootstrap();
