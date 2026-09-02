@@ -10,9 +10,13 @@
     <div v-else-if="error" class="collab-editor-view__error">{{ error }}</div>
     <template v-else-if="doc">
       <div class="collab-editor-view__sidebar">
-        <router-link :to="{ name: 'collabDocList' }" class="collab-editor-view__back">← 返回列表</router-link>
-        <div class="collab-editor-view__title">{{ doc.title }}</div>
-        <div class="collab-editor-view__meta">类型：{{ kindLabel(doc.doc_kind) }}</div>
+        <router-link :to="{ name: 'collabDocList' }" class="collab-editor-view__back">← <span>返回文档</span></router-link>
+        <div class="collab-editor-view__identity">
+          <span class="collab-editor-view__file-icon" :data-kind="doc.doc_kind">{{ doc.doc_kind === 'sheet' ? '▦' : doc.doc_kind === 'slide' ? '▧' : doc.doc_kind === 'form' ? '☷' : '▤' }}</span>
+          <div><div class="collab-editor-view__title">{{ doc.title }}</div><div class="collab-editor-view__meta">{{ kindLabel(doc.doc_kind) }} · 私有文档</div></div>
+        </div>
+        <div class="collab-editor-view__collab-status"><span></span>实时保存 · 协作中</div>
+        <div class="collab-editor-view__section-label">文档工具</div>
         <button class="collab-editor-view__sync-kb" @click="onSyncToKB" :disabled="syncing">
           {{ syncing ? '同步中...' : '同步到知识库' }}
         </button>
@@ -47,6 +51,10 @@
         </div>
       </div>
       <div class="collab-editor-view__main">
+        <header class="collab-editor-view__topbar">
+          <div class="collab-editor-view__topbar-title"><span class="collab-editor-view__topbar-kind">{{ kindLabel(doc.doc_kind) }}</span><strong>{{ doc.title }}</strong><span class="collab-editor-view__saved">已保存</span></div>
+          <div class="collab-editor-view__topbar-actions"><span class="collab-editor-view__presence"><i></i>{{ displayName }}</span><button type="button" @click="shareVisible = !shareVisible">分享</button><button type="button" class="collab-editor-view__more" aria-label="更多操作">•••</button></div>
+        </header>
         <CollabSlideThemePanel
           v-if="doc.doc_kind === 'slide'"
           class="collab-editor-view__slide-theme"
@@ -105,7 +113,7 @@ const tenantId = ref<number | string>(
   (authStore as any).user?.tenant_id ?? (authStore as any).user?.tenantId ?? 0,
 )
 
-const kindLabel = (k: string) => ({ doc: '文档', sheet: '表格', slide: '幻灯片' }[k] || k)
+const kindLabel = (k: string) => ({ doc: '文档', sheet: '表格', slide: '幻灯片', form: '收集表' }[k] || k)
 
 const load = async () => {
   loading.value = true
@@ -171,23 +179,25 @@ onMounted(load)
 </script>
 
 <style scoped>
-.collab-editor-view__slide-theme {
-  margin: 8px 12px 0;
-  padding: 8px;
-  border: 1px solid var(--td-component-stroke);
-  border-radius: 6px;
-  background: var(--app-surface-raised);
-}
+.collab-editor-view__slide-theme { margin: 8px 12px 0; padding: 8px; border: 1px solid var(--td-component-stroke); border-radius: 6px; background: var(--app-surface-raised); }
 .collab-editor-view { display: flex; height: 100%; min-height: 0; background: var(--app-page-bg); color: var(--app-text); }
-.collab-editor-view__sidebar { width: 248px; flex: 0 0 248px; box-sizing: border-box; padding: 20px 16px; border-right: 1px solid var(--app-border); display: flex; flex-direction: column; gap: 12px; background: var(--app-surface-bg); overflow-y: auto; }
-.collab-editor-view__back { display: inline-flex; align-items: center; width: fit-content; font-size: 13px; color: var(--app-text-muted); text-decoration: none; }
+.collab-editor-view__sidebar { width: 220px; flex: 0 0 220px; box-sizing: border-box; padding: 18px 14px; border-right: 1px solid var(--app-border); display: flex; flex-direction: column; gap: 10px; background: var(--app-surface-bg); overflow-y: auto; }
+.collab-editor-view__back { display: inline-flex; align-items: center; gap: 5px; width: fit-content; margin-bottom: 10px; font-size: 12px; color: var(--app-text-muted); text-decoration: none; }
 .collab-editor-view__back:hover { color: var(--td-brand-color); }
-.collab-editor-view__title { margin-top: 10px; font-size: 17px; font-weight: 650; line-height: 1.4; overflow-wrap: anywhere; }
+.collab-editor-view__identity { display:flex; align-items:center; gap:9px; }
+.collab-editor-view__file-icon { width:30px; height:34px; display:grid; place-items:center; flex:none; border-radius:7px; background:color-mix(in srgb, var(--td-brand-color) 14%, var(--app-surface-raised)); color:var(--td-brand-color); font-size:17px; }
+.collab-editor-view__file-icon[data-kind=sheet] { color:#46a6ff; background:rgba(70,166,255,.12); } .collab-editor-view__file-icon[data-kind=slide] { color:#f7a94a; background:rgba(247,169,74,.12); } .collab-editor-view__file-icon[data-kind=form] { color:#b78cff; background:rgba(183,140,255,.12); }
+.collab-editor-view__title { font-size: 15px; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
 .collab-editor-view__meta { font-size: 12px; color: var(--app-text-muted); }
+.collab-editor-view__collab-status { display:flex; align-items:center; gap:7px; margin:8px 0 16px; color:var(--app-text-muted); font-size:11px; } .collab-editor-view__collab-status span { width:6px; height:6px; border-radius:50%; background:var(--td-brand-color); }
+.collab-editor-view__section-label { color:var(--app-text-muted); font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
 .collab-editor-view__sync-kb { margin-top: auto; padding: 9px 12px; background: var(--td-brand-color-6); color: var(--td-text-color-anti); border: 1px solid var(--td-brand-color-6); border-radius: 6px; cursor: pointer; font-weight: 600; }
 .collab-editor-view__sync-kb:hover { background: var(--td-brand-color-5); }
 .collab-editor-view__sync-kb:disabled { opacity: .55; cursor: not-allowed; }
 .collab-editor-view__main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.collab-editor-view__topbar { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:50px; padding:0 18px; border-bottom:1px solid var(--app-border); background:var(--app-surface-bg); }
+.collab-editor-view__topbar-title, .collab-editor-view__topbar-actions { display:flex; align-items:center; gap:10px; min-width:0; } .collab-editor-view__topbar-title strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; } .collab-editor-view__topbar-kind { padding:3px 6px; border-radius:4px; background:var(--app-surface-raised); color:var(--app-text-muted); font-size:10px; } .collab-editor-view__saved { color:var(--app-text-muted); font-size:11px; } .collab-editor-view__presence { display:flex; align-items:center; gap:5px; color:var(--app-text-muted); font-size:11px; } .collab-editor-view__presence i { width:7px; height:7px; border-radius:50%; background:var(--td-brand-color); }
+.collab-editor-view__topbar-actions button { padding:6px 11px; border:1px solid var(--app-border); border-radius:6px; background:var(--app-surface-raised); color:var(--app-text); cursor:pointer; font-size:12px; } .collab-editor-view__topbar-actions button:hover { border-color:var(--td-brand-color); color:var(--td-brand-color); } .collab-editor-view__topbar-actions .collab-editor-view__more { padding:6px 8px; border-color:transparent; background:transparent; color:var(--app-text-muted); letter-spacing:2px; }
 .collab-editor-view__loading, .collab-editor-view__error { padding: 24px; color: var(--app-text-muted); }
 .collab-editor-view__error { color: var(--td-error-color-7); }
 .collab-editor-view__audit-toggle {
@@ -223,6 +233,8 @@ onMounted(load)
   border-top: 1px dashed var(--td-component-stroke);
 }
 @media (max-width: 860px) {
-  .collab-editor-view__sidebar { width: 196px; flex-basis: 196px; padding: 14px 12px; }
+  .collab-editor-view__sidebar { width: 190px; flex-basis: 190px; padding: 14px 12px; }
+  .collab-editor-view__topbar { padding:0 12px; }
+  .collab-editor-view__presence { display:none; }
 }
 </style>

@@ -89,7 +89,8 @@ const groupedRows = computed(() => {
 .board-view { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px; }
 .board-column {
   flex: 0 0 280px;
-  background: var(--bg-secondary, #f7f8fa);
+  background: var(--app-surface-subtle, var(--bg-secondary, #f7f8fa));
+  border: 1px solid var(--td-component-stroke, var(--border-color, #e6e8eb));
   border-radius: 8px;
   padding: 12px;
 }
@@ -100,16 +101,16 @@ const groupedRows = computed(() => {
 .board-column-count { color: var(--text-secondary, #999); font-size: 12px; }
 .board-cards { display: flex; flex-direction: column; gap: 8px; }
 .board-card {
-  background: #fff;
-  border: 1px solid var(--border-color, #e6e8eb);
+  background: var(--td-bg-color-container, #fff);
+  border: 1px solid var(--td-component-stroke, var(--border-color, #e6e8eb));
   border-radius: 6px;
   padding: 10px;
   cursor: pointer;
   transition: box-shadow .15s;
 }
-.board-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.board-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.22); }
 .board-card-title { font-weight: 500; margin-bottom: 6px; }
-.board-card-field { display: flex; gap: 4px; font-size: 12px; color: var(--text-secondary, #666); }
-.board-card-field-name { color: var(--text-secondary, #999); }
-.board-empty { color: var(--text-secondary, #999); padding: 32px; text-align: center; width: 100%; }
+.board-card-field { display: flex; gap: 4px; font-size: 12px; color: var(--td-text-color-secondary, var(--text-secondary, #666)); }
+.board-card-field-name { color: var(--td-text-color-placeholder, var(--text-secondary, #999)); }
+.board-empty { color: var(--td-text-color-secondary, var(--text-secondary, #999)); padding: 32px; text-align: center; width: 100%; }
 </style>

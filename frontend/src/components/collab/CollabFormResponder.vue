@@ -305,17 +305,17 @@ onMounted(loadSchema);
 .collab-form-responder__error {
   padding: 24px;
   border-radius: 8px;
-  background: #f6f8fa;
-  color: #57606a;
+  background: var(--app-surface-raised, #f6f8fa);
+  color: var(--app-text-muted, #57606a);
   text-align: center;
 }
 .collab-form-responder__error {
-  background: #fff1f0;
-  color: #cf222e;
+  background: var(--app-error-bg, #fff1f0);
+  color: var(--td-error-color-7, #cf222e);
 }
 .collab-form-responder__header {
   margin-bottom: 24px;
-  border-bottom: 1px solid #d0d7de;
+  border-bottom: 1px solid var(--app-border, #d0d7de);
   padding-bottom: 12px;
 }
 .collab-form-responder__header h2 {
@@ -324,7 +324,7 @@ onMounted(loadSchema);
 }
 .collab-form-responder__sub {
   margin: 0;
-  color: #57606a;
+  color: var(--app-text-muted, #57606a);
   font-size: 13px;
 }
 .collab-form-responder__item {
@@ -393,7 +393,7 @@ onMounted(loadSchema);
 }
 .collab-form-responder__thanks button {
   margin-top: 12px;
-  background: white;
+  background: var(--app-surface-raised, white);
   border: 1px solid #1a7f37;
   color: #1a7f37;
   padding: 8px 16px;

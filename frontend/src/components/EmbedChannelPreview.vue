@@ -179,7 +179,7 @@ watch(() => props.visible, async (open) => {
   &__screen {
     flex: 1;
     min-height: 420px;
-    background: #f5f7fa;
+    background: var(--app-surface-inset, #f5f7fa);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -190,7 +190,7 @@ watch(() => props.visible, async (open) => {
   width: 100%;
   height: 100%;
   border: none;
-  background: #fff;
+  background: var(--app-surface-bg, #fff);
   display: block;
 }
 
@@ -201,8 +201,8 @@ watch(() => props.visible, async (open) => {
   border: 1px solid var(--td-component-stroke);
   border-radius: 12px;
   overflow: hidden;
-  background: linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+  background: linear-gradient(180deg, var(--app-surface-raised, #f8fafc) 0%, var(--app-surface-inset, #eef2f7) 100%);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 
 .widget-mock-page {
@@ -218,7 +218,7 @@ watch(() => props.visible, async (open) => {
   &__line {
     height: 10px;
     border-radius: 5px;
-    background: rgba(0, 0, 0, 0.06);
+    background: color-mix(in srgb, var(--td-text-color-primary) 10%, transparent);
     margin-bottom: 10px;
     max-width: 72%;
 
@@ -257,8 +257,8 @@ watch(() => props.visible, async (open) => {
   max-height: calc(100% - 88px);
   border-radius: 12px;
   overflow: hidden;
-  background: #fff;
-  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.18);
+  background: var(--app-surface-bg, #fff);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.36);
   z-index: 2;
   border: 1px solid var(--td-component-stroke);
 }

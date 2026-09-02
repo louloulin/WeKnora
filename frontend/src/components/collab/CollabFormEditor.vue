@@ -692,27 +692,27 @@ onBeforeUnmount(() => {
   font-size: 12px;
   padding: 2px 6px;
   border-radius: 4px;
-  background: #fff7e6;
-  color: #d48806;
+  background: var(--app-warning-bg, #fff7e6);
+  color: var(--td-warning-color-7, #d48806);
 }
 .collab-form-editor__connection.connected {
-  background: #f6ffed;
-  color: #389e0d;
+  background: var(--app-success-bg, #f6ffed);
+  color: var(--td-success-color-7, #389e0d);
 }
 .collab-form-editor__savetag {
   font-size: 12px;
   padding: 2px 6px;
   border-radius: 4px;
-  background: #fafafa;
-  color: #666;
+  background: var(--app-surface-raised, #fafafa);
+  color: var(--app-text-muted, #666);
 }
 .collab-form-editor__savetag.dirty {
-  background: #fff7e6;
-  color: #d48806;
+  background: var(--app-warning-bg, #fff7e6);
+  color: var(--td-warning-color-7, #d48806);
 }
 .collab-form-editor__savetag.saving {
-  background: #e6f4ff;
-  color: #1677ff;
+  background: color-mix(in srgb, #1677ff 14%, var(--app-surface-raised));
+  color: #56a9ff;
 }
 .collab-form-editor__add-question {
   padding: 4px 8px;

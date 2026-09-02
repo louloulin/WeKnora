@@ -332,7 +332,7 @@ onMounted(refresh)
 </script>
 
 <style scoped>
-.collab-slide-deck { padding: 16px; max-width: 1100px; margin: 0 auto; color: var(--app-text); }
+.collab-slide-deck { padding: 18px; max-width: 1100px; margin: 0 auto; color: var(--app-text); background:var(--app-surface-bg); border:1px solid var(--app-border); border-radius:12px; box-shadow:0 12px 30px rgba(0,0,0,.12); }
 .collab-slide-deck__header h2 { margin: 0 0 4px; }
 .collab-slide-deck__hint { color: var(--app-text-muted); font-size: 13px; margin: 0 0 12px; }
 .collab-slide-deck__actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
@@ -343,8 +343,8 @@ onMounted(refresh)
 .collab-slide-deck__btn--primary { background: var(--app-brand); border-color: var(--app-brand); color: #fff; }
 .collab-slide-deck__btn--primary:hover:not(:disabled) { background: var(--td-brand-color-hover); }
 .collab-slide-deck__btn--ghost { padding: 4px 8px; font-size: 12px; }
-.collab-slide-deck__btn--danger { background: #fef2f2; border-color: #ef4444; color: #b91c1c; }
-.collab-slide-deck__btn--danger:hover:not(:disabled) { background: #fee2e2; }
+.collab-slide-deck__btn--danger { background: var(--app-error-bg); border-color: color-mix(in srgb, var(--td-error-color) 60%, var(--app-border)); color: var(--td-error-color-7); }
+.collab-slide-deck__btn--danger:hover:not(:disabled) { background: color-mix(in srgb, var(--td-error-color) 20%, var(--app-error-bg)); }
 .collab-slide-deck__composer { background: var(--app-surface-bg); border: 1px solid var(--app-border); border-radius: 6px; padding: 12px; margin-bottom: 16px; }
 .collab-slide-deck__composer label { display: block; margin: 8px 0; font-size: 13px; }
 .collab-slide-deck__composer input, .collab-slide-deck__composer select { display: block; width: 100%; padding: 6px 10px; border: 1px solid var(--app-border); border-radius: 4px; font-size: 14px; background: var(--app-control-bg); color: var(--app-text); }
@@ -366,12 +366,10 @@ onMounted(refresh)
 .collab-slide-deck__detail-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .collab-slide-deck__detail-header h3 { margin: 0; }
 .collab-slide-deck__slide-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
-.collab-slide-deck__slide { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; padding: 8px; background: #f9fafb; border-radius: 4px; align-items: start; }
-.collab-slide-deck__slide-num { font-weight: 700; color: #6b7280; padding-top: 6px; }
+.collab-slide-deck__slide { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; padding: 8px; background: var(--app-surface-raised); border:1px solid var(--app-border); border-radius:6px; align-items: start; }
+.collab-slide-deck__slide-num { font-weight: 700; color: var(--app-text-muted); padding-top: 6px; }
 .collab-slide-deck__slide-fields { display: flex; flex-direction: column; gap: 4px; }
-.collab-slide-deck__slide-title { padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 14px; font-weight: 600; }
-.collab-slide-deck__slide-layout { padding: 2px 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; align-self: flex-start; }
-.collab-slide-deck__slide-body { padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; resize: vertical; }
-.collab-slide-deck__slide-bullets { padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; }
+.collab-slide-deck__slide-title, .collab-slide-deck__slide-layout, .collab-slide-deck__slide-body, .collab-slide-deck__slide-bullets { border: 1px solid var(--app-border-strong); background:var(--app-control-bg); color:var(--app-text); border-radius: 4px; }
+.collab-slide-deck__slide-title { padding: 4px 8px; font-size: 14px; font-weight: 600; } .collab-slide-deck__slide-layout { padding: 2px 6px; font-size: 12px; align-self: flex-start; } .collab-slide-deck__slide-body { padding: 4px 8px; font-size: 13px; resize: vertical; } .collab-slide-deck__slide-bullets { padding: 4px 8px; font-size: 13px; }
 .collab-slide-deck__slide-actions { display: flex; gap: 4px; align-items: center; }
 </style>

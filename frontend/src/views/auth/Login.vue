@@ -1285,7 +1285,7 @@ onMounted(async () => {
   top: calc(100% + 8px);
   right: 0;
   min-width: 160px;
-  background: rgba(255, 255, 255, 0.97);
+  background: var(--td-bg-color-container);
   border: 1px solid var(--td-component-stroke);
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
@@ -1330,7 +1330,7 @@ onMounted(async () => {
 }
 
 .form-card {
-  background: rgba(255, 255, 255, 0.97);
+  background: var(--td-bg-color-container);
   border-radius: 16px;
   padding: 40px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
@@ -1438,7 +1438,7 @@ onMounted(async () => {
       position: relative;
       z-index: 1;
       padding: 0 12px;
-      background: rgba(255, 255, 255, 0.97);
+      background: var(--td-bg-color-container);
     }
 
     &::before {
@@ -1554,7 +1554,7 @@ onMounted(async () => {
     position: relative;
     z-index: 1;
     padding: 0 12px;
-    background: rgba(255, 255, 255, 0.95);
+    background: var(--td-bg-color-container);
   }
 
   &::before {
@@ -1904,7 +1904,7 @@ html[theme-mode="dark"] {
   }
 
   .screenshot-swiper .swiper-pagination-bullet-active {
-    background: rgba(255, 255, 255, 0.9) !important;
+    background: var(--td-bg-color-container) !important;
   }
 
   .login-features .feature-icon {

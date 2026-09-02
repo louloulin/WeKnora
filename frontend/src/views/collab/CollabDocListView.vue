@@ -6,48 +6,39 @@
 <template>
   <div class="collab-doc-list">
     <header class="collab-doc-list__header">
-      <h2>协作文档</h2>
-      <p class="collab-doc-list__sub">类似飞书文档 / 腾讯文档：DOC、SHEET、SLIDE、FORM 四类多人实时协作。</p>
+      <div>
+        <div class="collab-doc-list__eyebrow">WORKSPACE / DOCUMENTS</div>
+        <h2>协作文档</h2>
+        <p class="collab-doc-list__sub">在一个工作区里创建、编辑并分享文档、表格、幻灯片和收集表。</p>
+      </div>
+      <div class="collab-doc-list__header-meta"><span class="collab-doc-list__status-dot"></span>实时协作已就绪</div>
     </header>
     <section class="collab-doc-list__create">
-      <input v-model="newTitle" placeholder="新文档标题" class="collab-doc-list__title-input" />
-      <select v-model="newKind" class="collab-doc-list__kind-select">
-        <option value="doc">文档 (DOC)</option>
-        <option value="sheet">表格 (SHEET)</option>
-        <option value="slide">幻灯片 (SLIDE)</option>
-        <option value="form">收集表 (FORM)</option>
+      <div class="collab-doc-list__create-heading"><span class="collab-doc-list__create-icon">＋</span><div><strong>新建内容</strong><small>从空白文件开始</small></div></div>
+      <input v-model="newTitle" placeholder="输入文档标题" class="collab-doc-list__title-input" />
+      <select v-model="newKind" class="collab-doc-list__kind-select" aria-label="内容类型">
+        <option value="doc">文档</option><option value="sheet">表格</option><option value="slide">幻灯片</option><option value="form">收集表</option>
       </select>
       <input v-model="kbId" placeholder="知识库 ID" class="collab-doc-list__kb-input" />
-      <button class="collab-doc-list__create-btn" :disabled="creating" @click="onCreate">新建</button>
+      <button class="collab-doc-list__create-btn" :disabled="creating" @click="onCreate">{{ creating ? '创建中…' : '新建文档' }}</button>
     </section>
-    <section class="collab-doc-list__filters">
-      <button v-for="k in kinds" :key="k.value" :class="{ active: filter.kind === k.value }" @click="filter.kind = k.value; reload()">{{ k.label }}</button>
+    <section class="collab-doc-list__toolbar">
+      <div class="collab-doc-list__filters"><button v-for="k in kinds" :key="k.value" :class="{ active: filter.kind === k.value }" @click="filter.kind = k.value; reload()">{{ k.label }}</button></div>
+      <label class="collab-doc-list__search"><span>⌕</span><input v-model="search" placeholder="搜索文档" aria-label="搜索文档" /></label>
     </section>
     <section class="collab-doc-list__table">
+      <div class="collab-doc-list__table-head"><strong>我的文档</strong><span>{{ filteredItems.length }} 个文件</span></div>
       <table>
-        <thead>
-          <tr>
-            <th>标题</th>
-            <th>类型</th>
-            <th>可见性</th>
-            <th>更新时间</th>
-            <th></th>
-          </tr>
-        </thead>
+        <thead><tr><th>名称</th><th>类型</th><th>访问权限</th><th>最近编辑</th><th aria-label="操作"></th></tr></thead>
         <tbody>
-          <tr v-for="d in items" :key="d.id">
-            <td><router-link :to="{ name: 'collabDocEditor', params: { id: d.id } }">{{ d.title }}</router-link></td>
-            <td>{{ kindLabel(d.doc_kind) }}</td>
-            <td>{{ d.visibility }}</td>
+          <tr v-for="d in filteredItems" :key="d.id">
+            <td><router-link :to="{ name: 'collabDocEditor', params: { id: d.id } }"><span class="collab-doc-list__file-icon" :data-kind="d.doc_kind">{{ d.doc_kind === 'sheet' ? '▦' : d.doc_kind === 'slide' ? '▧' : d.doc_kind === 'form' ? '☷' : '▤' }}</span><span><b>{{ d.title }}</b><small>{{ d.id.slice(0, 8) }}</small></span></router-link></td>
+            <td><span class="collab-doc-list__kind" :data-kind="d.doc_kind">{{ kindLabel(d.doc_kind) }}</span></td>
+            <td><span class="collab-doc-list__visibility">● {{ d.visibility }}</span></td>
             <td>{{ formatTime(d.updated_at) }}</td>
-            <td>
-              <button class="collab-doc-list__share" @click="onShare(d.id, d.share_token)">分享</button>
-              <button class="collab-doc-list__del" @click="onDelete(d.id)">删除</button>
-            </td>
+            <td class="collab-doc-list__actions"><button class="collab-doc-list__share" @click="onShare(d.id, d.share_token)">分享</button><button class="collab-doc-list__del" @click="onDelete(d.id)" aria-label="删除文档">删除</button></td>
           </tr>
-          <tr v-if="items.length === 0">
-            <td colspan="5" class="collab-doc-list__empty">尚无文档，点击"新建"创建第一个协作文档。</td>
-          </tr>
+          <tr v-if="filteredItems.length === 0"><td colspan="5" class="collab-doc-list__empty"><span class="collab-doc-list__empty-icon">□</span><strong>{{ search ? '没有找到匹配的文档' : '还没有协作文档' }}</strong><small>{{ search ? '换个关键词再试试' : '创建一个文档，开始多人实时协作' }}</small></td></tr>
         </tbody>
       </table>
     </section>
@@ -55,7 +46,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { createCollabDoc, deleteCollabDoc, listCollabDocs, type CollabDoc, type CollabDocKind } from '@/api/collabDoc'
 import { MessagePlugin } from 'tdesign-vue-next'
@@ -66,6 +57,7 @@ const newTitle = ref('')
 const newKind = ref<CollabDocKind>('doc')
 const kbId = ref('')
 const creating = ref(false)
+const search = ref('')
 
 const kinds = [
   { value: '' as CollabDocKind | '', label: '全部' },
@@ -76,6 +68,11 @@ const kinds = [
 ]
 
 const filter = reactive<{ kind: CollabDocKind | '' }>({ kind: '' })
+const filteredItems = computed(() => {
+  const query = search.value.trim().toLowerCase()
+  if (!query) return items.value
+  return items.value.filter((item) => item.title.toLowerCase().includes(query))
+})
 
 const reload = async () => {
   try {
@@ -134,40 +131,33 @@ onMounted(reload)
 </script>
 
 <style scoped>
-.collab-doc-list { min-height: 100%; box-sizing: border-box; padding: 32px 36px; background: var(--app-page-bg); color: var(--app-text); }
-.collab-doc-list__header { max-width: 1180px; margin: 0 auto 24px; }
-.collab-doc-list__header h2 { margin: 0 0 8px; font-size: 24px; letter-spacing: -0.02em; }
-.collab-doc-list__sub { margin: 0; color: var(--app-text-muted); font-size: 13px; }
-.collab-doc-list__create { max-width: 1180px; box-sizing: border-box; display: flex; gap: 10px; margin: 0 auto 18px; padding: 16px; background: var(--app-surface-raised); border: 1px solid var(--app-border); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12); }
-.collab-doc-list__title-input { flex: 2; min-width: 180px; }
-.collab-doc-list__kind-select, .collab-doc-list__kb-input, .collab-doc-list__title-input { box-sizing: border-box; min-height: 36px; padding: 8px 11px; border: 1px solid var(--app-border-strong); border-radius: 6px; background: var(--app-control-bg); color: var(--app-text); }
-.collab-doc-list__kind-select, .collab-doc-list__kb-input { flex: 1; min-width: 150px; }
-.collab-doc-list__create-btn { min-width: 72px; padding: 0 16px; background: var(--td-brand-color-6); color: var(--td-text-color-anti); border: 1px solid var(--td-brand-color-6); border-radius: 6px; cursor: pointer; font-weight: 600; }
-.collab-doc-list__create-btn:hover { background: var(--td-brand-color-5); }
-.collab-doc-list__create-btn:disabled { opacity: .55; cursor: not-allowed; }
-.collab-doc-list__filters { max-width: 1180px; display: flex; gap: 6px; margin: 0 auto 14px; }
-.collab-doc-list__filters button { padding: 7px 14px; background: transparent; color: var(--app-text-muted); border: 1px solid transparent; border-radius: 6px; cursor: pointer; font-size: 13px; }
-.collab-doc-list__filters button:hover { color: var(--app-text); background: var(--app-surface-raised); }
-.collab-doc-list__filters button.active { background: color-mix(in srgb, var(--td-brand-color) 16%, var(--app-surface-raised)); border-color: color-mix(in srgb, var(--td-brand-color) 45%, var(--app-border)); color: var(--td-brand-color); }
-.collab-doc-list__table { max-width: 1180px; margin: 0 auto; background: var(--app-surface-bg); border: 1px solid var(--app-border); border-radius: 10px; overflow: hidden; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1); }
-.collab-doc-list__table table { width: 100%; border-collapse: collapse; }
-.collab-doc-list__table th { padding: 12px 16px; text-align: left; background: var(--app-surface-raised); color: var(--app-text-muted); font-size: 12px; font-weight: 600; }
-.collab-doc-list__table td { padding: 14px 16px; text-align: left; border-top: 1px solid var(--app-border); color: var(--app-text-muted); font-size: 13px; }
-.collab-doc-list__table tr:hover td { background: color-mix(in srgb, var(--td-brand-color) 4%, var(--app-surface-bg)); }
-.collab-doc-list__table a { color: var(--app-text); font-weight: 600; text-decoration: none; }
-.collab-doc-list__table a:hover { color: var(--td-brand-color); }
-.collab-doc-list__share, .collab-doc-list__del { padding: 6px 10px; margin-right: 6px; border-radius: 5px; cursor: pointer; font-size: 12px; }
-.collab-doc-list__share { background: transparent; color: var(--td-brand-color); border: 1px solid color-mix(in srgb, var(--td-brand-color) 55%, var(--app-border)); }
-.collab-doc-list__share:hover { background: color-mix(in srgb, var(--td-brand-color) 12%, transparent); }
-.collab-doc-list__del { background: transparent; color: var(--td-error-color-7); border: 1px solid color-mix(in srgb, var(--td-error-color) 45%, var(--app-border)); }
-.collab-doc-list__del:hover { background: color-mix(in srgb, var(--td-error-color) 12%, transparent); }
-.collab-doc-list__empty { text-align: center; padding: 52px 24px !important; color: var(--app-text-muted) !important; }
-@media (max-width: 760px) {
-  .collab-doc-list { padding: 20px 14px; }
-  .collab-doc-list__create { flex-wrap: wrap; }
-  .collab-doc-list__title-input, .collab-doc-list__kind-select, .collab-doc-list__kb-input { flex: 1 1 100%; }
-  .collab-doc-list__create-btn { min-height: 36px; }
-  .collab-doc-list__table { overflow-x: auto; }
-  .collab-doc-list__table table { min-width: 680px; }
-}
+.collab-doc-list { min-height: 100%; box-sizing: border-box; padding: 38px clamp(20px, 5vw, 72px) 56px; background: var(--app-page-bg); color: var(--app-text); }
+.collab-doc-list__header, .collab-doc-list__create, .collab-doc-list__toolbar, .collab-doc-list__table { max-width: 1180px; margin-left: auto; margin-right: auto; }
+.collab-doc-list__header { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:28px; }
+.collab-doc-list__eyebrow { color: var(--td-brand-color); font-size: 10px; font-weight:700; letter-spacing:.16em; margin-bottom:10px; }
+.collab-doc-list__header h2 { margin:0 0 8px; font-size:28px; letter-spacing:-.03em; }
+.collab-doc-list__sub { margin:0; color:var(--app-text-muted); font-size:13px; }
+.collab-doc-list__header-meta { display:flex; align-items:center; gap:8px; color:var(--app-text-muted); font-size:12px; white-space:nowrap; }
+.collab-doc-list__status-dot { width:7px; height:7px; border-radius:50%; background:var(--td-brand-color); box-shadow:0 0 0 4px color-mix(in srgb, var(--td-brand-color) 15%, transparent); }
+.collab-doc-list__create { display:flex; align-items:center; gap:10px; padding:14px; box-sizing:border-box; background:linear-gradient(100deg, color-mix(in srgb, var(--td-brand-color) 8%, var(--app-surface-raised)), var(--app-surface-raised)); border:1px solid var(--app-border); border-radius:12px; box-shadow:0 12px 30px rgba(0,0,0,.16); }
+.collab-doc-list__create-heading { display:flex; align-items:center; gap:9px; min-width:135px; padding:0 10px 0 2px; }
+.collab-doc-list__create-heading strong, .collab-doc-list__create-heading small { display:block; }
+.collab-doc-list__create-heading strong { font-size:13px; }
+.collab-doc-list__create-heading small { color:var(--app-text-muted); font-size:11px; margin-top:3px; }
+.collab-doc-list__create-icon { width:28px; height:28px; display:grid; place-items:center; border-radius:8px; color:var(--td-text-color-anti); background:var(--td-brand-color); font-size:20px; line-height:1; }
+.collab-doc-list__title-input, .collab-doc-list__kind-select, .collab-doc-list__kb-input { min-height:38px; box-sizing:border-box; padding:8px 11px; border:1px solid var(--app-border-strong); border-radius:7px; background:var(--app-control-bg); color:var(--app-text); outline:none; }
+.collab-doc-list__title-input { flex:2; min-width:160px; } .collab-doc-list__kind-select, .collab-doc-list__kb-input { flex:1; min-width:130px; }
+.collab-doc-list__title-input:focus, .collab-doc-list__kind-select:focus, .collab-doc-list__kb-input:focus, .collab-doc-list__search:focus-within { border-color:var(--td-brand-color); box-shadow:0 0 0 3px color-mix(in srgb, var(--td-brand-color) 14%, transparent); }
+.collab-doc-list__create-btn { min-height:38px; padding:0 16px; background:var(--td-brand-color); color:var(--td-text-color-anti); border:1px solid var(--td-brand-color); border-radius:7px; cursor:pointer; font-weight:600; white-space:nowrap; }
+.collab-doc-list__create-btn:hover { background:var(--td-brand-color-active); } .collab-doc-list__create-btn:disabled { opacity:.55; cursor:not-allowed; }
+.collab-doc-list__toolbar { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:28px; margin-bottom:12px; }
+.collab-doc-list__filters { display:flex; gap:4px; } .collab-doc-list__filters button { padding:7px 13px; border:1px solid transparent; border-radius:6px; background:transparent; color:var(--app-text-muted); cursor:pointer; font-size:13px; } .collab-doc-list__filters button:hover { background:var(--app-surface-raised); color:var(--app-text); } .collab-doc-list__filters button.active { background:color-mix(in srgb, var(--td-brand-color) 14%, var(--app-surface-raised)); color:var(--td-brand-color); border-color:color-mix(in srgb, var(--td-brand-color) 35%, var(--app-border)); }
+.collab-doc-list__search { display:flex; align-items:center; gap:7px; min-width:190px; padding:0 10px; border:1px solid var(--app-border); border-radius:7px; background:var(--app-surface-raised); color:var(--app-text-muted); } .collab-doc-list__search input { width:100%; min-height:32px; border:0; outline:0; background:transparent; color:var(--app-text); font-size:12px; }
+.collab-doc-list__table { overflow:hidden; background:var(--app-surface-bg); border:1px solid var(--app-border); border-radius:12px; box-shadow:0 10px 28px rgba(0,0,0,.12); } .collab-doc-list__table-head { display:flex; align-items:center; justify-content:space-between; padding:18px 20px 14px; } .collab-doc-list__table-head strong { font-size:15px; } .collab-doc-list__table-head span { color:var(--app-text-muted); font-size:12px; }
+.collab-doc-list__table table { width:100%; border-collapse:collapse; } .collab-doc-list__table th { padding:10px 20px; background:var(--app-surface-raised); color:var(--app-text-muted); text-align:left; font-size:11px; font-weight:600; } .collab-doc-list__table td { padding:13px 20px; border-top:1px solid var(--app-border); color:var(--app-text-muted); font-size:12px; } .collab-doc-list__table tr:hover td { background:color-mix(in srgb, var(--td-brand-color) 4%, var(--app-surface-bg)); }
+.collab-doc-list__table a { display:flex; align-items:center; gap:10px; color:var(--app-text); text-decoration:none; } .collab-doc-list__table a:hover b { color:var(--td-brand-color); } .collab-doc-list__table a b, .collab-doc-list__table a small { display:block; } .collab-doc-list__table a b { font-size:13px; font-weight:600; } .collab-doc-list__table a small { color:var(--app-text-muted); font-size:10px; margin-top:3px; opacity:.7; }
+.collab-doc-list__file-icon { width:28px; height:32px; display:grid; place-items:center; border-radius:6px; background:color-mix(in srgb, var(--td-brand-color) 14%, var(--app-surface-raised)); color:var(--td-brand-color); font-size:17px; } .collab-doc-list__file-icon[data-kind=sheet] { color:#46a6ff; background:rgba(70,166,255,.12); } .collab-doc-list__file-icon[data-kind=slide] { color:#f7a94a; background:rgba(247,169,74,.12); } .collab-doc-list__file-icon[data-kind=form] { color:#b78cff; background:rgba(183,140,255,.12); }
+.collab-doc-list__kind { padding:4px 8px; border-radius:5px; background:var(--app-surface-raised); color:var(--app-text-muted); } .collab-doc-list__visibility { color:var(--app-text-muted); } .collab-doc-list__visibility::first-letter { color:var(--td-brand-color); } .collab-doc-list__actions { white-space:nowrap; text-align:right; } .collab-doc-list__share, .collab-doc-list__del { padding:5px 9px; margin-left:6px; border-radius:5px; cursor:pointer; font-size:11px; } .collab-doc-list__share { background:transparent; color:var(--td-brand-color); border:1px solid color-mix(in srgb, var(--td-brand-color) 45%, var(--app-border)); } .collab-doc-list__share:hover { background:color-mix(in srgb, var(--td-brand-color) 12%, transparent); } .collab-doc-list__del { background:transparent; color:var(--td-error-color-7); border:1px solid transparent; } .collab-doc-list__del:hover { border-color:color-mix(in srgb, var(--td-error-color) 40%, var(--app-border)); }
+.collab-doc-list__empty { text-align:center; padding:64px 24px !important; } .collab-doc-list__empty-icon, .collab-doc-list__empty strong, .collab-doc-list__empty small { display:block; } .collab-doc-list__empty-icon { color:var(--app-text-muted); font-size:30px; margin-bottom:10px; } .collab-doc-list__empty strong { color:var(--app-text); font-size:14px; } .collab-doc-list__empty small { margin-top:6px; color:var(--app-text-muted); }
+@media (max-width:760px) { .collab-doc-list { padding:24px 14px 40px; } .collab-doc-list__header, .collab-doc-list__toolbar { align-items:flex-start; flex-direction:column; } .collab-doc-list__header-meta { display:none; } .collab-doc-list__create { flex-wrap:wrap; } .collab-doc-list__create-heading, .collab-doc-list__title-input, .collab-doc-list__kind-select, .collab-doc-list__kb-input, .collab-doc-list__create-btn { flex:1 1 100%; } .collab-doc-list__table { overflow-x:auto; } .collab-doc-list__table table { min-width:700px; } }
 </style>
