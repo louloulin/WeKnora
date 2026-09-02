@@ -781,6 +781,9 @@ import {
 } from '@/editor/adapters/pptxShapeAdapter'
 import type { SlideTransitionKind } from '@/editor/engines/pptx-engine/generate'
 import type { Slide } from '@/editor/engines/pptx-engine/types'
+// v0.7.107 — wire the engine's groupElements / ungroupElement into the save path
+// so a local grouping operation writes a real <p:grpSp> to ppt/slides/slideN.xml.
+import { groupElements, ungroupElement } from '@/editor/engines/pptx-engine/index'
 import type { SlideThemePreset } from '@/editor/slides/themes/genofficeThemes'
 import { addSlideComment, getSlideComments } from '@/editor/engines/pptx-engine/comments'
 import type { CollabDocComment } from '@/api/collabDoc'
@@ -820,6 +823,10 @@ const pictureImages = reactive<Record<string, HTMLImageElement>>({})
 const selectedId = ref<string | null>(null)
 // v0.7.101 — multi-select set (primary = last clicked, kept in selectedId).
 const selectedIds = ref<string[]>([])
+// v0.7.107 — yjs groupId -> engine element id map. The engine's groupElements
+// returns its own internal id for the new <p:grpSp>; we stash it so the next
+// ungroup call can pass that id (not the Yjs groupId) to engineUngroupElement.
+const engineGroupIdByYjsGroupId = reactive<Record<string, string>>({})
 
 // --- Table insertion prompt ---
 const showTablePrompt = ref(false)
@@ -1033,6 +1040,24 @@ const publishSelection = (shapeIds: string[]) => {
 }
 const transformerRef = ref<any>(null)
 
+// v0.7.107 — always expose Konva stage / transformer / selection setter once the
+// Vue-Konva components mount. Previously __wkStage was only set inside
+// updateTransformer(), which fires only after a Konva event — leaving E2E
+// scripts (and any external automation) unable to drive the editor until a
+// user click happens. Watching the refs with `immediate: ===` covers both
+// orderings: ref-undefined-then-set and ref-already-set-on-mount.
+watch([stageRef, transformerRef], ([s, t]) => {
+  if (typeof window === 'undefined') return
+  const stage = s?.getStage?.() ?? null
+  const tr = t?.getNode?.() ?? null
+  if (stage) (window as any).__wkStage = stage
+  if (tr) (window as any).__wkTransformer = tr
+  ;(window as any).__wkSlideSelection = (ids: string[]) => {
+    selectedIds.value = ids.slice()
+    selectedId.value = ids.length ? ids[ids.length - 1] : null
+  }
+}, { immediate: true })
+
 // --- v0.7.29 — comments anchor (current slide + selected shape if any) ---
 const commentAnchor = ref<{ type: 'doc' | 'slide' | 'sheet'; ref: string } | null>(null)
 watch([activeIndex, selectedId, selectedIds], ([s, id, ids]) => {
@@ -1092,9 +1117,12 @@ const updateTransformer = async () => {
   const tr = transformerRef.value?.getNode?.()
   // v0.7.104 — E2E hook: expose stage + transformer so Playwright can read
   // anchor screen coords directly (avoids guessing from EMU math).
+  // (The actual exposure now lives in the top-level watch on stageRef /
+  // transformerRef so the hooks are available even before any user click —
+  // see v0.7.107. The assignments below keep the late-binding case in sync.)
   if (typeof window !== 'undefined') {
-    ;(window as any).__wkStage = stage
-    ;(window as any).__wkTransformer = tr
+    if (stage) (window as any).__wkStage = stage
+    if (tr) (window as any).__wkTransformer = tr
   }
   if (!stage || !tr) return
   if (!selectedId.value && selectedIds.value.length === 0) {
@@ -1468,6 +1496,9 @@ const makeGroupId = () => `g_${Math.random().toString(36).slice(2, 10)}_${Date.n
 
 // Group every selected shape under a new shared groupId. Same Yjs transact
 // path as updateShapes so CRDT peers converge in one transaction.
+// v0.7.107 — also call engine's groupElements() so the engine's slide.elements
+// gets a real <p:grpSp> replacing the N children. The save path (engineSavePptx)
+// then emits the grpSp into ppt/slides/slideN.xml without further wiring.
 const groupSelected = () => {
   const shapes = selectedShapes.value
   if (shapes.length < 2) return
@@ -1475,12 +1506,31 @@ const groupSelected = () => {
   const gid = makeGroupId()
   const patches: Array<{ id: string; patch: Partial<PptxShape> }> = shapes.map((s) => ({ id: s.id, patch: { groupId: gid } }))
   updateShapes(patches)
+  // Mutate the engine's slide model so savePptx re-emits a real <p:grpSp>.
+  // We collect sourceIds from the Yjs-side shape ids; engineGroupElements
+  // resolves them against slide.elements via matchesElementRef (which handles
+  // both Yjs-side and engine-side ids).
+  if (deck.value?.opened) {
+    const opened = deck.value.opened
+    const slideIdx = activeIndex.value
+    const sourceIds = shapes.map((s) => s.id)
+    try {
+      const result = groupElements(opened, slideIdx, sourceIds)
+      if (result) engineGroupIdByYjsGroupId[gid] = result.groupId
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[CollabSlideKonvaEditor] engine groupElements failed', e)
+    }
+  }
 }
 
 // Ungroup: clear groupId on every selected shape that currently belongs to the
 // selection's shared groupId. Shapes from a different group are left alone
 // (the only way they're in selectedShapes is if onShapeClick coalesced a group
 // into the selection, which it does — so this matches user expectation).
+// v0.7.107 — also call engine's ungroupElement() so the engine's grpSp is
+// replaced by its lifted children in slide.elements, and savePptx emits
+// independent <p:sp> elements again.
 const ungroupSelected = () => {
   const shapes = selectedShapes.value
   if (!shapes.length) return
@@ -1491,6 +1541,18 @@ const ungroupSelected = () => {
     .map((s) => ({ id: s.id, patch: { groupId: '' } }))
   if (!patches.length) return
   updateShapes(patches)
+  if (deck.value?.opened) {
+    const engineGid = engineGroupIdByYjsGroupId[gid]
+    if (engineGid) {
+      try {
+        ungroupElement(deck.value.opened, activeIndex.value, engineGid)
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[CollabSlideKonvaEditor] engine ungroupElement failed', e)
+      }
+      delete engineGroupIdByYjsGroupId[gid]
+    }
+  }
 }
 
 /** Batch-update several shapes in a single Yjs transaction. */

@@ -3717,3 +3717,59 @@ ALL OK — doc track changes serialize w:ins/w:del with author + date
 - **跨段落批注的 date 显示**：目前每条 revision 单独 fetch `formatRevDate`，同一时刻的多条会显示一致的"刚刚"；按 group 显示"X 处，5 分钟前"留给 v0.7.108+。
 - **trackChangeSeq 持久化**：id 仅在内存中累加，刷新页面后从 9000 重新开始，会让历史修订的 id 不稳定。生产环境若需要稳定 id 应存到 Yjs awareness / settings，属于 v0.7.107+ 范围。
 
+
+## 55. v0.7.107 — SLIDE `<p:grpSp>` 持久化：save 路径调 `engineGroupElements` / `engineUngroupElement`（2026-09-02）
+
+### 55.1 目标
+
+v0.7.104 在内存层给 `PptxShape` 加了 `groupId?: string` 字段、toolbar 加了"组合 / 解散组"按钮、Konva 多选同时 resize 也已就绪。但**保存路径完全没接 `<p:grpSp>` 持久化**——任何用户组合的形状会随 `.pptx` 落盘时仍被写成独立的 `<p:sp>`。本轮把 genoffice 已经实现的 `groupElements` / `ungroupElement` 接进 CollabSlideKonvaEditor 的本地 group/ungroup 操作，让 savePptxShapeBytes 真的写出 `<p:grpSp>` + `<p:grpSpPr>` + 三个 child `<p:sp>`。
+
+### 55.2 改动
+
+`frontend/src/components/collab/CollabSlideKonvaEditor.vue`：
+
+- 新增 import：`groupElements`, `ungroupElement` from `@/editor/engines/pptx-engine/index`。
+- 新增 `engineGroupIdByYjsGroupId` reactive `Record<string, string>`：Yjs 端 groupId → engine 端 grpSp 元素 id 的映射。`groupElements` 返回的 `result.groupId` 是 engine 内部的 id（不是 Yjs 的 `g_<random>_<ts>`），必须记住才能让后续 `ungroupElement` 按找到正确的 `<p:grpSp>`。
+- `groupSelected()`：在写完 Yjs 端的 groupId 后，调用 `groupElements(opened, slideIdx, sourceIds)` 让 engine 把 N 个 child 从 `slide.elements` 移除并追加一个 `<p:grpSp>` 元素（带 `<p:grpSpPr>` + `<a:off>/<a:ext>/<a:chOff>/<a:chExt>`）；把返回的 `groupId` 存入映射表。失败时只 warn，不阻断 UI 流程。
+- `ungroupSelected()`：查映射表拿到 engine 端的 groupId，调 `ungroupElement(opened, slideIdx, engineGid)` 让 engine 把 `<p:grpSp>` 内的 children 提升到 `slide.elements` 顶层并移除 grpSp；从映射表里删除该条目。
+- 关键 bug 修复：`__wkStage` / `__wkTransformer` 之前只在 `updateTransformer()` 内暴露，而该函数只在用户交互后才触发——E2E 脚本进入页面就拿不到 stage。新增 top-level `watch([stageRef, transformerRef], ..., { immediate: true })`，refs 一旦挂载（或 mount 时已存在）立即把 stage / transformer / selection setter 挂到 `window`。
+- 新增 E2E 钩子 `window.__wkSlideSelection(ids: string[])`：直接驱动 `selectedIds` / `selectedId`，让 Playwright 不必模拟 shift-click。
+
+`frontend/src/editor/adapters/__tests__/pptxGroupSave.test.ts`（新文件，3 个 case）：
+
+- `groupElements()` + `savePptxShapeBytes()` 写出 `<p:grpSp>` + `<p:grpSpPr>` + `<p:nvGrpSpPr>` + `<a:off>` / `<a:ext>` / `<a:chOff>` / `<a:chExt>`，slide 只有 1 个元素（grpSp），3 个 `<p:sp>` 作为 children。
+- `ungroupElement()` 把 children 提升回顶层：slide 元素数恢复 3，全部 `type === 'shape'`。
+- `save` after ungroup：保存的 slide XML 不再含 `<p:grpSp>`，3 个独立 `<p:sp>` 仍在。
+
+### 55.3 真实双端浏览器验证
+
+`frontend/wk-slide-grp-sp-save.mjs`（新文件，已提交）：admin 登录 SLIDE doc → 等 `__wkStage` 就绪 → 记下载前的 grpSp 数（基线）→ 多选前 3 个 shape → 点 toolbar「⊞ 组合」→ 等 auto-save 触发（1.5s 后） → 下载 .pptx → 解压 `ppt/slides/slide1.xml` → 验证 `<p:grpSp>` / `<p:grpSpPr>` / `<p:nvGrpSpPr>` / `<a:chOff>` / `<a:chExt>` / `<p:sp>` >= 3 → 检查 grpSp 数 = baseline + 1 → 用 `__wkSlideSelection(groupedIds)` 选中刚才的 3 个 → 点 toolbar「⊟ 解散组」→ 等 auto-save → 下载 → 验证 grpSp 数 = baseline。
+
+```
+grpSp count BEFORE group: 2
+OOXML <p:grpSp>:     true
+OOXML <p:grpSpPr>:   true
+OOXML <p:nvGrpSpPr>: true
+OOXML <a:chOff>:     true
+OOXML <a:chExt>:     true
+OOXML <p:sp> count:  32
+grpSp count after group: 3 delta from initial: 1
+grpSp count after ungroup: 2
+page errors: 0
+ALL OK — slide group/ungroup persists <p:grpSp> in .pptx
+```
+
+### 55.4 回归
+
+- `vue-tsc --noEmit` 0 新错误
+- `tsx --test` 513/513 ✅（新增 3 个 + 原 510）
+- `wk-slide-grp-sp-save.mjs` ALL OK ✅
+- `wk-doc-track-changes.mjs` (v0.7.106) 仍 PASS ✅
+- `wk-sheet-names-autocomplete.mjs` (v0.7.105) 仍 PASS ✅
+
+### 55.5 已知遗留
+
+- **跨客户端 group 状态分发**：本地用户的 group 操作会同时改 Yjs + engine 端的 groupId + 元素结构。远端 peer 通过 Yjs 看到 groupId 字段但 engine 端的 `slide.elements` 仍按 group 之前的状态保存——下次远端自己的保存可能丢失 grpSp。本轮只在本地保存路径有效。彻底修复需要把 group / ungroup 也作为结构化操作通过 Yjs 同步（属于 v0.7.108+）。
+- **跨 slide 的 group 不支持**：groupId 命名空间按 slide 隔离；如果需要引用跨 slide 的 group 需要重写 ID 分配（属设计意图）。
+- **保存未改变 children 字节**：group 时 children XML 直接复用 `patchedElementXml(e)`；如果 child 在 group 之后被修改，新字节会通过 `el.dirty` 正常 rebuild，不受影响。
+

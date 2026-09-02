@@ -572,3 +572,39 @@ Alice 切到 Sheet2 写 A1=Bob 在 Sheet2 看到，Sheet1 不会串表。已 PAS
 - v0.7.108 SHEET 命名区域严格化：预填 $A$1 + 重名冲突提示 + per-sheet scope
 - 持续收敛 genoffice vendor（DOC headers/footers / XLSX pivot UI / PPTX master view / 动画时间线 UI）
 
+
+## 21. v0.7.107 — SLIDE `<p:grpSp>` 持久化：save 路径调 `engineGroupElements` / `engineUngroupElement`（已交付，2026-09-02）
+
+### 已完成
+
+- CollabSlideKonvaEditor：
+  - import `groupElements` / `ungroupElement` from pptx-engine
+  - 新增 `engineGroupIdByYjsGroupId` 映射表（Yjs gid → engine gid）
+  - `groupSelected()` 在写完 Yjs groupId 后调 `groupElements()`，把返回的 engine id 存进映射
+  - `ungroupSelected()` 通过映射查 engine id，调 `ungroupElement()` 并清掉映射
+  - 关键修复：`__wkStage` / `__wkTransformer` / `__wkSlideSelection` 通过 `watch([stageRef, transformerRef], ..., { immediate: true })` 在 mount 即暴露（之前只在 updateTransformer 里暴露，需要用户点击才能拿）
+
+### 真实双端验证
+
+`frontend/wk-slide-grp-sp-save.mjs` ALL OK：grpSp 计数 baseline→+1→baseline，每一步解压 `ppt/slides/slide1.xml` 验证 `<p:grpSp>` + `<p:grpSpPr>` + `<p:nvGrpSpPr>` + `<a:chOff>` / `<a:chExt>` + 3 个 `<p:sp>` children；ungroup 后 grpSp 计数恢复。
+
+### 单元测试
+
+`frontend/src/editor/adapters/__tests__/pptxGroupSave.test.ts` 3 个 case：
+- group + save → `<p:grpSp>` + grpSpPr + 3 children
+- ungroup 恢复 3 个独立 shape
+- save 后 ungroup → 不再含 `<p:grpSp>`
+
+### 关键 bug 复盘
+
+1. **E2E hook 暴露时机错**：之前 `__wkStage` / `__wkTransformer` 只在 `updateTransformer()` 内赋值，该函数只在 Konva 交互事件后才触发——E2E 进入页面立即拿不到 stage。新增 `watch(refs, ..., { immediate: true })` 一次性覆盖 mount 时已挂载 / mount 后异步挂载两种顺序。
+2. **engine groupId 与 Yjs groupId 不一致**：`engineGroupElements` 返回的 groupId 是 engine 内部生成的 rawnew_N 字符串，跟 Yjs 端的 `g_<random>_<ts>` 完全无关。ungroup 时必须用映射表查到正确的 engine id 才能调 `engineUngroupElement`。
+3. **Transformer.nodes() 全绑定溢出**：slide 上已有 36 个 shape 时，把全部 shape 一次性绑给 transformer 会递归触发 `_clearSelfAndDescendantCache` 溢出 stack。改为只把目标 group 内的 3 个 shape 传进去。
+
+### 下一阶段
+
+- v0.7.108 SHEET 命名区域严格化：预填 $A$1 绝对引用 + 重名冲突提示 + per-sheet scope 列入 suggestion
+- v0.7.109 SLIDE 跨客户端 group 状态分发：group/ungroup 作为结构化操作通过 Yjs 同步，让远端 peer 的 save 也带 grpSp
+- v0.7.106.1 DOC 删除自动套 del mark（推迟）
+- 持续收敛 genoffice vendor（DOC headers/footers / XLSX pivot UI / PPTX master view / 动画时间线 UI）
+
