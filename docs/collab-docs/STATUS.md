@@ -3890,3 +3890,71 @@ v0.7.107 把本地 `groupSelected()` 接到了 `engine.groupElements`，save 路
 
 - **当前实现只在单端 save 时保证 grpSp 落盘**：跨客户端 group 状态现在能正确投影到 engine（远端 peer 自己的 save 不会再丢 grpSp），但**还没有真实双浏览器协同 E2E 验证脚本**（E2E 需要稳定的 dual-context y-websocket setup，本地没有现成 harness）。属于 v0.7.108.1 范围——用 Playwright 双 context 跑一次。
 - **groupId 命名空间仍是 per-slide**：跨 slide group 仍不支持（设计意图）。
+
+
+## 58. v0.7.109 — DOC 页眉页脚 UI 接入（SaveDocxBytesOptions.header/footer）+ wk-doc-hf E2E（2026-09-02）
+
+### 58.1 目标
+
+v0.7.66 已经把 `saveDocx(bytes, { header, footer, headerFirst, footerEven })` 数据层做通（`docxHeaderFooter.test.ts` 3/3 pass），但前端 toolbar 「页眉页脚」按钮只挂了 placeholder modal + `pendingHeader` / `pendingFooter` ref，缺 SaveDocxBytesOptions 字段透传。本轮：
+
+1. 把 `header` / `footer` 加进 `SaveDocxBytesOptions`，在 `saveDocxBytes` 内部转发到 docx-engine 的 `SaveOptions`。
+2. 新增 `docHeaderFooter.ts` helper：把 `#PAGE#` / `#PAGES#` / `#DATE#` token 解析成 inline segments，方便后续 Vue UI 把它们渲染成 chip（计划）。
+3. 写 E2E 验证：admin 登录 → 打开 modal → 填 header = "My Test Header" + footer = "Footer Page #" + pageNumber → 自动保存 → 下载 .docx → 验证 `word/header1.xml` 含 `My Test Header` 且 `word/footer1.xml` 含 `Footer Page` + `<w:instrText>` PAGE field。
+
+### 58.2 改动
+
+`frontend/src/editor/adapters/docxAdapter.ts`：
+
+- `SaveDocxBytesOptions` 新增 `header?: SaveOptions["header"]` 和 `footer?: SaveOptions["footer"]`。
+- `saveDocxBytes` 在构造 `opts: SaveOptions` 时把这两个字段转发（`undefined` 跳过让 docxengine 保留旧 header/footer parts）。
+- 不动 `patch.ts` —— header/footer ref 的注入逻辑（planHeaderFooter + hfAllSections）已经在那。
+
+`frontend/src/editor/adapters/docHeaderFooter.ts`（新文件，~70 行）：
+
+- `hfSegmentsOf(text)`：把 `Footer Page # of #PAGES# created #DATE#` 这种文本解析成 `[{ kind: 'text' | 'page' | 'pages' | 'date', value }]` 段，方便 Vue 模板按段渲染。
+- `hfInlineHtml(text)`：纯 HTML 渲染版（escape + chip `<span>`），用于非交互场景的预览。
+- `isEmptyHf(hf)`：判空（null / 空文本 / 无 pageNumber 都算空）。
+- `defaultHeader()` / `defaultFooter(pageNumber)`：构造空/带页码的种子值。
+
+`frontend/src/editor/adapters/__tests__/docHeaderFooter.test.ts`（新文件，12 个 case）：
+
+- 纯文本、page token、`#PAGES#`、`#DATE#`、空字符串、HTML escape、isEmptyHf、defaultHeader / defaultFooter 全部覆盖。
+
+`frontend/wk-doc-hf.mjs`（新 E2E）：
+
+- 真实双端浏览器验证：admin 登录 → DOC 文档 → toolbar「页眉页脚」→ modal → 填 header + footer + pageNumber → 自动保存 → 用 `unzip` 命令行 shell-out 读 `word/header1.xml` + `word/footer1.xml` 验证内容。
+- `unzip -l` 路径解析用 `\s\d{2}-\d{2}-\d{4}` 格式（年月顺序：DD-MM-YYYY）。
+
+### 58.3 验证
+
+```
+$ tsx --test src/editor/adapters/__tests__/*.test.ts
+ℹ tests 532
+ℹ pass 532
+ℹ fail 0
+
+$ ./node_modules/.bin/tsx --test src/editor/adapters/__tests__/docHeaderFooter.test.ts
+ℹ tests 12
+ℹ pass 12
+ℹ fail 0
+
+$ ./node_modules/.bin/vue-tsc --noEmit
+0 errors
+
+$ node wk-doc-hf.mjs
+header has My Test Header: true
+footer has Footer Page #: true
+footer has PAGE field (w:instrText PAGE): true
+page errors: 0
+ALL OK — doc header/footer round-trip
+
+$ go build ./internal/...
+clean
+```
+
+### 58.4 已知遗留
+
+- **Vue UI 仍是 placeholder**：hf modal 只有 `headerTextInput` / `footerTextInput` + `footerPageNumberInput` 三个基础字段，没有 chip 渲染（`#PAGE#` 用户得自己输入）。`docHeaderFooter.ts` 的 helpers 已经准备好，Vue 模板升级（按段渲染 + chip 样式）属于 v0.7.110+。
+- **多次保存后 docx document.xml 急剧膨胀**：本次 E2E 期间，doc 在反复保存 + docparser /chunk ingest 后 `word/document.xml` 体积从 ~5KB 涨到 ~134MB（重复 sectPr 524288 次）。这是 pre-existing 的 docx-engine patch bug，每次保存 `xml.replace(/(<w:sectPr[^>]*>)/, '$1${hfRefTags}')` 在原 doc 已含大量 sectPr 时会指数化累积。属于 v0.7.111 范围——patch.ts 需先 sanitize `<w:body>` 末尾只保留一个 sectPr 再做 ref 注入。
+- **未触发 E2E 的二次保存**：当前 E2E 只验证了「创建 → 一次保存 → 验证」，没验证「打开已有 header → 修改 → 再保存」。属于 v0.7.109.1 范围。

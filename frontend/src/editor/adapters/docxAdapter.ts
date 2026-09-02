@@ -150,6 +150,10 @@ export interface SaveDocxBytesOptions {
   protection?: SaveOptions["protection"]
   /** w:writeProtection password-to-modify (honor system). */
   writeProtection?: SaveOptions["writeProtection"]
+  /** v0.7.109 — replace / create the default page header; undefined = keep. */
+  header?: SaveOptions["header"]
+  /** v0.7.109 — replace / create the default page footer; undefined = keep. */
+  footer?: SaveOptions["footer"]
 }
 
 export async function saveDocxBytes(
@@ -183,6 +187,8 @@ export async function saveDocxBytes(
   if (options.comments) opts.comments = options.comments
   if (options.protection !== undefined) opts.protection = options.protection
   if (options.writeProtection !== undefined) opts.writeProtection = options.writeProtection
+  if (options.header !== undefined) opts.header = options.header
+  if (options.footer !== undefined) opts.footer = options.footer
   const bytes = await saveDocx(doc.parsed, blocks, opts)
   doc.patched.clear()
   return bytes
