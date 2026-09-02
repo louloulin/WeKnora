@@ -391,7 +391,6 @@ select:-webkit-autofill {
 :root[theme-mode="dark"] .t-notification,
 :root[theme-mode="dark"] .t-message,
 :root[theme-mode="dark"] .t-dialog,
-:root[theme-mode="dark"] .t-drawer,
 :root[theme-mode="dark"] .t-drawer__content,
 :root[theme-mode="dark"] .t-drawer__header,
 :root[theme-mode="dark"] .t-drawer__body,
@@ -407,8 +406,7 @@ select:-webkit-autofill {
 :root[theme-mode="dark"] .t-calendar,
 :root[theme-mode="dark"] .t-notification,
 :root[theme-mode="dark"] .t-message,
-:root[theme-mode="dark"] .t-dialog,
-:root[theme-mode="dark"] .t-drawer {
+:root[theme-mode="dark"] .t-dialog {
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.38);
 }
 
@@ -418,6 +416,10 @@ select:-webkit-autofill {
 :root[theme-mode="dark"] .t-drawer__header,
 :root[theme-mode="dark"] .t-drawer__footer {
     border-color: var(--td-component-stroke);
+}
+
+:root[theme-mode="dark"] .t-drawer {
+    background-color: transparent;
 }
 
 :root[theme-mode="dark"] .t-input__inner,
@@ -469,7 +471,7 @@ select:-webkit-autofill {
 :root[theme-mode="dark"] .settings-modal,
 :root[theme-mode="dark"] .global-command-palette,
 :root[theme-mode="dark"] .t-dialog,
-:root[theme-mode="dark"] .t-drawer,
+:root[theme-mode="dark"] .t-drawer__content,
 :root[theme-mode="dark"] .t-popup__content,
 :root[theme-mode="dark"] .t-dropdown__menu,
 :root[theme-mode="dark"] .t-select__dropdown {

@@ -55,6 +55,16 @@ const router = createRouter({
       redirect: "/platform/knowledge-bases",
     },
     {
+      path: "/platform/collab-documents/:id?",
+      redirect: (to) => ({
+        path: to.params.id
+          ? `/collab-documents/${encodeURIComponent(String(to.params.id))}`
+          : "/collab-documents",
+        query: to.query,
+        hash: to.hash,
+      }),
+    },
+    {
       path: "/login",
       name: "login",
       component: () => import("../views/auth/Login.vue"),

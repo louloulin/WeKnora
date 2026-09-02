@@ -4,13 +4,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import SpotlightGuide from '@/components/SpotlightGuide.vue'
 import { GLOBAL_USER_GUIDE_KEY, OPEN_NEW_USER_GUIDE_EVENT } from '@/config/contextualGuides'
 import { useUIStore } from '@/stores/ui'
 import type { SpotlightGuideStep } from '@/types/spotlightGuide'
 
 const uiStore = useUIStore()
+const route = useRoute()
 let settingsOpenedByGuide = false
 
 const steps = computed<SpotlightGuideStep[]>(() => [
@@ -53,6 +55,7 @@ const steps = computed<SpotlightGuideStep[]>(() => [
 ])
 
 const active = ref(false)
+const isGuideEntryRoute = computed(() => route.path === '/platform/knowledge-bases' || route.path === '/knowledgeBase')
 
 const closeGuideSettings = () => {
   if (settingsOpenedByGuide) {
@@ -72,7 +75,8 @@ const onStepChange = ({ toKey }: { toKey: string }) => {
   }
 }
 
-const open = () => {
+const open = (automatic = false) => {
+  if (automatic && !isGuideEntryRoute.value) return
   active.value = true
 }
 
@@ -81,12 +85,19 @@ const handleOpenEvent = () => {
   open()
 }
 
+watch(() => route.path, () => {
+  if (!isGuideEntryRoute.value && active.value) {
+    closeGuideSettings()
+    active.value = false
+  }
+})
+
 onMounted(() => {
   window.addEventListener(OPEN_NEW_USER_GUIDE_EVENT, handleOpenEvent)
   if (localStorage.getItem(GLOBAL_USER_GUIDE_KEY) !== '1') {
     window.setTimeout(() => {
       if (localStorage.getItem(GLOBAL_USER_GUIDE_KEY) !== '1') {
-        open()
+        open(true)
       }
     }, 700)
   }
