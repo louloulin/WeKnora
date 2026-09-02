@@ -1183,8 +1183,8 @@ const onDragHandleMouseDown = (e: MouseEvent) => {
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    border-right: 1px solid var(--td-component-stroke);
-    box-shadow: 1px 0 0 rgba(0, 0, 0, 0.02);
+    border-right: 1px solid var(--app-border);
+    box-shadow: 1px 0 0 rgba(0, 0, 0, 0.08);
     transition: width 0.25s ease, min-width 0.25s ease;
     position: relative;
 
@@ -1227,7 +1227,7 @@ const onDragHandleMouseDown = (e: MouseEvent) => {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        height: 50px;
+        height: 52px;
         flex-shrink: 0;
         padding: 0 10px 0 var(--sidebar-inset-x);
     }
@@ -1241,7 +1241,7 @@ const onDragHandleMouseDown = (e: MouseEvent) => {
         flex-shrink: 0;
         cursor: pointer;
         color: var(--td-text-color-secondary);
-        border-radius: 4px;
+        border-radius: 7px;
         transition: background-color 0.2s ease;
         box-sizing: border-box;
 
@@ -1427,8 +1427,8 @@ const onDragHandleMouseDown = (e: MouseEvent) => {
         height: 38px;
         padding: 8px 10px 8px var(--sidebar-inset-x);
         box-sizing: border-box;
-        margin-bottom: 2px;
-        border-radius: 4px;
+        margin-bottom: 3px;
+        border-radius: 7px;
         transition: background-color 0.2s ease;
 
         .menu_item-box {
@@ -1437,8 +1437,8 @@ const onDragHandleMouseDown = (e: MouseEvent) => {
         }
 
         &:hover {
-            border-radius: 4px;
-            background: var(--td-bg-color-container-hover);
+            border-radius: 7px;
+            background: color-mix(in srgb, var(--app-text) 6%, transparent);
 
             .menu_icon,
             .menu_title {

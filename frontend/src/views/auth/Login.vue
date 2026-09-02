@@ -1822,17 +1822,23 @@ onMounted(async () => {
 <style lang="less">
 html[theme-mode="dark"] {
   .login-layout {
-    background: linear-gradient(225deg, #011a14 0%, #032e22 15%, #043a2c 25%, #05503d 38%, #046647 50%, #038a56 65%, #049b60 78%, #06a06a 90%, #07b074 100%);
+    background: var(--app-page-bg);
+
+    &::before {
+      background:
+        radial-gradient(circle at 15% 20%, rgba(255, 255, 255, 0.045), transparent 34%),
+        radial-gradient(circle at 80% 80%, rgba(7, 192, 95, 0.08), transparent 38%);
+    }
   }
 
   .knowledge-node {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.2);
-    box-shadow: 0 0 8px rgba(255, 255, 255, 0.15);
+    background: var(--app-surface-raised);
+    border-color: var(--app-border-strong);
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.28);
   }
 
   .connection-line {
-    stroke: rgba(255, 255, 255, 0.25);
+    stroke: var(--app-border-strong);
   }
 
   .header-logo .logo-image {
@@ -1840,20 +1846,25 @@ html[theme-mode="dark"] {
   }
 
   .header-link {
-    background: rgba(255, 255, 255, 0.12);
-    border-color: rgba(255, 255, 255, 0.15);
+    background: var(--app-surface-raised);
+    border-color: var(--app-border);
+    color: var(--app-text);
 
     &:hover {
-      background: rgba(255, 255, 255, 0.2);
+      background: var(--app-control-bg);
+      border-color: var(--app-border-strong);
+      color: var(--app-text);
     }
   }
 
   .language-switch button {
-    background: rgba(255, 255, 255, 0.12);
-    border-color: rgba(255, 255, 255, 0.15);
+    background: var(--app-surface-raised);
+    border-color: var(--app-border);
+    color: var(--app-text);
 
     &:hover {
-      background: rgba(255, 255, 255, 0.2);
+      background: var(--app-control-bg);
+      border-color: var(--app-border-strong);
     }
   }
 
@@ -1864,16 +1875,19 @@ html[theme-mode="dark"] {
   }
 
   .tag {
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--app-surface-raised);
+    border: 1px solid var(--app-border);
+    color: var(--app-text);
   }
 
   .form-card {
-    background: rgba(36, 36, 36, 0.97) !important;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4) !important;
+    background: var(--app-surface-bg) !important;
+    border: 1px solid var(--app-border);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.34) !important;
   }
 
   .register-cta__divider span {
-    background: rgba(36, 36, 36, 0.97);
+    background: var(--app-surface-bg);
   }
 
   .form-content .t-input {

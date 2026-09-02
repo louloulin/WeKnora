@@ -429,11 +429,17 @@ select:-webkit-autofill {
     background: var(--app-overlay);
 }
 
-/* 常见业务容器的最低层级保护；状态色由组件自身规则覆盖。 */
-:root[theme-mode="dark"] [class*="card"],
-:root[theme-mode="dark"] [class*="panel"],
-:root[theme-mode="dark"] [class*="popover"],
-:root[theme-mode="dark"] [class*="drawer"],
-:root[theme-mode="dark"] [class*="modal"] {
+/* 仅统一业务浮层边界，避免覆盖编辑器纸张和状态色。 */
+:root[theme-mode="dark"] .settings-modal,
+:root[theme-mode="dark"] .global-command-palette,
+:root[theme-mode="dark"] .t-dialog,
+:root[theme-mode="dark"] .t-drawer,
+:root[theme-mode="dark"] .t-popup__content,
+:root[theme-mode="dark"] .t-dropdown__menu,
+:root[theme-mode="dark"] .t-select__dropdown {
     border-color: var(--app-border);
+}
+
+:root[theme-mode="dark"] .workspace-context-strip {
+    color: var(--app-text);
 }
