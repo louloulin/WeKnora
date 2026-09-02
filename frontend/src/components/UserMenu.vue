@@ -639,7 +639,7 @@ onUnmounted(() => {
   border-radius: 50%;
   overflow: hidden;
   flex-shrink: 0;
-  background: linear-gradient(135deg, var(--td-brand-color) 0%, var(--td-brand-color-active) 100%);
+  background: var(--app-surface-raised);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -779,7 +779,7 @@ onUnmounted(() => {
     border-radius: 50%;
     overflow: hidden;
     flex-shrink: 0;
-    background: linear-gradient(135deg, var(--td-brand-color) 0%, var(--td-brand-color-active) 100%);
+    background: var(--app-surface-raised);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1158,7 +1158,7 @@ onUnmounted(() => {
     flex-shrink: 0;
 
     &.is-current {
-      background: linear-gradient(135deg, var(--td-brand-color) 0%, var(--td-brand-color-active) 100%);
+      background: var(--td-brand-color);
       color: var(--td-text-color-anti);
     }
   }

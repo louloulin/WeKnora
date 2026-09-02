@@ -1875,12 +1875,12 @@ const handleUploadFinishedEvent = (event: Event) => {
 }
 
 .kb-create-btn {
-  background: linear-gradient(135deg, var(--td-brand-color) 0%, #00a67e 100%);
+  background: var(--td-brand-color);
   border: none;
   color: var(--td-text-color-anti);
 
   &:hover {
-    background: linear-gradient(135deg, var(--td-brand-color) 0%, var(--td-brand-color-active) 100%);
+    background: var(--td-brand-color-hover);
   }
 }
 
@@ -2079,30 +2079,30 @@ const handleUploadFinishedEvent = (event: Event) => {
 
   // 共享知识库根据类型显示不同样式
   &.kb-type-document {
-    background: linear-gradient(135deg, var(--td-bg-color-container) 0%, rgba(7, 192, 95, 0.04) 100%) !important;
+    background: var(--app-surface-bg) !important;
 
     &:hover {
       border-color: var(--td-brand-color) !important;
-      box-shadow: 0 4px 12px rgba(7, 192, 95, 0.12) !important;
-      background: linear-gradient(135deg, var(--td-bg-color-container) 0%, rgba(7, 192, 95, 0.08) 100%) !important;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22) !important;
+      background: var(--app-surface-raised) !important;
     }
 
     &::after {
-      background: linear-gradient(135deg, rgba(7, 192, 95, 0.08) 0%, transparent 100%) !important;
+      display: none;
     }
   }
 
   &.kb-type-faq {
-    background: linear-gradient(135deg, var(--td-bg-color-container) 0%, rgba(0, 82, 217, 0.04) 100%) !important;
+    background: var(--app-surface-bg) !important;
 
     &:hover {
       border-color: var(--td-brand-color) !important;
-      box-shadow: 0 4px 12px rgba(0, 82, 217, 0.12) !important;
-      background: linear-gradient(135deg, var(--td-bg-color-container) 0%, rgba(0, 82, 217, 0.08) 100%) !important;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22) !important;
+      background: var(--app-surface-raised) !important;
     }
 
     &::after {
-      background: linear-gradient(135deg, rgba(0, 82, 217, 0.08) 0%, transparent 100%) !important;
+      display: none;
     }
 
     // FAQ 类型共享标识使用蓝色
@@ -2216,7 +2216,7 @@ const handleUploadFinishedEvent = (event: Event) => {
 
 .progress-bar-inner {
   height: 100%;
-  background: linear-gradient(90deg, var(--td-brand-color-active) 0%, var(--td-brand-color) 100%);
+  background: var(--td-brand-color);
   transition: width 0.2s ease;
 }
 
@@ -2364,11 +2364,11 @@ const handleUploadFinishedEvent = (event: Event) => {
 
   // 文档类型样式
   &.kb-type-document {
-    background: linear-gradient(135deg, var(--td-bg-color-container) 0%, rgba(7, 192, 95, 0.04) 100%);
+    background: var(--app-surface-bg);
 
     &:hover {
       border-color: var(--td-brand-color);
-      background: linear-gradient(135deg, var(--td-bg-color-container) 0%, rgba(7, 192, 95, 0.08) 100%);
+      background: var(--app-surface-raised);
     }
 
     // 右上角装饰
@@ -2379,7 +2379,7 @@ const handleUploadFinishedEvent = (event: Event) => {
       right: 0;
       width: 60px;
       height: 60px;
-      background: linear-gradient(135deg, rgba(7, 192, 95, 0.08) 0%, transparent 100%);
+      display: none;
       border-radius: 0 12px 0 100%;
       pointer-events: none;
       z-index: 0;
@@ -2388,12 +2388,12 @@ const handleUploadFinishedEvent = (event: Event) => {
 
   // 问答类型样式
   &.kb-type-faq {
-    background: linear-gradient(135deg, var(--td-bg-color-container) 0%, rgba(0, 82, 217, 0.04) 100%);
+    background: var(--app-surface-bg);
 
     &:hover {
       border-color: var(--td-brand-color);
-      box-shadow: 0 4px 12px rgba(0, 82, 217, 0.12);
-      background: linear-gradient(135deg, var(--td-bg-color-container) 0%, rgba(0, 82, 217, 0.08) 100%);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+      background: var(--app-surface-raised);
     }
 
     // 右上角装饰
@@ -2404,7 +2404,7 @@ const handleUploadFinishedEvent = (event: Event) => {
       right: 0;
       width: 60px;
       height: 60px;
-      background: linear-gradient(135deg, rgba(0, 82, 217, 0.08) 0%, transparent 100%);
+      display: none;
       border-radius: 0 12px 0 100%;
       pointer-events: none;
       z-index: 0;

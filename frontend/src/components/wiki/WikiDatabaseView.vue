@@ -118,7 +118,6 @@
         </tbody>
       </table>
     </div>
-    </div>
     <div v-else-if="viewMode === 'calendar'" class="wiki-database-view__calendar-wrap">
       <div class="wiki-database-view__calendar-toolbar">
         <span class="wiki-database-view__calendar-label">{{ $t('knowledgeEditor.wikiDatabaseView.calendarDateLabel') }}</span>

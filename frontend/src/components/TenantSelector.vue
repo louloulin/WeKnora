@@ -546,7 +546,7 @@ onUnmounted(() => {
   transition: all 0.2s;
 
   &.active {
-    background: linear-gradient(135deg, var(--td-brand-color) 0%, var(--td-brand-color-active) 100%);
+    background: var(--td-brand-color);
     color: var(--td-text-color-anti);
   }
 }
