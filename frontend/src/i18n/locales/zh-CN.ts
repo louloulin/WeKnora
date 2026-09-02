@@ -1595,8 +1595,9 @@ export default {
     },
     quick: {
       newChat: '新建对话',
-      knowledgeBases: '打开知识库',
-      agents: '打开智能体',
+    knowledgeBases: '打开知识库',
+    collabDocuments: '协作文档',
+    agents: '打开智能体',
       organizations: '打开共享空间',
       settings: '打开设置',
       productTour: '新手引导'
@@ -7611,6 +7612,7 @@ export default {
   },
   menu: {
     knowledgeBase: '知识库',
+    collabDocuments: '协作文档',
     agents: '智能体',
     organizations: '共享空间',
     newChat: '新对话',

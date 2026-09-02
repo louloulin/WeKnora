@@ -28,9 +28,9 @@
 <style scoped>
 .workspace-context-strip {
   position: fixed;
-  top: 12px;
-  right: 18px;
-  z-index: 5;
+  top: 14px;
+  right: 20px;
+  z-index: 20;
   pointer-events: auto;
 }
 </style>
@@ -280,6 +280,11 @@ onUnmounted(() => {
     flex-direction: column;
     overflow: hidden;
     background: var(--app-page-bg);
+}
+
+.platform-route-outlet > :deep(*) {
+    min-width: 0;
+    min-height: 0;
 }
 
 .upload-mask {

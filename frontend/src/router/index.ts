@@ -90,15 +90,22 @@ const router = createRouter({
     {
       // v0.7.25 — collaborative docs (Feishu / Tencent document parity).
       path: "/collab-documents",
-      name: "collabDocList",
-      component: () => import("../views/collab/CollabDocListView.vue"),
+      component: () => import("../views/platform/index.vue"),
       meta: { requiresAuth: true, requiresInit: true },
-    },
-    {
-      path: "/collab-documents/:id",
-      name: "collabDocEditor",
-      component: () => import("../views/collab/CollabDocEditorView.vue"),
-      meta: { requiresAuth: true, requiresInit: true },
+      children: [
+        {
+          path: "",
+          name: "collabDocList",
+          component: () => import("../views/collab/CollabDocListView.vue"),
+          meta: { requiresAuth: true, requiresInit: true },
+        },
+        {
+          path: ":id",
+          name: "collabDocEditor",
+          component: () => import("../views/collab/CollabDocEditorView.vue"),
+          meta: { requiresAuth: true, requiresInit: true },
+        },
+      ],
     },
     {
       // v0.7.26 - public read-only share view (no auth).
@@ -120,9 +127,16 @@ const router = createRouter({
       // (higher-level "doc -> 演示文稿" surface, separate from the
       // pptx-engine per-page slide editor).
       path: "/collab-slides",
-      name: "collabSlides",
-      component: () => import("../views/collab/CollabSlidesView.vue"),
+      component: () => import("../views/platform/index.vue"),
       meta: { requiresAuth: true, requiresInit: true },
+      children: [
+        {
+          path: "",
+          name: "collabSlides",
+          component: () => import("../views/collab/CollabSlidesView.vue"),
+          meta: { requiresAuth: true, requiresInit: true },
+        },
+      ],
     },
     {
       path: "/join",

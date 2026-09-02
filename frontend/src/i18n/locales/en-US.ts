@@ -1,6 +1,7 @@
 export default {
   menu: {
     knowledgeBase: 'Knowledge Base',
+    collabDocuments: 'Collaborative Docs',
     agents: 'Agents',
     organizations: 'Shared Spaces',
     newChat: 'New Chat',
@@ -5898,8 +5899,9 @@ export default {
     },
     quick: {
       newChat: 'New conversation',
-      knowledgeBases: 'Open knowledge bases',
-      agents: 'Open agents',
+    knowledgeBases: 'Open knowledge bases',
+    collabDocuments: 'Collaborative docs',
+    agents: 'Open agents',
       organizations: 'Open shared spaces',
       settings: 'Open settings',
       productTour: 'Product tour'
