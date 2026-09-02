@@ -156,13 +156,36 @@ async function main() {
   await page.locator('button:has-text("关闭")').first().click({ force: true })
   await page.waitForTimeout(400)
 
+  // v0.7.106.1 — drive the track-changes delete hook with chain().deleteSelection()
+  await page.evaluate(() => { (window).__wkDocTrackChanges.on = false })
+  await page.waitForTimeout(200)
+  await page.evaluate(() => {
+    const ed = (window).__wkDocEditor
+    ed.chain().focus('end').insertContent('TO_DELETE_HERE').run()
+  })
+  await page.waitForTimeout(400)
+  await page.evaluate(() => { (window).__wkDocTrackChanges.on = true })
+  await page.waitForTimeout(200)
+  const beforeDeleteText = await page.evaluate(() => (window).__wkDocEditor.getText())
+  console.log('text before deleteSelection:', JSON.stringify((beforeDeleteText || '').slice(-30)))
+  await page.evaluate(() => {
+    const ed = (window).__wkDocEditor
+    const text = ed.getText()
+    const idx = text.lastIndexOf('TO_DELETE_HERE')
+    if (idx < 0) throw new Error('TO_DELETE_HERE marker not found')
+    const from = idx + 1
+    const to = from + 'TO_DELETE_HERE'.length
+    ed.chain().setTextSelection({ from, to }).deleteSelection().run()
+  })
+  await page.waitForTimeout(800)
+
   // Step 4 — programmatically apply a `del` mark to some text so we exercise
   // the OOXML <w:del> + <w:delText> serialization path (the auto-wrap on
   // user-driven delete lands in v0.7.106.1; this proves the wire works).
   await page.evaluate(() => {
     const ed = (window).__wkDocEditor
     const text = ed.getText()
-    const marker = 'TRACKED'
+    const marker = 'TO_DELETE_HERE'
     const idx = text.indexOf(marker)
     if (idx < 0) throw new Error('marker not found')
     const from = idx + 1
@@ -209,12 +232,12 @@ async function main() {
   const hasDel = /<w:del\b/.test(xml)
   const hasAuthor = /w:author="admin"/.test(xml)
   const hasDate = /w:date="\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(xml)
-  const hasDelText = /<w:delText[^>]*>TRACKED<\/w:delText>/.test(xml)
+  const hasDelText = /<w:delText[^>]*>TO_DELETE_HERE<\/w:delText>/.test(xml)
   console.log('OOXML has <w:ins>:', hasIns)
   console.log('OOXML has <w:del>:', hasDel)
   console.log('OOXML has w:author=admin:', hasAuthor)
   console.log('OOXML has w:date=ISO:', hasDate)
-  console.log('OOXML has <w:delText>TRACKED:', hasDelText)
+  console.log('OOXML has <w:delText>TO_DELETE_HERE:', hasDelText)
 
   if (!hasIns) throw new Error('OOXML must contain <w:ins>')
   if (!hasDel) throw new Error('OOXML must contain <w:del>')

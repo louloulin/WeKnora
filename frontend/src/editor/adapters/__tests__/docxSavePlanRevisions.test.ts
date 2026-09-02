@@ -2,6 +2,7 @@
 // propagate into Run.ins / Run.del so the engine emits <w:ins> / <w:del>.
 
 import { test } from 'node:test'
+import { extractDocxDocumentXml } from './_testZipExtract'
 import assert from 'node:assert/strict'
 import { pmNodeToGeneratedBlock, pmDocToSavePlan } from '../docxAdapter'
 import { buildBlankDocx } from '../../engines/docx-engine/index'
@@ -133,4 +134,87 @@ test('saveDocxBytes round-trip writes w:ins / w:del wrappers to word/document.xm
   assert.ok(/w:author="bob"/.test(xml), 'must carry author=bob on the del')
   assert.ok(/w:date="2026-09-02T10:00:00\.000Z"/.test(xml), 'must carry the ins date')
   assert.ok(/<w:delText[^>]*>removed<\/w:delText>/.test(xml), 'deleted text uses w:delText')
+})
+
+
+
+test('del mark on text node round-trips through saveDocxBytes with w:delText', async () => {
+  const { saveDocxBytes } = await import('../docxAdapter')
+  const { extractDocxDocumentXml } = await import('./_testZipExtract')
+  const seed = await buildBlankDocx()
+  const doc = await openDocx(seed)
+  const pmDoc = {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        attrs: { 'data-docx-index': 0 },
+        content: [
+          {
+            type: 'text',
+            text: 'kept',
+          },
+          {
+            type: 'text',
+            text: 'deleted_by_user',
+            marks: [
+              {
+                type: 'del',
+                attrs: { author: 'carol', date: '2026-09-02T11:00:00.000Z', id: '2002' },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+  const plan = pmDocToSavePlan(pmDoc as never, doc)
+  const bytes = await saveDocxBytes(doc, plan.blocks as never)
+  const xml = extractDocxDocumentXml(bytes)
+  assert.ok(/<w:del\b/.test(xml), 'must contain <w:del>')
+  assert.ok(/w:author="carol"/.test(xml), 'must carry author=carol on the del')
+  assert.ok(/w:date="2026-09-02T11:00:00\.000Z"/.test(xml), 'must carry the del date')
+  assert.ok(/<w:delText[^>]*>deleted_by_user<\/w:delText>/.test(xml), 'deleted text must use w:delText')
+})
+
+test('paragraph carrying both ins and del marks in different runs', async () => {
+  const { saveDocxBytes } = await import('../docxAdapter')
+  const { extractDocxDocumentXml } = await import('./_testZipExtract')
+  const seed = await buildBlankDocx()
+  const doc = await openDocx(seed)
+  const pmDoc = {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        attrs: { 'data-docx-index': 0 },
+        content: [
+          {
+            type: 'text',
+            text: 'A',
+            marks: [{ type: 'ins', attrs: { author: 'a', date: 'd1', id: 'i1' } }],
+          },
+          {
+            type: 'text',
+            text: 'B',
+          },
+          {
+            type: 'text',
+            text: 'C',
+            marks: [{ type: 'del', attrs: { author: 'b', date: 'd2', id: 'd2' } }],
+          },
+        ],
+      },
+    ],
+  }
+  const plan = pmDocToSavePlan(pmDoc as never, doc)
+  const bytes = await saveDocxBytes(doc, plan.blocks as never)
+  const xml = extractDocxDocumentXml(bytes)
+  // Both wrappers present
+  assert.ok(/<w:ins\b/.test(xml), 'must contain <w:ins>')
+  assert.ok(/<w:del\b/.test(xml), 'must contain <w:del>')
+  // Use w:delText for the deleted run, plain w:t for the inserted + kept runs.
+  assert.ok(/<w:delText[^>]*>C<\/w:delText>/.test(xml), 'must emit <w:delText>C</w:delText>')
+  assert.ok(/<w:t[^>]*>A<\/w:t>/.test(xml), 'must emit <w:t>A</w:t>')
+  assert.ok(/<w:t[^>]*>B<\/w:t>/.test(xml), 'must emit <w:t>B</w:t>')
 })

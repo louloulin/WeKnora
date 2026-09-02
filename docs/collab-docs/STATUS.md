@@ -3773,3 +3773,68 @@ ALL OK — slide group/ungroup persists <p:grpSp> in .pptx
 - **跨 slide 的 group 不支持**：groupId 命名空间按 slide 隔离；如果需要引用跨 slide 的 group 需要重写 ID 分配（属设计意图）。
 - **保存未改变 children 字节**：group 时 children XML 直接复用 `patchedElementXml(e)`；如果 child 在 group 之后被修改，新字节会通过 `el.dirty` 正常 rebuild，不受影响。
 
+
+## 56. v0.7.106.1 — DOC 删除自动套 del mark（用户驱动 deleteSelection → OOXML `<w:del>` + `<w:delText>`）（2026-09-02）
+
+### 56.1 目标
+
+v0.7.106 把 `ins` mark 自动 wrap 落地了，但 `del` 那条路径只靠程序化 `addMark` 验证 OOXML 序列化——用户在 track-changes 模式下做 `deleteSelection` / `deleteContentBackward` 时仍然只删不标记。本轮让删除行为对齐 Word：被删的文本在编辑器里继续显示（方便审阅），但带 `del` mark，落盘后写出 `<w:del><w:delText>...</w:delText></w:del>`。
+
+### 56.2 改动
+
+`frontend/src/components/collab/CollabDocProEditor.vue`：
+
+- **关键架构变化**：删除检测不能放在 `onTransaction` 里——该钩子在 `state.doc` 已经被替换成 NEW doc 之后才触发，OLD 文本已经找不到。改为在 `editor.value.view.dispatch` 上安装一个 wrapper，在原始事务应用**之前**从 `editor.value.state.doc`（此时仍是 OLD）读取 `[j.from, j.to]` 范围的文本，再调用 `origDispatch(tr)`，然后 dispatch 一个 wrap 事务把这段文本以 `del` mark 重新插入到 `tr.mapping.maps[i].map(j.to)` 处（NEW doc 中"删除结束"的边界）。
+- 插入处理（`onTransaction` 内）保持不变：用 `tr.doc`（NEW doc）配合 `tr.mapping` 算 wrap 范围，然后 `wrapTr.addMark` 给纯插入位置加 `ins` mark。
+- 纯删除 wrapper 的额外细节：
+  - 用 `oldDoc.textBetween(j.from, j.to, '\n', '\n')` 提取被删内容作为字符串
+  - wrap 事务按 `insertAt` 倒序处理多段删除（防止后插入的位置被前插入推后）
+  - 用 `wrapTr.insert(insertAt, schema.text(d.text, [del]))` 插入**带 mark 的 Text 节点**，而不是 `insertText` 后再 `addMark`——后者会落不进 mark
+  - 跳过空字符串删除（避免无意义的 mark）
+  - wrap 事务携带 `trackIgnore` meta 防递归
+
+### 56.3 真实双端浏览器验证
+
+更新 `frontend/wk-doc-track-changes.mjs` Step 4 为真实驱动：
+1. 关闭 track-changes → 用 `chain().insertContent('TO_DELETE_HERE')` 追加一段不被记录的文本
+2. 开启 track-changes → `setTextSelection({from,to})` + `deleteSelection()` 触发删除
+3. `chain().focus().insertContent` 插入文本会同时被 onTransaction 钩子捕获并加 ins mark
+4. 立即保存 → 下载 `.docx` → 解压 `word/document.xml` → 验证：
+   - `<w:ins>` + `w:author="admin"` + ISO 日期
+   - `<w:del>` + `w:author="admin"` + ISO 日期 + `<w:delText>TO_DELETE_HERE</w:delText>`
+
+```
+text before deleteSelection: "0.7.106-TRACKED TO_DELETE_HERE"
+text nodes with del mark after apply: 1
+OOXML has <w:ins>:               true
+OOXML has <w:del>:               true
+OOXML has w:author=admin:        true
+OOXML has w:date=ISO:            true
+OOXML has <w:delText>TO_DELETE_HERE: true
+page errors: 0
+ALL OK — doc track changes serialize w:ins/w:del with author + date
+```
+
+### 56.4 单元测试
+
+新增 2 个 case 到 `docxSavePlanRevisions.test.ts`：
+
+- `del mark on text node round-trips through saveDocxBytes with w:delText`：纯 del mark 的段落 + `saveDocxBytes` → 解压 word/document.xml → 验证 `<w:del w:author="carol" w:date="2026-09-02T11:00:00.000Z"><w:r><w:delText>deleted_by_user</w:delText></w:r></w:del>`。
+- `paragraph carrying both ins and del marks in different runs`：一段同时包含 A(ins)、B(plain)、C(del) 三个 run，验证 `<w:ins>` + `<w:del>` + `<w:t>A</w:t>` + `<w:t>B</w:t>` + `<w:delText>C</w:delText>` 全部存在且互不污染。
+
+合计 7 个 case（5 + 2）。
+
+### 56.5 回归
+
+- `vue-tsc --noEmit` 0 新错误
+- `tsx --test` 515/515 ✅（新增 2 个 + 原 513）
+- `wk-doc-track-changes.mjs` ALL OK ✅（新增真实 deleteSelection 步骤）
+- `wk-slide-grp-sp-save.mjs` (v0.7.107) 仍 PASS ✅
+- `wk-sheet-names-autocomplete.mjs` (v0.7.105) 仍 PASS ✅
+
+### 56.6 已知遗留
+
+- **跨段落删除**：当前 wrapper 只处理 intra-paragraph 删除（直接用 `oldDoc.textBetween` 拼字符串）。如果用户一次选区跨多段，paragraph break 信息会丢失（变成带 `\n` 的纯文本）。属于 v0.7.106.2 范围。
+- **`del` mark id 持久化**：id 仅在内存中自增；远端 peer 看到的同一 del 会有不同的 id。Yjs 端不分发 mark（只有节点属性同步），无法做到严格稳定 id。Word 也不会用同一 id，实践中不构成问题。
+- **deleteContentBackward 等其它删除命令**：`Backspace` / `Delete` / `deleteRange` / `deleteNode` 等命令最终都会变成 ReplaceStep from<to empty slice，目前 hook 已覆盖；命令层面无需单独处理。
+

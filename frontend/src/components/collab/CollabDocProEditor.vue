@@ -1704,67 +1704,59 @@ const initEditor = (paragraphs: DocxAdapterParagraph[]) => {
     content: paragraphsToContent(paragraphs),
     onUpdate: ({ editor: ed }) => onEditorUpdate(ed),
     // v0.7.106 — auto-wrap typing in an `ins` mark while trackChangesOn is true.
-    // Transactions carrying the `trackIgnore` meta (programmatic edits from
-    // collectRevisions / accept / reject helpers) skip the wrap so they don't
-    // recursively re-trigger.
+    // v0.7.106.1 — pure-delete detection is handled separately in the
+    // view.dispatch wrapper installed by `installTrackChangesDispatchInterceptor`
+    // (called right after this editor instance is created below), because
+    // onTransaction fires AFTER state.doc is updated and the OLD content is
+    // already gone. For inserts, state.doc is post-tr which is exactly what
+    // we need to compute the wrap range, so onTransaction works fine here.
     onTransaction: ({ transaction: tr, editor: ed }) => {
       if (!trackChangesOn.value || !tr.docChanged) return
       if (tr.getMeta('trackIgnore')) return
-      // Capture pure-insertion replace steps (from === to with non-empty slice).
-      // We compute the resulting range via tr.mapping (which is the canonical way
-      // to map a position from the OLD doc into the NEW doc after the steps run).
+      // Pure insertions only: from === to + non-empty slice.
       const wrapRanges: Array<{ from: number; to: number }> = []
       for (let i = 0; i < tr.steps.length; i++) {
         const step = tr.steps[i]
-        const j = step.toJSON?.() as { stepType?: string; from?: number; to?: number; slice?: { content?: unknown[] } } | undefined
+        const j = step.toJSON?.() as {
+          stepType?: string; from?: number; to?: number
+          slice?: { content?: Array<{ text?: string; size?: number }> }
+        } | undefined
         if (!j || j.stepType !== 'replace') continue
         if (typeof j.from !== 'number' || typeof j.to !== 'number') continue
         const content = j.slice?.content ?? []
         if (!content.length) continue
-        // Only PURE insertions: from === to AND the slice is bigger than the gap
-        // (range replacements with bigger content are not handled here — those
-        // also need wrapping but require comparing old vs new ranges).
-        if (j.from !== j.to) { console.log('[track-changes] skipping, not pure insert'); continue }
-        // PM's toJSON for ReplaceStep doesn't include slice.size on the wire —
-        // compute it by walking the slice content. PM Text node size = text.length;
-        // Paragraph node size = text.length + 2; default = 1.
-        const sliceSize = step.toJSON?.()?.slice?.size ?? 0
-        let sz = sliceSize
-        if (!sz) {
-          sz = 0
-          for (const node of content as Array<{ text?: string; size?: number }>) {
-            if (typeof node.size === 'number') sz += node.size
-            else if (typeof node.text === 'string') sz += node.text.length
-            else sz += 1
-          }
+        if (j.from !== j.to) continue
+        let sz = 0
+        for (const node of content) {
+          if (typeof node.size === 'number') sz += node.size
+          else if (typeof node.text === 'string') sz += node.text.length
+          else sz += 1
         }
         if (sz <= 0) continue
-        // For a pure insert at OLD position `from`, tr.mapping.maps[i].map(from)
-        // returns the position `from` shifted to in the NEW doc — which is the
-        // boundary *after* the inserted slice. The inserted text itself starts
-        // at (mapped-from - sz) in the new doc.
+        // tr.mapping.maps[i].map(j.from) = NEW position of OLD j.from.
+        // The insert occupies [mapped-from - sz, mapped-from) in the NEW doc.
         const mappedFrom = tr.mapping.maps[i] ? tr.mapping.maps[i].map(j.from) : j.from
-        const insertStart = mappedFrom - sz
-        wrapRanges.push({ from: insertStart, to: insertStart + sz })
+        wrapRanges.push({ from: mappedFrom - sz, to: mappedFrom })
       }
       if (!wrapRanges.length) return
+      const insType = ed.schema.marks.ins
+      if (!insType) return
       const max = tr.doc.content.size
       const safe = wrapRanges.filter((r) => r.from >= 0 && r.to <= max && r.from < r.to)
       if (!safe.length) return
-      const insType = ed.schema.marks.ins
-      if (!insType) return
       const author = props.displayName || 'admin'
       const date = new Date().toISOString()
       const wrapTr = ed.state.tr
-      console.log('[track-changes] safe ranges=', JSON.stringify(safe), 'docSize=', tr.doc.content.size)
       for (const r of safe) {
-        console.log('[track-changes] addMark', r.from, r.to, 'markType=', insType.name)
         wrapTr.addMark(r.from, r.to, insType.create({ author, date, id: String(++trackChangeSeq) }))
       }
       wrapTr.setMeta('trackIgnore', true)
-      const dispatched = ed.view.dispatch(wrapTr)
-      console.log('[track-changes] wrapTr dispatched=', dispatched)
+      ed.view.dispatch(wrapTr)
     },
+    // v0.7.106 — auto-wrap typing in an `ins` mark while trackChangesOn is true.
+    // Transactions carrying the `trackIgnore` meta (programmatic edits from
+    // collectRevisions / accept / reject helpers) skip the wrap so they don't
+    // recursively re-trigger.
     editorProps: {
       attributes: { class: 'collab-doc-pro__surface' },
       handleKeyDown(_view, event) {
@@ -1831,7 +1823,58 @@ const initEditor = (paragraphs: DocxAdapterParagraph[]) => {
       }
     },
   })
-  // v0.7.103 — expose editor on window for E2E tests to inject tracked revisions.
+  // v0.7.106.1 — view.dispatch interceptor for pure-delete auto-marking.
+  // Captures OLD doc text BEFORE applying the transaction so we can re-insert
+  // the deleted text with a `del` mark (Word's track-changes behavior: the
+  // text stays visible but is marked as deleted; OOXML emits <w:del><w:delText>).
+  if (typeof window !== 'undefined') {
+    const view = editor.value.view
+    const origDispatch = view.dispatch.bind(view)
+    ;(view as any).dispatch = (tr: any) => {
+      if (!trackChangesOn.value || !tr.docChanged || tr.getMeta('trackIgnore')) {
+        return origDispatch(tr)
+      }
+      // Capture pure-delete ranges from the OLD doc.
+      const deletes: Array<{ insertAt: number; text: string }> = []
+      const oldDoc = editor.value.state.doc
+      for (let i = 0; i < tr.steps.length; i++) {
+        const step = tr.steps[i]
+        const j = step.toJSON?.() as {
+          stepType?: string; from?: number; to?: number
+          slice?: { content?: unknown[] }
+        } | undefined
+        if (!j || j.stepType !== 'replace') continue
+        if (typeof j.from !== 'number' || typeof j.to !== 'number') continue
+        const content = j.slice?.content ?? []
+        if (content.length) continue
+        if (j.from >= j.to) continue
+        // Pure delete: capture text from OLD doc
+        const text = oldDoc.textBetween(j.from, j.to, '\n', '\n')
+        if (!text) continue
+        // tr.mapping.maps[i].map(j.to) = NEW position of OLD j.to = insertion point
+        const mappedTo = tr.mapping.maps[i] ? tr.mapping.maps[i].map(j.to) : j.to
+        deletes.push({ insertAt: mappedTo, text })
+      }
+      // Apply the original transaction
+      origDispatch(tr)
+      // Dispatch follow-up wrap transaction(s) for deletes
+      const delType = editor.value.schema.marks.del
+      if (deletes.length && delType) {
+        const author = props.displayName || 'admin'
+        const date = new Date().toISOString()
+        const wrapTr = editor.value.state.tr
+        // Sort descending so earlier insertions don't shift later insertion sites.
+        for (const d of deletes.slice().sort((a, b) => b.insertAt - a.insertAt)) {
+          const mark = delType.create({ author, date, id: String(++trackChangeSeq) })
+          wrapTr.insert(d.insertAt, editor.value.schema.text(d.text, [mark]))
+        }
+        wrapTr.setMeta('trackIgnore', true)
+        ;(view as any).dispatch.call(view, wrapTr)
+      }
+    }
+  }
+
+    // v0.7.103 — expose editor on window for E2E tests to inject tracked revisions.
   if (typeof window !== 'undefined') {
     ;(window as any).__wkDocEditor = editor.value
     // v0.7.106 — expose the track-changes toggle + a programmatic wrapper so
