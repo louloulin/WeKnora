@@ -807,6 +807,69 @@ export function parseMasterOnDeck(
   return { partPath, layoutNames: (slide as any).layoutNames ?? [] }
 }
 
+// v0.7.113 — return the engine Slide model for a master/layout. Lets the UI
+// render cSld-style elements without re-implementing the OOXML scan.
+export function parseMasterToSlideOnDeck(
+  deck: PptxShapeDeck,
+  partPath: string,
+): Slide | null {
+  if (!deck.opened) return null
+  return engineParseMasterPart(deck.opened.archive, partPath)
+}
+
+// v0.7.113 — read the raw OOXML for a master or layout part.
+export function readMasterPartXmlOnDeck(
+  deck: PptxShapeDeck,
+  partPath: string,
+): string | null {
+  if (!deck.opened) return null
+  return deck.opened.archive.readText(partPath)
+}
+
+// v0.7.113 — write raw OOXML back into a master/layout part. Caller must
+// invoke scheduleSave() to flush bytes; we just mutate the in-memory archive.
+export function writeMasterPartXmlOnDeck(
+  deck: PptxShapeDeck,
+  partPath: string,
+  xml: string,
+): boolean {
+  if (!deck.opened) return false
+  if (!xml) return false
+  deck.opened.archive.entries.set(partPath, Buffer.from(xml, 'utf8'))
+  return true
+}
+
+// v0.7.113 — rename a master/layout via <p:cSld name="...">. Empty string
+// strips the explicit name (PowerPoint then falls back to file name).
+export function renameMasterOnDeck(
+  deck: PptxShapeDeck,
+  partPath: string,
+  newName: string,
+): boolean {
+  if (!deck.opened) return false
+  const xml = deck.opened.archive.readText(partPath)
+  if (!xml) return false
+  const trimmed = (newName ?? '').trim()
+  let next: string
+  if (!trimmed) {
+    next = xml.replace(/<p:cSld\b[^>]*\sname="[^"]*"([^>]*)>/, (_m, tail) => `<p:cSld${tail}>`)
+  } else {
+    const escaped = trimmed.replace(/"/g, '&quot;')
+    if (/<p:cSld\b/.test(xml)) {
+      next = xml.replace(/<p:cSld\b([^>]*?)\sname="[^"]*"([^>]*)>/, (_m, head, tail) => `<p:cSld${head} name="${escaped}"${tail}>`)
+      if (next === xml) {
+        // no prior name attr — add one
+        next = xml.replace(/<p:cSld\b([^>]*)>/, (_m, attrs) => `<p:cSld name="${escaped}"${attrs}>`)
+      }
+    } else {
+      next = `<p:cSld name="${escaped}"/>` + xml
+    }
+  }
+  if (next === xml) return false
+  deck.opened.archive.entries.set(partPath, Buffer.from(next, 'utf8'))
+  return true
+}
+
 /** Replace theme colors + fonts in every theme part. */
 export function applyThemeToDeck(deck: PptxShapeDeck, spec: EngineThemeSpec): number {
   if (!deck.opened) return 0

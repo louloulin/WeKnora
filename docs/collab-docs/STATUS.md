@@ -4214,3 +4214,83 @@ ALL OK — slide animations: per-row edit + reorder + <p:timing> persisted
 - **PPT 母版视图（genoffice `MasterView.tsx` 303 行）**：引擎 `master-edit.ts` 早就支持 `listMasterParts + parseMasterPart + applyMasterEdits` 路径，但 Vue UI 未实现。属于 v0.7.113 范围（建议 copy genoffice MasterView 的 props 形状，画布跟现有 `SlideCanvas` 兼容，但缩略图需要单独 share render path）。
 - **v0.7.62 (现存 animations UI)：行编辑太多列 → 屏幕窄时拥挤**：建议 v0.7.112.x polish 把 effect/trigger/duration/delay 折叠到「高级」抽屉里。
 - **v0.7.64 transition**：转场选择器只触发 `onTransitionCommit` 但未持久化到 .pptx —— verified 已落盘（ppt/slides/slide1.xml 的 `<p:transition>` 节）。需要补充 E2E。
+
+### 63.1 目标
+
+`pptx-engine/master-edit.ts`（v0.7.107 之前）早已具备 `listMasterParts + parseMasterPart` 路径，genoffice `MasterView.tsx` 303 行给了完整 React UI 形状，但 WeKnora 一直没有 Vue 母版视图 modal。本轮交付：
+
+1. adapter 暴露 4 个 helper：`parseMasterToSlideOnDeck / readMasterPartXmlOnDeck / writeMasterPartXmlOnDeck / renameMasterOnDeck`
+2. Vue modal：toolbar「📐 母版」按钮 + 左 master + 版式列表 + 右详情（含 cSld 重命名）
+3. 单测 6 cases（含 save/reopen round-trip）+ E2E 端到端锁住
+
+### 63.2 改动
+
+`frontend/src/editor/adapters/pptxShapeAdapter.ts`：
+
+- 新增 `parseMasterToSlideOnDeck(deck, partPath) → Slide | null`：直接 `engineParseMasterPart` 返回完整 Slide 模型
+- 新增 `readMasterPartXmlOnDeck(deck, partPath) → string | null`：raw XML 读
+- 新增 `writeMasterPartXmlOnDeck(deck, partPath, xml) → boolean`：`archive.entries.set(path, Buffer.from(xml, 'utf8'))` 走 engine 既有写入路径
+- 新增 `renameMasterOnDeck(deck, partPath, newName) → boolean`：parse `<p:cSld name="…">` attr 替换 / 缺失时插入 / 空前 strip。返回 false 表示 XML 没变（无 name attr + 空 newName 视为 no-op）
+
+`frontend/src/components/collab/CollabSlideKonvaEditor.vue`：
+
+- import 5 个新 helper
+- toolbar「⊟ 解散组」后加「📐 母版」按钮 `data-testid="slide-master-btn"`
+- 新增 master modal（参考动画 / pivot modal 模板）：`.collab-slide-konva__modal-bg`，左列表 `slide-master-list`、右详情 `slide-master-detail`
+- 每个 master/layout 行 `data-testid="slide-master-item-{idx}"`，展示 kind badge（母版 / 版式）+ 名称 + 部分路径
+- 右详情：路径 / 种类 / 元素数 summary（按 type 分类计数）+ cSld 重命名 input + 按钮 + OOXML 预览 details
+- 5 个 handler + 2 个 computed（`selectedMaster` / `masterNameDirty`）+ 1 个 `summarizeElementKinds` helper
+- `applyMasterRename` 调 `renameMasterOnDeck` → `scheduleSave()` → 「母版名称已暂存（保存 .pptx 时落盘）」
+
+`frontend/src/editor/adapters/__tests__/pptxMasterView.test.ts`（新文件，6 cases）：
+
+- parseMasterToSlideOnDeck returns Slide model
+- readMasterPartXmlOnDeck returns raw cSld XML
+- writeMasterPartXmlOnDeck mutates archive and readback sees change
+- renameMasterOnDeck adds name attr when missing
+- renameMasterOnDeck replaces existing name attr
+- renameMasterOnDeck survives round-trip savePptx → openPptx
+
+`frontend/wk-slide-master-view.mjs`（新 E2E，124 行）：
+
+- admin 登录 → SLIDE fresh doc → 点 📐 母版 → modal 打开
+- 列表渲染 ≥ 2 项（master + layout）
+- 选第一项 → 右栏显示路径是 slideMasterN.xml
+- 选第二项 → 路径是 slideLayoutN.xml
+- 选回 master → 输入「E2E Test Master」 → 点重命名 → saveLabel「已保存」
+- 关 modal → 下载 .pptx → 验证 `ppt/slideMasters/slideMaster1.xml` 含 `name="E2E Test Master"`
+
+### 63.3 验证
+
+```
+$ tsx --test src/editor/adapters/__tests__/pptxMasterView.test.ts
+ℹ tests 6
+ℹ pass 6
+ℹ fail 0
+
+$ tsx --test src/editor/adapters/__tests__/*.test.ts src/editor/formula/__tests__/*.test.ts src/components/collab/__tests__/*.test.ts src/utils/__tests__/*.test.ts
+ℹ tests 559
+ℹ pass 559
+ℹ fail 0  (+6 vs 553 baseline)
+
+$ go build ./internal/...
+clean
+
+$ node wk-slide-master-view.mjs
+master modal opened
+list items: 3
+master #0 path: ppt/slideMasters/slideMaster1.xml
+layout #1 path: ppt/slideLayouts/slideLayout1.xml
+saveLabel 已保存: true
+slideMaster1.xml length: 947
+ALL OK — slide master view: list + select + rename + persist
+
+$ node wk-slide-animations.mjs   # 回归 v0.7.112 不退化
+ALL OK — slide animations: per-row edit + reorder + <p:timing> persisted
+```
+
+### 63.4 已知遗留
+
+- **母版画布渲染仅 info / XML preview，没有 Konva 编辑画布**：genoffice MasterView 用同一 SlideCanvas 渲染 master，跟编辑 slide 用同一画布。本轮仅交付了 info + 重命名（最小可用）—— 完整画布编辑器（genoffice 的 `masterEditTransform / masterEditText / masterEditFill / masterDeleteElement` 一整套 IPC + Konva 路径）属于 v0.7.113.x polish / v0.7.114 范围。
+- **cSld 重命名只改 `<p:cSld name>` 自身**：PowerPoint 还会在 `[Content_Types].xml` 和 presentation.xml 的 `<p:sldId>` 之外无对应 name 字段，所以 cSld rename 是「局部」patch，不影响 slide binding。需要全局重命名（rename + 同步所有引用 layout 的 slide）属于 v0.7.113.x polish。
+- **master / layout 切换不持久化「current selected」**：modal 关闭后再次打开默认选中 master[0]。跨打开持久化用户偏好属于 v0.7.113.x polish。

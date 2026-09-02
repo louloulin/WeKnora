@@ -105,6 +105,7 @@
       <button @click="matchSize('h')" type="button" :disabled="selectedIds.length < 2" title="匹配高度（以首个选中为基准）" data-testid="slide-match-height">⤡ 匹配高</button>
       <button @click="groupSelected" type="button" :disabled="!canGroupSelected" title="组合选中的形状（多选时启用）" data-testid="slide-group">⊞ 组合</button>
       <button @click="ungroupSelected" type="button" :disabled="!canUngroupSelected" title="解散当前组（当所有选中属于同一组时启用）" data-testid="slide-ungroup">⊟ 解散组</button>
+      <button @click="openMasterModal" type="button" title="查看母版与版式 (master view)" data-testid="slide-master-btn">📐 母版</button>
       <span class="collab-slide-konva__divider" />
       <button @click="onUndo" type="button" :disabled="!canUndo" title="撤销 (Ctrl+Z)">↶ 撤销</button>
       <button @click="onRedo" type="button" :disabled="!canRedo" title="重做 (Ctrl+Shift+Z)">↷ 重做</button>
@@ -794,6 +795,67 @@
         选中一个形状，然后点击「+ 添加动画」为其添加入场/强调/退出效果。
       </p>
     </section>
+    <!-- v0.7.113 — PPT 母版视图 modal (genoffice vendor) -->
+    <div v-if="masterModalOpen" class="collab-slide-konva__modal-bg" @click.self="closeMasterModal" data-testid="slide-master-modal">
+      <div class="collab-slide-konva__modal" @click.stop>
+        <header class="collab-slide-konva__modal-header">
+          <h3>📐 母版视图</h3>
+          <span class="collab-slide-konva__modal-hint">列出当前文档的所有母版与版式，点击查看 <code>&lt;p:cSld&gt;</code> 信息，并可对 <code>&lt;p:cSld name&gt;</code> 重命名后保存。</span>
+        </header>
+        <div class="collab-slide-konva__modal-body">
+          <ol class="collab-slide-konva__master-list" data-testid="slide-master-list">
+            <li
+              v-for="(p, idx) in masterParts"
+              :key="p.partPath"
+              :class="['collab-slide-konva__master-item', p.kind === 'master' ? 'is-master' : 'is-layout', idx === selectedMasterIdx ? 'is-active' : '']"
+              :data-testid="`slide-master-item-${idx}`"
+              @click="selectMasterPart(idx)"
+            >
+              <span class="collab-slide-konva__master-kind">{{ p.kind === 'master' ? '母版' : '版式' }}</span>
+              <span class="collab-slide-konva__master-name">{{ p.name || `Part ${idx}` }}</span>
+              <small class="collab-slide-konva__master-path">{{ p.partPath }}</small>
+            </li>
+          </ol>
+          <div class="collab-slide-konva__master-detail">
+            <template v-if="selectedMaster">
+              <h4>{{ selectedMaster.name || 'Part ' + selectedMasterIdx }}</h4>
+              <p class="collab-slide-konva__master-detail-row"><b>路径</b> <code>{{ selectedMaster.partPath }}</code></p>
+              <p class="collab-slide-konva__master-detail-row"><b>种类</b> {{ selectedMaster.kind === 'master' ? '母版 (slideMaster)' : '版式 (slideLayout)' }}</p>
+              <p class="collab-slide-konva__master-detail-row" data-testid="slide-master-element-count">
+                <b>元素数</b>
+                <span v-if="masterElementSummary">{{ masterElementSummary }}</span>
+                <span v-else>（重新打开后可见）</span>
+              </p>
+              <div class="collab-slide-konva__master-rename">
+                <label>
+                  <span>cSld 名称</span>
+                  <input
+                    v-model="masterNameDraft"
+                    :placeholder="(selectedMaster.name || '').slice(0, 40)"
+                    data-testid="slide-master-name-input"
+                  />
+                </label>
+                <button
+                  type="button"
+                  :disabled="!masterNameDirty"
+                  data-testid="slide-master-rename-btn"
+                  @click="applyMasterRename"
+                >重命名</button>
+              </div>
+              <details class="collab-slide-konva__master-xml">
+                <summary>预览 OOXML</summary>
+                <pre v-if="masterPreviewXml" data-testid="slide-master-xml" style="max-height:240px;overflow:auto;">{{ masterPreviewXml }}</pre>
+              </details>
+              <p v-if="masterFeedback" class="collab-slide-konva__modal-error" data-testid="slide-master-feedback">{{ masterFeedback }}</p>
+            </template>
+            <p v-else>加载中…</p>
+          </div>
+        </div>
+        <footer class="collab-slide-konva__modal-actions">
+          <button type="button" @click="closeMasterModal" data-testid="slide-master-close-btn">关闭</button>
+        </footer>
+      </div>
+    </div>
     <!-- v0.7.29 — comments side panel -->
     <CollabCommentsPanel
       :doc-id="props.docId"
@@ -829,6 +891,11 @@ import {
   resetSlideLayout,
   listSlideLayouts,
   ensureBuiltinLayout,
+  listMasterPartsOnDeck,
+  parseMasterToSlideOnDeck,
+  readMasterPartXmlOnDeck,
+  writeMasterPartXmlOnDeck,
+  renameMasterOnDeck,
   applyThemeToDeck,
   recolorDeck,
   type PptxShape,
@@ -840,6 +907,7 @@ import {
 } from '@/editor/adapters/pptxShapeAdapter'
 import type { SlideTransitionKind } from '@/editor/engines/pptx-engine/generate'
 import type { Slide } from '@/editor/engines/pptx-engine/types'
+import type { MasterPartInfo as EngineMasterPartInfo } from '@/editor/engines/pptx-engine/index'
 // v0.7.107 — wire the engine's groupElements / ungroupElement into the save path
 // so a local grouping operation writes a real <p:grpSp> to ppt/slides/slideN.xml.
 import { groupElements, ungroupElement } from '@/editor/engines/pptx-engine/index'
@@ -1436,6 +1504,95 @@ const moveAnimation = (idx: number, dir: -1 | 1) => {
     scheduleSave()
   }
 }
+
+// v0.7.113 — PPT 母版视图 (genoffice vendor): list master + layouts, preview XML,
+// rename via <p:cSld name>. Read-only edit for now; richer Konva editing is
+// tracked under v0.7.113.x.
+const masterModalOpen = ref(false)
+const masterParts = ref<EngineMasterPartInfo[]>([])
+const selectedMasterIdx = ref(-1)
+const masterNameDraft = ref('')
+const masterPreviewXml = ref('')
+const masterFeedback = ref<string | null>(null)
+const masterElementSummary = ref('')
+
+const selectedMaster = computed<EngineMasterPartInfo | null>(() => {
+  return selectedMasterIdx.value >= 0 && selectedMasterIdx.value < masterParts.value.length
+    ? masterParts.value[selectedMasterIdx.value] ?? null
+    : null
+})
+const masterNameDirty = computed(() => {
+  const cur = selectedMaster.value?.name ?? ''
+  return (masterNameDraft.value ?? '').trim() !== cur.trim()
+})
+
+const summarizeElementKinds = (slide: Slide | null): string => {
+  if (!slide) return ''
+  const kinds: Record<string, number> = {}
+  for (const el of slide.elements ?? []) {
+    const k = (el as { type?: string }).type ?? 'unknown'
+    kinds[k] = (kinds[k] ?? 0) + 1
+  }
+  const total = slide.elements?.length ?? 0
+  return total + ' (' + Object.entries(kinds).map(([k, v]) => k + ':' + v).join(', ') + ')'
+}
+
+const openMasterModal = () => {
+  if (!deck.value) return
+  masterParts.value = listMasterPartsOnDeck(deck.value)
+  selectedMasterIdx.value = masterParts.value.length > 0 ? 0 : -1
+  masterFeedback.value = null
+  refreshSelectedMaster()
+  masterModalOpen.value = true
+}
+
+const closeMasterModal = () => {
+  masterModalOpen.value = false
+  selectedMasterIdx.value = -1
+  masterParts.value = []
+  masterPreviewXml.value = ''
+  masterElementSummary.value = ''
+  masterNameDraft.value = ''
+  masterFeedback.value = null
+}
+
+const refreshSelectedMaster = () => {
+  const p = selectedMaster.value
+  if (!p || !deck.value) {
+    masterPreviewXml.value = ''
+    masterElementSummary.value = ''
+    return
+  }
+  const xml = readMasterPartXmlOnDeck(deck.value, p.partPath)
+  masterPreviewXml.value = xml ? (xml.length > 1200 ? xml.slice(0, 1200) + '\n…' : xml) : ''
+  const slide = parseMasterToSlideOnDeck(deck.value, p.partPath)
+  masterElementSummary.value = summarizeElementKinds(slide)
+  masterNameDraft.value = p.name ?? ''
+}
+
+const selectMasterPart = (idx: number) => {
+  selectedMasterIdx.value = idx
+  masterFeedback.value = null
+  refreshSelectedMaster()
+}
+
+const applyMasterRename = () => {
+  if (!deck.value || !selectedMaster.value) return
+  const target = selectedMaster.value
+  const newName = masterNameDraft.value.trim()
+  const ok = renameMasterOnDeck(deck.value, target.partPath, newName)
+  if (!ok) {
+    masterFeedback.value = '重命名失败 (XML 未变化)'
+    return
+  }
+  // Refresh master list (engine will see new cSld name next call)
+  masterParts.value = listMasterPartsOnDeck(deck.value)
+  selectedMasterIdx.value = masterParts.value.findIndex((p) => p.partPath === target.partPath)
+  refreshSelectedMaster()
+  scheduleSave()
+  MessagePlugin.success('母版名称已暂存（保存 .pptx 时落盘）')
+}
+
 watch(selectedShape, (s) => {
   if (!s) return
   inspectorText.value = s.text ?? ''
