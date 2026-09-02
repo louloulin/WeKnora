@@ -586,7 +586,7 @@
         <div class="collab-sheet-editor__modal-actions">
           <button type="button" @click="closePivotModal">取消</button>
           <button type="button" @click="onPivotPreview" data-testid="sheet-pivot-preview-btn">预览</button>
-          <button type="button" disabled title="v0.7.110.1 应用 — 当前仅展示预览数据，不写入 .xlsx" data-testid="sheet-pivot-apply-btn">应用（v0.7.110.1）</button>
+          <button type="button" @click="onPivotApply" :disabled="pivotApplying" data-testid="sheet-pivot-apply-btn">{{ pivotApplying ? '应用中…' : '应用' }}</button>
         </div>
       </div>
     </div>
@@ -628,6 +628,8 @@ import { applyPageSetupState, type SheetPageSetupState } from '@/editor/adapters
 import { applyHyperlinkEdits, type HyperlinkEdit } from '@/editor/adapters/xlsxHyperlinks'
 import { applySheetNotes, type SheetNote } from '@/editor/adapters/xlsxNotes'
 import { applyTableAdditions, type TableAddition } from '@/editor/adapters/xlsxTableAdd'
+import { applyPivotAdditions, type PivotAddition } from '@/editor/adapters/xlsxPivotAdd'
+import { extractPivotSeed, buildPivotAddition } from '@/editor/adapters/xlsxPivotFieldExtract'
 
 const props = defineProps<{
   docId: string
@@ -1190,6 +1192,7 @@ const pivotValueCol = ref('B')
 const pivotAgg = ref<'sum' | 'count' | 'average' | 'max' | 'min'>('sum')
 const pivotPreview = ref<string | null>(null)
 const pivotError = ref<string | null>(null)
+const pivotApplying = ref(false)
 
 const colLetterToIdx = (s: string): number => {
   let n = 0
@@ -1210,48 +1213,110 @@ const closePivotModal = () => {
   pivotModalOpen.value = false
 }
 
+// v0.7.110.1 — extract a pivot seed from current sheet in the modal. Shared
+// between 「预览」 (preview text) and 「应用」 (write to xlsx). Mutates
+// pivotError.value and returns null when validation fails.
+interface PivotExtractOutput {
+  extract: ReturnType<typeof extractPivotSeed>
+  rowDimIdx: number
+  valueIdxIdx: number
+  endRow: number
+  endCol: number
+}
+const runPivotExtract = (): PivotExtractOutput | null => {
+  pivotError.value = null
+  const m = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i.exec(pivotSourceRange.value.trim())
+  if (!m) {
+    pivotError.value = '范围格式应为 A1:D20'
+    return null
+  }
+  const startCol = colLetterToIdx(m[1]!)
+  const endCol = colLetterToIdx(m[3]!)
+  const startRow = parseInt(m[2]!, 10)
+  const endRow = parseInt(m[4]!, 10)
+  if (startCol < 0 || endCol < startCol || endRow < startRow) {
+    pivotError.value = '范围无效'
+    return null
+  }
+  const rowDimIdx = colLetterToIdx(pivotRowDimCol.value)
+  const valueIdxIdx = colLetterToIdx(pivotValueCol.value)
+  if (rowDimIdx < 0 || valueIdxIdx < 0) {
+    pivotError.value = '列字母无效'
+    return null
+  }
+  const sourceRows = sheets.value[activeSheet.value]?.rows ?? []
+  if (startRow - 1 >= sourceRows.length) {
+    pivotError.value = '起始行超出当前工作表范围'
+    return null
+  }
+  const rows: string[][] = []
+  for (let r = startRow; r <= endRow; r++) {
+    const sourceRow = sourceRows[r - 1] ?? []
+    const arr: string[] = []
+    for (let c = startCol; c <= endCol; c++) {
+      arr.push(sourceRow[c] ?? '')
+    }
+    rows.push(arr)
+  }
+  const extract = extractPivotSeed({ rows, rowDimIdx, valueIdxIdx, agg: pivotAgg.value })
+  return { extract, rowDimIdx, valueIdxIdx, endRow, endCol }
+}
+
 const onPivotPreview = async () => {
   pivotError.value = null
   pivotPreview.value = null
+  const out = runPivotExtract()
+  if (!out) return
+  const lines = out.extract.rowItems.map((k) => `${k}: ${out.extract.valuesByRow[k]}`)
+  pivotPreview.value = lines.join('\n')
+}
+
+// v0.7.110.1 — XLSX 数据透视「应用」按钮：把当前活动 sheet 的预览结果
+// 写回 .xlsx file 上传。上传完成后 modal 关闭，提示成功，刷新页面拿新 bytes。
+const onPivotApply = async () => {
+  if (pivotApplying.value) return
+  pivotApplying.value = true
   try {
-    const m = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/i.exec(pivotSourceRange.value.trim())
-    if (!m) {
-      pivotError.value = '范围格式应为 A1:D20'
+    const out = runPivotExtract()
+    if (!out) return
+    const activeSh = sheets.value[activeSheet.value]
+    if (!activeSh) {
+      pivotError.value = '当前无活动工作表'
       return
     }
-    const startCol = colLetterToIdx(m[1]!)
-    const endCol = colLetterToIdx(m[3]!)
-    const startRow = parseInt(m[2]!, 10)
-    const endRow = parseInt(m[4]!, 10)
-    if (startCol < 0 || endCol < startCol || endRow < startRow) {
-      pivotError.value = '范围无效'
-      return
-    }
-    const rowDimIdx = colLetterToIdx(pivotRowDimCol.value)
-    const valueIdxIdx = colLetterToIdx(pivotValueCol.value)
-    if (rowDimIdx < 0 || valueIdxIdx < 0) {
-      pivotError.value = '列字母无效'
-      return
-    }
-    const sourceRows = sheets.value[activeSheet.value]?.rows ?? []
-    if (startRow - 1 >= sourceRows.length) {
-      pivotError.value = '起始行超出当前工作表范围'
-      return
-    }
-    const rows: string[][] = []
-    for (let r = startRow; r <= endRow; r++) {
-      const sourceRow = sourceRows[r - 1] ?? []
-      const arr: string[] = []
-      for (let c = startCol; c <= endCol; c++) {
-        arr.push(sourceRow[c] ?? '')
-      }
-      rows.push(arr)
-    }
-    const extract = extractPivotSeed({ rows, rowDimIdx, valueIdxIdx, agg: pivotAgg.value })
-    const lines = extract.rowItems.map((k) => `${k}: ${extract.valuesByRow[k]}`)
-    pivotPreview.value = lines.join('\n')
+    wb.sheets = sheets.value.map((sh) => ({
+      name: sh.name,
+      rows: sh.rows.map((r) => r.map((v) => buildCell(v))),
+    }))
+    let bytes = await saveXlsxBytes(wb)
+    const io = await inspectXlsx(bytes)
+    const worksheetPath = io.sheetPaths.get(activeSh.name) ?? 'xl/worksheets/sheet1.xml'
+    // drop the pivot table just past the source area: blank row + col gap
+    const targetRi = out.endRow + 2
+    const targetCi = out.endCol + 2
+    const addition = buildPivotAddition({
+      extract: out.extract,
+      sourceSheetName: activeSh.name,
+      worksheetPath,
+      targetRi,
+      targetCi,
+      agg: pivotAgg.value,
+      rowDimIdx: out.rowDimIdx,
+      valueIdxIdx: out.valueIdxIdx,
+    }) as PivotAddition
+    bytes = await transformPackage(bytes, async (pkg) => {
+      const workbookXml = await pkg.readText('xl/workbook.xml')
+      const patchedWb = await applyPivotAdditions(pkg, [addition], workbookXml, new Set<string>())
+      pkg.write('xl/workbook.xml', patchedWb)
+    })
+    await uploadCollabDocBytes(props.docId, bytes, `${props.title || 'collab-doc'}.xlsx`)
+    saveLabel.value = '已保存'
+    MessagePlugin.success('已写入 Pivot1 表到工作表右侧')
+    closePivotModal()
   } catch (e: any) {
     pivotError.value = e?.message || String(e)
+  } finally {
+    pivotApplying.value = false
   }
 }
 

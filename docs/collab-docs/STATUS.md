@@ -4073,3 +4073,70 @@ $ ./node_modules/.bin/vue-tsc --noEmit
 - **MindMap 端其他 helper 还未提取**：`MindMapEditor.vue` 内含 layout 计算 + 自动布局 + 节点渲染等多个 inline 函数。完整提取属于 v0.7.112+。
 - **WIKI 端打磨未启动**：WikiBrowser / WikiTiptapEditor / WikiPropertiesPanel 等尚无独立 helper 测试模块。属于 v0.7.112+。
 - **timezone 行为依赖 Node 默认 locale**：在 zh-CN locale 缺失的环境中 toLocaleString 可能 fallback 到 'en-US'，导致测试不稳定。属于 v0.7.111.x polish（可加 vitest + 设置 TZ=Asia/Shanghai 环境变量）。
+
+### 61.1 目标
+
+v0.7.110 留的「应用」按钮处于 disabled，本轮闭环：把 onPivotPreview 的抽取结果通过 `transformPackage + applyPivotAdditions` 写回 .xlsx → 上传到后端。E2E 用真实浏览器验证。
+
+### 61.2 改动
+
+`frontend/src/components/collab/CollabSheetEditor.vue`：
+
+- 抽 `runPivotExtract()` helper 共享 range/column validation + row slice + `extractPivotSeed` 调用，返回 `{ extract, rowDimIdx, valueIdxIdx, endRow, endCol }`，失败时直接写 `pivotError.value` 并返回 null。
+- `onPivotPreview` 改用 helper（行数从 43 行降至 7 行）。
+- 新增 `onPivotApply()`：拿当前 wb → `saveXlsxBytes` → `inspectXlsx` 解析当前 sheet 的 worksheetPath → `buildPivotAddition` 拼装 pivot addition → `transformPackage + applyPivotAdditions` 写回 bytes → `uploadCollabDocBytes` 上传。落地点 `(endRow+2, endCol+2)`，避开源数据区。
+- Modal 「应用」按钮去掉 disabled，加 `:disabled="pivotApplying"`，click → `onPivotApply`，文案随状态切换「应用 / 应用中…」。
+
+`frontend/src/editor/adapters/__tests__/xlsxPivotApply.test.ts`（新文件，2 个 case）：
+
+- 复刻 onPivotApply 路径：`newXlsxWorkbook` + `saveXlsxBytes` + `extractPivotSeed` + `buildPivotAddition` + `transformPackage` + `applyPivotAdditions`（注意 `pkg.write('xl/workbook.xml', patched)` 写回） → 验证 `xl/pivotTables/pivotTable*.xml`、`xl/pivotCache/pivotCacheDefinition*.xml`、`xl/pivotCache/pivotCacheRecords*.xml` 存在 + workbook.xml 含 `<pivotCaches>` + pivotTable 含 `<pivotTableDefinition>`。
+- 重复名抛 `PivotAddError`。
+
+`frontend/wk-sheet-pivot-apply.mts`（新 E2E，165 行）：
+
+- 用 tsx 跑（直接 import `xlsxAdapter` 构造干净 xlsx），通过 API `/collaborative-docs/<id>/upload` 上传 5 行测试数据（Category / Region / Sales），避免 DOM/Yjs 写入竞态。
+- admin 登录 → 打开 SHEET → 验证渲染 `data-cell="0-0"` = "Category" → 点「透视」按钮 → 填源范围 A1:C5、行维度 A、值列 C、sum → 点「预览」验证聚合 `A: 30, B: 70` → 点「应用」 → 等「已写入 Pivot1」toast → 下载 .xlsx，unzip 验证 pivotTable / cache / records parts 存在 + workbook.xml 声明 `<pivotCaches>` + pivotTable.xml 含 `<pivotTableDefinition>`。
+- 用 `XlsxAdapterCell.{v}` 字段（不是 `{raw, t:'inlineStr'}`）构造 — 后者会被 `aoa_to_sheet` 漏掉，导至上传后文件为空。
+
+### 61.3 验证
+
+```
+$ tsx --test src/editor/adapters/__tests__/xlsxPivotApply.test.ts
+ℹ tests 2
+ℹ pass 2
+ℹ fail 0
+
+$ tsx --test src/editor/adapters/__tests__/*.test.ts src/editor/formula/__tests__/*.test.ts src/components/collab/__tests__/*.test.ts src/utils/__tests__/*.test.ts
+ℹ tests 549
+ℹ pass 549
+ℹ fail 0  (+2 vs 547 baseline)
+
+$ ./node_modules/.bin/vue-tsc --noEmit
+# CollabSheetEditor.vue 与新文件均 0 错误（pre-existing 错误与本轮无关）
+
+$ go build ./internal/...
+clean
+
+$ node frontend/wk-sheet-pivot-apply.mts
+1) uploading fresh xlsx via API
+upload fresh sheet ok: 201
+2) login + open sheet doc
+3) cells rendered with expected data
+4) opening pivot modal
+5) clicking 预览
+   preview:
+A: 30
+B: 70
+6) clicking 应用
+   toast seen: true
+7) downloading + verifying xlsx
+   parts: 23 pivotTables: 1 caches: 1 records: 1
+ALL OK — sheet pivot apply + persisted pivot parts
+```
+
+### 61.4 已知遗留
+
+- **MVP 单 row + 单 value**：同 v0.7.110 §59.4，多级 row/col dimension 属于 v0.7.113+。
+- **Pivot 落在源区右侧 1 行 1 列 gap**：未提供自定义落地点。属于 v0.7.110.x polish。
+- **multi-letter col (AA/AB) 未处理**：`colLetterToIdx` 只支持 A-Z，A1:C5 之外的多字母范围会失败。属于 v0.7.110.x polish。
+- **apply 失败的级联 rollback**：当前 applyPivotAdditions 中途写入失败不会撤销之前的 cache parts。Excel 打开残文件会 reject。要么整体打包暂存，要么用临时 doc 试写。属于 v0.7.112+ 范围。
