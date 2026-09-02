@@ -271,3 +271,169 @@ select:-webkit-autofill {
     border-color: var(--td-brand-color);
     box-shadow: none;
 }
+
+/* 深色主题基础层：业务组件和 TDesign 弹层统一复用 token，避免局部回退到白底黑字。 */
+:root[theme-mode="dark"] {
+    color: var(--td-text-color-primary);
+}
+
+:root[theme-mode="dark"] body,
+:root[theme-mode="dark"] #app,
+:root[theme-mode="dark"] .t-config-provider,
+:root[theme-mode="dark"] .t-layout,
+:root[theme-mode="dark"] .t-layout__header,
+:root[theme-mode="dark"] .t-layout__sider,
+:root[theme-mode="dark"] .t-layout__content,
+:root[theme-mode="dark"] .t-card,
+:root[theme-mode="dark"] .t-list,
+:root[theme-mode="dark"] .t-list-item,
+:root[theme-mode="dark"] .t-table,
+:root[theme-mode="dark"] .t-table__content,
+:root[theme-mode="dark"] .t-table__header,
+:root[theme-mode="dark"] .t-table__body,
+:root[theme-mode="dark"] .t-tree,
+:root[theme-mode="dark"] .t-tree__item,
+:root[theme-mode="dark"] .t-tabs,
+:root[theme-mode="dark"] .t-tabs__nav,
+:root[theme-mode="dark"] .t-tabs__content,
+:root[theme-mode="dark"] .t-collapse,
+:root[theme-mode="dark"] .t-collapse-panel,
+:root[theme-mode="dark"] .t-form,
+:root[theme-mode="dark"] .t-form-item,
+:root[theme-mode="dark"] .t-upload,
+:root[theme-mode="dark"] .t-input,
+:root[theme-mode="dark"] .t-input__wrap,
+:root[theme-mode="dark"] .t-textarea,
+:root[theme-mode="dark"] .t-textarea__inner,
+:root[theme-mode="dark"] .t-select,
+:root[theme-mode="dark"] .t-select-input,
+:root[theme-mode="dark"] .t-select-input__wrap {
+    color: var(--td-text-color-primary);
+    background-color: var(--td-bg-color-container);
+    border-color: var(--td-component-stroke);
+}
+
+:root[theme-mode="dark"] .t-table th,
+:root[theme-mode="dark"] .t-table td,
+:root[theme-mode="dark"] .t-list-item,
+:root[theme-mode="dark"] .t-collapse-panel__header,
+:root[theme-mode="dark"] .t-tabs__nav-item,
+:root[theme-mode="dark"] .t-tree__item {
+    border-color: var(--td-component-stroke);
+    color: var(--td-text-color-primary);
+}
+
+:root[theme-mode="dark"] .t-table th,
+:root[theme-mode="dark"] .t-table__header,
+:root[theme-mode="dark"] .t-list-item:hover,
+:root[theme-mode="dark"] .t-tree__item:hover,
+:root[theme-mode="dark"] .t-tabs__nav-item:hover,
+:root[theme-mode="dark"] .t-select-option:hover,
+:root[theme-mode="dark"] .t-dropdown__item:hover,
+:root[theme-mode="dark"] .t-menu__item:hover {
+    background-color: var(--td-bg-color-container-hover);
+}
+
+:root[theme-mode="dark"] .t-table__row--hover,
+:root[theme-mode="dark"] .t-list-item--active,
+:root[theme-mode="dark"] .t-tree__item--active,
+:root[theme-mode="dark"] .t-select-option.t-is-selected,
+:root[theme-mode="dark"] .t-dropdown__item--active,
+:root[theme-mode="dark"] .t-menu__item.t-is-active {
+    background-color: var(--td-bg-color-container-active);
+}
+
+:root[theme-mode="dark"] .t-popup__content,
+:root[theme-mode="dark"] .t-dropdown__menu,
+:root[theme-mode="dark"] .t-select__dropdown,
+:root[theme-mode="dark"] .t-cascader__dropdown,
+:root[theme-mode="dark"] .t-date-picker__panel,
+:root[theme-mode="dark"] .t-time-picker__panel,
+:root[theme-mode="dark"] .t-color-picker__panel,
+:root[theme-mode="dark"] .t-calendar,
+:root[theme-mode="dark"] .t-pagination,
+:root[theme-mode="dark"] .t-notification,
+:root[theme-mode="dark"] .t-message,
+:root[theme-mode="dark"] .t-dialog,
+:root[theme-mode="dark"] .t-drawer,
+:root[theme-mode="dark"] .t-drawer__content,
+:root[theme-mode="dark"] .t-drawer__header,
+:root[theme-mode="dark"] .t-drawer__body,
+:root[theme-mode="dark"] .t-drawer__footer {
+    color: var(--td-text-color-primary);
+    background-color: var(--td-bg-color-container);
+    border-color: var(--td-component-stroke);
+}
+
+:root[theme-mode="dark"] .t-popup__content,
+:root[theme-mode="dark"] .t-dropdown__menu,
+:root[theme-mode="dark"] .t-select__dropdown,
+:root[theme-mode="dark"] .t-calendar,
+:root[theme-mode="dark"] .t-notification,
+:root[theme-mode="dark"] .t-message,
+:root[theme-mode="dark"] .t-dialog,
+:root[theme-mode="dark"] .t-drawer {
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.38);
+}
+
+:root[theme-mode="dark"] .t-dialog__header,
+:root[theme-mode="dark"] .t-dialog__body,
+:root[theme-mode="dark"] .t-dialog__footer,
+:root[theme-mode="dark"] .t-drawer__header,
+:root[theme-mode="dark"] .t-drawer__footer {
+    border-color: var(--td-component-stroke);
+}
+
+:root[theme-mode="dark"] .t-input__inner,
+:root[theme-mode="dark"] .t-textarea__inner,
+:root[theme-mode="dark"] .t-select-input__inner,
+:root[theme-mode="dark"] .t-input-adornment,
+:root[theme-mode="dark"] .t-select-input__suffix {
+    color: var(--td-text-color-primary);
+    background-color: transparent;
+}
+
+:root[theme-mode="dark"] .t-input--focused,
+:root[theme-mode="dark"] .t-input:hover,
+:root[theme-mode="dark"] .t-textarea__inner:hover,
+:root[theme-mode="dark"] .t-select-input:hover {
+    border-color: var(--td-brand-color);
+}
+
+:root[theme-mode="dark"] .t-input__inner::placeholder,
+:root[theme-mode="dark"] .t-textarea__inner::placeholder,
+:root[theme-mode="dark"] .t-select-input__placeholder {
+    color: var(--td-text-color-placeholder);
+}
+
+:root[theme-mode="dark"] .t-menu,
+:root[theme-mode="dark"] .t-menu__item,
+:root[theme-mode="dark"] .t-menu__item-text,
+:root[theme-mode="dark"] .t-dropdown__item,
+:root[theme-mode="dark"] .t-select-option,
+:root[theme-mode="dark"] .t-cascader__item {
+    color: var(--td-text-color-primary);
+}
+
+:root[theme-mode="dark"] .t-is-disabled,
+:root[theme-mode="dark"] [disabled] {
+    color: var(--td-text-color-disabled) !important;
+}
+
+:root[theme-mode="dark"] .t-tag,
+:root[theme-mode="dark"] .t-badge--count {
+    border-color: var(--td-component-stroke);
+}
+
+:root[theme-mode="dark"] .t-overlay {
+    background: var(--app-overlay);
+}
+
+/* 常见业务容器的最低层级保护；状态色由组件自身规则覆盖。 */
+:root[theme-mode="dark"] [class*="card"],
+:root[theme-mode="dark"] [class*="panel"],
+:root[theme-mode="dark"] [class*="popover"],
+:root[theme-mode="dark"] [class*="drawer"],
+:root[theme-mode="dark"] [class*="modal"] {
+    border-color: var(--app-border);
+}
