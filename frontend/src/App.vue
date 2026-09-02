@@ -281,8 +281,7 @@ onUnmounted(() => {
 </template>
 <style>
 html {
-  /* 提示 UA 使用对应配色绘制滚动条等，减少主题切换时的额外重绘 */
-  color-scheme: light dark;
+  color-scheme: var(--app-color-scheme, light);
 }
 
 body,

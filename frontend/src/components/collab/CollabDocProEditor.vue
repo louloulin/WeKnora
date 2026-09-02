@@ -2230,8 +2230,14 @@ onBeforeUnmount(teardown)
 }
 .collab-doc-pro__formatbar {
   flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--app-border);
+  background: var(--app-surface-raised);
 }
-.collab-doc-pro__surface-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.collab-doc-pro__surface-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--app-page-bg); }
 .collab-doc-pro__surface { flex: 1; overflow: auto; padding: 24px 32px; max-width: 880px; margin: 0 auto; width: 100%; }
 /* v0.7.77 — keep the comments panel pinned to its content height so
    the editor surface can claim the remaining viewport without being
@@ -2239,6 +2245,9 @@ onBeforeUnmount(teardown)
 .collab-doc-pro > .collab-comments { flex: 0 0 auto; }
 .collab-doc-pro__loading, .collab-doc-pro__error { padding: 24px; }
 .collab-doc-pro__error { color: var(--td-error-color-7); }
+.collab-doc-pro__fmt { padding: 5px 9px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--app-text-muted); cursor: pointer; }
+.collab-doc-pro__fmt:hover { background: var(--app-surface-bg); color: var(--app-text); }
+.collab-doc-pro__fmt.active { background: color-mix(in srgb, var(--td-brand-color) 16%, var(--app-surface-bg)); color: var(--td-brand-color); border-color: color-mix(in srgb, var(--td-brand-color) 40%, var(--app-border)); }
 
 .collab-doc-pro__outline {
   border-top: 1px solid var(--td-component-stroke);
@@ -2335,6 +2344,13 @@ onBeforeUnmount(teardown)
 .collab-doc-pro__sections-row { display: flex; gap: 12px; font-size: 13px; }
 .collab-doc-pro__sections-label { flex: 0 0 80px; color: var(--td-text-color-secondary, #888); }
 .collab-doc-pro__sections-value { flex: 1 1 auto; color: var(--td-text-color-primary, #222); }
+.collab-doc-pro__math input,
+.collab-doc-pro__math textarea,
+.collab-doc-pro__find-input,
+.collab-doc-pro__protect input,
+.collab-doc-pro__compare-upload input { background: var(--app-control-bg); color: var(--app-text); }
+.collab-doc-pro__math-actions button,
+.collab-doc-pro__find-actions button { color: var(--app-text); }
 </style>
 .collab-doc-pro__table { border-collapse: collapse; margin: 12px 0; width: 100%; table-layout: fixed; }
 .collab-doc-pro__table th, .collab-doc-pro__surface :deep(table th),
@@ -2364,4 +2380,4 @@ onBeforeUnmount(teardown)
 .collab-doc-pro__surface :deep(ul[data-type="taskList"] li) { display: flex; gap: 6px; align-items: flex-start; }
 .collab-doc-pro__surface :deep(ul[data-type="taskList"] li > label) { flex: 0 0 auto; margin-top: 4px; }
 .collab-doc-pro__surface :deep(ul[data-type="taskList"] li > div) { flex: 1 1 auto; }
-.collab-doc-pro__surface :deep(mark) { background: #fff3a3; padding: 0 2px; border-radius: 2px; }
+.collab-doc-pro__surface :deep(mark) { background: color-mix(in srgb, var(--td-warning-color) 35%, transparent); padding: 0 2px; border-radius: 2px; }

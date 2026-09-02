@@ -117,6 +117,77 @@
     opacity: 0.9;
 }
 
+:root:root[theme-mode="light"] {
+    --app-color-scheme: light;
+    --app-page-bg: #f3f4f6;
+    --app-surface-bg: #ffffff;
+    --app-surface-raised: #ffffff;
+    --app-control-bg: #ffffff;
+    --app-border: #e5e7eb;
+    --app-border-strong: #d1d5db;
+    --app-text: #111827;
+    --app-text-muted: #6b7280;
+    --app-overlay: rgba(15, 23, 42, 0.42);
+}
+
+:root:root[theme-mode="dark"] {
+    --app-color-scheme: dark;
+    --app-page-bg: #111315;
+    --app-surface-bg: #181a1d;
+    --app-surface-raised: #202327;
+    --app-control-bg: #202327;
+    --app-border: #30343a;
+    --app-border-strong: #41464e;
+    --app-text: #f3f4f6;
+    --app-text-muted: #a1a1aa;
+    --app-overlay: rgba(0, 0, 0, 0.68);
+}
+
+html,
+body,
+#app {
+    color-scheme: var(--app-color-scheme, light);
+}
+
+body,
+button,
+input,
+select,
+textarea {
+    font-family: var(--app-font-family);
+}
+
+button,
+input,
+select,
+textarea {
+    color: var(--app-text);
+}
+
+input,
+select,
+textarea {
+    background-color: var(--app-control-bg);
+    border-color: var(--app-border-strong);
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: var(--app-text-muted);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    outline: 2px solid color-mix(in srgb, var(--td-brand-color) 32%, transparent);
+    outline-offset: 0;
+    border-color: var(--td-brand-color);
+}
+
+:root[theme-mode="dark"] .upload-mask {
+    background-color: rgba(17, 19, 21, 0.84) !important;
+}
+
 /* 全局 t-radio-button outline 选中态：填充品牌色（绿底白字） */
 .t-radio-group .t-radio-button {
     border-color: var(--td-component-stroke);

@@ -2586,16 +2586,16 @@ onBeforeUnmount(teardown)
   outline: 2px solid var(--td-brand-color-7);
   outline-offset: -2px;
 }
-.collab-sheet-editor__feature { background: #f0f4f8; border: 1px solid #d0d7de; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
-.collab-sheet-editor__feature:hover { background: #e6edf3; }
+.collab-sheet-editor__feature { background: var(--app-surface-raised); color: var(--app-text); border: 1px solid var(--app-border-strong); padding: 2px 8px; border-radius: 4px; cursor: pointer; }
+.collab-sheet-editor__feature:hover { background: var(--td-bg-color-container-hover); }
 .collab-sheet-editor__modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.collab-sheet-editor__modal { background: white; padding: 20px; border-radius: 8px; min-width: 360px; max-width: 90vw; box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
+.collab-sheet-editor__modal { background: var(--app-surface-raised); color: var(--app-text); padding: 20px; border: 1px solid var(--app-border); border-radius: 8px; min-width: 360px; max-width: 90vw; box-shadow: 0 12px 36px rgba(0,0,0,0.3); }
 .collab-sheet-editor__modal h3 { margin-top: 0; font-size: 16px; }
 .collab-sheet-editor__modal label { display: block; margin: 8px 0; font-size: 14px; }
-.collab-sheet-editor__modal input, .collab-sheet-editor__modal select { margin-left: 8px; padding: 2px 6px; border: 1px solid #d0d7de; border-radius: 4px; }
+.collab-sheet-editor__modal input, .collab-sheet-editor__modal select { margin-left: 8px; padding: 4px 6px; border: 1px solid var(--app-border-strong); border-radius: 4px; background: var(--app-control-bg); color: var(--app-text); }
 .collab-sheet-editor__modal-actions { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
-.collab-sheet-editor__modal-actions button { padding: 4px 12px; border: 1px solid #d0d7de; border-radius: 4px; background: #f6f8fa; cursor: pointer; }
-.collab-sheet-editor__modal-actions button:hover { background: #eaeef2; }
+.collab-sheet-editor__modal-actions button { padding: 4px 12px; border: 1px solid var(--app-border-strong); border-radius: 4px; background: var(--app-control-bg); color: var(--app-text); cursor: pointer; }
+.collab-sheet-editor__modal-actions button:hover { background: var(--td-bg-color-container-hover); }
 .collab-sheet-editor__modal-actions button:last-child { background: #2da44e; color: white; border-color: #2c974b; }
 .collab-sheet-editor__modal-actions button:last-child:hover { background: #2c974b; }
 

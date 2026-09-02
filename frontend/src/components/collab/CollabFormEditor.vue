@@ -665,6 +665,8 @@ onBeforeUnmount(() => {
   flex-direction: column;
   height: 100%;
   min-height: 600px;
+  background: var(--app-page-bg);
+  color: var(--app-text);
 }
 .collab-form-editor__toolbar {
   display: flex;
@@ -672,6 +674,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--td-component-stroke, #e7e7e7);
+  background: var(--app-surface-raised);
   flex-wrap: wrap;
 }
 .collab-form-editor__title {
@@ -715,7 +718,8 @@ onBeforeUnmount(() => {
   padding: 4px 8px;
   border: 1px solid var(--td-component-stroke, #d9d9d9);
   border-radius: 4px;
-  background: white;
+  background: var(--app-control-bg);
+  color: var(--app-text);
   cursor: pointer;
   font-size: 12px;
 }
@@ -726,7 +730,8 @@ onBeforeUnmount(() => {
   padding: 4px 8px;
   border: 1px solid var(--td-component-stroke, #d9d9d9);
   border-radius: 4px;
-  background: white;
+  background: var(--app-control-bg);
+  color: var(--app-text);
   cursor: pointer;
   font-size: 12px;
 }
@@ -758,9 +763,10 @@ onBeforeUnmount(() => {
   flex: 1;
   padding: 16px;
   overflow: hidden;
+  background: var(--app-page-bg);
 }
 .collab-form-editor__panel {
-  background: white;
+  background: var(--app-surface-bg);
   border: 1px solid var(--td-component-stroke, #e7e7e7);
   border-radius: 8px;
   padding: 16px;
@@ -770,7 +776,7 @@ onBeforeUnmount(() => {
   margin: 0 0 12px 0;
   font-size: 14px;
   font-weight: 600;
-  color: #555;
+  color: var(--app-text);
 }
 .collab-form-editor__list {
   padding: 0;
@@ -779,10 +785,10 @@ onBeforeUnmount(() => {
 }
 .collab-form-editor__item {
   padding: 12px;
-  border: 1px solid #f0f0f0;
+  border: 1px solid var(--app-border);
   border-radius: 6px;
   margin-bottom: 12px;
-  background: #fafafa;
+  background: var(--app-surface-raised);
 }
 .collab-form-editor__item-head {
   display: flex;
@@ -793,7 +799,7 @@ onBeforeUnmount(() => {
 .collab-form-editor__num {
   font-weight: 600;
   font-size: 13px;
-  color: #555;
+  color: var(--app-text-muted);
 }
 .collab-form-editor__type {
   padding: 1px 6px;
@@ -816,9 +822,10 @@ onBeforeUnmount(() => {
 }
 .collab-form-editor__iconbtn {
   padding: 2px 6px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--app-border-strong);
   border-radius: 3px;
-  background: white;
+  background: var(--app-control-bg);
+  color: var(--app-text);
   cursor: pointer;
   font-size: 11px;
 }
@@ -832,7 +839,7 @@ onBeforeUnmount(() => {
 .collab-form-editor__question-title {
   width: 100%;
   padding: 6px 8px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--app-border-strong);
   border-radius: 4px;
   font-size: 14px;
   box-sizing: border-box;
@@ -857,7 +864,7 @@ onBeforeUnmount(() => {
 .collab-form-editor__option-input {
   flex: 1;
   padding: 4px 6px;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--app-border-strong);
   border-radius: 3px;
   font-size: 13px;
 }
@@ -865,7 +872,7 @@ onBeforeUnmount(() => {
   font-size: 12px;
   color: var(--td-brand-color, #1677ff);
   background: none;
-  border: 1px dashed #d9d9d9;
+  border: 1px dashed var(--app-border-strong);
   border-radius: 3px;
   padding: 2px 8px;
   cursor: pointer;
@@ -877,7 +884,7 @@ onBeforeUnmount(() => {
 .collab-form-editor__preview textarea {
   width: 100%;
   padding: 4px 6px;
-  border: 1px dashed #d9d9d9;
+  border: 1px dashed var(--app-border-strong);
   border-radius: 3px;
   font-size: 13px;
   box-sizing: border-box;
@@ -890,19 +897,19 @@ onBeforeUnmount(() => {
 }
 .collab-form-editor__preview-form {
   padding: 12px;
-  background: #fafbfc;
+  background: var(--app-surface-raised);
   border-radius: 4px;
 }
 .collab-form-editor__preview-header {
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--app-border);
 }
 .collab-form-editor__preview-title {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: #333;
+  color: var(--app-text);
 }
 .collab-form-editor__preview-item {
   margin-bottom: 16px;
@@ -911,7 +918,7 @@ onBeforeUnmount(() => {
   display: block;
   margin-bottom: 6px;
   font-weight: 500;
-  color: #333;
+  color: var(--app-text);
   font-size: 14px;
 }
 .collab-form-editor__required-mark {

@@ -176,28 +176,31 @@ onMounted(load)
   padding: 8px;
   border: 1px solid var(--td-component-stroke);
   border-radius: 6px;
-  background: var(--td-bg-color-container);
+  background: var(--app-surface-raised);
 }
-.collab-editor-view { display: flex; height: 100%; }
-.collab-editor-view__sidebar { width: 240px; padding: 16px; border-right: 1px solid var(--td-component-stroke); display: flex; flex-direction: column; gap: 12px; background: var(--td-bg-color-container); }
-.collab-editor-view__back { font-size: 13px; color: var(--td-brand-color-7); text-decoration: none; }
-.collab-editor-view__title { font-size: 16px; font-weight: 600; }
-.collab-editor-view__meta { font-size: 12px; color: var(--td-text-color-secondary); }
-.collab-editor-view__sync-kb { margin-top: auto; padding: 8px 12px; background: var(--td-brand-color-7); color: white; border: none; border-radius: 4px; cursor: pointer; }
-.collab-editor-view__main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-.collab-editor-view__loading, .collab-editor-view__error { padding: 24px; }
+.collab-editor-view { display: flex; height: 100%; min-height: 0; background: var(--app-page-bg); color: var(--app-text); }
+.collab-editor-view__sidebar { width: 248px; flex: 0 0 248px; box-sizing: border-box; padding: 20px 16px; border-right: 1px solid var(--app-border); display: flex; flex-direction: column; gap: 12px; background: var(--app-surface-bg); overflow-y: auto; }
+.collab-editor-view__back { display: inline-flex; align-items: center; width: fit-content; font-size: 13px; color: var(--app-text-muted); text-decoration: none; }
+.collab-editor-view__back:hover { color: var(--td-brand-color); }
+.collab-editor-view__title { margin-top: 10px; font-size: 17px; font-weight: 650; line-height: 1.4; overflow-wrap: anywhere; }
+.collab-editor-view__meta { font-size: 12px; color: var(--app-text-muted); }
+.collab-editor-view__sync-kb { margin-top: auto; padding: 9px 12px; background: var(--td-brand-color-6); color: var(--td-text-color-anti); border: 1px solid var(--td-brand-color-6); border-radius: 6px; cursor: pointer; font-weight: 600; }
+.collab-editor-view__sync-kb:hover { background: var(--td-brand-color-5); }
+.collab-editor-view__sync-kb:disabled { opacity: .55; cursor: not-allowed; }
+.collab-editor-view__main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
+.collab-editor-view__loading, .collab-editor-view__error { padding: 24px; color: var(--app-text-muted); }
 .collab-editor-view__error { color: var(--td-error-color-7); }
 .collab-editor-view__audit-toggle {
   margin-top: 8px;
   padding: 6px 12px;
   background: transparent;
-  color: var(--td-brand-color-7);
-  border: 1px solid var(--td-brand-color-7);
-  border-radius: 4px;
+  color: var(--td-brand-color);
+  border: 1px solid color-mix(in srgb, var(--td-brand-color) 55%, var(--app-border));
+  border-radius: 6px;
   cursor: pointer;
   font-size: 12px;
 }
-.collab-editor-view__audit-toggle:hover { background: var(--td-brand-color-1); }
+.collab-editor-view__audit-toggle:hover { background: color-mix(in srgb, var(--td-brand-color) 12%, transparent); }
 .collab-editor-view__audit-wrap {
   margin-top: 12px;
   padding-top: 12px;
@@ -207,16 +210,19 @@ onMounted(load)
   margin-top: 8px;
   padding: 6px 12px;
   background: transparent;
-  color: var(--td-brand-color-7);
-  border: 1px solid var(--td-brand-color-7);
-  border-radius: 4px;
+  color: var(--td-brand-color);
+  border: 1px solid color-mix(in srgb, var(--td-brand-color) 55%, var(--app-border));
+  border-radius: 6px;
   cursor: pointer;
   font-size: 12px;
 }
-.collab-editor-view__share-toggle:hover { background: var(--td-brand-color-1); }
+.collab-editor-view__share-toggle:hover { background: color-mix(in srgb, var(--td-brand-color) 12%, transparent); }
 .collab-editor-view__share-wrap {
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px dashed var(--td-component-stroke);
+}
+@media (max-width: 860px) {
+  .collab-editor-view__sidebar { width: 196px; flex-basis: 196px; padding: 14px 12px; }
 }
 </style>
