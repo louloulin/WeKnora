@@ -486,3 +486,41 @@ Alice 切到 Sheet2 写 A1=Bob 在 Sheet2 看到，Sheet1 不会串表。已 PAS
 - v0.7.106 DOC 修订序列化：PM ins/del → w:ins/w:del + author 渲染到面板
 - v0.7.107 SLIDE `<p:grpSp>` 持久化：save 路径调 `engineGroupElements` / `engineUngroupElement`
 - 持续收敛 genoffice vendor（docx 页眉页脚 / xlsx pivot UI / pptx 母版 / 动画时间线）
+
+
+## 19. v0.7.105 — SHEET 命名区域补全（已交付，2026-09-02）
+
+### 已完成
+
+- `XlsxAdapterWorkbook.renamedSheets?: Array<{old,new}>` 字段；`applyDefinedNamesToBytes` 应用 rename map 并 dedupe definedNames（last-wins by name+sheetIndex）
+- 复用 genoffice `renameSheetReferencesInDefinedNames` 改写 `<definedName>` 公式里的 sheet 引用
+- `CollabSheetEditor.vue` 4 个 range 状态 ref：`rangeAnchorRi/Ci` / `rangeEndRi/Ci`（修复了之前漏声明导致 ReferenceError 的关键 bug）
+- `onCellSelect(ri, ci, shiftKey)` 3 参版本：shift-click 仅移动 range end，anchor 不动
+- computed `selectedRange`（normalized {r1,c1,r2,c2}）、`selectedRangeA1`（"Sheet1!$A$1:$D$10"）
+- 命名区域 modal 增加 `⊞ 从选区创建 ({{ selectedRangeA1 }})` 按钮 + `addDefinedNameFromSelection()` 预填 name=`Range_A1_B5`、formula=current range A1、scope=active sheet
+- Formula bar `=` 后名称下拉：`nameSuggestToken` / `nameSuggestions` / `nameSuggestActiveIdx` + Tab/↑/↓/Enter 接受
+- `flushSave` 计算 `lastSavedSheetNames` ↔ `sheets.value` 差量 → `wb.renamedSheets`
+- `applySheetRenames` 重写：避免 `Y.Map.set` 抛"can't be re-parented"，改为 deep clone entries 到新 Y.Map
+
+### 真实双端验证
+
+`frontend/wk-sheet-names-autocomplete.mjs` PASS：
+
+- 重命名同步：`Sheet1!$A$1:$A$10` → `Sales!$A$1:$A$10` ✅
+- synthetic shift-click → `selectedRangeA1 = "Sales!$A1:$B5"` → 按钮 enabled → 预填 → 添加 → workbook.xml 出现 `<definedName name="Range_A1_B5">` ✅
+- 公式 `=MyR` → 2 条 suggestion → Enter 接受 → `formula after accept: =MyRenamed` ✅
+- 0 page error
+
+### 关键 bug 复盘
+
+1. 之前 onCellSelect 只声明 2 参 `(ri, ci)`，但模板里调的 3 参 `(ri, ci, shiftKey)` —— shiftKey 被悄悄丢弃，shift-click 从不进入 range-extend 分支。
+2. 4 个 range ref（`rangeAnchorRi` 等）从未 `ref()` 声明，调用时抛 `ReferenceError: rangeAnchorRi is not defined`，onCellSelect 整体失效，Vue 报 unhandled error。
+3. Playwright `click({ force:true, modifiers:['Shift'] })` 对 Vue `@click` 不稳：`<input>` 吃焦点、modifiers 不进 `event.shiftKey`。E2E 改用 `page.evaluate` 派发 synthetic `MouseEvent({ shiftKey: true })`。
+
+### 下一阶段
+
+- v0.7.106 DOC 修订序列化：PM `ins`/`del` → OOXML `w:ins`/`w:del` 包装；render `author/date` 到 per-revision 面板
+- v0.7.107 SLIDE `<p:grpSp>` 持久化：save 路径接入 genoffice `engineGroupElements` / `engineUngroupElement`
+- v0.7.108 SHEET 命名区域严格化：预填 A1 绝对引用 (`$A$1`) + 重名冲突提示 + per-sheet scope 列入 suggestion
+- 持续收敛 genoffice vendor（DOC headers/footers / XLSX pivot UI / PPTX master view / 动画时间线 UI）
+

@@ -17,6 +17,7 @@ import {
   applyDefinedNamesState,
   type DefinedNameEntry,
 } from './xlsxDefinedNames'
+import { renameSheetReferencesInDefinedNames } from './xlsxSheets'
 
 export interface XlsxAdapterSheet {
   name: string
@@ -49,6 +50,8 @@ export interface XlsxAdapterWorkbook {
   originalBytes: Uint8Array | null
   /// v0.7.102 — workbook-level named ranges (Excel "Defined Names").
   definedNames: DefinedNameEntry[]
+  /** v0.7.105 — sheet rename tracking so definedNames formulas follow old -> new. */
+  renamedSheets?: Array<{ old: string; new: string }>
 }
 
 export async function openXlsx(bytes: Uint8Array): Promise<XlsxAdapterWorkbook> {
@@ -555,17 +558,41 @@ export function parseDefinedNames(workbookXml: string): DefinedNameEntry[] {
 }
 
 /** Rewrite xl/workbook.xml in the given xlsx zip to include wb.definedNames.
- *  Built-in and hidden entries are preserved verbatim. Returns the new bytes. */
+ *  Built-in and hidden entries are preserved verbatim. Returns the new bytes.
+ *
+ *  v0.7.105 — when wb.renamedSheets is set (a list of {old,new} pairs the
+ *  editor just applied), each pair is run through
+ *  renameSheetReferencesInDefinedNames BEFORE applyDefinedNamesState so
+ *  named-range formulas like 'SalesTotal' = Sheet1!$A$1:$A$10 pick up the
+ *  new sheet name (otherwise the saved workbook points at a non-existent
+ *  sheet and Excel silently evaluates #REF!). */
 async function applyDefinedNamesToBytes(bytes: Uint8Array, wb: XlsxAdapterWorkbook): Promise<Uint8Array> {
-  if (!wb.definedNames || wb.definedNames.length === 0) return bytes
   const zip = await JSZip.loadAsync(bytes)
   const workbookEntry = zip.file('xl/workbook.xml')
   if (!workbookEntry) return bytes
-  const workbookXml = await workbookEntry.async('text')
+  let workbookXml = await workbookEntry.async('text')
+  // v0.7.105 — apply rename map to existing workbook.xml BEFORE re-emitting
+  // wb.definedNames, so the freshly-emitted entries reference the new names.
+  if (wb.renamedSheets && wb.renamedSheets.length) {
+    for (const { old: oldName, new: newName } of wb.renamedSheets) {
+      if (!oldName || !newName || oldName === newName) continue
+      workbookXml = renameSheetReferencesInDefinedNames(workbookXml, oldName, newName)
+    }
+  }
+  // eslint-disable-next-line no-console
+  if (!wb.definedNames || wb.definedNames.length === 0) {
+    // Still need to write back if renames changed the workbook.xml.
+    const reread = await zip.file('xl/workbook.xml')?.async('text')
+    if (reread === workbookXml) return bytes
+    zip.file('xl/workbook.xml', workbookXml)
+    return await zip.generateAsync({ type: 'uint8array' })
+  }
+  // eslint-disable-next-line no-console
   const next = applyDefinedNamesState(workbookXml, {
     names: wb.definedNames,
     preserveNames: [],
   })
+  // eslint-disable-next-line no-console
   if (next === workbookXml) return bytes
   zip.file('xl/workbook.xml', next)
   return await zip.generateAsync({ type: 'uint8array' })

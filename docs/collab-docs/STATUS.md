@@ -3577,3 +3577,73 @@ ALL OK — slide group / ungroup
 - `<p:grpSp>` 持久化未启用：保存到 .pptx 时 groupId 仅在 `PptxShape` 内存中保持，OOXML 仍写为独立 `<p:sp>`。genoffice `engineGroupElements` / `engineUngroupElement` 已可用但未在本轮接入 save 路径。属于 v0.7.107 范围。
 - "从选区创建组"提示框未做：现在 group 仅由 toolbar 按钮触发，未提供上下文菜单 / 右键入口。
 - 跨 slide 的组不存在（每 slide 重置 groupId namespace）。属设计意图。
+
+
+## 53. v0.7.105 — SHEET 命名区域补全（rename 同步 + 公式下拉 + 从选区创建）（2026-09-02）
+
+### 53.1 目标
+
+SHEET 编辑器在 v0.7.102 已经搭好"命名区域 UI（workbook Defined Names）"——可以手填 Name + Formula（A1）+ Scope 添加命名。本轮把三个真实可用性短板补齐：
+
+1. **重命名同步** — 之前改名某个 sheet 后，已经存在的 `<definedName>` 公式里的 sheet 引用（`Sheet1!$A$1:$A$10`）不会跟着改，导致 Excel 重新打开时显示 `#REF!` 或干脆打不开。本轮让改名后 wb.definedNames 也按 `renamedSheets` 映射改写。
+2. **从选区创建** — Excel / 腾讯文档 / Feishu 都支持"先选 A1:B5，再命名"。我们之前只能手填公式，本轮加 `⊞ 从选区创建` 按钮，公式按当前 range 自动生成 `Sheet1!$A$1:$B$5`。
+3. **公式 `=` 后下拉** — 输入 `=MyR` 时应该浮出 suggestions 浮层，Tab/Enter 接受。本轮把名字 suggest token 串到 formula bar 的 `@input` 上。
+
+### 53.2 改动
+
+`frontend/src/editor/adapters/xlsxAdapter.ts`：
+
+- `XlsxAdapterWorkbook` 新增 `renamedSheets?: Array<{ old: string; new: string }>` 字段。
+- `applyDefinedNamesToBytes` 改为先接收并应用 rename map，再 emit `wb.definedNames`。同时 dedupe（按 `name+sheetIndex` last-wins），消除 Excel "defined name already defined" 报错。
+
+`frontend/src/editor/adapters/xlsxSheets.ts`：
+
+- 复用 genoffice 已有的 `renameSheetReferencesInDefinedNames`，对每个 name 的 formula 做 token-wise 替换。
+
+`frontend/src/components/collab/CollabSheetEditor.vue`：
+
+- 新增 4 个 range 状态 ref：`rangeAnchorRi/Ci` / `rangeEndRi/Ci`，初始 `-1`。**关键 bug 修复**：之前这些 ref 漏声明，导致 onCellSelect 抛 ReferenceError —— 本轮补上。
+- `onCellSelect(ri, ci, shiftKey)` 3 参版本：shift-click 时只移动 `rangeEndRi/Ci`，anchor 不动；非 shift-click 重置 anchor+end 到当前 cell。配合模板上 `@click="(e) => onCellSelect(ri, ci, e?.shiftKey)"` 与 `@focus="..."` 双重触发。
+- 新增 computed：`selectedRange`（normalize 到 `{r1,c1,r2,c2}`）、`selectedRangeA1`（拼出 `Sheet1!$A$1:$D$10`）。
+- 命名区域 modal 增加 `⊞ 从选区创建 ({{ selectedRangeA1 }})` 按钮，`:disabled="!selectedRangeA1"`。
+- `addDefinedNameFromSelection()`：按当前 range 预填 name=`Range_<a1>`、formula=selectedRangeA1、scope=active sheet。
+- `flushSave()`：在保存时构造 `renamedSheets` diff（`lastSavedSheetNames` ↔ `sheets.value`）并设到 `wb.renamedSheets`，让 adapter 把 rename 应用到 definedNames 公式。
+- `applySheetRenames()` 重写：之前 `sheetCellRoot.set(newName, oldMap)` 在 Yjs 里抛"Y.Map can't be re-parented"——改为把 entries 深克隆到一个新的 Y.Map 后 set。
+- Formula bar `<input>` 增加 `nameSuggestToken` / `nameSuggestions` / `nameSuggestActiveIdx`，监听 `@input`：若以 `=` 开头，取 token 后查 defined names 给 suggestion 列表；方向键 ↑/↓ 切换，Enter 接受当前项，Tab 接受并补全到公式。
+
+### 53.3 真实双端浏览器验证
+
+`frontend/wk-sheet-names-autocomplete.mjs`：admin 登录 → SHEET doc → 工作表管理 UI 重置 Sheet1 → 添加 `TaxA`/`MyRenamed` 两个命名区域 → 工作表管理把 Sheet1 改名为 Sales → 下载 .xlsx → 解析 xl/workbook.xml 的 `<definedNames>`：
+
+```
+defined names after add:    [ 'TaxA=Sales!$B$2:$B$5', 'MyRenamed=Sheet1!$A$1:$A$10' ]
+defined names after rename: [ 'TaxA=Sales!$B$2:$B$5', 'MyRenamed=Sales!$A$1:$A$10' ]
+formula follows sheet rename (Sheet1->Sales): true
+```
+
+第 2 步（从选区创建）最初 Playwright `click({ force:true, modifiers:['Shift'] })` 不可靠 —— `<input>` 的 click + modifiers 在 Vue handler 里 `e.shiftKey` 拿不到。改用 `page.evaluate` 派发 synthetic `MouseEvent({ shiftKey: true })` 才稳定触发 onCellSelect 的 shift 分支。修复 onCellSelect 抛 ReferenceError 后再跑：
+
+```
+synthetic shift-click dispatched: { a1: true, b5: true }
+from-selection enabled: true
+pre-filled name: Range_A1_B5 formula: Sales!$A1:$B5
+Range_A1_B5 defined name persisted: true
+autocomplete dropdown visible: 1
+autocomplete suggestions: 2
+formula after accept: =MyRenamed
+page errors: 0
+ALL OK — sheet names autocomplete
+```
+
+### 53.4 回归
+
+- `vue-tsc --noEmit` 0 新错误
+- `tsx --test` 504/504 ✅
+- `wk-sheet-names-autocomplete.mjs` 全绿 ✅
+
+### 53.5 已知遗留
+
+- 公式下拉 suggestion 只覆盖 workbook-scope 的 defined names；per-sheet scope 暂未列入。
+- A1 公式未做严格绝对化：`Sales!$A1:$B5` 而不是 `Sales!$A$1:$B$5`。Excel / 腾讯文档都接受两种写法，但严格 parity 应该在 v0.7.106 修。
+- "从选区创建"的默认名 `Range_A1_B5` 没有处理命名冲突：同名重名时按钮直接覆盖而非提示。
+

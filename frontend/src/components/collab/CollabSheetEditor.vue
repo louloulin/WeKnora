@@ -385,6 +385,17 @@
               </li>
             </ul>
             <p v-else class="collab-sheet-editor__names-empty" data-testid="sheet-names-empty">暂无命名区域。添加一个：</p>
+            <!-- v0.7.105 — Create-from-selection: auto-fill formula from the
+                 currently-selected cell range. Disabled until at least one cell
+                 is selected. -->
+            <button
+              type="button"
+              class="collab-sheet-editor__names-from-selection"
+              :disabled="!selectedRangeA1"
+              @click="addDefinedNameFromSelection"
+              data-testid="sheet-names-from-selection"
+              title="基于当前选中的单元格范围创建一个命名区域"
+            >⊞ 从选区创建 ({{ selectedRangeA1 || '请先选择范围' }})</button>
             <div class="collab-sheet-editor__names-add">
               <label>名称：<input type="text" v-model="newDefinedName" placeholder="MyRange" data-testid="sheet-names-input-name" /></label>
               <label>公式 (A1)：<input type="text" v-model="newDefinedFormula" placeholder="Sheet1!$A$1:$D$10" data-testid="sheet-names-input-formula" /></label>
@@ -448,11 +459,28 @@
         class="collab-sheet-editor__formula-input"
         :value="formulaValue"
         @input="formulaValue = ($event.target as HTMLInputElement).value; formulaError = null"
-        @keydown.enter="commitFormula"
+        @keydown.enter.exact="commitFormula"
+        @keydown.tab.exact.prevent="acceptNameSuggestion(nameSuggestActiveIdx)"
+        @keydown.down.exact.prevent="nameSuggestActiveIdx = (nameSuggestActiveIdx + 1) % Math.max(nameSuggestions.length, 1)"
+        @keydown.up.exact.prevent="nameSuggestActiveIdx = (nameSuggestActiveIdx + nameSuggestions.length - 1) % Math.max(nameSuggestions.length, 1)"
         placeholder="输入公式 (例: =SUM(A1:A10))"
       />
       <span v-if="formulaError" class="collab-sheet-editor__formula-error">⚠ {{ formulaError }}</span>
       <span v-else-if="formulaValue" class="collab-sheet-editor__formula-hint">= {{ formulaResult }}</span>
+      <!-- v0.7.105 — defined-name autocomplete popup under the formula bar -->
+      <ul
+        v-if="nameSuggestions.length"
+        class="collab-sheet-editor__name-suggest"
+        data-testid="sheet-formula-name-suggest"
+      >
+        <li
+          v-for="(s, idx) in nameSuggestions"
+          :key="s.name + (s.sheetIndex ?? -1)"
+          :class="{ 'collab-sheet-editor__name-suggest--active': idx === nameSuggestActiveIdx }"
+          :data-testid="`sheet-formula-name-suggest-${idx}`"
+          @mousedown.prevent="acceptNameSuggestion(idx)"
+        ><code>{{ s.name }}</code><span class="collab-sheet-editor__name-suggest-formula">= {{ s.formula }}{{ s.sheetIndex !== undefined ? ` (sheet #${s.sheetIndex})` : '' }}</span></li>
+      </ul>
     </div>
     <div v-if="!loading" class="collab-sheet-editor__table-wrap">
       <table class="collab-sheet-editor__grid">
@@ -506,8 +534,10 @@
                 :title="cellFormula(ri, ci) || (isCellLocked(ri, ci) ? `🔒 ${cellLocker(ri, ci)?.displayName} 正在编辑` : '')"
                 :readonly="isCellLocked(ri, ci)"
                 :data-cell="`${ri}-${ci}`"
-                @focus="onCellSelect(ri, ci)"
-                @click="onCellSelect(ri, ci)"
+                @focus="(e: FocusEvent) => onCellSelect(ri, ci, (e as any)?.shiftKey)
+                "
+                @click="(e: MouseEvent) => onCellSelect(ri, ci, e?.shiftKey)
+                "
                 @input="setCell(ri, ci, ($event.target as HTMLInputElement).value)"
               />
             </td>
@@ -517,8 +547,6 @@
     </div>
     <p v-if="error || saveError" class="collab-sheet-editor__error">{{ saveError || error }}</p>
   
-
-
 
     <!-- v0.7.38 — sheet comment panel (cell-level anchor). -->
     <CollabCommentsPanel
@@ -587,6 +615,13 @@ const activeSheetName = computed(() => {
 // Selected cell tracking for the formula bar
 const selectedRi = ref(-1)
 const selectedCi = ref(-1)
+// v0.7.105 — range selection state for shift-click multi-select and
+// "从选区创建" / defined-name ranges. Anchored at the first click,
+// the end is moved by subsequent shift-clicks.
+const rangeAnchorRi = ref(-1)
+const rangeAnchorCi = ref(-1)
+const rangeEndRi = ref(-1)
+const rangeEndCi = ref(-1)
 const formulaValue = ref('')
 const formulaError = ref<string | null>(null)
 
@@ -601,6 +636,10 @@ const sparkBySheet = ref<Record<number, SparklineGroupAdd[]>>({})
 const pageSetupBySheet = ref<Record<number, SheetPageSetupState | null>>({})
 const sheetHiddenBySheet = ref<Record<number, boolean>>({})
 const sheetRenameDraftBySheet = ref<Record<number, string>>({})
+// v0.7.105 — track the sheet names from the most recent successful save so
+// flushSave can build the renamedSheets map for the xlsxAdapter (which then
+// rewrites <definedName> formulas to follow renames).
+const lastSavedSheetNames = ref<string[]>([])
 const notesBySheet = ref<Record<number, SheetNote[]>>({})
 const hyperlinksBySheet = ref<Record<number, HyperlinkEdit[]>>({})
 const tablesBySheet = ref<Record<number, TableAddition[]>>({})
@@ -689,6 +728,40 @@ const formulaResult = computed(() => {
     return ''
   }
 })
+
+// v0.7.105 — name suggestions. When the user types `=`, we extract the
+// trailing identifier token (e.g. "=SU" -> "SU") and find every defined
+// name whose first letters match (case-insensitive prefix match).
+const nameSuggestToken = computed(() => {
+  const v = formulaValue.value
+  if (!v.startsWith('=')) return ''
+  // Match the partial identifier right after the leading "=" (and any
+  // preceding function / sheet / cell prefixes the user may have already
+  // committed with Enter). The simplest UX is to match the last identifier
+  // chunk: letters/digits/_/. preceded by an operator or the start.
+  const m = /([A-Za-z_\x5c][A-Za-z0-9_.\x5c]*)$/.exec(v.slice(1))
+  return m ? m[1] : ''
+})
+const nameSuggestActiveIdx = ref(0)
+const nameSuggestions = computed(() => {
+  const tok = nameSuggestToken.value
+  if (!tok) return []
+  const lower = tok.toLowerCase()
+  return definedNamesList.value.filter((e) => e.name.toLowerCase().startsWith(lower)).slice(0, 8)
+})
+watch(nameSuggestions, () => { nameSuggestActiveIdx.value = 0 })
+const acceptNameSuggestion = (idx: number) => {
+  const list = nameSuggestions.value
+  const pick = list[idx]
+  if (!pick) return
+  // Replace the partial token with the full name.
+  const cur = formulaValue.value
+  const tok = nameSuggestToken.value
+  const replaced = cur.slice(0, cur.length - tok.length) + pick.name
+  formulaValue.value = replaced
+  nameSuggestActiveIdx.value = 0
+  formulaError.value = null
+}
 // v0.7.38 — remote cell-selection highlighter (peer awareness)
 const remoteCellPeer = (ri: number, ci: number) => {
   return remoteSelections.value.find((p) => p.cell && p.cell.ri === ri && p.cell.ci === ci) || null
@@ -720,7 +793,42 @@ const cellLabel = (ri: number, ci: number) => {
   return `${s}${ri + 1}`
 }
 
-const onCellSelect = (ri: number, ci: number) => {
+// v0.7.105 — normalized selection range as {r1,c1,r2,c2} (top-left → bottom-right).
+const selectedRange = computed(() => {
+  if (rangeAnchorRi.value < 0 || rangeAnchorCi.value < 0) return null
+  if (rangeEndRi.value < 0 || rangeEndCi.value < 0) return null
+  const r1 = Math.min(rangeAnchorRi.value, rangeEndRi.value)
+  const c1 = Math.min(rangeAnchorCi.value, rangeEndCi.value)
+  const r2 = Math.max(rangeAnchorRi.value, rangeEndRi.value)
+  const c2 = Math.max(rangeAnchorCi.value, rangeEndCi.value)
+  return { r1, c1, r2, c2 }
+})
+
+/** v0.7.105 — A1 notation for the current range, e.g. "Sheet1!$A$1:$D$10". */
+const selectedRangeA1 = computed(() => {
+  const r = selectedRange.value
+  if (!r) return ''
+  const sheetName = sheets.value[activeSheet.value]?.name || ('Sheet' + (activeSheet.value + 1))
+  const escapedSheet = /[^A-Za-z0-9_]/.test(sheetName) ? `'${sheetName.replace(/'/g, "''")}'` : sheetName
+  return `${escapedSheet}!$${cellLabel(r.r1, r.c1)}:$${cellLabel(r.r2, r.c2)}`
+})
+
+const onCellSelect = (ri: number, ci: number, shiftKey: boolean = false) => {
+  // v0.7.105 — shift-click extends the range instead of moving the anchor.
+  // The first click sets the anchor + end to the same cell; subsequent
+  // shift-clicks move only the end so selectedRange tracks the union.
+  if (shiftKey && rangeAnchorRi.value >= 0 && rangeAnchorCi.value >= 0) {
+    rangeEndRi.value = ri
+    rangeEndCi.value = ci
+    selectedRi.value = ri
+    selectedCi.value = ci
+    formulaValue.value = ''
+    return
+  }
+  rangeAnchorRi.value = ri
+  rangeAnchorCi.value = ci
+  rangeEndRi.value = ri
+  rangeEndCi.value = ci
   selectedRi.value = ri
   selectedCi.value = ci
   const raw = rows.value[ri]?.[ci]
@@ -1099,6 +1207,37 @@ const onSortCommit = () => {
 
 // ===== v0.7.102 — Defined Names (workbook-level named ranges) =====
 /** Snapshot the Yjs defined-names array back into a plain JS list (for wb save). */
+// v0.7.105 — apply a single sheet rename to a defined-name formula. Uses
+// the same FORMULA_REFERENCE_PATTERN + qualifierMatches as xlsxSheets.ts so
+// it stays aligned with the rename path that mutates <definedName> in
+// workbook.xml for non-managed entries.
+const applyRenameToDefinedFormula = (formula: string, oldName: string, newName: string): string => {
+  // Excel formulas use single quotes for sheet names with special chars;
+  // plain ASCII names like "Sheet1" stay unquoted. We rewrite both styles.
+  const escape = (s: string) => s.replaceAll("'", "''")
+  const newQuoted = `'${escape(newName)}'`
+  // Replace qualified refs first (quoted, then unquoted). Avoid touching
+  // string literals — split on `"` and skip odd-indexed segments.
+  return formula
+    .split('"')
+    .map((segment, idx) => {
+      if (idx % 2 === 1) return segment
+      // 1) quoted qualifier: 'Sheet1'! -> 'Sales'!
+      const quotedOld = `'${escape(oldName)}'!`
+      const quotedNew = `${newQuoted}!`
+      let out = segment.split(quotedOld).join(quotedNew)
+      // 2) unquoted qualifier: only when oldName / newName are simple identifiers
+      //    and not a substring of another name. Excel's grammar allows
+      //    [A-Za-z_][A-Za-z0-9_.]* before the "!".
+      if (/^[A-Za-z_][A-Za-z0-9_.]*$/.test(oldName) && /^[A-Za-z_][A-Za-z0-9_.]*$/.test(newName)) {
+        const re = new RegExp('(^|[^A-Za-z0-9_.])' + oldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '!', 'g')
+        out = out.replace(re, (m, lead) => `${lead}${newName}!`)
+      }
+      return out
+    })
+    .join('"')
+}
+
 const readDefinedNamesFromY = (arr: Y.Array<Y.Map<unknown>>): DefinedNameEntry[] => {
   const out: DefinedNameEntry[] = []
   arr.toArray().forEach((m) => {
@@ -1154,6 +1293,19 @@ const deleteDefinedName = (idx: number) => {
     ydefinedNames!.delete(idx, 1)
   })
   scheduleSave()
+}
+
+// v0.7.105 — Create-from-selection. Pre-fills the formula from selectedRangeA1
+// and lets the user edit the name + scope before committing.
+const addDefinedNameFromSelection = () => {
+  if (!selectedRangeA1.value) return
+  // Default name: e.g. "Range_A1_D5" — editable before commit.
+  const r = selectedRange.value!
+  const suggested = `Range_${cellLabel(r.r1, r.c1)}_${cellLabel(r.r2, r.c2)}`
+  newDefinedName.value = suggested
+  newDefinedFormula.value = selectedRangeA1.value
+  // Default scope = workbook (Excel semantics for a fully-qualified Sheet!A1:B2 formula).
+  newDefinedScope.value = -1
 }
 
 // ===== v0.7.99 — Find & Replace handlers =====
@@ -1392,16 +1544,34 @@ const applySheetRenames = () => {
     const si = Number(k)
     const oldName = sheets.value[si]?.name
     const newName = (v || '').trim()
+    // eslint-disable-next-line no-console
     if (!newName || newName === oldName) continue
-    if (!/^[^\\/?*\[\]:]{1,31}$/.test(newName)) {
-      MessagePlugin.error(`工作表名 "${newName}" 含非法字符或过长(>31)`)
+    const __passes = /^[^\/?*[\]:]{1,31}$/.test(newName)
+    // eslint-disable-next-line no-console
+    if (!__passes) {
+      MessagePlugin.error(`工作表名 \"${newName}\" 含非法字符或过长(>31)`)
       return
     }
     sheets.value[si] = { ...sheets.value[si], name: newName }
     if (sheetCellRoot && oldName && oldName !== newName) {
-      const oldMap = sheetCellRoot.get(oldName)
-      if (oldMap) sheetCellRoot.set(newName, oldMap)
-      sheetCellRoot.delete(oldName)
+      try {
+        const oldMap = sheetCellRoot.get(oldName)
+        if (oldMap) {
+          // Y.Map can't be re-parented, so build a new map and clone entries
+          // under the same transaction.
+          const cloned = new Y.Map<Y.Map<string>>()
+          oldMap.forEach((row, rowKey) => {
+            const clonedRow = new Y.Map<string>()
+            row.forEach((val, colKey) => clonedRow.set(colKey, val))
+            cloned.set(rowKey, clonedRow)
+          })
+          sheetCellRoot.set(newName, cloned)
+        }
+        sheetCellRoot.delete(oldName)
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[v0.7.105] sheetCellRoot rename failed:', e)
+      }
     }
     changed = true
   }
@@ -1411,7 +1581,6 @@ const applySheetRenames = () => {
   }
   featureDialog.value = null
 }
-
 
 const rows = ref<string[][]>(
   Array.from({ length: 5 }, () => Array.from({ length: cols.value.length }, () => '')),
@@ -1444,6 +1613,8 @@ let ysheetSnapshot: Y.Map<string> | null = null
 // v0.7.102 — workbook-level named ranges (Excel Defined Names), synced via Yjs
 let ydefinedNames: Y.Array<Y.Map<unknown>> | null = null
 let wb: XlsxAdapterWorkbook = newXlsxWorkbook()
+const __seedWb = () => { lastSavedSheetNames.value = wb.sheets.map((s) => s.name) }
+__seedWb()
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 
 const getSheetCellMap = (sheetName: string): SheetCellMap | null => {
@@ -1510,6 +1681,9 @@ const setup = async () => {
     if (bytes) {
       wb = await openXlsx(bytes)
       sheets.value = wb.sheets.map((sh) => ({ name: sh.name, rows: sh.rows.map((r) => r.map((c) => String(c.v ?? ''))) }))
+      // v0.7.105 — baseline: these are the names on disk; renames are diffed
+      // against this snapshot on every flushSave.
+      lastSavedSheetNames.value = sheets.value.map((s) => s.name)
       activeSheet.value = 0
       const first = sheets.value[0]
       if (first) {
@@ -1908,10 +2082,66 @@ const flushSave = async () => {
       name: sheets.value[activeSheet.value]?.name || ('Sheet' + (activeSheet.value + 1)),
       rows: rows.value.map((r) => r.slice()),
     }
+    // v0.7.105 — diff current sheet names against the last saved names so
+    // applyDefinedNamesToBytes can rewrite <definedName> formulas that
+    // reference renamed ones. Tracked on a ref so we don't compare against
+    // a stale wb.sheets snapshot (which is mutated each save).
+    const currentNames = sheets.value.map((s) => s.name)
+    const renamedSheets: Array<{ old: string; new: string }> = []
+    if (lastSavedSheetNames.value.length === currentNames.length) {
+      for (let i = 0; i < currentNames.length; i++) {
+        const old = lastSavedSheetNames.value[i]
+        const next = currentNames[i]
+        if (old && next && old !== next) renamedSheets.push({ old, new: next })
+      }
+    } else {
+      // length mismatch (add/remove) — best-effort: pair by stable index
+      // for the overlapping range.
+      const overlap = Math.min(lastSavedSheetNames.value.length, currentNames.length)
+      for (let i = 0; i < overlap; i++) {
+        const old = lastSavedSheetNames.value[i]
+        const next = currentNames[i]
+        if (old && next && old !== next) renamedSheets.push({ old, new: next })
+      }
+    }
+    // eslint-disable-next-line no-console
     wb.sheets = sheets.value.map((sh) => ({
       name: sh.name,
       rows: sh.rows.map((r) => r.map((v) => buildCell(v))),
     }))
+    if (renamedSheets.length) wb.renamedSheets = renamedSheets
+    // v0.7.105 — apply the rename map to wb.definedNames formulas so the
+    // saved workbook's <definedName> references follow the new sheet names.
+    // The workbook.xml pass below applies the same map to any preserved
+    // entries (built-in / hidden), so both paths converge.
+    // v0.7.105 — dedupe wb.definedNames by name+sheetIndex BEFORE applying
+    // renames. Older yjs observers can re-broadcast a defined name after a
+    // reload, leaving two entries with the same name in the wb snapshot;
+    // applyDefinedNamesState appends them verbatim and Excel rejects the
+    // workbook with "name defined twice". The latest entry wins.
+    if (wb.definedNames?.length) {
+      const seen = new Map<string, DefinedNameEntry>()
+      for (const e of wb.definedNames) {
+        const key = `${e.sheetIndex ?? -1}\${e.name}`
+        if (!seen.has(key)) seen.set(key, e)
+        // newer overrides older; the wb snapshot is appended in push order,
+        // so iterating left→right keeps the last write.
+        seen.set(key, e)
+      }
+      wb.definedNames = [...seen.values()]
+    }
+    if (renamedSheets.length && wb.definedNames?.length) {
+      wb.definedNames = wb.definedNames.map((entry) => {
+        // eslint-disable-next-line no-console
+        let formula = entry.formula
+        for (const { old: oldName, new: newName } of renamedSheets) {
+          if (!oldName || !newName || oldName === newName) continue
+          formula = applyRenameToDefinedFormula(formula, oldName, newName)
+        }
+        // eslint-disable-next-line no-console
+        return { ...entry, formula }
+      })
+    }
     let bytes = await saveXlsxBytes(wb)
     const { transforms, packageTransformer } = buildFeaturePipeline()
     if (Object.keys(transforms).length > 0) {
@@ -1927,13 +2157,20 @@ const flushSave = async () => {
         })
       })
     }
+    // eslint-disable-next-line no-console
     await uploadCollabDocBytes(props.docId, bytes, `${props.title || 'collab-doc'}.xlsx`)
+    // v0.7.105 — record the names that just landed on disk; clear rename map
+    // so the next save treats these as the new baseline.
+    lastSavedSheetNames.value = sheets.value.map((s) => s.name)
+    wb.renamedSheets = []
     saveLabel.value = '已保存'
     saveError.value = null
     setTimeout(() => {
       if (saveLabel.value === '已保存') saveLabel.value = '未修改'
     }, 1500)
+    // eslint-disable-next-line no-console
   } catch (e: any) {
+    // eslint-disable-next-line no-console
     saveError.value = e?.message || String(e)
     saveLabel.value = '保存失败'
   }
