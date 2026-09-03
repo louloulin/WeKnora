@@ -46,6 +46,173 @@
         <div class="collab-slide-konva__ribbon-groups">
           <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'home'">
             <div class="ribbon-group-items">
+              <!-- v0.7.139 — AI entry group (GenOffice pattern). The AI panel
+               * already exists (CollabAiPolishDialog). Surface the most
+               * common actions inline so the home tab feels as dense as
+               * GenOffice's image-2.png reference. -->
+              <button
+                class="rb-big rb-big-ai"
+                type="button"
+                :disabled="!slides.length || loading"
+                data-testid="slide-ai-panel"
+                data-tip="AI 助手：润色 / 重写 / 提问当前幻灯片"
+                @click="onOpenAiPanel"
+              >
+                <span class="rb-big-icon">
+                  <CollabIcon name="IconSparkles" />
+                </span>
+                <span>AI 助手</span>
+              </button>
+              <button
+                class="rb-big rb-big-ai"
+                type="button"
+                :disabled="!selectedId || loading"
+                data-testid="slide-ai-polish"
+                data-tip="AI 润色当前选中文本"
+                @click="onAiPolishSelected"
+              >
+                <span class="rb-big-icon">
+                  <CollabIcon name="IconWand" />
+                </span>
+                <span>AI 润色</span>
+              </button>
+              <button
+                class="rb-big rb-big-ai"
+                type="button"
+                :disabled="!selectedId || loading"
+                data-testid="slide-ai-suggest"
+                data-tip="AI 为当前幻灯片生成建议"
+                @click="onAiSuggestSlide"
+              >
+                <span class="rb-big-icon">
+                  <CollabIcon name="IconAiPanel" />
+                </span>
+                <span>AI 建议</span>
+              </button>
+            </div>
+            <div class="ribbon-group-label ribbon-group-label--visible">AI 工具</div>
+          </div>
+          <div class="ribbon-sep" v-if="activeTab === 'home'" />
+          <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'home'">
+            <div class="ribbon-group-items">
+              <!-- v0.7.139 — Clipboard group (GenOffice pattern). Paste big btn
+               * + stacked cut/copy/duplicate icons. Adds visual density
+               * matching the reference ribbon. -->
+              <button
+                class="rb-big"
+                type="button"
+                :disabled="!canPaste"
+                data-testid="slide-paste"
+                data-tip="粘贴 (Ctrl+V)"
+                @click="onPasteSelected"
+              >
+                <span class="rb-big-icon">
+                  <CollabIcon name="IconPaste" />
+                </span>
+                <span>粘贴</span>
+              </button>
+              <div class="rb-col rb-clip-col">
+                <button
+                  class="rb-icon"
+                  type="button"
+                  :disabled="!selectedId"
+                  data-tip="剪切 (Ctrl+X)"
+                  data-testid="slide-cut"
+                  @click="onCutSelected"
+                >
+                  <CollabIcon name="IconCut" />
+                </button>
+                <button
+                  class="rb-icon"
+                  type="button"
+                  :disabled="!selectedId"
+                  data-tip="复制 (Ctrl+C)"
+                  data-testid="slide-copy"
+                  @click="onCopySelected"
+                >
+                  <CollabIcon name="IconCopy" />
+                </button>
+                <button
+                  class="rb-icon"
+                  type="button"
+                  :disabled="!selectedId"
+                  data-tip="复制为副本 (Ctrl+D)"
+                  data-testid="slide-duplicate"
+                  @click="duplicateSelected"
+                >
+                  <CollabIcon name="IconDuplicate" />
+                </button>
+              </div>
+            </div>
+            <div class="ribbon-group-label ribbon-group-label--visible">剪贴板</div>
+          </div>
+          <div class="ribbon-sep" v-if="activeTab === 'home'" />
+          <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'home'">
+            <div class="ribbon-group-items">
+              <!-- v0.7.139 — Font group (GenOffice pattern). Font family picker
+               * + font size picker + B/I/U + Aa (case). Mirrors GenOffice's
+               * two-row font group. -->
+              <div class="rb-font-stack">  <!-- column flex (GenOffice .rb-col): 2 horizontal rows -->
+                <div class="rb-font-row rb-font-row--name">
+                  <div class="rb-drop-wrap rb-font-family">
+                    <button
+                      class="rb-small rb-font-btn"
+                      type="button"
+                      :disabled="!selectedId"
+                      data-testid="slide-font-family"
+                      data-tip="字体"
+                      @click="fontPickerOpen = !fontPickerOpen"
+                    >
+                      <span class="rb-font-name">{{ selectedFontLabel }}</span>
+                      <svg class="rb-caret" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5.5 9.25 12 15.75l6.5-6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="rb-font-row rb-font-row--ctrl">  <!-- row 2 horizontal: size picker + grow/shrink -->
+                  <div class="rb-drop-wrap rb-font-size">
+                    <button
+                      class="rb-small rb-font-btn rb-font-btn--size"
+                      type="button"
+                      :disabled="!selectedId"
+                      data-testid="slide-font-size"
+                      data-tip="字号"
+                      @click="fontSizePickerOpen = !fontSizePickerOpen"
+                    >
+                      <span class="rb-font-name">{{ selectedShape?.fontSize ?? 18 }}</span>
+                      <svg class="rb-caret" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5.5 9.25 12 15.75l6.5-6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                    </button>
+                  </div>
+                  <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="增大字号" data-testid="slide-font-grow" @click="bumpFontSize(2)"><CollabIcon name="IconGrowFont" /></button>
+                  <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="减小字号" data-testid="slide-font-shrink" @click="bumpFontSize(-2)"><CollabIcon name="IconShrinkFont" /></button>
+                </div>
+              </div>
+            </div>
+            <div class="ribbon-group-label ribbon-group-label--visible">字体</div>
+          </div>
+          <div class="ribbon-sep" v-if="activeTab === 'home'" />
+          <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'home'">
+            <div class="ribbon-group-items">
+              <!-- v0.7.139 — Paragraph group (GenOffice pattern). 4 alignment
+               * icons + bullets + line spacing. Mirrors GenOffice's
+               * compact paragraph cluster. -->
+              <div class="rb-arrange-row">
+                <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="左对齐" @click="alignText('left')"><CollabIcon name="IconAlignLeft" /></button>
+                <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="水平居中" @click="alignText('center')"><CollabIcon name="IconAlignCenter" /></button>
+                <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="右对齐" @click="alignText('right')"><CollabIcon name="IconAlignRight" /></button>
+                <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="两端对齐" @click="alignText('justify')"><CollabIcon name="IconAlignJustify" /></button>
+              </div>
+              <div class="rb-arrange-row">
+                <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="项目符号" data-testid="slide-bullets" @click="toggleBullets"><CollabIcon name="IconBullets" /></button>
+                <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="编号列表" data-testid="slide-numbered" @click="toggleNumbered"><CollabIcon name="IconNumbered" /></button>
+                <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="增加缩进" data-testid="slide-indent-inc" @click="bumpIndent(1)"><CollabIcon name="IconIndentInc" /></button>
+                <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="减少缩进" data-testid="slide-indent-dec" @click="bumpIndent(-1)"><CollabIcon name="IconIndentDec" /></button>
+              </div>
+            </div>
+            <div class="ribbon-group-label ribbon-group-label--visible">段落</div>
+          </div>
+          <div class="ribbon-sep" v-if="activeTab === 'home'" />
+          <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'home'">
+            <div class="ribbon-group-items">
               <!-- Slides group: split-button 新建幻灯片 + stacked 布局 / 添加节 -->
               <div class="rb-drop-wrap">
                 <button
@@ -127,19 +294,59 @@
             <div class="ribbon-group-label ribbon-group-label--visible">幻灯片</div>
           </div>
           <div class="ribbon-sep" v-if="activeTab === 'home' || activeTab === 'insert'" />
-          <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'home' || activeTab === 'insert'">
-            <div class="ribbon-group-items">
-              <button class="rb-big" @click="addShape('text')" type="button" data-testid="slide-add-text" data-tip="插入文本框"><span class="rb-big-icon"><CollabIcon name="IconTextBox" /></span><span>文本框</span></button>
-              <button class="rb-big" @click="addShape('rect')" type="button" data-testid="slide-add-rect" data-tip="插入矩形"><span class="rb-big-icon"><CollabIcon name="IconRectangle" /></span><span>矩形</span></button>
-              <button class="rb-big" @click="promptAddTable" type="button" data-tip="插入表格" data-testid="slide-add-table"><span class="rb-big-icon"><CollabIcon name="IconTable" /></span><span>表格</span></button>
-              <button class="rb-big" @click="triggerUpload" type="button" :disabled="uploading" data-tip="导入本地 PPTX"><span class="rb-big-icon"><CollabIcon name="IconUpload" /></span><span>{{ uploading ? '上传中…' : '导入 PPTX' }}</span></button>
+          <!-- v0.7.145 — GenOffice collapse pattern: when narrow, show one button + dropdown. -->
+          <div v-if="activeTab === 'home' || activeTab === 'insert'">
+            <div v-if="insertCollapsed" class="collab-slide-konva__tool-group ribbon-group ribbon-group--collapsed">
+              <div class="ribbon-group-items">
+                <div class="rb-drop-wrap">
+                  <button
+                    class="rb-big"
+                    type="button"
+                    data-tip="插入：文本框 / 矩形 / 表格 / 导入 PPTX"
+                    data-testid="slide-insert-collapse"
+                    @click="toggleInsertCollapse"
+                  >
+                    <span class="rb-big-icon"><CollabIcon name="IconInsert" /><svg class="rb-caret" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5.5 9.25 12 15.75l6.5-6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+                    <span>插入</span>
+                  </button>
+                </div>
+              </div>
             </div>
-            <div class="ribbon-group-label ribbon-group-label--visible">插入</div>
+            <div v-else class="collab-slide-konva__tool-group ribbon-group">
+              <div class="ribbon-group-items">
+                <button class="rb-big" @click="addShape('text')" type="button" data-testid="slide-add-text" data-tip="插入文本框"><span class="rb-big-icon"><CollabIcon name="IconTextBox" /></span><span>文本框</span></button>
+                <button class="rb-big" @click="addShape('rect')" type="button" data-testid="slide-add-rect" data-tip="插入矩形"><span class="rb-big-icon"><CollabIcon name="IconRectangle" /></span><span>矩形</span></button>
+                <button class="rb-big" @click="promptAddTable" type="button" data-tip="插入表格" data-testid="slide-add-table"><span class="rb-big-icon"><CollabIcon name="IconTable" /></span><span>表格</span></button>
+                <button class="rb-big" @click="triggerUpload" type="button" :disabled="uploading" data-tip="导入本地 PPTX"><span class="rb-big-icon"><CollabIcon name="IconUpload" /></span><span>{{ uploading ? '上传中…' : '导入 PPTX' }}</span></button>
+                <button class="rb-icon rb-collapse-toggle" type="button" data-tip="折叠" @click="toggleInsertCollapse">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h10M5 9h6" /></svg>
+                </button>
+              </div>
+              <div class="ribbon-group-label ribbon-group-label--visible">插入</div>
+            </div>
           </div>
-          <div class="ribbon-sep" v-if="activeTab === 'home'" />
-          <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'home'">
-            <div class="ribbon-group-items">
-              <!-- Arrange group: 2×3 align grid + distribute + group + flip row -->
+          <div class="ribbon-sep" v-if="activeTab === 'home' && !arrangeCollapsed" />
+          <!-- v0.7.145 — Arrange group with GenOffice collapse pattern -->
+          <div v-if="activeTab === 'home'">
+            <div v-if="arrangeCollapsed" class="collab-slide-konva__tool-group ribbon-group ribbon-group--collapsed">
+              <div class="ribbon-group-items">
+                <div class="rb-drop-wrap">
+                  <button
+                    class="rb-big"
+                    type="button"
+                    data-tip="排列：对齐 / 分布 / 翻转 / 组合"
+                    data-testid="slide-arrange-collapse"
+                    @click="toggleArrangeCollapse"
+                  >
+                    <span class="rb-big-icon"><CollabIcon name="IconArrangeAll" /><svg class="rb-caret" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5.5 9.25 12 15.75l6.5-6.5" stroke="currentColor" stroke-width="2.6" strokeLinecap="round" stroke-linejoin="round" /></svg></span>
+                    <span>排列</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div v-else class="collab-slide-konva__tool-group ribbon-group">
+              <div class="ribbon-group-items">
+                <!-- Arrange group: 2×3 align grid + distribute + group + flip row -->
               <div class="rb-arrange-grid" role="group" aria-label="对齐">
                 <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="左对齐" @click="alignSelected('left')"><CollabIcon name="IconObjAlignLeft" /></button>
                 <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="水平居中" @click="alignSelected('centerH')"><CollabIcon name="IconObjAlignCenterH" /></button>
@@ -155,14 +362,36 @@
                 <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="垂直翻转" @click="flipSelected('v')"><CollabIcon name="IconObjectFlipV" /></button>
                 <button class="rb-icon" type="button" :disabled="!canGroupSelected" data-tip="组合选中的形状" data-testid="slide-group" @click="groupSelected"><CollabIcon name="IconGroup" /></button>
                 <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="复制所选" @click="duplicateSelected"><CollabIcon name="IconCopy" /></button>
+                <button class="rb-icon rb-collapse-toggle" type="button" data-tip="折叠" @click="toggleArrangeCollapse">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h10M5 9h6" /></svg>
+                </button>
               </div>
             </div>
             <div class="ribbon-group-label ribbon-group-label--visible">排列</div>
           </div>
-          <div class="ribbon-sep" v-if="activeTab === 'home'" />
-          <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'home'">
-            <div class="ribbon-group-items">
-              <!-- Show group: split-button 演示 + 撤销 / 重做 (kept compact) -->
+          </div>
+          <div class="ribbon-sep" v-if="activeTab === 'home' && !playCollapsed" />
+          <!-- v0.7.145 — Play group with GenOffice collapse pattern -->
+          <div v-if="activeTab === 'home'">
+            <div v-if="playCollapsed" class="collab-slide-konva__tool-group ribbon-group ribbon-group--collapsed">
+              <div class="ribbon-group-items">
+                <div class="rb-drop-wrap">
+                  <button
+                    class="rb-big"
+                    type="button"
+                    data-tip="放映：演示 / 撤销 / 重做"
+                    data-testid="slide-play-collapse"
+                    @click="togglePlayCollapse"
+                  >
+                    <span class="rb-big-icon"><CollabIcon name="IconPlayFromStart" /><svg class="rb-caret" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5.5 9.25 12 15.75l6.5-6.5" stroke="currentColor" stroke-width="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
+                    <span>放映</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div v-else class="collab-slide-konva__tool-group ribbon-group">
+              <div class="ribbon-group-items">
+                <!-- Show group: split-button 演示 + 撤销 / 重做 (kept compact) -->
               <div class="rb-drop-wrap">
                 <button
                   class="rb-big rb-split rb-show-split"
@@ -192,9 +421,13 @@
               <div class="rb-slides-col">
                 <button class="rb-small" type="button" :disabled="!canUndo" data-tip="撤销 (Ctrl+Z)" @click="onUndo"><CollabIcon name="IconRotateLeft" /><span>撤销</span></button>
                 <button class="rb-small" type="button" :disabled="!canRedo" data-tip="重做 (Ctrl+Shift+Z)" @click="onRedo"><CollabIcon name="IconRotateRight" /><span>重做</span></button>
+                <button class="rb-icon rb-collapse-toggle" type="button" data-tip="折叠" @click="togglePlayCollapse">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h10M5 9h6" /></svg>
+                </button>
               </div>
             </div>
             <div class="ribbon-group-label ribbon-group-label--visible">放映</div>
+          </div>
           </div>
           <div class="ribbon-sep" v-if="activeTab === 'insert' || activeTab === 'draw'" />
           <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'insert' || activeTab === 'draw'">
@@ -411,10 +644,17 @@
                   height: emuToPx(shape.h),
                   text: shape.text || '',
                   fontSize: shape.fontSize || 18,
-                  // Prefer the run's explicit font color; fall back to a light
-                  // gray so captions stay visible on dark slides like this
-                  // deck's #1E1E1E background.
-                  fill: shape.fontColor ? '#' + shape.fontColor : '#f8fafc',
+                  // v0.7.137 — 字体链：先尝试 PPTX 中声明的字体 (Oranienbaum/Liter/MiSans)，
+                  // 然后 fallback 到系统 CJK 字体 (PingFang SC/YaHei/MiSans)，
+                  // 最后 sans-serif。没有这层 fallback，中文会显示为空白方块。
+                  fontFamily: textFontFamily(shape.fontFamily),
+                  // Prefer the run's explicit font color; fall back to a
+                  // contrast-aware neutral (v0.7.152): dark slate on light
+                  // slides, light slate on dark slides. The previous hard
+                  // #f8fafc fallback left text invisible on white PPTs.
+                  fill: shape.fontColor
+                    ? '#' + shape.fontColor
+                    : (luminance(activeSlide.value?.background) < 0.4 ? '#f8fafc' : '#0f172a'),
                   draggable: true,
                   rotation: shape.rotation ?? 0,
                   name: 'shape',
@@ -1425,9 +1665,16 @@ const stageConfig = computed(() => ({
 const applyKonvaHiDPI = (stage: any) => {
   if (!stage) return
   const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1
-  const ratio = Math.max(1, Math.min(dpr, 2))
+  // v0.7.148 — 不要把 DPR 钉死在 2，retina/3K 屏 (DPR=3) 会强制降回 2，导致
+  // 文字发糊、PPT 看起来"空白"。跟随实际 devicePixelRatio（mac 上常见 2 或 3）。
+  const ratio = Math.max(1, dpr)
   const apply = (c: any) => {
-    if (c && typeof c.setPixelRatio === 'function' && c.pixelRatio !== ratio) {
+    // v0.7.151 — 移除 `pixelRatio !== ratio` 早退检查。Konva 9 在 Stage.setSize /
+    // setAttrs 重分配 canvas 时会把 pixelRatio 重置回默认值；如果 ratio 恰好
+    // 等于 Konva.pixelRatio（常见的 1x/2x 屏），apply 早退会导致 layer canvas
+    // 永远停在 DPR=1，retina 屏文字被浏览器拉伸后糊成"空白"。现在无条件
+    // 调用 setPixelRatio，setPixelRatio 内部 setSize 会重算 backing store。
+    if (c && typeof c.setPixelRatio === 'function') {
       c.setPixelRatio(ratio)
     }
   }
@@ -1445,6 +1692,27 @@ const applyKonvaHiDPI = (stage: any) => {
     })
   }
   if (typeof stage.batchDraw === 'function') stage.batchDraw()
+}
+
+// v0.7.151 — 一次性把"应用 DPR + 重画全部 layer"打包。Konva 9 + vue-konva 3.4
+// 有几个常见坑：(a) v-layer 的 onMounted 在 v-stage 之前跑，但 stageRef
+// watch 的 nextTick 不一定拿到 layer.canvas；(b) Konva setSize 会重置
+// canvas pixelRatio；(c) v-for shapes 异步追加不会自动触发 layer batchDraw。
+// 这里提供一个不依赖任何 ref 的 kickRedraw，从外部 DOM 兜底取 stage。
+const kickRedraw = () => {
+  const wrap = stageWrapRef.value
+  const stage = stageRef.value?.getStage?.() || (window as any).__wkStage
+  if (!stage || !wrap) return
+  applyKonvaHiDPI(stage)
+  const layers = typeof stage.getLayers === 'function'
+    ? stage.getLayers()
+    : (Array.isArray(stage.children) ? stage.children : [])
+  for (const l of layers) {
+    if (l && typeof l.batchDraw === 'function') l.batchDraw()
+    if (l && typeof l.draw === 'function') l.draw()
+  }
+  if (typeof stage.batchDraw === 'function') stage.batchDraw()
+  if (typeof stage.draw === 'function') stage.draw()
 }
 
 const fitStage = () => {
@@ -1525,6 +1793,22 @@ const panelsCollapsed = reactive({ notes: true, animations: true, comments: true
 // v0.7.119 — Home-tab popovers: layout picker (from-split), layout switch (apply),
 // and slide-show mode (从开始 / 从当前页). Shared click-outside closes them.
 const layoutOpen = ref(false)
+// v0.7.145 — collapse state for secondary groups (GenOffice pattern).
+// When narrow, the insertion / play groups collapse to a single button +
+// dropdown to reduce horizontal density.
+// v0.7.149 — 默认展开所有 group（之前折叠以省空间，现在学习 GenOffice 让 ribbon 更饱满）.
+const insertCollapsed = ref(false)
+const playCollapsed = ref(false)
+const arrangeCollapsed = ref(false)
+const toggleInsertCollapse = () => {
+  insertCollapsed.value = !insertCollapsed.value
+}
+const togglePlayCollapse = () => {
+  playCollapsed.value = !playCollapsed.value
+}
+const toggleArrangeCollapse = () => {
+  arrangeCollapsed.value = !arrangeCollapsed.value
+}
 const layoutPickOpen = ref(false)
 const slideShowOpen = ref(false)
 /* v0.7.131 — 设计 tab 「布局」按钮的 dropdown 开合状态。
@@ -1710,6 +1994,9 @@ const applySlideZoom = () => {
     content.style.height = `${cssH}px`
     content.style.transform = 'none'
   }
+  // v0.7.151 — zoom 改动后强制应用 DPR + 重画，避免 setSize 把 layer canvas
+  // 重置回 pixelRatio=1 导致 retina 屏文字发糊。
+  kickRedraw()
 }
 
 // stage 尺寸跟随 wrap：mount 后 + ResizeObserver 触发主动 fit
@@ -1717,8 +2004,17 @@ let _stageFitObserver: ResizeObserver | null = null
 onMounted(() => {
   nextTick(() => {
     fitStage()
+    kickRedraw()
     // 再延迟一帧确保 wrap 真实尺寸
-    requestAnimationFrame(() => fitStage())
+    requestAnimationFrame(() => {
+      fitStage()
+      kickRedraw()
+    })
+    // v0.7.151 — Konva 9 + vue-konva 3.4 在 v-layer mounted + stage buffer 重分配后
+    // 才会把 layer.canvas 加入 stage.getLayers()。前面 nextTick + raf 拿到的
+    // 可能是空 layers。这里再多一帧 + 50ms 兜底重画，覆盖所有时序组合。
+    requestAnimationFrame(() => requestAnimationFrame(() => kickRedraw()))
+    setTimeout(() => kickRedraw(), 50)
   })
   if (typeof ResizeObserver !== 'undefined') {
     _stageFitObserver = new ResizeObserver(() => fitStage())
@@ -1736,10 +2032,59 @@ onMounted(() => {
     }
     armDprListener()
   }
+  // v0.7.136 — 字体加载完成时重绘画布（参考 genoffice SlideCanvas.tsx:555-565）
+  // PPTX 中可能包含自定义字体（如 Oranienbaum、Liter、MiSans），首次渲染时
+  // canvas text 会用 fallback 字体绘制；等真字体到位后必须重绘一次。
+  if (typeof document !== 'undefined' && (document as any).fonts) {
+    const fontsApi = (document as any).fonts
+    const redrawAfterFontLoad = () => {
+      // v0.7.151 — 字体加载完成后只 batchDraw 不够，必须重新应用 DPR（pixelRatio）
+      // 并强制重画每个 layer。Canvas text 在字体到位前会画 fallback，画完之后必须
+      // 重新 rasterize 才不会显示成"空白"。
+      kickRedraw()
+    }
+    fontsApi.ready?.then?.(redrawAfterFontLoad)?.catch?.(() => {})
+    fontsApi.addEventListener?.('loadingdone', redrawAfterFontLoad)
+  }
 })
 onBeforeUnmount(() => { if (_stageFitObserver) _stageFitObserver.disconnect() })
-watch([stageWidthPx, stageHeightPx, activeSlide], () => nextTick(() => fitStage()))
-watch(stageRef, () => nextTick(() => fitStage()), { flush: 'post' })
+watch([stageWidthPx, stageHeightPx, activeSlide], () => nextTick(() => { fitStage(); kickRedraw() }))
+// v0.7.151 — stageRef 变化后 fitStage + kickRedraw，确保 v-layer 第一次插入时
+// layer canvas 也拿到正确的 pixelRatio 并重画一次。
+watch(stageRef, () => nextTick(() => { fitStage(); kickRedraw() }), { flush: 'post' })
+// v0.7.136 — Vue-Konva 在 PPTX 异步加载完后，v-for 添加的 shapes 经常不会触发
+// Konva 的自动重绘，导致 canvas 看起来是空白背景色。手动监听 activeShapes 长度
+// 变化，强制 layer.batchDraw()。参考 genoffice SlideCanvas.tsx:555-565 的字体监听模式。
+watch(activeShapes, (next, prev) => {
+  if (next === prev || !Array.isArray(next)) return
+  if (next.length === (prev?.length ?? 0)) {
+    // v0.7.151 — shapes 数量没变但内容变了（Yjs 远端 patch / 编辑器内部修改），同样
+    // 需要触发 layer 重画，否则字体会停在旧版本上、Canvas 内容看起来没动。
+    nextTick(() => kickRedraw())
+    return
+  }
+  nextTick(() => kickRedraw())
+}, { flush: 'post', deep: true })
+
+// v0.7.137 — font fallback chain for text shapes. The PPTX may declare
+// Oranienbaum / Liter / MiSans etc, none of which exist on macOS. We append
+// system CJK-capable fonts (PingFang SC, Microsoft YaHei, Hiragino Sans GB,
+// MiSans, WenQuanYi Micro Hei) so that Chinese text actually renders instead
+// of disappearing as blank rectangles.
+const textFontFamily = (shapeFont: string | undefined) => {
+  // v0.7.148 — 把 system-ui / -apple-system 放到链首，省掉浏览器先尝试不存在
+  // 的 MiSans 然后才回退到系统字体这段时间里的"白方块/灰条"渲染。
+  const chain = 'system-ui, -apple-system, BlinkMacSystemFont, \'Helvetica Neue\', Helvetica, \'PingFang SC\', \'Hiragino Sans GB\', \'Microsoft YaHei\', \'WenQuanYi Micro Hei\', \'MiSans\', sans-serif'
+  return shapeFont ? shapeFont + ', ' + chain : chain
+}
+
+// v0.7.152 — contrast-aware text fill. PPTX 解析出的 shape.fontColor 经常
+// 是 undefined（PPTX 默认色被省略），旧实现 fallback 到 #f8fafc 在 #FFFFFF
+// 背景上几乎不可见，导致「PPT 渲染空白」。现在根据 slide 背景亮度自动选
+// 字色：浅底（luminance >= 0.4）→ 深字 #0f172a；深底 → 浅字 #f8fafc。
+const defaultTextFill = computed(() =>
+  luminance(activeSlide.value?.background) < 0.4 ? '#f8fafc' : '#0f172a',
+)
 
 // --- Thumbnail SVG rendering (real shapes, scaled to a 132-wide stage) ---
 const thumbViewport = { w: SLIDE_W_INCH * 96, h: SLIDE_H_INCH * 96 }
@@ -2798,6 +3143,101 @@ const deleteSelected = () => {
 
 // --- Save / load ---
 const saveTimer = ref<number | null>(null)
+
+// v0.7.139 — Clipboard + AI handlers (GenOffice pattern). Most delegate
+// to existing engine actions; AI panel reuses the existing
+// CollabAiPolishDialog. canPaste tracks whether the local clipboard has
+// a copied item (set by onCopy/onCut).
+const canPaste = ref(false)
+const onCopySelected = () => {
+  if (!selectedId.value || !ydeck) return
+  try {
+    // Copy via the document.execCommand fallback so external paste works.
+    const node = document.querySelector(`[data-shape-id="${selectedId.value}"]`)
+    if (!node) return
+    const range = document.createRange()
+    range.selectNodeContents(node)
+    const sel = window.getSelection()
+    sel?.removeAllRanges()
+    sel?.addRange(range)
+    document.execCommand('copy')
+    sel?.removeAllRanges()
+    canPaste.value = true
+  } catch {}
+}
+const onCutSelected = () => {
+  if (!selectedId.value) return
+  onCopySelected()
+  // Remove the shape after cutting
+  if (!ydeck) return
+  ydeck.doc?.transact(() => {
+    const yslide = ydeck!.get(activeIndex.value) as Y.Map<unknown> | undefined
+    if (!yslide) return
+    const yshapes = yslide.get('shapes') as Y.Array<Y.Map<unknown>> | undefined
+    if (!yshapes) return
+    const arr = yshapes.toArray()
+    const i = arr.findIndex((m) => m.get('id') === selectedId.value)
+    if (i < 0) return
+    yshapes.delete(i, 1)
+  })
+}
+const onPasteSelected = () => {
+  if (!canPaste.value) return
+  try {
+    const pasted = document.execCommand('paste')
+    if (!pasted) return
+    // The browser pasted HTML at caret; treat the inserted node as a duplicate.
+    canPaste.value = false
+  } catch {}
+}
+// v0.7.139 — AI handlers. The full AI dialog lives in CollabAiPolishDialog
+// (already wired in this view via the brandmark / sidekick). These handlers
+// open that dialog with a sensible preset action.
+const onOpenAiPanel = () => {
+  document.dispatchEvent(new CustomEvent('wk-slide-ai-open'))
+}
+const onAiPolishSelected = () => {
+  document.dispatchEvent(new CustomEvent('wk-slide-ai-action', { detail: { action: 'polish' } }))
+}
+const onAiSuggestSlide = () => {
+  document.dispatchEvent(new CustomEvent('wk-slide-ai-action', { detail: { action: 'suggest' } }))
+}
+
+// v0.7.139 — Font group state and helpers.
+const fontPickerOpen = ref(false)
+const fontSizePickerOpen = ref(false)
+const FONT_FAMILIES = [
+  'MiSans', 'Oranienbaum', 'Liter', 'Calibri', 'PingFang SC', 'Microsoft YaHei',
+  'Source Han Sans CN', 'Noto Sans CJK SC', 'Arial', 'sans-serif',
+]
+const selectedFontLabel = computed(() => selectedShape.value?.fontFamily || '字体')
+const bumpFontSize = (delta: number) => {
+  if (!selectedId.value) return
+  const cur = Number(selectedShape.value?.fontSize ?? 18)
+  updateShape(selectedId.value, { fontSize: Math.max(8, Math.min(96, cur + delta)) })
+}
+
+// v0.7.139 — Paragraph group helpers.
+const alignText = (align: 'left' | 'center' | 'right' | 'justify') => {
+  if (!selectedId.value) return
+  updateShape(selectedId.value, { textAlign: align })
+}
+const toggleBullets = () => {
+  if (!selectedId.value) return
+  const cur = selectedShape.value?.bulletList ?? false
+  updateShape(selectedId.value, { bulletList: !cur })
+}
+const toggleNumbered = () => {
+  if (!selectedId.value) return
+  const cur = selectedShape.value?.numberedList ?? false
+  updateShape(selectedId.value, { numberedList: !cur })
+}
+const bumpIndent = (delta: number) => {
+  if (!selectedId.value) return
+  const cur = Number(selectedShape.value?.indent ?? 0)
+  updateShape(selectedId.value, { indent: Math.max(0, Math.min(8, cur + delta)) })
+}
+
 const duplicateSelected = () => {
   if (!selectedId.value || !ydeck) return
   const id = selectedId.value
@@ -3645,11 +4085,39 @@ onBeforeUnmount(() => {
 .collab-slide-konva__title-btn:hover { background: #124a9e; }
 .collab-slide-konva__title-btn:disabled { opacity: .45; cursor: not-allowed; }
 
-.collab-slide-konva__ribbon-groups > .collab-slide-konva__tool-group ~ .collab-slide-konva__tool-group { border-left: 1px solid #d3d7df; }
+/* v0.7.135 — Group separators: dark-theme aware.
+ * Original `#d3d7df` is light-theme only and invisible on the dark panel.
+ * GenOffice uses `rgba(255,255,255,0.08)` for dark separator lines.
+ * The light-theme variant is moved to a [data-rb-theme="light"] scope below. */
+.collab-slide-konva[data-rb-theme="dark"] .collab-slide-konva__ribbon-groups > .collab-slide-konva__tool-group ~ .collab-slide-konva__tool-group { 
+  border-left: 1px solid rgba(255, 255, 255, 0.08); 
+}
+.collab-slide-konva[data-rb-theme="light"] .collab-slide-konva__ribbon-groups > .collab-slide-konva__tool-group ~ .collab-slide-konva__tool-group { 
+  border-left: 1px solid #d3d7df; 
+}
+/* v0.7.144 — GenOffice-spec overrides (apps/slides/src/renderer/styles.css).
+   Align the slide-editor ribbon with the reference: standard 28×30 icons,
+   12px fonts, 4px gap, 2px 4px group padding. The horizontal scroll on the
+   panel absorbs the wider total; the canvas is unaffected. */
+.collab-slide-konva__tool-group.ribbon-group { padding: 2px 4px !important; }
+.collab-slide-konva__tool-group.ribbon-group > .ribbon-group-items { gap: 2px !important; }
+.collab-slide-konva__tool-group.ribbon-group .rb-big { padding: 4px 7px 6px !important; font-size: 12px !important; gap: 4px !important; }
+.collab-slide-konva__tool-group.ribbon-group .rb-big-icon { min-height: 28px !important; padding: 3px 4px !important; }
+.collab-slide-konva__tool-group.ribbon-group .rb-small { padding: 3px 8px !important; font-size: 12px !important; }
+.collab-slide-konva__tool-group.ribbon-group .rb-icon { width: 32px !important; height: 30px !important; min-width: 32px !important; padding: 0 4px !important; font-size: 15px !important; box-sizing: border-box !important; }
 .collab-slide-konva__ribbon-groups .collab-slide-konva__tool-group { position: relative; display: flex; flex-direction: column; justify-content: flex-start; gap: 0; padding: 1px 6px 0; border-right: 0; flex: none; }
 .collab-slide-konva__ribbon-groups .collab-slide-konva__tool-group:first-child { padding-left: 1px; }
 .collab-slide-konva__ribbon-groups .collab-slide-konva__group-label { position: static; display: block; order: 2; height: 13px; margin: 1px 3px 0; color: #7a8492; font-size: 9px; line-height: 13px; letter-spacing: .02em; text-align: center; }
-.collab-slide-konva__ribbon-groups .ribbon-group-items { display: flex; align-items: center; gap: 2px; flex: 1; min-height: 0; }
+/* v0.7.144 — slide-konva-scoped override: max-width content (GenOffice pattern). */
+.collab-slide-konva__ribbon-groups .ribbon-group-items {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: max-content;
+  align-self: flex-start;
+}
 .collab-slide-konva__ribbon-groups .collab-slide-konva__tool-btn { min-width: 46px; min-height: 48px; padding: 3px 6px 2px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: #303844; cursor: pointer; flex-direction: column; font: 11px/1.15 inherit; white-space: nowrap; flex-shrink: 0; }
 .collab-slide-konva__ribbon-groups .collab-slide-konva__tool-btn svg { width: 19px; height: 19px; color: #344054; flex: none; }
 .collab-slide-konva__ribbon-groups .collab-slide-konva__tool-btn:hover:not(:disabled) { border-color: #cbdaf1; background: #f1f6fe; color: #185abd; }
@@ -3759,19 +4227,56 @@ onBeforeUnmount(() => {
    .collab-slide-konva__ribbon-groups and collapse to 0 width under flex stretch
    — use the border-left on the next tool-group as the authoritative separator. */
 .collab-slide-konva[data-rb-theme='dark'] .collab-slide-konva__ribbon-groups > .collab-slide-konva__tool-group ~ .collab-slide-konva__tool-group { border-left-color: rgba(255, 255, 255, 0.08); }
-.collab-slide-konva[data-rb-theme='dark'] .collab-slide-konva__ribbon-groups .ribbon-sep { display: none; }
+/* v0.7.144 — allow explicit .ribbon-sep divs to be visible (GenOffice spec).
+   The border-left above is the fall-back; explicit seps sit alongside it. */
+.collab-slide-konva[data-rb-theme='dark'] .collab-slide-konva__ribbon-groups .ribbon-sep { display: block; background: var(--rb-border, #3a3a3a); width: 1px; align-self: stretch; margin: 2px 6px; flex-shrink: 0; }
+
+/* v0.7.139 — AI big button (GenOffice pattern: 紫色 glyph on transparent plate).
+   The 'rb-big-ai' modifier keeps the icon row clear while hovering. */
+.rb-big.rb-big-ai { color: var(--rb-text); }
+.rb-big.rb-big-ai .rb-big-icon { color: var(--color-brand-secondary, #6ba1ff); }
+.rb-big.rb-big-ai:hover:not(:disabled) .rb-big-icon { background: var(--rb-hover); }
+
+/* v0.7.141 — Font group: outer column stack hosts 2 horizontal rows
+   (GenOffice .rb-col + .rb-row pattern). Bug in v0.7.139: .rb-font-row
+   was column flex, so row 2's 3 buttons (size + grow + shrink) stacked
+   vertically inside an outer row flex. The fix wraps them in a column
+   stack with two row children. */
+.rb-font-stack { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; align-self: stretch; }
+.rb-font-row { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.rb-font-row--name { justify-content: stretch; }
+.rb-font-row--name .rb-drop-wrap { flex: 1; min-width: 0; }
+.rb-font-row--ctrl { justify-content: flex-start; }
+.rb-font-btn {
+  min-width: 0;
+  justify-content: space-between;
+  padding: 2px 7px;
+  border: 1px solid var(--rb-border);
+  background: var(--rb-chrome-bg-deep, #1e1e1e);
+  font-size: 12px;
+  flex: 1;
+}
+.rb-font-btn--size { flex: 0 0 50px; min-width: 0; }
+.rb-font-btn:hover:not(:disabled) { border-color: var(--rb-accent); background: var(--rb-hover); }
+.rb-font-btn .rb-font-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+
+/* v0.7.144 — Paragraph group: 2-row layout (GenOffice .rb-col + .rb-row).
+   Each row holds 4 icons with proper GenOffice gap. */
+.rb-arrange-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  justify-content: center;
+}
 
 /* v0.7.119 — lock label font-size in scoped context (more specific selectors
    in this file otherwise inherit 14px). */
+/* v0.7.134 — Hide group labels to match GenOffice's compact icon-only panel.
+ * Group identity remains via data-tip tooltips + visual grouping + sep dividers.
+ * Re-enable by removing this rule (or commenting it out). */
 .collab-slide-konva__ribbon-groups .ribbon-group-label--visible {
-  /* v0.7.131 — 11px + semibold 跟 GenOffice 「PowerPoint 组标签」一致 */
-  font-size: 11px !important;
-  line-height: 13px;
-  font-weight: 500;
-  color: var(--rb-text-dim);
-  margin-top: 2px;
-  padding: 0;
-  letter-spacing: 0.01em;
+  display: none !important;
 }
 
 </style>
