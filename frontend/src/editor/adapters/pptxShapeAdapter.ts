@@ -36,6 +36,8 @@ import {
   type TextElement,
   type PictureElement,
   type TableElement,
+  type GroupElement,
+  type SlideElement,
   type NewChartKind,
   type ThemeSpec as EngineThemeSpec,
   type SlideLayoutInfo as EngineSlideLayoutInfo,
@@ -84,6 +86,8 @@ export interface PptxShape {
   strokeWidth?: number
   /** Font size in points. */
   fontSize?: number
+  /** Font color (hex without leading #) when explicitly set on the run. */
+  fontColor?: string
   /** Picture media ref (when type === 'picture'). */
   mediaRef?: string
   /** base64 dataURL for picture (resolved at openPptx time). */
@@ -156,19 +160,30 @@ function emuTransformToRect(t: { offset?: { x: number; y: number; cx: number; cy
   return { x: t.offset.x, y: t.offset.y, w: t.offset.cx, h: t.offset.cy }
 }
 
-function shapeFromTextElement(el: TextElement): PptxShape | null {
-  const rect = emuTransformToRect(el.transform)
+function shapeFromTextElement(el: TextElement, rectOverride?: { x: number; y: number; w: number; h: number }, rotation = 0): PptxShape | null {
+  const rect = rectOverride ?? emuTransformToRect(el.transform)
   if (!rect) return null
   // Extract first-paragraph text (multi-paragraph becomes joined by \n).
   const text = (el.text?.paragraphs ?? [])
     .map((p) => (p.runs ?? []).map((r) => r.text ?? '').join(''))
     .join('\n')
   const preset = el.presetGeometry ?? 'rect'
-  let shapeType: PptxShape['type'] = 'rect'
-  if (preset === 'ellipse') shapeType = 'ellipse'
-  else if (preset === 'line' || preset === 'straightConnector' || preset === 'bentConnector3' || preset === 'curvedConnector3') shapeType = 'line'
+  // If the element carries paragraph text we render it as a v-text in the
+  // canvas (so users see the actual captions); only fall back to a pure
+  // geometry shape when the box has no text — then we still draw something
+  // visible. Connector-only presets become 'line' regardless of text.
+  const hasText = (el.text?.paragraphs ?? []).some(
+    (p) => (p.runs ?? []).some((r) => (r.text ?? '').trim().length > 0),
+  )
+  const isConnector =
+    preset === 'line' || preset === 'straightConnector' ||
+    preset === 'bentConnector3' || preset === 'curvedConnector3'
+  let shapeType: PptxShape['type']
+  if (hasText && !isConnector) {
+    shapeType = 'text'
+  } else if (preset === 'ellipse') shapeType = 'ellipse'
+  else if (isConnector) shapeType = 'line'
   else if (preset === 'roundRect') shapeType = 'roundRect'
-  else if (preset === 'rect') shapeType = 'rect'
   else if (
     preset === 'rightArrow' ||
     preset === 'leftArrow' ||
@@ -209,9 +224,15 @@ function shapeFromTextElement(el: TextElement): PptxShape | null {
     preset === 'cloud' ||
     preset === 'speechBubble'
   ) shapeType = 'callout'
+  else if (preset === 'rect') shapeType = 'rect'
   else shapeType = 'text' // text-only box or unknown preset
-  // First run carries the styling.
+  // First run carries the styling. Font size in PPT XML is hundredths of a
+  // point (sz="3600" = 36pt). The engine divides by 100 already, so we use
+  // it directly and fall back to 18pt only when no run-level size exists.
   const firstRun = el.text?.paragraphs?.[0]?.runs?.[0]
+  const fontSize = firstRun && typeof firstRun.fontSize === 'number' && firstRun.fontSize > 0
+    ? firstRun.fontSize
+    : 18
   return {
     id: el.id,
     type: shapeType,
@@ -223,15 +244,19 @@ function shapeFromTextElement(el: TextElement): PptxShape | null {
     fill: hexFromResolved((el.fill as { color?: string } | undefined)?.color),
     stroke: hexFromResolved((el.stroke as { color?: string } | undefined)?.color),
     strokeWidth: el.stroke?.width,
-    fontSize: firstRun?.fontSize ? Math.round(firstRun.fontSize / 100) : 18,
+    fontSize,
+    // Pick a readable text color from the run; fall back to #f8fafc when the
+    // shape carries no explicit color so light text shows up on dark slides.
+    fontColor: hexFromResolved((firstRun as { color?: string } | undefined)?.color) ?? 'f8fafc',
     spIndex: el.anchor?.spIndex ?? -1,
     sourceType: el.type,
     preset,
+    rotation,
   }
 }
 
-function shapeFromPicture(el: PictureElement, media: Map<string, string>): PptxShape | null {
-  const rect = emuTransformToRect(el.transform)
+function shapeFromPicture(el: PictureElement, media: Map<string, string>, rectOverride?: { x: number; y: number; w: number; h: number }, rotation = 0): PptxShape | null {
+  const rect = rectOverride ?? emuTransformToRect(el.transform)
   if (!rect) return null
   return {
     id: el.id,
@@ -244,7 +269,110 @@ function shapeFromPicture(el: PictureElement, media: Map<string, string>): PptxS
     mediaData: media.get(el.mediaRef),
     spIndex: el.anchor?.spIndex ?? -1,
     sourceType: el.type,
+    rotation,
   }
+}
+
+function shapeFromTableElement(el: TableElement, rectOverride?: { x: number; y: number; w: number; h: number }, rotation = 0): PptxShape | null {
+  const rect = rectOverride ?? emuTransformToRect(el.transform)
+  if (!rect) return null
+  const rows = el.rowHeights.length
+  const cols = el.colWidths.length
+  const cellTexts: string[][] = el.rows.map((row) =>
+    row.map((cell) => {
+      const paragraphs = cell.text?.paragraphs ?? []
+      return paragraphs.map((p) => (p.runs ?? []).map((r) => r.text ?? '').join('')).join('\n')
+    }),
+  )
+  return {
+    id: el.id,
+    type: 'table',
+    x: rect.x,
+    y: rect.y,
+    w: rect.w,
+    h: rect.h,
+    rows,
+    cols,
+    cellTexts,
+    spIndex: el.anchor?.spIndex ?? -1,
+    sourceType: el.type,
+    preset: 'table',
+    rotation,
+  }
+}
+
+function shapeFromUnsupportedElement(el: SlideElement, label: string, rectOverride?: { x: number; y: number; w: number; h: number }, rotation = 0): PptxShape | null {
+  const rect = rectOverride ?? emuTransformToRect((el as { transform?: { offset?: { x: number; y: number; cx: number; cy: number } } }).transform)
+  if (!rect || rect.w <= 0 || rect.h <= 0) return null
+  return {
+    id: el.id,
+    type: 'text',
+    x: rect.x,
+    y: rect.y,
+    w: rect.w,
+    h: rect.h,
+    text: label,
+    fill: '64748B',
+    stroke: 'CBD5E1',
+    strokeWidth: 9525,
+    fontSize: 14,
+    spIndex: el.anchor?.spIndex ?? -1,
+    sourceType: el.type,
+    rotation,
+  }
+}
+
+type ShapeRect = { x: number; y: number; w: number; h: number }
+
+function childRect(parent: GroupElement, child: SlideElement): ShapeRect | null {
+  const parentRect = emuTransformToRect(parent.transform)
+  const childRect = emuTransformToRect(child.transform)
+  if (!parentRect || !childRect) return null
+  const childOffset = parent.childOffset ?? {
+    x: parentRect.x,
+    y: parentRect.y,
+    cx: parentRect.w,
+    cy: parentRect.h,
+  }
+  const sx = childOffset.cx ? parentRect.w / childOffset.cx : 1
+  const sy = childOffset.cy ? parentRect.h / childOffset.cy : 1
+  return {
+    x: parentRect.x + (childRect.x - childOffset.x) * sx,
+    y: parentRect.y + (childRect.y - childOffset.y) * sy,
+    w: childRect.w * sx,
+    h: childRect.h * sy,
+  }
+}
+
+function collectRenderableShapes(
+  element: SlideElement,
+  media: Map<string, string>,
+  rectOverride?: ShapeRect,
+  inheritedRotation = 0,
+): PptxShape[] {
+  if (element.type === 'group') {
+    const group = element as GroupElement
+    const groupRotation = (group.transform.rot ?? 0) / 60000
+    return group.children.flatMap((child) =>
+      collectRenderableShapes(child, media, childRect(group, child) ?? undefined, inheritedRotation + groupRotation),
+    )
+  }
+  const rotation = inheritedRotation + (((element as { transform?: { rot?: number } }).transform?.rot ?? 0) / 60000)
+  if (element.type === 'text' || element.type === 'shape') {
+    const shape = shapeFromTextElement(element as TextElement, rectOverride, rotation)
+    return shape ? [shape] : []
+  }
+  if (element.type === 'picture') {
+    const shape = shapeFromPicture(element as PictureElement, media, rectOverride, rotation)
+    return shape ? [shape] : []
+  }
+  if (element.type === 'table') {
+    const shape = shapeFromTableElement(element as TableElement, rectOverride, rotation)
+    return shape ? [shape] : []
+  }
+  const label = element.type === 'chart' ? '图表' : element.type === 'passthrough' ? '嵌入对象' : '对象'
+  const placeholder = shapeFromUnsupportedElement(element, label, rectOverride, rotation)
+  return placeholder ? [placeholder] : []
 }
 
 /** Open a .pptx into a shape-level deck ready for Konva rendering. */
@@ -280,22 +408,12 @@ export async function openPptxShapes(bytes: Uint8Array): Promise<PptxShapeDeck> 
   }
   for (let i = 0; i < opened.deck.slides.length; i++) {
     const slide = opened.deck.slides[i]
-    const shapes: PptxShape[] = []
-    for (const el of slide.elements ?? []) {
-      const t = el as TextElement
-      const p = el as PictureElement
-      if (t.type === 'text' || t.type === 'shape') {
-        const s = shapeFromTextElement(t)
-        if (s) shapes.push(s)
-      } else if (p.type === 'picture') {
-        const s = shapeFromPicture(p, media)
-        if (s) shapes.push(s)
-      } else if (t.type === 'table') {
-        const s = shapeFromTable(t as unknown as TableElement)
-        if (s) shapes.push(s)
-      }
-      // tables/charts/groups/passthrough: skip for now (would need
-      // dedicated renderers; v0.7.27 ships text/rect/ellipse/line/picture).
+    const shapes: PptxShape[] = (slide.elements ?? []).flatMap((el) => collectRenderableShapes(el, media))
+    // Master/layout decorations are part of the effective slide in PowerPoint.
+    // Keep them visible in the editor as read-only placeholders instead of
+    // silently turning a slide with only inherited content into a white canvas.
+    if (slide.decorations?.length) {
+      shapes.push(...slide.decorations.flatMap((el) => collectRenderableShapes(el, media)))
     }
     slides.push({
       index: i,
@@ -394,33 +512,6 @@ export async function savePptxShapeBytes(deck: PptxShapeDeck): Promise<Uint8Arra
  *  Konva renderer can show them; structural edits flow back through
  *  engineAddTable (insertion) and `engine.pptx-engine` cell-level patches
  *  on save (see markDirty). */
-function shapeFromTable(el: TableElement): PptxShape | null {
-  const rect = emuTransformToRect(el.transform)
-  if (!rect) return null
-  const rows = el.rowHeights.length
-  const cols = el.colWidths.length
-  const cellTexts: string[][] = el.rows.map((row) =>
-    row.map((cell) => {
-      const paras = cell.text?.paragraphs ?? []
-      return paras.map((p) => (p.runs ?? []).map((r) => r.text ?? '').join('')).join('\n')
-    }),
-  )
-  return {
-    id: el.id,
-    type: 'table',
-    x: rect.x,
-    y: rect.y,
-    w: rect.w,
-    h: rect.h,
-    rows,
-    cols,
-    cellTexts,
-    spIndex: el.anchor?.spIndex ?? -1,
-    sourceType: el.type,
-    preset: 'table',
-  }
-}
-
 /** Add a new table to a slide via the pptx-engine's addTable API; the
  *  caller's Yjs layer wraps the returned element id so peers converge. */
 export function addTableToSlide(

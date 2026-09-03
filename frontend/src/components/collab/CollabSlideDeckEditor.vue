@@ -77,7 +77,7 @@
           <div class="collab-slide-deck__slide-actions" @click.stop>
             <button type="button" class="collab-slide-deck__btn collab-slide-deck__btn--ghost" @click="moveSlide(idx, -1)" :disabled="idx === 0">↑</button>
             <button type="button" class="collab-slide-deck__btn collab-slide-deck__btn--ghost" @click="moveSlide(idx, +1)" :disabled="idx === slides.length - 1">↓</button>
-            <button type="button" class="collab-slide-deck__btn collab-slide-deck__btn--danger" @click="deleteSlide(s.id)">删除</button>
+            <button type="button" class="collab-slide-deck__btn collab-slide-deck__btn--danger" @click="removeSlide(s.id)">删除</button>
           </div>
         </li>
       </ol>
@@ -96,7 +96,7 @@ import {
   listSlides,
   createSlide,
   updateSlide,
-  deleteSlide,
+  deleteSlide as deleteSlideById,
   exportSlides,
   type SlideDeck,
   type Slide,
@@ -316,10 +316,10 @@ async function moveSlide(idx: number, delta: number) {
   }
 }
 
-async function deleteSlide(id: string) {
+async function removeSlide(id: string) {
   if (!selectedDeckID.value) return
   try {
-    await deleteSlide(selectedDeckID.value, id)
+    await deleteSlideById(selectedDeckID.value, id)
     await refreshSlides()
     MessagePlugin.success('已删除幻灯片')
   } catch (e: any) {

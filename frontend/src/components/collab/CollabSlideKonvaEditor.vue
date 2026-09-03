@@ -17,28 +17,273 @@
   round-trip verbatim; only the shapes this editor touches are regenerated).
 -->
 <template>
-  <div class="collab-slide-konva">
-    <div class="collab-slide-konva__toolbar">
-      <span class="collab-slide-konva__title">{{ title }}</span>
-      <span class="collab-slide-konva__kind">{{ kindLabel }}</span>
-      <span class="collab-slide-konva__connection" :class="{ connected: connected && !saveError }">
-        {{ connectionLabel }}
-      </span>
-      <span class="collab-slide-konva__savetag" :class="savetagClass">
-        {{ saveLabel }}
-      </span>
-      <button @click="addShape('text')" type="button" data-testid="slide-add-text">+ 文本框</button>
-      <button @click="addShape('rect')" type="button" data-testid="slide-add-rect">+ 矩形</button>
-      <button @click="addShape('roundRect')" type="button" title="圆角矩形">+ 圆角矩形</button>
-      <button @click="addShape('ellipse')" type="button" data-testid="slide-add-ellipse">+ 椭圆</button>
-      <button @click="addShape('line')" type="button" data-testid="slide-add-line">+ 直线</button>
-      <button @click="addShape('arrow')" type="button" title="右箭头">→ 箭头</button>
-      <button @click="addShape('triangle')" type="button" title="三角形">△ 三角</button>
-      <button @click="addShape('star')" type="button" title="五角星">★ 星</button>
-      <button @click="addShape('hexagon')" type="button" title="六边形">⬡ 六边</button>
-      <button @click="addShape('callout')" type="button" title="对话气泡">💬 对话</button>
-      <button @click="promptAddTable" type="button" title="插入表格">⊞ 表格</button>
-      <button @click="addSlide" type="button">+ 新建幻灯片</button>
+  <div class="collab-slide-konva" :data-rb-theme="ribbonTheme">
+    <header class="collab-slide-konva__titlebar">
+      <div class="collab-slide-konva__brandmark">W</div>
+      <div class="collab-slide-konva__file-meta">
+        <div class="collab-slide-konva__title">{{ title }}</div>
+        <div class="collab-slide-konva__file-subtitle"><span>{{ kindLabel }}</span><span class="collab-slide-konva__file-dot">·</span><span>云端演示文稿</span></div>
+      </div>
+      <div class="collab-slide-konva__title-actions">
+        <span class="collab-slide-konva__connection" :class="{ connected: connected && !saveError }"><i></i>{{ connectionLabel }}</span>
+        <span class="collab-slide-konva__savetag" :class="savetagClass">{{ saveLabel }}</span>
+        <span class="collab-slide-konva__peers" aria-label="协作者">
+          <span v-for="p in peers" :key="p.clientId" class="collab-slide-konva__peer" :style="{ backgroundColor: p.color }" :title="p.displayName">{{ initialOf(p.displayName) }}</span>
+        </span>
+        <button class="collab-slide-konva__title-btn" type="button" @click="onEnterPresent" :disabled="!slides.length || loading" data-tip="从当前页开始演示 (F5)"><span>▶</span> 演示</button>
+      </div>
+    </header>
+    <CollabEditorRibbon
+      v-model="activeTab"
+      :tabs="ribbonTabs"
+      aria-label="演示文稿工具栏"
+      test-id-prefix="slide-ribbon"
+      storage-key="weknora-slide-ribbon-collapsed"
+      collapsible
+      :theme="ribbonTheme"
+    >
+      <template #default>
+        <div class="collab-slide-konva__ribbon-groups">
+          <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'home'">
+            <div class="ribbon-group-items">
+              <!-- Slides group: split-button 新建幻灯片 + stacked 布局 / 添加节 -->
+              <div class="rb-drop-wrap">
+                <button
+                  class="rb-big rb-split"
+                  :class="{ 'is-open': layoutOpen }"
+                  type="button"
+                  :disabled="!slides.length || loading"
+                  data-testid="slide-add-slide-btn"
+                  data-tip="新建空白幻灯片"
+                  @click="addSlide"
+                >
+                  <span class="rb-big-icon">
+                    <span class="rb-split-main"><CollabIcon name="IconNewSlide" /></span>
+                    <span class="rb-caret-hit" data-tip="选择布局新建" @click.stop="toggleLayoutPicker"><svg class="rb-caret" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5.5 9.25 12 15.75l6.5-6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+                  </span>
+                  <span>新建幻灯片</span>
+                </button>
+                <div v-if="layoutOpen" class="rb-drop rb-layout-panel" data-testid="slide-layout-picker" @click.stop @keydown.escape="layoutOpen = false" role="menu">
+                  <div class="rb-drop-title">选择布局新建</div>
+                  <button
+                    v-for="layout in availableLayouts"
+                    :key="layout.path"
+                    type="button"
+                    class="rb-drop-item"
+                    :data-testid="`slide-layout-opt-${layout.path}`"
+                    @click="applyLayoutFromSplit(layout.path)"
+                  >
+                    <span>{{ layout.name }}</span>
+                    <span class="rb-drop-meta">{{ layout.placeholders }} 个占位符</span>
+                  </button>
+                  <div v-if="missingBuiltins.length" class="rb-drop-sep">内置布局</div>
+                  <button
+                    v-for="b in missingBuiltins"
+                    :key="b.key"
+                    type="button"
+                    class="rb-drop-item"
+                    :data-testid="`slide-layout-builtin-${b.key}`"
+                    @click="applyLayoutFromSplit('builtin:' + b.key)"
+                  >
+                    <span>{{ b.name }}</span>
+                    <span class="rb-drop-meta">内置</span>
+                  </button>
+                  <div v-if="!availableLayouts.length && !missingBuiltins.length" class="rb-drop-empty">该模板未声明布局</div>
+                </div>
+              </div>
+              <div class="rb-slides-col">
+                <div class="rb-drop-wrap">
+                  <button
+                    class="rb-small"
+                    :class="{ active: layoutPickOpen }"
+                    type="button"
+                    :disabled="!slides.length || loading"
+                    data-testid="slide-layout-btn"
+                    data-tip="切换当前幻灯片布局"
+                    @click="toggleLayoutPick"
+                  >
+                    <CollabIcon name="IconTheme" />
+                    <span>布局</span>
+                    <svg class="rb-caret" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5.5 9.25 12 15.75l6.5-6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                  </button>
+                  <div v-if="layoutPickOpen" class="rb-drop" data-testid="slide-layout-menu" @click.stop @keydown.escape="layoutPickOpen = false" role="menu">
+                    <div class="rb-drop-title">更改当前页布局</div>
+                    <button v-for="layout in availableLayouts" :key="layout.path" type="button" class="rb-drop-item" @click="applyLayout(layout.path); layoutPickOpen = false">
+                      <span>{{ layout.name }}</span><span class="rb-drop-meta">{{ layout.placeholders }} 个占位符</span>
+                    </button>
+                    <div v-if="missingBuiltins.length" class="rb-drop-sep">内置布局</div>
+                    <button v-for="b in missingBuiltins" :key="b.key" type="button" class="rb-drop-item" @click="applyLayout('builtin:' + b.key); layoutPickOpen = false">
+                      <span>{{ b.name }}</span><span class="rb-drop-meta">内置</span>
+                    </button>
+                    <div class="rb-drop-sep" />
+                    <button type="button" class="rb-drop-item rb-drop-item--muted" @click="resetSlideLayout(); layoutPickOpen = false"><span>重置为占位符布局</span></button>
+                  </div>
+                </div>
+                <button class="rb-small" type="button" :disabled="!slides.length" data-tip="添加节" @click="onAddSection">
+                  <CollabIcon name="IconAddSection" /><span>添加节</span>
+                </button>
+              </div>
+            </div>
+            <div class="ribbon-group-label ribbon-group-label--visible">幻灯片</div>
+          </div>
+          <div class="ribbon-sep" v-if="activeTab === 'home' || activeTab === 'insert'" />
+          <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'home' || activeTab === 'insert'">
+            <div class="ribbon-group-items">
+              <button class="rb-big" @click="addShape('text')" type="button" data-testid="slide-add-text" data-tip="插入文本框"><span class="rb-big-icon"><CollabIcon name="IconTextBox" /></span><span>文本框</span></button>
+              <button class="rb-big" @click="addShape('rect')" type="button" data-testid="slide-add-rect" data-tip="插入矩形"><span class="rb-big-icon"><CollabIcon name="IconRectangle" /></span><span>矩形</span></button>
+              <button class="rb-big" @click="promptAddTable" type="button" data-tip="插入表格" data-testid="slide-add-table"><span class="rb-big-icon"><CollabIcon name="IconTable" /></span><span>表格</span></button>
+              <button class="rb-big" @click="triggerUpload" type="button" :disabled="uploading" data-tip="导入本地 PPTX"><span class="rb-big-icon"><CollabIcon name="IconUpload" /></span><span>{{ uploading ? '上传中…' : '导入 PPTX' }}</span></button>
+            </div>
+            <div class="ribbon-group-label ribbon-group-label--visible">插入</div>
+          </div>
+          <div class="ribbon-sep" v-if="activeTab === 'home'" />
+          <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'home'">
+            <div class="ribbon-group-items">
+              <!-- Arrange group: 2×3 align grid + distribute + group + flip row -->
+              <div class="rb-arrange-grid" role="group" aria-label="对齐">
+                <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="左对齐" @click="alignSelected('left')"><CollabIcon name="IconObjAlignLeft" /></button>
+                <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="水平居中" @click="alignSelected('centerH')"><CollabIcon name="IconObjAlignCenterH" /></button>
+                <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="右对齐" @click="alignSelected('right')"><CollabIcon name="IconObjAlignRight" /></button>
+                <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="顶端对齐" @click="alignSelected('top')"><CollabIcon name="IconObjAlignTop" /></button>
+                <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="垂直居中" @click="alignSelected('centerV')"><CollabIcon name="IconObjAlignMiddle" /></button>
+                <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="底端对齐" @click="alignSelected('bottom')"><CollabIcon name="IconObjAlignBottom" /></button>
+              </div>
+              <div class="rb-arrange-row">
+                <button class="rb-icon" type="button" :disabled="selectedIds.length < 3" data-tip="横向均匀分布" @click="distributeSelected('h')"><CollabIcon name="IconObjDistributeH" /></button>
+                <button class="rb-icon" type="button" :disabled="selectedIds.length < 3" data-tip="纵向均匀分布" @click="distributeSelected('v')"><CollabIcon name="IconObjDistributeV" /></button>
+                <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="水平翻转" @click="flipSelected('h')"><CollabIcon name="IconObjectFlipH" /></button>
+                <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="垂直翻转" @click="flipSelected('v')"><CollabIcon name="IconObjectFlipV" /></button>
+                <button class="rb-icon" type="button" :disabled="!canGroupSelected" data-tip="组合选中的形状" data-testid="slide-group" @click="groupSelected"><CollabIcon name="IconGroup" /></button>
+                <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="复制所选" @click="duplicateSelected"><CollabIcon name="IconCopy" /></button>
+              </div>
+            </div>
+            <div class="ribbon-group-label ribbon-group-label--visible">排列</div>
+          </div>
+          <div class="ribbon-sep" v-if="activeTab === 'home'" />
+          <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'home'">
+            <div class="ribbon-group-items">
+              <!-- Show group: split-button 演示 + 撤销 / 重做 (kept compact) -->
+              <div class="rb-drop-wrap">
+                <button
+                  class="rb-big rb-split rb-show-split"
+                  :class="{ 'is-open': slideShowOpen }"
+                  type="button"
+                  :disabled="!slides.length || loading"
+                  data-testid="slide-present-btn"
+                  :data-tip="slideShowFromStart ? '从第一页开始演示 (F5)' : '从当前页开始演示 (Shift+F5)'"
+                  @click="onPresentSplitMain"
+                >
+                  <span class="rb-big-icon">
+                    <span class="rb-split-main"><CollabIcon :name="slideShowFromStart ? 'IconPlayFromStart' : 'IconPlayCurrent'" /></span>
+                    <span class="rb-caret-hit" data-tip="演示选项" @click.stop="slideShowOpen = !slideShowOpen; layoutOpen = false; layoutPickOpen = false"><svg class="rb-caret" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5.5 9.25 12 15.75l6.5-6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+                  </span>
+                  <span>{{ slideShowFromStart ? '从开始' : '从当前页' }}</span>
+                </button>
+                <div v-if="slideShowOpen" class="rb-drop" data-testid="slide-present-menu" @click.stop @keydown.escape="slideShowOpen = false" role="menu">
+                  <div class="rb-drop-title">演示选项</div>
+                  <button type="button" class="rb-drop-item" :class="{ active: slideShowFromStart }" data-testid="slide-present-from-start" @click="slideShowFromStart = true; slideShowOpen = false; onPresentSplitMain">
+                    <span>从第一页开始</span><span class="rb-drop-meta">F5</span>
+                  </button>
+                  <button type="button" class="rb-drop-item" :class="{ active: !slideShowFromStart }" data-testid="slide-present-from-current" @click="slideShowFromStart = false; slideShowOpen = false; onPresentSplitMain">
+                    <span>从当前页开始</span><span class="rb-drop-meta">Shift+F5</span>
+                  </button>
+                </div>
+              </div>
+              <div class="rb-slides-col">
+                <button class="rb-small" type="button" :disabled="!canUndo" data-tip="撤销 (Ctrl+Z)" @click="onUndo"><CollabIcon name="IconRotateLeft" /><span>撤销</span></button>
+                <button class="rb-small" type="button" :disabled="!canRedo" data-tip="重做 (Ctrl+Shift+Z)" @click="onRedo"><CollabIcon name="IconRotateRight" /><span>重做</span></button>
+              </div>
+            </div>
+            <div class="ribbon-group-label ribbon-group-label--visible">放映</div>
+          </div>
+          <div class="ribbon-sep" v-if="activeTab === 'insert' || activeTab === 'draw'" />
+          <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'insert' || activeTab === 'draw'">
+            <div class="ribbon-group-items">
+              <button class="rb-big" v-for="shapeTool in shapeTools" :key="shapeTool.type" @click="addShape(shapeTool.type)" type="button" :data-testid="shapeTool.testId" :data-tip="shapeTool.label"><span class="rb-big-icon"><CollabIcon :name="shapeTool.icon" /></span><span>{{ shapeTool.label }}</span></button>
+            </div>
+            <div class="ribbon-group-label ribbon-group-label--visible">形状</div>
+          </div>
+          <div class="ribbon-sep" v-if="activeTab === 'design'" />
+          <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'design'">
+            <div class="ribbon-group-items">
+              <button
+              type="button"
+              class="rb-big collab-slide-konva__layout-btn"
+              data-testid="slide-layout-btn"
+              :class="{ 'is-open': layoutMenuOpen }"
+              :disabled="!slides.length || loading"
+              data-tip="切换幻灯片布局"
+              @click="layoutMenuOpen = !layoutMenuOpen; $event.stopPropagation()"
+            >
+              <span class="rb-big-icon is-with-caret">
+                <CollabIcon name="IconTheme" />
+                <svg class="rb-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M5.5 9.25 12 15.75l6.5-6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </span>
+              <span>布局</span>
+            </button>
+            <div v-if="layoutMenuOpen" class="collab-slide-konva__layout-menu" @click.stop role="menu" @keydown.escape="layoutMenuOpen = false" data-testid="slide-layout-menu">
+              <div class="collab-slide-konva__layout-menu-title">选择幻灯片布局</div>
+              <button
+                v-for="layout in availableLayouts"
+                :key="layout.path"
+                type="button"
+                class="collab-slide-konva__layout-menu-item"
+                :data-testid="`slide-layout-opt-${layout.path}`"
+                @click="applyLayout(layout.path); layoutMenuOpen = false"
+              >
+                <span class="collab-slide-konva__layout-menu-name">{{ layout.name }}</span>
+                <span class="collab-slide-konva__layout-menu-meta">{{ layout.placeholders }} 个占位符</span>
+              </button>
+              <div v-if="missingBuiltins.length" class="collab-slide-konva__layout-menu-sep">内置布局</div>
+              <button
+                v-for="b in missingBuiltins"
+                :key="b.key"
+                type="button"
+                class="collab-slide-konva__layout-menu-item collab-slide-konva__layout-menu-item--builtin"
+                :data-testid="`slide-layout-builtin-${b.key}`"
+                @click="applyLayout('builtin:' + b.key); layoutMenuOpen = false"
+              >
+                <span class="collab-slide-konva__layout-menu-name">{{ b.name }}</span>
+                <span class="collab-slide-konva__layout-menu-meta">内置</span>
+              </button>
+              <div v-if="!availableLayouts.length && !missingBuiltins.length" class="collab-slide-konva__layout-menu-empty">该模板未声明布局</div>
+            </div>
+              <CollabSlideThemePanel class="collab-slide-konva__theme-panel" @theme:apply="onThemePanelApply" />
+            </div>
+          </div>
+          <div class="ribbon-sep" v-if="activeTab === 'transitions'" />
+          <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'transitions'">
+            <span class="collab-slide-konva__ribbon-hint">选择幻灯片后，在底部「切换」面板设置切换效果。</span>
+          </div>
+          <div class="ribbon-sep" v-if="activeTab === 'animate'" />
+          <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'animate'">
+            <span class="collab-slide-konva__ribbon-hint">选中对象后，在底部「动画」面板添加效果。</span>
+          </div>
+          <div class="ribbon-sep" v-if="activeTab === 'slideshow'" />
+          <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'slideshow'">
+            <div class="ribbon-group-items">
+              <button class="rb-big rb-big--present" type="button" data-testid="slide-present-btn" :disabled="!slides.length || loading" @click="onEnterPresent" data-tip="全屏演示 (F5)"><span class="rb-big-icon"><CollabIcon name="IconPlay" /></span><span>从当前页</span></button>
+              <button class="rb-big" @click="onDownload" type="button" :disabled="downloading" data-tip="导出为 PPTX 文件"><span class="rb-big-icon"><CollabIcon name="IconDownload" /></span><span>{{ downloading ? '下载中…' : '导出 PPTX' }}</span></button>
+            </div>
+          </div>
+          <div class="ribbon-sep" v-if="activeTab === 'review'" />
+          <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'review'">
+            <span class="collab-slide-konva__ribbon-hint">评论面板已固定在编辑区右侧，可直接协作讨论。</span>
+          </div>
+          <div class="ribbon-sep" v-if="activeTab === 'view'" />
+          <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'view'">
+            <div class="ribbon-group-items">
+              <button class="rb-small" type="button" @click="onZoomOut" data-tip="缩小画布"><CollabIcon name="IconZoomOut" /><span>缩小</span></button>
+              <button class="rb-small" type="button" @click="onZoomIn" data-tip="放大画布"><CollabIcon name="IconZoomIn" /><span>放大</span></button>
+              <button class="rb-small" type="button" @click="setVisibleZoom(1)" data-tip="重置为 100%"><CollabIcon name="IconZoom100" /><span>实际大小</span></button>
+            </div>
+          </div>
+          <input ref="fileInput" type="file" accept=".pptx" style="display:none" @change="onUploadFile" />
+        </div>
+      </template>
+    </CollabEditorRibbon>
       <div v-if="showTablePrompt" class="collab-slide-konva__modal-bg" @click="showTablePrompt = false">
         <div class="collab-slide-konva__modal" @click.stop>
           <h3>插入表格</h3>
@@ -50,100 +295,101 @@
           </div>
         </div>
       </div>
-      <button @click="triggerUpload" type="button" :disabled="uploading">
-        {{ uploading ? '上传中…' : '上传 .pptx' }}
-      </button>
-      <input ref="fileInput" type="file" accept=".pptx" style="display:none" @change="onUploadFile" />
-      <button @click="onDownload" type="button" :disabled="downloading">
-        {{ downloading ? '下载中…' : '下载 .pptx' }}
-      </button>
-      <button
-        type="button"
-        class="collab-slide-konva__present-btn"
-        data-testid="slide-present-btn"
-        :disabled="!slides.length || loading"
-        @click="onEnterPresent"
-        title="全屏演示 (F5)"
-      >▶ 演示</button>
-      <label class="collab-slide-konva__layout-select">
-        布局:
-        <select
-          class="collab-slide-konva__layout-dropdown"
-          data-testid="slide-layout-select"
-          :disabled="!slides.length || loading"
-          @change="onLayoutSelect"
-          title="切换幻灯片布局"
-        >
-          <option value="">— 选择布局 —</option>
-          <option v-for="layout in availableLayouts" :key="layout.path" :value="layout.path">
-            {{ layout.name }}（{{ layout.placeholders }} 占位）
-          </option>
-          <optgroup v-if="missingBuiltins.length" label="内置布局（未注入）">
-            <option v-for="b in missingBuiltins" :key="b.key" :value="'builtin:' + b.key">
-              + {{ b.name }}（内置）
-            </option>
-          </optgroup>
-        </select>
-      </label>
-      <button @click="deleteSelected" type="button" :disabled="!selectedId" data-testid="slide-delete-selected">删除</button>
-      <button @click="duplicateSelected" type="button" :disabled="!selectedId" title="复制所选">⎘ 复制</button>
-      <button @click="bringForward" type="button" :disabled="!selectedId" title="上移一层">↑ 上移</button>
-      <button @click="sendBackward" type="button" :disabled="!selectedId" title="下移一层">↓ 下移</button>
-      <button @click="bringToFront" type="button" :disabled="!selectedId" title="置于顶层">⤒ 顶层</button>
-      <button @click="sendToBack" type="button" :disabled="!selectedId" title="置于底层">⤓ 底层</button>
-      <button @click="rotateSelected(-90)" type="button" :disabled="!selectedId" title="逆时针旋转 90° (Alt+←)" data-testid="slide-rotate-ccw">↺ 旋转</button>
-      <button @click="rotateSelected(90)" type="button" :disabled="!selectedId" title="顺时针旋转 90° (Alt+→)" data-testid="slide-rotate-cw">↻ 旋转</button>
-      <button @click="alignSelected('left')" type="button" :disabled="!selectedIds.length" title="左对齐" data-testid="slide-align-left">⇤</button>
-      <button @click="alignSelected('centerH')" type="button" :disabled="!selectedIds.length" title="水平居中" data-testid="slide-align-center-h">↔</button>
-      <button @click="alignSelected('right')" type="button" :disabled="!selectedIds.length" title="右对齐" data-testid="slide-align-right">⇥</button>
-      <button @click="alignSelected('top')" type="button" :disabled="!selectedIds.length" title="顶端对齐" data-testid="slide-align-top">⫶</button>
-      <button @click="alignSelected('centerV')" type="button" :disabled="!selectedIds.length" title="垂直居中" data-testid="slide-align-center-v">↕</button>
-      <button @click="alignSelected('bottom')" type="button" :disabled="!selectedIds.length" title="底端对齐" data-testid="slide-align-bottom">⫷</button>
-      <button @click="distributeSelected('h')" type="button" :disabled="selectedIds.length < 3" title="水平等距分布" data-testid="slide-distribute-h">⇔ 分布</button>
-      <button @click="distributeSelected('v')" type="button" :disabled="selectedIds.length < 3" title="垂直等距分布" data-testid="slide-distribute-v">⇕ 分布</button>
-      <button @click="matchSize('w')" type="button" :disabled="selectedIds.length < 2" title="匹配宽度（以首个选中为基准）" data-testid="slide-match-width">⤢ 匹配宽</button>
-      <button @click="matchSize('h')" type="button" :disabled="selectedIds.length < 2" title="匹配高度（以首个选中为基准）" data-testid="slide-match-height">⤡ 匹配高</button>
-      <button @click="groupSelected" type="button" :disabled="!canGroupSelected" title="组合选中的形状（多选时启用）" data-testid="slide-group">⊞ 组合</button>
-      <button @click="ungroupSelected" type="button" :disabled="!canUngroupSelected" title="解散当前组（当所有选中属于同一组时启用）" data-testid="slide-ungroup">⊟ 解散组</button>
-      <button @click="openMasterModal" type="button" title="查看母版与版式 (master view)" data-testid="slide-master-btn">📐 母版</button>
-      <span class="collab-slide-konva__divider" />
-      <button @click="onUndo" type="button" :disabled="!canUndo" title="撤销 (Ctrl+Z)">↶ 撤销</button>
-      <button @click="onRedo" type="button" :disabled="!canRedo" title="重做 (Ctrl+Shift+Z)">↷ 重做</button>
-      <span class="collab-slide-konva__peers">
-        <span
-          v-for="p in peers"
-          :key="p.clientId"
-          class="collab-slide-konva__peer"
-          :style="{ backgroundColor: p.color }"
-          :title="p.displayName"
-        >{{ initialOf(p.displayName) }}</span>
-      </span>
-    </div>
     <div v-if="loading" class="collab-slide-konva__loading">加载演示文稿中…</div>
     <div v-else class="collab-slide-konva__body">
       <p v-if="recoveryMessage" class="collab-slide-konva__recovery">{{ recoveryMessage }}</p>
       <aside class="collab-slide-konva__thumbs">
-        <button
+        <div
           v-for="(s, i) in slides"
-          :key="i"
+          :key="s.raw?.path || `slide-${s.index}`"
           class="collab-slide-konva__thumb"
           :class="{ active: i === activeIndex }"
+          role="button"
+          tabindex="0"
           @click="activeIndex = i"
+          @keydown.enter.prevent="activeIndex = i"
+          @keydown.space.prevent="activeIndex = i"
         >
           <span class="collab-slide-konva__thumb-num">{{ i + 1 }}</span>
-          <span class="collab-slide-konva__thumb-title">{{ slideSummary(s) }}</span>
-          <button class="collab-slide-konva__iconbtn" @click.stop="moveSlide(i, i - 1)" :disabled="i === 0" title="上移">↑</button>
-          <button class="collab-slide-konva__iconbtn" @click.stop="moveSlide(i, i + 1)" :disabled="i === slides.length - 1" title="下移">↓</button>
-          <button class="collab-slide-konva__iconbtn danger" @click.stop="deleteSlide(i)" :disabled="slides.length <= 1" title="删除">×</button>
-        </button>
+          <div class="collab-slide-konva__thumb-canvas" :data-testid="`slide-thumb-${i}`" aria-hidden="true">
+            <svg class="collab-slide-konva__thumb-svg" :viewBox="thumbViewBox" preserveAspectRatio="xMidYMid meet">
+              <rect :width="thumbViewport.w" :height="thumbViewport.h" :fill="s.background ? '#' + s.background : '#ffffff'" />
+              <g v-for="shape in s.shapes" :key="shape.id" :transform="`translate(${emuToPx(shape.x)*thumbScale} ${emuToPx(shape.y)*thumbScale}) rotate(${shape.rotation ?? 0} ${emuToPx(shape.w)*thumbScale/2} ${emuToPx(shape.h)*thumbScale/2})`">
+                <rect
+                  v-if="shape.type === 'rect' || shape.type === 'roundRect'"
+                  :width="emuToPx(shape.w)*thumbScale"
+                  :height="emuToPx(shape.h)*thumbScale"
+                  :rx="shape.type === 'roundRect' ? Math.min(emuToPx(shape.w), emuToPx(shape.h))*thumbScale*0.15 : 0"
+                  :fill="shape.fill ? '#' + shape.fill : '#1f2937'"
+                  :stroke="shape.stroke ? '#' + shape.stroke : 'none'"
+                  :stroke-width="shape.strokeWidth ? emuToPx(shape.strokeWidth)*thumbScale : 0.6"
+                />
+                <ellipse
+                  v-else-if="shape.type === 'ellipse'"
+                  :cx="emuToPx(shape.w)*thumbScale/2"
+                  :cy="emuToPx(shape.h)*thumbScale/2"
+                  :rx="emuToPx(shape.w)*thumbScale/2"
+                  :ry="emuToPx(shape.h)*thumbScale/2"
+                  :fill="shape.fill ? '#' + shape.fill : '#10b981'"
+                  :stroke="shape.stroke ? '#' + shape.stroke : 'none'"
+                  :stroke-width="shape.strokeWidth ? emuToPx(shape.strokeWidth)*thumbScale : 0.6"
+                />
+                <line
+                  v-else-if="shape.type === 'line' || shape.type === 'arrow'"
+                  :x1="0" :y1="0"
+                  :x2="emuToPx(shape.w)*thumbScale"
+                  :y2="emuToPx(shape.h)*thumbScale"
+                  :stroke="shape.stroke ? '#' + shape.stroke : '#111827'"
+                  :stroke-width="shape.strokeWidth ? emuToPx(shape.strokeWidth)*thumbScale : 0.8"
+                />
+                <polygon
+                  v-else-if="shape.type === 'triangle'"
+                  :points="thumbTriangle(emuToPx(shape.w)*thumbScale, emuToPx(shape.h)*thumbScale)"
+                  :fill="shape.fill ? '#' + shape.fill : '#0ea5e9'"
+                />
+                <polygon
+                  v-else-if="shape.type === 'star'"
+                  :points="thumbStar(emuToPx(shape.w)*thumbScale, emuToPx(shape.h)*thumbScale)"
+                  :fill="shape.fill ? '#' + shape.fill : '#f59e0b'"
+                />
+                <polygon
+                  v-else-if="shape.type === 'hexagon'"
+                  :points="thumbHexagon(emuToPx(shape.w)*thumbScale, emuToPx(shape.h)*thumbScale)"
+                  :fill="shape.fill ? '#' + shape.fill : '#22c55e'"
+                />
+                <rect
+                  v-else-if="shape.type === 'callout'"
+                  :width="emuToPx(shape.w)*thumbScale"
+                  :height="Math.max(emuToPx(shape.h)*thumbScale*0.75, 6)"
+                  :rx="1.5"
+                  :fill="shape.fill ? '#' + shape.fill : '#fef3c7'"
+                  :stroke="shape.stroke ? '#' + shape.stroke : '#92400e'"
+                  :stroke-width="0.6"
+                />
+                <text
+                  v-if="shape.text && (shape.type === 'text' || shape.type === 'rect' || shape.type === 'roundRect' || shape.type === 'ellipse' || shape.type === 'callout')"
+                  :x="2" :y="Math.min(8, emuToPx(shape.h)*thumbScale*0.6)"
+                  font-size="5"
+                  fill="#0f172a"
+                  font-family="-apple-system, BlinkMacSystemFont, sans-serif"
+                >{{ shape.text.slice(0, 40) }}</text>
+              </g>
+            </svg>
+          </div>
+          <button class="collab-slide-konva__iconbtn" @click.stop="moveSlide(i, i - 1)" :disabled="i === 0" data-tip="上移">↑</button>
+          <button class="collab-slide-konva__iconbtn" @click.stop="moveSlide(i, i + 1)" :disabled="i === slides.length - 1" data-tip="下移">↓</button>
+          <button class="collab-slide-konva__iconbtn danger" @click.stop="deleteSlide(i)" :disabled="slides.length <= 1" data-tip="删除">×</button>
+        </div>
       </aside>
-      <div class="collab-slide-konva__stage-wrap">
+      <div ref="stageWrapRef" class="collab-slide-konva__stage-wrap" data-testid="slide-stage-wrap">
         <div class="collab-slide-konva__zoom-info">{{ stageWidthPx }}×{{ stageHeightPx }} px</div>
         <v-stage
           v-if="activeSlide"
           ref="stageRef"
           :config="stageConfig"
           class="collab-slide-konva__stage"
+          data-testid="slide-konva-stage"
+          :aria-label="`幻灯片舞台 ${stageWidthPx}×${stageHeightPx} 像素`"
           @click="onStageClick"
           @tap="onStageClick"
         >
@@ -165,7 +411,10 @@
                   height: emuToPx(shape.h),
                   text: shape.text || '',
                   fontSize: shape.fontSize || 18,
-                  fill: shape.fill ? '#' + shape.fill : '#1f2937',
+                  // Prefer the run's explicit font color; fall back to a light
+                  // gray so captions stay visible on dark slides like this
+                  // deck's #1E1E1E background.
+                  fill: shape.fontColor ? '#' + shape.fontColor : '#f8fafc',
                   draggable: true,
                   rotation: shape.rotation ?? 0,
                   name: 'shape',
@@ -550,8 +799,8 @@
           </label>
         </div>
         <div class="collab-slide-konva__inspector-row collab-slide-konva__inspector-toggles" v-if="selectedShape.type === 'text' || selectedShape.type === 'rect' || selectedShape.type === 'ellipse'">
-          <button type="button" :class="{ active: inspectorBold }" @click="toggleBold" title="粗体"><b>B</b></button>
-          <button type="button" :class="{ active: inspectorItalic }" @click="toggleItalic" title="斜体"><i>I</i></button>
+          <button type="button" :class="{ active: inspectorBold }" @click="toggleBold" data-tip="粗体"><b>B</b></button>
+          <button type="button" :class="{ active: inspectorItalic }" @click="toggleItalic" data-tip="斜体"><i>I</i></button>
         </div>
         <div class="collab-slide-konva__inspector-pos">
           <span>位置</span>
@@ -632,11 +881,11 @@
             </svg>
           </div>
           <div class="slide-present-controls" data-testid="slide-present-controls">
-            <button type="button" class="slide-present-btn" @click="presentPrev" :disabled="presentIndex === 0" data-testid="slide-present-prev" title="上一页 (←)">← 上一页</button>
+            <button type="button" class="slide-present-btn" @click="presentPrev" :disabled="presentIndex === 0" data-testid="slide-present-prev" data-tip="上一页 (←)">← 上一页</button>
             <span class="slide-present-counter" data-testid="slide-present-counter">{{ presentIndex + 1 }} / {{ slides.length }}</span>
-            <button type="button" class="slide-present-btn" @click="presentNext" :disabled="presentIndex >= slides.length - 1" data-testid="slide-present-next" title="下一页 (→)">下一页 →</button>
+            <button type="button" class="slide-present-btn" @click="presentNext" :disabled="presentIndex >= slides.length - 1" data-testid="slide-present-next" data-tip="下一页 (→)">下一页 →</button>
             <span class="slide-present-divider" />
-            <button type="button" class="slide-present-btn slide-present-btn--exit" @click="onExitPresent" data-testid="slide-present-exit" title="退出 (ESC)">✕ 退出 (ESC)</button>
+            <button type="button" class="slide-present-btn slide-present-btn--exit" @click="onExitPresent" data-testid="slide-present-exit" data-tip="退出 (ESC)">✕ 退出 (ESC)</button>
           </div>
           <div v-if="presentSlide?.notes" class="slide-present-notes" data-testid="slide-present-notes">
             <div class="slide-present-notes-label">演讲者备注</div>
@@ -651,9 +900,9 @@
     </Teleport>
 
     <!-- v0.7.30 — speaker notes panel -->
-    <section class="collab-slide-konva__notes">
-      <header class="collab-slide-konva__notes-header">
-        <span>📝 演讲者备注</span>
+    <section class="collab-slide-konva__notes" :data-collapsed="panelsCollapsed.notes ? 'true' : 'false'">
+      <header class="collab-slide-konva__notes-header" @click="panelsCollapsed.notes = !panelsCollapsed.notes" :data-tip="panelsCollapsed.notes ? '展开备注' : '折叠备注'">
+        <span>{{ panelsCollapsed.notes ? '▸' : '▾' }} 📝 演讲者备注</span>
         <span class="collab-slide-konva__notes-status">{{ notesStatus }}</span>
       </header>
       <textarea
@@ -667,15 +916,15 @@
       <p class="collab-slide-konva__notes-hint">备注会跟随每张幻灯片一起保存到 .pptx，并在演示者视图中显示。</p>
     </section>
     <!-- v0.7.38 Build #46.x — animation timeline panel (entrance / emphasis / exit effects). -->
-    <section class="collab-slide-konva__animations">
-      <header class="collab-slide-konva__animations-header">
-        <span>🎬 动画 (第 {{ activeIndex + 1 }} 页)</span>
+    <section class="collab-slide-konva__animations" :data-collapsed="panelsCollapsed.animations ? 'true' : 'false'">
+      <header class="collab-slide-konva__animations-header" @click="panelsCollapsed.animations = !panelsCollapsed.animations" :data-tip="panelsCollapsed.animations ? '展开动画' : '折叠动画'">
+        <span>{{ panelsCollapsed.animations ? '▸' : '▾' }} 🎬 动画 (第 {{ activeIndex + 1 }} 页)</span>
         <span class="collab-slide-konva__animations-status">{{ animations.length }} 个效果</span>
       </header>
       <!-- v0.7.64 — slide transition (inter-slide effect) -->
       <div class="collab-slide-konva__animations-toolbar">
         <label class="collab-slide-konva__animations-label">转场:
-          <select v-model="transitionInput" @change="onTransitionCommit" class="collab-slide-konva__animations-select" title="幻灯片切换效果">
+          <select v-model="transitionInput" @change="onTransitionCommit" class="collab-slide-konva__animations-select" data-tip="幻灯片切换效果">
             <option value="none">无</option>
             <option value="fade">淡入淡出</option>
             <option value="push">推出</option>
@@ -692,7 +941,7 @@
         </label>
       </div>
       <div class="collab-slide-konva__animations-toolbar">
-        <select v-model="newEffect" class="collab-slide-konva__animations-select" title="效果">
+        <select v-model="newEffect" class="collab-slide-konva__animations-select" data-tip="效果">
           <option value="fade">淡入</option>
           <option value="flyIn">飞入</option>
           <option value="zoom">缩放</option>
@@ -705,7 +954,7 @@
           <option value="teeter">摇摆</option>
           <option value="growShrink">缩放</option>
         </select>
-        <select v-model="newTrigger" class="collab-slide-konva__animations-select" title="触发">
+        <select v-model="newTrigger" class="collab-slide-konva__animations-select" data-tip="触发">
           <option value="onClick">点击时</option>
           <option value="withPrevious">与上一动画同时</option>
           <option value="afterPrevious">上一动画之后</option>
@@ -715,7 +964,7 @@
           class="collab-slide-konva__animations-btn"
           :disabled="selectedId == null"
         @click="addAnimation"
-        title="为选中形状添加动画"
+        data-tip="为选中形状添加动画"
         data-testid="slide-anim-add-btn"
       >+ 添加动画</button>
       <button
@@ -734,7 +983,7 @@
             :value="a.effect"
             @change="onAnimationPatch(idx, 'effect', ($event.target as HTMLSelectElement).value)"
             :data-testid="`slide-anim-effect-${idx}`"
-            title="效果"
+            data-tip="效果"
           >
             <option v-for="o in animEffectOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
           </select>
@@ -743,7 +992,7 @@
             :value="a.trigger"
             @change="onAnimationPatch(idx, 'trigger', ($event.target as HTMLSelectElement).value)"
             :data-testid="`slide-anim-trigger-${idx}`"
-            title="触发"
+            data-tip="触发"
           >
             <option v-for="o in animTriggerOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
           </select>
@@ -754,7 +1003,7 @@
             class="collab-slide-konva__animations-input"
             :value="a.durationMs"
             @change="onAnimationPatch(idx, 'durationMs', Number(($event.target as HTMLInputElement).value))"
-            title="时长 (ms)"
+            data-tip="时长 (ms)"
             :data-testid="`slide-anim-duration-${idx}`"
           />
           <input
@@ -764,7 +1013,7 @@
             class="collab-slide-konva__animations-input"
             :value="a.delayMs"
             @change="onAnimationPatch(idx, 'delayMs', Number(($event.target as HTMLInputElement).value))"
-            title="延迟 (ms)"
+            data-tip="延迟 (ms)"
             :data-testid="`slide-anim-delay-${idx}`"
           />
           <button
@@ -772,7 +1021,7 @@
             class="collab-slide-konva__animations-btn"
             :disabled="idx === 0"
             @click="moveAnimation(idx, -1)"
-            title="上移"
+            data-tip="上移"
             :data-testid="`slide-anim-up-${idx}`"
           >↑</button>
           <button
@@ -780,7 +1029,7 @@
             class="collab-slide-konva__animations-btn"
             :disabled="idx === animations.length - 1"
             @click="moveAnimation(idx, 1)"
-            title="下移"
+            data-tip="下移"
             :data-testid="`slide-anim-down-${idx}`"
           >↓</button>
           <button
@@ -864,11 +1113,26 @@
       anchor-label="当前幻灯片"
       placeholder="对当前幻灯片或所选形状添加评论…"
     />
+
+    <!-- v0.7.74 — PPT bottom status bar (GenOffice style: slide count / theme / zoom) -->
+    <div class="collab-slide-konva__statusbar" v-if="!presentMode">
+      <span class="collab-slide-konva__statusbar-item">{{ activeIndex + 1 }} / {{ slides.length }} 张幻灯片</span>
+      <span class="collab-slide-konva__statusbar-sep">·</span>
+      <span class="collab-slide-konva__statusbar-item">{{ themeMeta?.name || 'Office' }} 主题</span>
+      <span class="collab-slide-konva__statusbar-sep">·</span>
+      <span class="collab-slide-konva__statusbar-item">{{ connectionLabel }}</span>
+      <span class="collab-slide-konva__statusbar-spacer"></span>
+      <span class="collab-slide-konva__statusbar-item">{{ selectedId ? '已选中' : '无选中' }}</span>
+      <span class="collab-slide-konva__statusbar-sep">·</span>
+      <button class="collab-slide-konva__statusbar-btn" type="button" data-testid="slide-zoom-out" @click="onZoomOut">−</button>
+      <span class="collab-slide-konva__statusbar-zoom">{{ slideZoomPercent }}%</span>
+      <button class="collab-slide-konva__statusbar-btn" type="button" data-testid="slide-zoom-in" @click="onZoomIn">＋</button>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch, onMounted } from 'vue'
 import * as Y from 'yjs'
 import { useYjsCollabDoc } from '@/composables/useYjsCollabDoc'
 import {
@@ -926,6 +1190,9 @@ import {
 import { MessagePlugin } from 'tdesign-vue-next'
 import { stepRotation90, normalizeRotation, formatRotation } from '@/editor/adapters/slideRotation'
 import CollabCommentsPanel from '@/components/collab/CollabCommentsPanel.vue'
+import CollabSlideThemePanel from '@/components/collab/CollabSlideThemePanel.vue'
+import CollabEditorRibbon from '@/components/collab/CollabEditorRibbon.vue'
+import CollabIcon from '@/components/collab/CollabIcon.vue'
 
 
 const props = defineProps<{
@@ -1136,10 +1403,105 @@ const SLIDE_H_INCH = (10 * 9) / 16
 const stageWidthPx = computed(() => Math.round(emuToPx(deck.value?.slides[0]?.width ?? SLIDE_W_INCH * 914400)))
 const stageHeightPx = computed(() => Math.round(emuToPx(deck.value?.slides[0]?.height ?? SLIDE_H_INCH * 914400)))
 
+const stageRef = ref<any>(null)
+const stageWrapRef = ref<HTMLElement | null>(null)
+
+// v0.7.100 — Konva stage 物理尺寸 = wrap 容器可用宽度 × slide 原始比例
+// v-stage 的 :config 在 mount 时读一次，之后不再响应 computed 变化。
+// 所以我们用 stageRef.value.getStage().size() 主动同步 Konva stage。
+const stageLogicalW = ref(0)
+const stageLogicalH = ref(0)
+// v0.7.132 — Konva 9 Stage 构造时 bufferCanvas 不接收 pixelRatio，
+// 导致 retina 屏 canvas 内部缓冲停留在 CSS 尺寸，文字发糊。
+// 必须显式调用 layer.canvas.setPixelRatio(dpr) 才能生效（参考 genoffice SlideCanvas.tsx:572）。
 const stageConfig = computed(() => ({
   width: stageWidthPx.value,
   height: stageHeightPx.value,
 }))
+// v0.7.132 — HiDPI: 把 devicePixelRatio 显式应用到所有内部 canvas
+// (bufferCanvas + bufferHitCanvas + 每个 layer 的 canvas/hitCanvas)。
+// Konva 9 的 Stage.size() 触发的 _resizeDOM 不会传播 pixelRatio，
+// 所以每次 size 之后都要重新设置一次。
+const applyKonvaHiDPI = (stage: any) => {
+  if (!stage) return
+  const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1
+  const ratio = Math.max(1, Math.min(dpr, 2))
+  const apply = (c: any) => {
+    if (c && typeof c.setPixelRatio === 'function' && c.pixelRatio !== ratio) {
+      c.setPixelRatio(ratio)
+    }
+  }
+  apply(stage.bufferCanvas)
+  apply(stage.bufferHitCanvas)
+  if (typeof stage.getLayers === 'function') {
+    stage.getLayers().forEach((l: any) => {
+      apply(l.canvas)
+      apply(l.hitCanvas)
+    })
+  } else if (Array.isArray(stage.children)) {
+    stage.children.forEach((l: any) => {
+      apply(l.canvas)
+      apply(l.hitCanvas)
+    })
+  }
+  if (typeof stage.batchDraw === 'function') stage.batchDraw()
+}
+
+const fitStage = () => {
+  if (typeof window === 'undefined') return
+  const wrap = stageWrapRef.value
+  if (!wrap) return
+  const logicalW = Math.max(1, stageWidthPx.value)
+  const logicalH = Math.max(1, stageHeightPx.value)
+  const styles = window.getComputedStyle(wrap)
+  const horizontalPadding = parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight)
+  const verticalPadding = parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom)
+  const infoHeight = wrap.querySelector('.collab-slide-konva__zoom-info')?.getBoundingClientRect().height ?? 0
+  // v0.7.131 — 留 8px 安全边距，避免阴影/边框被裁剪
+  const maxW = Math.max(320, wrap.clientWidth - horizontalPadding - 8)
+  const maxH = Math.max(180, wrap.clientHeight - verticalPadding - infoHeight - 16)
+  const ratio = logicalW / logicalH
+  let w = maxW
+  let h = w / ratio
+  if (h > maxH) { h = maxH; w = h * ratio }
+  w = Math.max(1, Math.floor(w))
+  h = Math.max(1, Math.floor(h))
+  stageLogicalW.value = w
+  stageLogicalH.value = h
+  const candidate = stageRef.value
+  const k = candidate?.getStage?.() || candidate || (window as any).__wkStage
+  const stageEl = wrap.querySelector('.collab-slide-konva__stage, [data-testid="slide-konva-stage"]') as HTMLElement | null
+  const content = wrap.querySelector('.konvajs-content') as HTMLElement | null
+  const scaleX = w / logicalW
+  const scaleY = h / logicalH
+  if (k && typeof k.size === 'function') {
+    // Konva must own the responsive scale. Scaling only `.konvajs-content`
+    // leaves the internal canvas at its logical size and can produce a blank
+    // canvas when the stage is mounted before the PPTX finishes loading.
+    k.size({ width: w, height: h })
+    if (typeof k.scale === 'function') k.scale({ x: scaleX, y: scaleY })
+    applyKonvaHiDPI(k)
+    if (typeof k.draw === 'function') k.draw()
+  }
+  if (stageEl) {
+    // The Konva container must use the rendered size. Keeping it at the
+    // logical 1280×720 size makes flex/max-size CSS clip the canvas before
+    // the child transform has a chance to scale it into the available area.
+    stageEl.style.width = `${w}px`
+    stageEl.style.height = `${h}px`
+    stageEl.style.maxWidth = 'none'
+    stageEl.style.maxHeight = 'none'
+    stageEl.style.overflow = 'hidden'
+  }
+  if (content) {
+    content.style.width = `${w}px`
+    content.style.height = `${h}px`
+    content.style.transform = 'none'
+  }
+}
+
+// v0.7.100 — fit-to-container: stageWrap 可用空间内按比例缩放 stage
+// stageScale moved below to avoid TDZ on slideZoom
 
 const localSlidesByIndex = computed(() => slides.value)
 const activeSlide = computed(() => slides.value[activeIndex.value] ?? null)
@@ -1147,6 +1509,7 @@ const activeShapes = computed(() => activeSlide.value?.shapes ?? [])
 const selectedShape = computed(() => activeShapes.value.find((s) => s.id === selectedId.value) ?? null)
 
 const connectionLabel = computed(() => (connected.value ? '在线' : '离线'))
+const themeMeta = computed(() => ({ name: 'Office' }))
 const initialOf = (s: string) => (s || '?').trim().charAt(0).toUpperCase()
 
 const slideSummary = (s: PptxShapeSlide) => {
@@ -1155,8 +1518,259 @@ const slideSummary = (s: PptxShapeSlide) => {
   return `幻灯片 ${s.index + 1}`
 }
 
+// --- Ribbon tabs (genoffice-style tab switching) ---
+type RibbonTabId = 'home' | 'insert' | 'draw' | 'design' | 'transitions' | 'animate' | 'slideshow' | 'review' | 'view'
+const panelsCollapsed = reactive({ notes: true, animations: true, comments: true })
+
+// v0.7.119 — Home-tab popovers: layout picker (from-split), layout switch (apply),
+// and slide-show mode (从开始 / 从当前页). Shared click-outside closes them.
+const layoutOpen = ref(false)
+const layoutPickOpen = ref(false)
+const slideShowOpen = ref(false)
+/* v0.7.131 — 设计 tab 「布局」按钮的 dropdown 开合状态。
+ * 模板 line 213-246 引用了 layoutMenuOpen 但之前从未 define ref，所以
+ * Vue 一直 warn「Property layoutMenuOpen was accessed during render but is not defined」。
+ * 这里补上。 */
+const layoutMenuOpen = ref(false)
+const slideShowFromStart = ref(true)
+const toggleLayoutPicker = () => {
+  layoutOpen.value = !layoutOpen.value
+  layoutPickOpen.value = false
+  slideShowOpen.value = false
+}
+const toggleLayoutPick = () => {
+  layoutPickOpen.value = !layoutPickOpen.value
+  layoutOpen.value = false
+  slideShowOpen.value = false
+}
+const closeHomePopovers = (ev: MouseEvent) => {
+  const t = ev.target as HTMLElement | null
+  if (!t) return
+  if (t.closest('.rb-drop-wrap')) return
+  layoutOpen.value = false
+  layoutPickOpen.value = false
+  slideShowOpen.value = false
+}
+onMounted(() => {
+  if (typeof window !== 'undefined') document.addEventListener('click', closeHomePopovers)
+})
+onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') document.removeEventListener('click', closeHomePopovers)
+})
+
+// Pick a layout AND add a new slide in one shot (split-button path).
+const applyLayoutFromSplit = (v: string) => {
+  layoutOpen.value = false
+  // First add a blank slide (mirrors addSlide), then apply the chosen layout.
+  addSlide()
+  applyLayout(v)
+}
+const onPresentSplitMain = () => {
+  slideShowOpen.value = false
+  if (slideShowFromStart.value) onEnterPresentFromStart()
+  else onEnterPresent()
+}
+const onAddSection = () => {
+  // v0.7.119 — Section creation is not yet wired into the deck model; surface
+  // as a placeholder toast so users see the button is wired and not dead.
+  MessagePlugin.info('节 (Section) 占位：当前 pptx-engine 未持久化节，后续接入 sections 编辑器')
+}
+
+const applyLayout = (v: string) => {
+  if (!v || !deck.value) return
+  let layoutPath = v
+  if (v.startsWith('builtin:')) {
+    const key = v.slice('builtin:'.length)
+    const inserted = ensureBuiltinLayout(
+      deck.value as unknown as PptxShapeDeck,
+      sizeW.value,
+      sizeH.value,
+      key,
+    )
+    if (!inserted) {
+      MessagePlugin.error(`内置布局 ${key} 注入失败`)
+      return
+    }
+    layoutPath = inserted
+  }
+  const ok = setSlideLayout(
+    deck.value as unknown as PptxShapeDeck,
+    activeIndex.value,
+    layoutPath,
+  )
+  if (ok) {
+    savetagClass.dirty = true
+    saveLabel.value = '布局已切换 · 待保存'
+    scheduleSave()
+    MessagePlugin.success(`已切换到布局 ${layoutPath}`)
+  } else {
+    MessagePlugin.error('布局切换失败')
+  }
+}
+
+const ribbonTabs: { id: RibbonTabId; label: string }[] = [
+  { id: 'home', label: '开始' },
+  { id: 'insert', label: '插入' },
+  { id: 'draw', label: '绘图' },
+  { id: 'design', label: '设计' },
+  { id: 'transitions', label: '切换' },
+  { id: 'animate', label: '动画' },
+  { id: 'slideshow', label: '幻灯片放映' },
+  { id: 'review', label: '审阅' },
+  { id: 'view', label: '视图' },
+]
+const activeTab = ref<RibbonTabId>('home')
+const shapeTools: Array<{ type: Exclude<PptxShape['type'], 'table' | 'picture'>; label: string; icon: string; testId?: string }> = [
+  { type: 'roundRect', label: '圆角矩形', icon: 'IconRoundRect' },
+  { type: 'ellipse', label: '椭圆', icon: 'IconEllipse', testId: 'slide-add-ellipse' },
+  { type: 'line', label: '直线', icon: 'IconLine', testId: 'slide-add-line' },
+  { type: 'arrow', label: '箭头', icon: 'IconArrow' },
+  { type: 'triangle', label: '三角形', icon: 'IconTriangle' },
+  { type: 'star', label: '星形', icon: 'IconStar' },
+  { type: 'hexagon', label: '六边形', icon: 'IconHexagon' },
+  { type: 'callout', label: '标注', icon: 'IconCallout' },
+]
+// v0.7.119 — auto-detect dark slide surface so chrome flips dark. The
+// ribbon theme is a local override of the global app theme; it follows the
+// slide canvas (e.g. a deep-dark #1E1E1E PPT should never sit on a light
+// toolbar). Recomputes on first slide load and on activeSlide change.
+const ribbonTheme = ref<'light' | 'dark'>('light')
+const luminance = (hex: string | undefined): number => {
+  if (!hex) return 1
+  let h = hex.trim().replace(/^#/, '')
+  if (h.length === 3) h = h.split('').map((c) => c + c).join('')
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) return 1
+  const r = parseInt(h.slice(0, 2), 16)
+  const g = parseInt(h.slice(2, 4), 16)
+  const b = parseInt(h.slice(4, 6), 16)
+  // WCAG relative luminance
+  const toLin = (c: number) => {
+    const s = c / 255
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+  }
+  return 0.2126 * toLin(r) + 0.7152 * toLin(g) + 0.0722 * toLin(b)
+}
+watch(
+  () => activeSlide.value?.background,
+  (bg) => { ribbonTheme.value = luminance(bg) < 0.4 ? 'dark' : 'light' },
+  { immediate: true },
+)
+const slideZoom = ref(1)
+// v0.7.118 — visible 比例 = fit 容器缩放 × 用户 zoom 倍率。默认 slideZoom=1
+// 表示「按容器自适应大小」；点「实际大小」会把 visible 设到 100%。
+const fitScale = computed(() =>
+  stageLogicalW.value > 0 && stageWidthPx.value > 0
+    ? stageLogicalW.value / stageWidthPx.value
+    : 1,
+)
+const visibleScale = computed(() => fitScale.value * slideZoom.value)
+const slideZoomPercent = computed(() => Math.round(visibleScale.value * 100))
+const setVisibleZoom = (target: number) => {
+  const fs = fitScale.value || 1
+  slideZoom.value = +Math.max(0.25, Math.min(4, target / fs)).toFixed(3)
+  applySlideZoom()
+}
+const onZoomIn = () => setVisibleZoom(visibleScale.value + 0.1)
+const onZoomOut = () => setVisibleZoom(visibleScale.value - 0.1)
+const applySlideZoom = () => {
+  // v0.7.131 — 用 Konva 内置 stage.scale() + size() 替代 CSS zoom：
+  // CSS zoom 只放大显示，canvas 内部缓冲不变，文字会糊。
+  // Konva 重新设 size 会按 pixelRatio 重画底层 bitmap，缩到高 zoom 也保持锐利。
+  const fs = fitScale.value || 1
+  const visibleScale = fs * slideZoom.value
+  const logicalW = stageWidthPx.value
+  const logicalH = stageHeightPx.value
+  // stage 容器 = 可见缩放后大小（fit × 用户 zoom），不再是固定 fit。
+  // Konva 内部 buffer = logical × visibleScale（高 zoom = 更多像素 = 锐利文字）。
+  const cssW = Math.max(1, Math.floor(logicalW * visibleScale))
+  const cssH = Math.max(1, Math.floor(logicalH * visibleScale))
+  const bufferW = cssW
+  const bufferH = cssH
+  const candidate = stageRef.value
+  const k = (candidate && (candidate as any).getStage?.()) || (window as any).__wkStage
+  const stageEl = document.querySelector('.collab-slide-konva__stage') as HTMLElement | null
+  const content = document.querySelector('.konvajs-content') as HTMLElement | null
+  if (k && typeof k.size === 'function') {
+    k.size({ width: bufferW, height: bufferH })
+    if (typeof k.scale === 'function') {
+      // 让 logical (1280x720) 的形状按 visibleScale 渲染到 buffer
+      k.scale({ x: visibleScale, y: visibleScale })
+    }
+    applyKonvaHiDPI(k)
+    if (typeof k.draw === 'function') k.draw()
+  }
+  if (stageEl) {
+    stageEl.style.width = `${cssW}px`
+    stageEl.style.height = `${cssH}px`
+    stageEl.style.maxWidth = 'none'
+    stageEl.style.maxHeight = 'none'
+  }
+  if (content) {
+    content.style.width = `${cssW}px`
+    content.style.height = `${cssH}px`
+    content.style.transform = 'none'
+  }
+}
+
+// stage 尺寸跟随 wrap：mount 后 + ResizeObserver 触发主动 fit
+let _stageFitObserver: ResizeObserver | null = null
+onMounted(() => {
+  nextTick(() => {
+    fitStage()
+    // 再延迟一帧确保 wrap 真实尺寸
+    requestAnimationFrame(() => fitStage())
+  })
+  if (typeof ResizeObserver !== 'undefined') {
+    _stageFitObserver = new ResizeObserver(() => fitStage())
+    if (stageWrapRef.value) _stageFitObserver.observe(stageWrapRef.value)
+  }
+  // v0.7.132 — 监听 devicePixelRatio 变化（拖窗口到不同 DPR 屏时触发）
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    const armDprListener = () => {
+      const mq = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`)
+      const onChange = () => {
+        applyKonvaHiDPI(stageRef.value?.getStage?.() || (window as any).__wkStage)
+        fitStage()
+      }
+      mq.addEventListener('change', onChange)
+    }
+    armDprListener()
+  }
+})
+onBeforeUnmount(() => { if (_stageFitObserver) _stageFitObserver.disconnect() })
+watch([stageWidthPx, stageHeightPx, activeSlide], () => nextTick(() => fitStage()))
+watch(stageRef, () => nextTick(() => fitStage()), { flush: 'post' })
+
+// --- Thumbnail SVG rendering (real shapes, scaled to a 132-wide stage) ---
+const thumbViewport = { w: SLIDE_W_INCH * 96, h: SLIDE_H_INCH * 96 }
+const thumbViewBox = `0 0 ${thumbViewport.w} ${thumbViewport.h}`
+const thumbScale = computed(() => 132 / thumbViewport.w)
+const thumbTriangle = (w: number, h: number) => `0,${h} ${w/2},0 ${w},${h}`
+const thumbStar = (w: number, h: number) => {
+  const cx = w / 2, cy = h / 2
+  const r = Math.min(w, h) / 2
+  const inner = r * 0.42
+  const pts: string[] = []
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 5
+    const rad = i % 2 === 0 ? r : inner
+    pts.push(`${cx + Math.cos(a) * rad},${cy + Math.sin(a) * rad}`)
+  }
+  return pts.join(' ')
+}
+const thumbHexagon = (w: number, h: number) => {
+  const off = w * 0.25
+  return [
+    `${off},0`,
+    `${w - off},0`,
+    `${w},${h/2}`,
+    `${w - off},${h}`,
+    `${off},${h}`,
+    `0,${h/2}`,
+  ].join(' ')
+}
+
 // --- Konva stage / transformer wiring ---
-const stageRef = ref<any>(null)
 const publishCursor = (px: number, py: number) => {
   if (!handle) return
   // px / py are CSS pixels; convert back to EMU
@@ -1629,6 +2243,14 @@ const shapeToObj = (s: PptxShape): Record<string, unknown> => ({
 })
 
 const objToShape = (o: Record<string, unknown>): PptxShape => {
+  const color = (value: unknown): string | undefined => {
+    if (!value) return undefined
+    return String(value).replace(/^#/, '') || undefined
+  }
+  const finiteNumber = (value: unknown, fallback: number) => {
+    const number = Number(value)
+    return Number.isFinite(number) ? number : fallback
+  }
   let cellTexts: string[][] | undefined
   if (o.cellTexts) {
     if (typeof o.cellTexts === 'string') {
@@ -1640,22 +2262,22 @@ const objToShape = (o: Record<string, unknown>): PptxShape => {
   return {
     id: String(o.id ?? ''),
     type: (o.type ?? 'text') as PptxShape['type'],
-    x: Number(o.x ?? 0),
-    y: Number(o.y ?? 0),
-    w: Number(o.w ?? 914400),
-    h: Number(o.h ?? 457200),
+    x: finiteNumber(o.x, 0),
+    y: finiteNumber(o.y, 0),
+    w: Math.max(1, finiteNumber(o.w, 914400)),
+    h: Math.max(1, finiteNumber(o.h, 457200)),
     text: o.text ? String(o.text) : undefined,
-    fill: o.fill ? String(o.fill) : undefined,
-    stroke: o.stroke ? String(o.stroke) : undefined,
-    strokeWidth: Number(o.strokeWidth ?? 0) || undefined,
-    fontSize: Number(o.fontSize ?? 18),
+    fill: color(o.fill),
+    stroke: color(o.stroke),
+    strokeWidth: finiteNumber(o.strokeWidth, 0) || undefined,
+    fontSize: Math.max(1, finiteNumber(o.fontSize, 18)),
     mediaRef: o.mediaRef ? String(o.mediaRef) : undefined,
     mediaData: o.mediaData ? String(o.mediaData) : undefined,
     spIndex: Number(o.spIndex ?? -1),
     sourceType: o.sourceType ? String(o.sourceType) : undefined,
     preset: o.preset ? String(o.preset) : undefined,
-    rows: o.rows ? Number(o.rows) : undefined,
-    cols: o.cols ? Number(o.cols) : undefined,
+    rows: o.rows ? finiteNumber(o.rows, 0) : undefined,
+    cols: o.cols ? finiteNumber(o.cols, 0) : undefined,
     cellTexts,
     // v0.7.104 — group id mirror
     groupId: o.groupId ? String(o.groupId) : undefined,
@@ -1729,6 +2351,42 @@ const distributeSelected = (axis: 'h' | 'v') => {
 }
 
 // v0.7.101 — match width/height to the primary (last-clicked) selected shape.
+// v0.7.119 — flip horizontal / vertical (toggle shape.transform.flipH/flipV).
+const flipSelected = (axis: 'h' | 'v') => {
+  const shapes = selectedShapes.value
+  if (!shapes.length || !ydeck) return
+  ydeck.doc?.transact(() => {
+    const yslide = ydeck!.get(activeIndex.value) as Y.Map<unknown> | undefined
+    if (!yslide) return
+    const yshapes = yslide.get('shapes') as Y.Array<Y.Map<unknown>> | undefined
+    if (!yshapes) return
+    const arr = yshapes.toArray()
+    const slide = deck.value?.opened?.deck.slides[activeIndex.value]
+    const patches: Array<{ id: string; patch: Partial<PptxShape> }> = []
+    arr.forEach((m, i) => {
+      const id = m.get('id') as string
+      if (!shapes.find((s) => s.id === id)) return
+      const el: any = slide?.elements.find((e: any) => e.id === id)
+      if (!el) return
+      el.transform = el.transform || { offset: { x: 0, y: 0, cx: 0, cy: 0 }, rot: 0, flipH: false, flipV: false }
+      if (axis === 'h') el.transform.flipH = !el.transform.flipH
+      else el.transform.flipV = !el.transform.flipV
+      slide.structureDirty = true
+      patches.push({ id, patch: {} as Partial<PptxShape> })
+    })
+    if (slide) flushStructure(slide)
+    if (patches.length) updateShapes(patches)
+    scheduleSave()
+  })
+}
+
+// v0.7.119 — group bbox: convenience for present mode entrypoint.
+const onEnterPresentFromStart = () => {
+  if (!slides.value.length || loading.value) return
+  presentIndex.value = 0
+  presentMode.value = true
+}
+
 const matchSize = (axis: 'w' | 'h') => {
   const shapes = selectedShapes.value
   if (shapes.length < 2) return
@@ -1977,6 +2635,27 @@ const syncFromY = () => {
 
 const seedYjs = () => {
   if (!ydeck) return
+  const sourceShapeCount = slides.value.reduce((total, slide) => total + slide.shapes.length, 0)
+  const currentSlides = ydeck.toArray()
+  const currentShapeCount = currentSlides.reduce((total, slide) => {
+    const shapes = slide.get('shapes') as Y.Array<unknown> | undefined
+    return total + (shapes?.length ?? 0)
+  }, 0)
+  const sourceIds = new Set(slides.value.flatMap((slide) => slide.shapes.map((shape) => shape.id)))
+  const currentIds = new Set(currentSlides.flatMap((slide) => {
+    const shapes = slide.get('shapes') as Y.Array<Y.Map<unknown>> | undefined
+    return shapes?.toArray().map((shape) => String(shape.get('id') ?? '')) ?? []
+  }))
+  const hasMatchingShape = [...sourceIds].some((id) => currentIds.has(id))
+  // The server PPTX is the source of truth on first open. A persisted Yjs
+  // array from an earlier failed load can be non-empty but contain only blank
+  // slides; letting it win makes a real presentation render as white canvas.
+  // Preserve a non-empty collaborative deck, including intentionally blank
+  // slides, and only replace the stale blank snapshot.
+  const replaceStaleBlankSnapshot = sourceShapeCount > 0 && (!hasMatchingShape || currentShapeCount === 0)
+  if (replaceStaleBlankSnapshot && ydeck.length > 0) {
+    ydeck.delete(0, ydeck.length)
+  }
   ydeck.doc?.transact(() => {
     if (ydeck!.length === 0) {
       for (const s of slides.value) {
@@ -2353,6 +3032,13 @@ const onDownload = async () => {
   }
 }
 
+// Local bridge so the inline <CollabSlideThemePanel/> below can emit
+// directly into the existing wk-slide-theme-apply window listener.
+const onThemePanelApply = (preset: SlideThemePreset) => {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent('wk-slide-theme-apply', { detail: preset }))
+}
+
 // Slide theme persistence (v0.7.95): listen to wk-slide-theme-apply from
 // CollabSlideThemePanel. Rewrite theme*.xml in every theme part, remap explicit
 // srgbClr, mark dirty and trigger auto-save so the new palette round-trips
@@ -2408,40 +3094,7 @@ const missingBuiltins = computed(() => {
   ]
   return catalog.filter((b) => !present.has(b.name))
 })
-const onLayoutSelect = (e: Event) => {
-  const v = (e.target as HTMLSelectElement).value
-  ;(e.target as HTMLSelectElement).value = ''
-  if (!v || !deck.value) return
-  let layoutPath = v
-  // Inject builtin if requested
-  if (v.startsWith('builtin:')) {
-    const key = v.slice('builtin:'.length)
-    const inserted = ensureBuiltinLayout(
-      deck.value as unknown as PptxShapeDeck,
-      sizeW.value,
-      sizeH.value,
-      key,
-    )
-    if (!inserted) {
-      MessagePlugin.error(`内置布局 ${key} 注入失败`)
-      return
-    }
-    layoutPath = inserted
-  }
-  const ok = setSlideLayout(
-    deck.value as unknown as PptxShapeDeck,
-    activeIndex.value,
-    layoutPath,
-  )
-  if (ok) {
-    savetagClass.dirty = true
-    saveLabel.value = '布局已切换 · 待保存'
-    scheduleSave()
-    MessagePlugin.success(`已切换到布局 ${layoutPath}`)
-  } else {
-    MessagePlugin.error('布局切换失败')
-  }
-}
+/* onLayoutSelect removed — replaced by applyLayout (popover-driven) */
 
 // --- v0.7.96 — fullscreen present mode ---
 const presentIndex = ref(0)
@@ -2529,6 +3182,15 @@ const onLoadBytes = async (bytes: Uint8Array): Promise<boolean> => {
   }
 }
 
+const getCollabDocRequestHeaders = () => {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${props.token}`,
+  }
+  const tenantId = localStorage.getItem('weknora_selected_tenant_id')
+  if (tenantId) headers['X-Tenant-ID'] = tenantId
+  return headers
+}
+
 const initializeBlankDeck = async (message?: string) => {
   const fresh = await newPptxShapeDeck()
   deck.value = fresh
@@ -2589,7 +3251,7 @@ handle.provider.awareness.on('change', () => {
 ;(async () => {
   try {
     const existing = await fetch(`/api/v1/collaborative-docs/${encodeURIComponent(props.docId)}/download`, {
-      headers: { Authorization: `Bearer ${props.token}` },
+      headers: getCollabDocRequestHeaders(),
     })
     if (existing.ok) {
       const buf = new Uint8Array(await existing.arrayBuffer())
@@ -2598,8 +3260,14 @@ handle.provider.awareness.on('change', () => {
         await initializeBlankDeck('原演示文稿无法解析，已恢复为新的空白演示文稿；首次编辑后会保存为有效 PPTX。')
         return
       }
+    } else if (existing.status !== 404) {
+      throw new Error(`加载演示文稿失败（HTTP ${existing.status}），请检查登录状态和当前工作空间权限。`)
     }
-  } catch { /* fall through */ }
+  } catch (e: any) {
+    error.value = e?.message || '加载演示文稿失败'
+    loading.value = false
+    return
+  }
   // No existing pptx — start with engine blank.
   await initializeBlankDeck()
 })()
@@ -2689,6 +3357,96 @@ onBeforeUnmount(() => {
 .slide-present-btn--exit { background: rgba(220, 38, 38, 0.2); border-color: rgba(220, 38, 38, 0.4); }
 .slide-present-divider { width: 1px; height: 20px; background: rgba(255, 255, 255, 0.2); }
 .slide-present-counter { font-variant-numeric: tabular-nums; min-width: 60px; text-align: center; }
+/* v0.7.74 — PPT bottom status bar */
+.collab-slide-konva__statusbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 14px;
+  background: var(--slide-chrome, #161a22);
+  border-top: 1px solid var(--slide-chrome-border, #2c313b);
+  color: var(--slide-chrome-text, #9ca6b4);
+  font-size: 11px;
+  user-select: none;
+  height: 26px;
+  flex: none;
+}
+.collab-slide-konva__statusbar-item { white-space: nowrap; }
+.collab-slide-konva__statusbar-sep { opacity: 0.4; }
+.collab-slide-konva__statusbar-spacer { flex: 1; }
+.collab-slide-konva__statusbar-btn {
+  border: 0;
+  background: transparent;
+  color: var(--slide-chrome-text, #9ca6b4);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 6px;
+  line-height: 1;
+}
+.collab-slide-konva__statusbar-btn:hover { color: var(--td-brand-color, #5aa8ff); }
+.collab-slide-konva__statusbar-zoom { min-width: 42px; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* v0.7.115 — Ribbon groups now use the shared .ribbon-group rule (GenOffice
+ * styles.css), so we only ship editor-specific tweaks here: hint text, the
+ * layout-picker dropdown, and theme panel. The previous .collab-slide-konva__tool-btn
+ * overrides are gone because nothing in the template uses those classes
+ * anymore — buttons are styled by the shared .rb-big / .rb-small rules. */
+.collab-slide-konva__ribbon-groups { display: flex; align-items: stretch; min-height: 80px; }
+.collab-slide-konva__tool-group { padding: 2px 4px; }
+.collab-slide-konva__tool-group:first-of-type { padding-left: 4px; }
+.collab-slide-konva__ribbon-hint { align-self: center; padding: 0 18px; color: #687385; font-size: 11px; white-space: nowrap; }
+/* Layout picker rides on the shared .rb-big button: an icon row + label on
+ * top, with a select chip tucked under it (replaces the old stand-alone label
+ * dropdown). */
+/* ===== Layout dropdown (GenOffice-style popover replacing native <select>) =====
+   The button looks like a normal .rb-big with a chevron; clicking toggles a
+   popover menu that lists layouts. Click-outside dismisses it. */
+.collab-slide-konva__layout-btn { min-width: 92px; }
+.collab-slide-konva__layout-btn.is-open .rb-big-icon { background: var(--rb-pressed, rgba(24,90,189,0.16)); }
+.collab-slide-konva__layout-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 80;
+  min-width: 240px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--app-surface-raised, #fff);
+  border: 1px solid var(--app-border-strong, #cbd0d7);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.16);
+  font-size: 12px;
+  color: var(--app-text, #1f232b);
+}
+.collab-slide-konva__layout-menu-title { font-size: 11px; color: var(--app-text-muted, #5a6473); padding: 4px 8px 6px; letter-spacing: 0.04em; text-transform: uppercase; }
+.collab-slide-konva__layout-menu-item {
+  display: flex; flex-direction: column; gap: 1px; width: 100%;
+  padding: 6px 10px; border: 0; border-radius: 4px;
+  background: transparent; color: inherit; cursor: pointer; text-align: left;
+}
+.collab-slide-konva__layout-menu-item:hover { background: var(--app-surface, #f1f5fb); }
+.collab-slide-konva__layout-menu-name { font-size: 13px; font-weight: 500; }
+.collab-slide-konva__layout-menu-meta { font-size: 11px; color: var(--app-text-muted, #5a6473); }
+.collab-slide-konva__layout-menu-sep { margin: 6px 6px 2px; padding: 0 4px; font-size: 11px; color: var(--app-text-muted, #5a6473); border-top: 1px solid var(--app-border, #e1e4e8); padding-top: 6px; }
+.collab-slide-konva__layout-menu-empty { padding: 14px; text-align: center; color: var(--app-text-muted, #5a6473); }
+/* The ribbon group that hosts the layout button needs to anchor the popover
+   without clipping — overflow on the panel is auto, not hidden. */
+.collab-slide-konva__layout-dropdown {
+  margin: 0 -4px -2px;
+  padding: 1px 18px 1px 6px;
+  border: 1px solid var(--rb-border);
+  border-radius: 3px;
+  outline: none;
+  background: #fff;
+  color: var(--rb-text);
+  font-size: 11px;
+  font-family: inherit;
+  max-width: 132px;
+  text-overflow: ellipsis;
+}
+.collab-slide-konva__layout-dropdown:focus { border-color: #185abd; box-shadow: 0 0 0 2px rgba(24,90,189,.12); }
+
 .slide-present-notes {
   position: absolute;
   bottom: 100px;
@@ -2715,8 +3473,8 @@ onBeforeUnmount(() => {
 }
 .slide-present-next-label { font-size: 11px; color: #94a3b8; margin-bottom: 4px; letter-spacing: 0.05em; }
 .slide-present-next-title { font-size: 14px; }
-.collab-slide-konva { display: flex; flex-direction: column; height: 100%; background: var(--td-bg-color-container); }
-.collab-slide-konva__toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--td-component-stroke); flex-wrap: wrap; }
+.collab-slide-konva { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--td-bg-color-container); overflow: hidden; }
+.collab-slide-konva__toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--td-component-stroke); flex-wrap: wrap; flex: 0 0 auto; }
 .collab-slide-konva__title { font-weight: 600; }
 .collab-slide-konva__kind { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--td-brand-color-1); color: var(--td-brand-color-7); }
 .collab-slide-konva__connection, .collab-slide-konva__savetag { font-size: 12px; padding: 2px 8px; border-radius: 999px; }
@@ -2751,6 +3509,7 @@ onBeforeUnmount(() => {
   border-top: 1px solid var(--td-component-stroke);
   padding: 12px 16px;
   background: var(--td-bg-color-container);
+  flex: 0 0 auto;
 }
 .collab-slide-konva__notes-header {
   display: flex;
@@ -2830,5 +3589,190 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
   margin-top: 8px;
 }
+
+/* GenOffice-inspired web workbench: a calm chrome frame around the canvas,
+   with dense controls only where they are useful. */
+.collab-slide-konva {
+  --slide-chrome: #ffffff;
+  --slide-chrome-raised: #f7f8fa;
+  --slide-chrome-border: #d9dde5;
+  --slide-chrome-muted: #657184;
+  --slide-accent: #185abd;
+  min-height: 0;
+  height: 100%;
+  background: #eef1f5;
+  color: #1f232b;
+  overflow: hidden;
+}
+.collab-slide-konva__titlebar {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  background: var(--slide-chrome);
+  border-bottom: 1px solid var(--slide-chrome-border);
+  flex: 0 0 auto;
+}
+.collab-slide-konva__brandmark {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 6px;
+  background: #185abd;
+  color: white;
+  font: 800 15px/1 Georgia, serif;
+  box-shadow: none;
+}
+.collab-slide-konva__file-meta { min-width: 0; }
+.collab-slide-konva__title { max-width: 330px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #1f232b; font-size: 14px; font-weight: 650; }
+.collab-slide-konva__file-subtitle { display: flex; align-items: center; gap: 7px; margin-top: 3px; color: var(--slide-chrome-muted); font-size: 10px; }
+.collab-slide-konva__file-dot { color: #556070; }
+.collab-slide-konva__title-actions { display: flex; align-items: center; gap: 7px; margin-left: auto; }
+/* Title-bar chips: visible on the light surface (the title bar is now #ffffff).
+#   The dark-mode color rules above use light-green ink on dark backgrounds,
+#   which is unreadable on the light titlebar — replace with a subtle light
+#   chip that follows the same tone but darker text. */
+.collab-slide-konva__connection, .collab-slide-konva__savetag { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border: 1px solid var(--app-border, #e1e4e8); border-radius: 6px; background: var(--app-surface-raised, #fff); color: var(--app-text-muted, #5a6473); font-size: 11px; font-weight: 500; }
+.collab-slide-konva__connection i { width: 7px; height: 7px; display: inline-block; border-radius: 50%; background: #94a3b8; }
+.collab-slide-konva__connection.connected { border-color: rgba(22,163,74,0.32); color: #15803d; background: rgba(22,163,74,0.08); }
+.collab-slide-konva__connection.connected i { background: #16a34a; box-shadow: 0 0 0 3px rgba(22,163,74,0.18); }
+.collab-slide-konva__savetag.dirty { border-color: rgba(217,119,6,0.32); color: #b45309; background: rgba(217,119,6,0.08); }
+.collab-slide-konva__savetag.saving { border-color: rgba(24,90,189,0.32); color: #185abd; background: rgba(24,90,189,0.08); }
+.collab-slide-konva__title-btn { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 11px; border: 1px solid #185abd; border-radius: 5px; background: #185abd; color: white; cursor: pointer; font-size: 11px; font-weight: 650; }
+.collab-slide-konva__title-btn:hover { background: #124a9e; }
+.collab-slide-konva__title-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.collab-slide-konva__ribbon-groups > .collab-slide-konva__tool-group ~ .collab-slide-konva__tool-group { border-left: 1px solid #d3d7df; }
+.collab-slide-konva__ribbon-groups .collab-slide-konva__tool-group { position: relative; display: flex; flex-direction: column; justify-content: flex-start; gap: 0; padding: 1px 6px 0; border-right: 0; flex: none; }
+.collab-slide-konva__ribbon-groups .collab-slide-konva__tool-group:first-child { padding-left: 1px; }
+.collab-slide-konva__ribbon-groups .collab-slide-konva__group-label { position: static; display: block; order: 2; height: 13px; margin: 1px 3px 0; color: #7a8492; font-size: 9px; line-height: 13px; letter-spacing: .02em; text-align: center; }
+.collab-slide-konva__ribbon-groups .ribbon-group-items { display: flex; align-items: center; gap: 2px; flex: 1; min-height: 0; }
+.collab-slide-konva__ribbon-groups .collab-slide-konva__tool-btn { min-width: 46px; min-height: 48px; padding: 3px 6px 2px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: #303844; cursor: pointer; flex-direction: column; font: 11px/1.15 inherit; white-space: nowrap; flex-shrink: 0; }
+.collab-slide-konva__ribbon-groups .collab-slide-konva__tool-btn svg { width: 19px; height: 19px; color: #344054; flex: none; }
+.collab-slide-konva__ribbon-groups .collab-slide-konva__tool-btn:hover:not(:disabled) { border-color: #cbdaf1; background: #f1f6fe; color: #185abd; }
+.collab-slide-konva__ribbon-groups .collab-slide-konva__tool-btn:hover:not(:disabled) svg { color: #185abd; }
+.collab-slide-konva__ribbon-groups .collab-slide-konva__tool-btn:disabled { opacity: .38; cursor: not-allowed; }
+.collab-slide-konva__ribbon-groups .collab-slide-konva__tool-btn--big { min-width: 66px; }
+.collab-slide-konva__ribbon-groups .collab-slide-konva__tool-btn--big svg { width: 22px; height: 22px; }
+.collab-slide-konva__ribbon-groups .collab-slide-konva__shape-glyph { color: #344054; }
+.collab-slide-konva__ribbon-groups .collab-slide-konva__ribbon-hint { color: #687385; }
+.collab-slide-konva__ribbon-groups .collab-slide-konva__layout-select { color: #5c6675; }
+.collab-slide-konva__ribbon-groups .collab-slide-konva__layout-dropdown { border-color: #c9d0da; background: #fff; color: #303844; }
+.collab-slide-konva__body { position: relative; flex: 1 1 0; min-height: 360px; display: flex; background: #eef1f5; overflow: hidden; }
+.collab-slide-konva__recovery { position: absolute; z-index: 3; top: 0; right: 0; left: 0; padding: 8px 14px; margin: 0; border-bottom: 1px solid rgba(244,200,121,.18); background: rgba(92,69,26,.86); color: #f5d38e; font-size: 11px; }
+.collab-slide-konva__thumbs { width: 156px; flex: 0 0 156px; min-width: 0; padding: 14px 10px 26px; border-right: 1px solid var(--slide-chrome-border); background: #1E1E1E; gap: 11px; overflow-y: auto; overflow-x: hidden; }
+.collab-slide-konva__thumb { width: 100%; min-height: 94px; position: relative; display: grid; grid-template-columns: 20px minmax(0, 1fr); grid-template-rows: auto auto auto; align-items: center; gap: 4px; padding: 6px; border: 1px solid rgba(255,255,255,.1); border-radius: 6px; outline: none; background: #2c313b; color: #bec7d2; cursor: pointer; text-align: left; }
+.collab-slide-konva__thumb-canvas { grid-column: 2; grid-row: 1 / span 2; width: 100%; height: 78px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(0,0,0,.35); border-radius: 2px; background: #f9fbfd; box-shadow: 0 2px 5px rgba(0,0,0,.24); overflow: hidden; }
+.collab-slide-konva__thumb-svg { width: 100%; height: 100%; display: block; }
+.collab-slide-konva__thumb.active { border-color: var(--slide-accent); background: rgba(90,168,255,.15); box-shadow: 0 0 0 1px rgba(90,168,255,.2); }
+.collab-slide-konva__thumb:hover { border-color: rgba(255,255,255,.28); }
+.collab-slide-konva__thumb-num { align-self: start; padding-top: 4px; color: #8994a3; font-size: 10px; text-align: center; }
+.collab-slide-konva__thumb-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #cdd5df; font-size: 10px; }
+.collab-slide-konva__iconbtn { position: relative; z-index: 1; grid-row: 2; border: 0; background: transparent; color: #9da8b6; cursor: pointer; font-size: 11px; padding: 2px; }
+.collab-slide-konva__iconbtn.danger { color: #ed8990; }
+.collab-slide-konva__stage-wrap { flex: 1; min-width: 0; min-height: 0; padding: 18px; background: #1e1e1e; gap: 10px; overflow: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.collab-slide-konva__zoom-info { flex: 0 0 auto; align-self: flex-end; margin: 0 0 8px; color: #8d98a7; font-size: 10px; }
+.collab-slide-konva__stage { max-width: 100%; max-height: 100%; border: 1px solid rgba(0,0,0,.42); background: white; box-shadow: 0 18px 40px rgba(0,0,0,.35), 0 2px 5px rgba(0,0,0,.24); position: relative; overflow: hidden; flex: 0 0 auto; }
+.collab-slide-konva__inspector { width: 258px; flex: 0 0 258px; min-width: 0; padding: 16px 14px; border-left: 1px solid var(--slide-chrome-border); background: #1E1E1E; color: #d9e1eb; overflow-y: auto; }
+.collab-slide-konva__inspector h3 { padding-bottom: 11px; margin: 0 0 13px; border-bottom: 1px solid var(--slide-chrome-border); color: #f0f4f8; font-size: 12px; }
+.collab-slide-konva__inspector label { color: #8f9aaa; }
+.collab-slide-konva__inspector input, .collab-slide-konva__inspector textarea { border-color: rgba(255,255,255,.12); outline: none; background: #252525; color: #e8edf3; }
+.collab-slide-konva__inspector input:focus, .collab-slide-konva__inspector textarea:focus { border-color: rgba(90,168,255,.7); box-shadow: 0 0 0 2px rgba(90,168,255,.12); }
+/* Bottom panels (notes / animations / comments): light surface. The
+# collapsed state (data-collapsed="true") hides the body so canvas reclaims
+# the space; clicking the header bar toggles it. The default state is
+# collapsed so a fresh page lands with maximum canvas area. */
+.collab-slide-konva__notes, .collab-slide-konva__animations, .collab-comments { border-top: 1px solid var(--app-border, #e1e4e8); background: var(--app-surface-raised, #fff); color: var(--app-text, #1f232b); }
+.collab-slide-konva__notes-header, .collab-slide-konva__animations-header, .collab-comments__header { display: flex; align-items: center; gap: 8px; padding: 8px 14px; cursor: pointer; user-select: none; }
+.collab-slide-konva__notes-header:hover, .collab-slide-konva__animations-header:hover, .collab-comments__header:hover { background: var(--app-surface, #f6f7f9); }
+.collab-slide-konva__notes-header > span:first-child, .collab-slide-konva__animations-header > span:first-child { font-size: 12px; font-weight: 600; }
+.collab-slide-konva__notes[data-collapsed="true"] > :not(.collab-slide-konva__notes-header),
+.collab-slide-konva__animations[data-collapsed="true"] > :not(.collab-slide-konva__animations-header),
+.collab-comments[data-collapsed="true"] > :not(.collab-comments__header) { display: none; }
+.collab-slide-konva__notes-textarea, .collab-slide-konva__animations-select, .collab-slide-konva__animations-input { border: 1px solid var(--app-border, #e1e4e8); background: var(--app-surface, #f6f7f9); color: var(--app-text, #1f232b); border-radius: 4px; }
+.collab-slide-konva__notes-textarea:focus, .collab-slide-konva__animations-select:focus, .collab-slide-konva__animations-input:focus { border-color: var(--app-accent, #185abd); box-shadow: 0 0 0 2px rgba(24,90,189,0.16); outline: none; }
+.collab-slide-konva__notes-textarea { padding: 6px 8px; }
+.collab-slide-konva__error { padding: 9px 14px; margin: 0; background: #3b2024; color: #ffadb4; font-size: 11px; }
+.collab-slide-konva__loading { min-height: 220px; display: grid; place-items: center; background: #eef1f5; color: #98a4b3; font-size: 12px; }
+@media (max-width: 1120px) {
+  .collab-slide-konva__thumbs { width: 160px; flex-basis: 160px; }
+  .collab-slide-konva__inspector { width: 220px; flex-basis: 220px; }
+  .collab-slide-konva__tool-group--arrange { display: none; }
+  .collab-slide-konva__context-actions--selection { display: none; }
+}
+@media (max-width: 820px) {
+  .collab-slide-konva__thumbs { width: 124px; flex-basis: 124px; }
+  .collab-slide-konva__inspector { display: none; }
+  .collab-slide-konva__title-actions .collab-slide-konva__connection, .collab-slide-konva__title-actions .collab-slide-konva__savetag { display: none; }
+  .collab-slide-konva__tabs { padding: 0 8px; }
+  .collab-slide-konva__tab-btn { padding: 0 8px 9px; font-size: 10px; }
+}
+/* v0.7.119 — dark chrome when slide is dark. Reuses the dark palette
+   the thumb sidebar / stage-wrap / inspector already use. */
+.collab-slide-konva[data-rb-theme='dark'] {
+  background: #1E1E1E;
+  color: #d9e1eb;
+}
+.collab-slide-konva[data-rb-theme='dark'] .collab-slide-konva__titlebar {
+  background: #1E1E1E;
+  border-bottom: 1px solid #3a3a3a;
+  color: #d9e1eb;
+}
+.collab-slide-konva[data-rb-theme='dark'] .collab-slide-konva__title-actions,
+.collab-slide-konva[data-rb-theme='dark'] .collab-slide-konva__file-meta,
+.collab-slide-konva[data-rb-theme='dark'] .collab-slide-konva__title { color: #f0f4f8; }
+.collab-slide-konva[data-rb-theme='dark'] .collab-slide-konva__file-subtitle { color: #8d98a7; }
+.collab-slide-konva[data-rb-theme='dark'] .collab-slide-konva__connection,
+.collab-slide-konva[data-rb-theme='dark'] .collab-slide-konva__savetag {
+  border-color: rgba(255, 255, 255, 0.10);
+  background: #252525;
+  color: #b6c0cd;
+}
+.collab-slide-konva[data-rb-theme='dark'] .collab-slide-konva__title-btn {
+  background: #2a2a2a;
+  color: #e6eaf2;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.collab-slide-konva[data-rb-theme='dark'] .collab-slide-konva__title-btn:hover { background: #353b46; }
+.collab-slide-konva[data-rb-theme='dark'] .collab-slide-konva__statusbar {
+  background: #1E1E1E;
+  color: #b6c0cd;
+  border-top: 1px solid #3a3a3a;
+}
+.collab-slide-konva[data-rb-theme='dark'] .collab-slide-konva__statusbar-item,
+.collab-slide-konva[data-rb-theme='dark'] .collab-slide-konva__statusbar-btn { color: #b6c0cd; }
+.collab-slide-konva[data-rb-theme='dark'] .collab-slide-konva__body { background: #1e1e1e; }
+.collab-slide-konva[data-rb-theme='dark'] .collab-slide-konva__notes,
+.collab-slide-konva[data-rb-theme='dark'] .collab-slide-konva__animations,
+.collab-slide-konva[data-rb-theme='dark'] .collab-comments {
+  background: #1E1E1E;
+  color: #d9e1eb;
+  border-top-color: #3a3a3a;
+}
+
+
+/* v0.7.131 — Dark-mode group separator (GenOffice style: thin 1px line spanning
+   the panel height). The explicit <div class="ribbon-sep"> siblings sit in
+   .collab-slide-konva__ribbon-groups and collapse to 0 width under flex stretch
+   — use the border-left on the next tool-group as the authoritative separator. */
+.collab-slide-konva[data-rb-theme='dark'] .collab-slide-konva__ribbon-groups > .collab-slide-konva__tool-group ~ .collab-slide-konva__tool-group { border-left-color: rgba(255, 255, 255, 0.08); }
+.collab-slide-konva[data-rb-theme='dark'] .collab-slide-konva__ribbon-groups .ribbon-sep { display: none; }
+
+/* v0.7.119 — lock label font-size in scoped context (more specific selectors
+   in this file otherwise inherit 14px). */
+.collab-slide-konva__ribbon-groups .ribbon-group-label--visible {
+  /* v0.7.131 — 11px + semibold 跟 GenOffice 「PowerPoint 组标签」一致 */
+  font-size: 11px !important;
+  line-height: 13px;
+  font-weight: 500;
+  color: var(--rb-text-dim);
+  margin-top: 2px;
+  padding: 0;
+  letter-spacing: 0.01em;
+}
+
 </style>
     return { index: Number(obj.index ?? 0), width, height, background, shapes }
