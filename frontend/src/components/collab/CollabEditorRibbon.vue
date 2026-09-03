@@ -177,9 +177,9 @@ import { nextTick } from 'vue'
   --rb-chrome-bg: #252525;
   --rb-chrome-bg-deep: #1e1e1e;
   --rb-tab-strip-bg: #2a2a2a;
-  --rb-text: #e6eaf2;
-  --rb-text-dim: #8b95a4;
-  --rb-icon: #b8c0cc;
+  --rb-text: #e4e4e4;
+  --rb-text-dim: #a0a0a0;
+  --rb-icon: #e4e4e4;
   --rb-icon-hover: #ffffff;
   --rb-border: #3a3a3a;
   --rb-border-strong: #454545;
