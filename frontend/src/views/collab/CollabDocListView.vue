@@ -19,7 +19,6 @@
       <select v-model="newKind" class="collab-doc-list__kind-select" aria-label="内容类型">
         <option value="doc">文档</option><option value="sheet">表格</option><option value="slide">幻灯片</option><option value="form">收集表</option>
       </select>
-      <input v-model="kbId" placeholder="知识库 ID" class="collab-doc-list__kb-input" />
       <button class="collab-doc-list__create-btn" :disabled="creating" @click="onCreate">{{ creating ? '创建中…' : '新建文档' }}</button>
     </section>
     <section class="collab-doc-list__toolbar">
@@ -49,13 +48,13 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { createCollabDoc, deleteCollabDoc, listCollabDocs, type CollabDoc, type CollabDocKind } from '@/api/collabDoc'
+import { listKnowledgeBases, createKnowledgeBase } from '@/api/knowledge-base'
 import { MessagePlugin } from 'tdesign-vue-next'
 
 const router = useRouter()
 const items = ref<CollabDoc[]>([])
 const newTitle = ref('')
 const newKind = ref<CollabDocKind>('doc')
-const kbId = ref('')
 const creating = ref(false)
 const search = ref('')
 
@@ -83,14 +82,39 @@ const reload = async () => {
   }
 }
 
+const resolveDefaultKBId = async (): Promise<string> => {
+  // Tencent-Document style "blank from any workspace": pick the tenant's
+  // first available KB; if none exists, auto-create one named "工作区".
+  // No internal UUID ever surfaces to the user.
+  try {
+    const res: any = await listKnowledgeBases()
+    const items = Array.isArray(res?.data) ? res.data : []
+    if (items.length > 0 && items[0]?.id) return String(items[0].id)
+  } catch (_) {
+    // fall through to auto-create below
+  }
+  try {
+    const res: any = await createKnowledgeBase({ name: '工作区', description: '默认协作文档空间', type: 'document' })
+    if (res?.data?.id) return String(res.data.id)
+  } catch (_) {
+    // surfaced by createCollabDoc below
+  }
+  return ''
+}
+
 const onCreate = async () => {
-  if (!newTitle.value || !kbId.value) {
-    MessagePlugin.warning('请填写标题与知识库 ID')
+  if (!newTitle.value.trim()) {
+    MessagePlugin.warning('请填写文档标题')
     return
   }
   creating.value = true
   try {
-    const d = await createCollabDoc({ kb_id: kbId.value, title: newTitle.value, doc_kind: newKind.value })
+    const kbId = await resolveDefaultKBId()
+    if (!kbId) {
+      MessagePlugin.error('当前租户暂无可用知识库，请先在「知识库」页创建一个知识库再试。')
+      return
+    }
+    const d = await createCollabDoc({ kb_id: kbId, title: newTitle.value.trim(), doc_kind: newKind.value })
     router.push({ name: 'collabDocEditor', params: { id: d.id } })
   } catch (e: any) {
     MessagePlugin.error(`创建失败：${e?.message || e}`)
@@ -145,9 +169,9 @@ onMounted(reload)
 .collab-doc-list__create-heading strong { font-size:13px; }
 .collab-doc-list__create-heading small { color:var(--app-text-muted); font-size:11px; margin-top:3px; }
 .collab-doc-list__create-icon { width:28px; height:28px; display:grid; place-items:center; border-radius:8px; color:var(--td-text-color-anti); background:var(--td-brand-color); font-size:20px; line-height:1; }
-.collab-doc-list__title-input, .collab-doc-list__kind-select, .collab-doc-list__kb-input { min-height:38px; box-sizing:border-box; padding:8px 11px; border:1px solid var(--app-border-strong); border-radius:7px; background:var(--app-control-bg); color:var(--app-text); outline:none; }
-.collab-doc-list__title-input { flex:2; min-width:160px; } .collab-doc-list__kind-select, .collab-doc-list__kb-input { flex:1; min-width:130px; }
-.collab-doc-list__title-input:focus, .collab-doc-list__kind-select:focus, .collab-doc-list__kb-input:focus, .collab-doc-list__search:focus-within { border-color:var(--td-brand-color); box-shadow:0 0 0 3px color-mix(in srgb, var(--td-brand-color) 14%, transparent); }
+.collab-doc-list__title-input, .collab-doc-list__kind-select { min-height:38px; box-sizing:border-box; padding:8px 11px; border:1px solid var(--app-border-strong); border-radius:7px; background:var(--app-control-bg); color:var(--app-text); outline:none; }
+.collab-doc-list__title-input { flex:2; min-width:160px; } .collab-doc-list__kind-select { flex:1; min-width:130px; }
+.collab-doc-list__title-input:focus, .collab-doc-list__kind-select:focus, .collab-doc-list__search:focus-within { border-color:var(--td-brand-color); box-shadow:0 0 0 3px color-mix(in srgb, var(--td-brand-color) 14%, transparent); }
 .collab-doc-list__create-btn { min-height:38px; padding:0 16px; background:var(--td-brand-color); color:var(--td-text-color-anti); border:1px solid var(--td-brand-color); border-radius:7px; cursor:pointer; font-weight:600; white-space:nowrap; }
 .collab-doc-list__create-btn:hover { background:var(--td-brand-color-active); } .collab-doc-list__create-btn:disabled { opacity:.55; cursor:not-allowed; }
 .collab-doc-list__toolbar { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:28px; margin-bottom:12px; }
@@ -159,5 +183,5 @@ onMounted(reload)
 .collab-doc-list__file-icon { width:28px; height:32px; display:grid; place-items:center; border-radius:6px; background:color-mix(in srgb, var(--td-brand-color) 14%, var(--app-surface-raised)); color:var(--td-brand-color); font-size:17px; } .collab-doc-list__file-icon[data-kind=sheet] { color:#46a6ff; background:rgba(70,166,255,.12); } .collab-doc-list__file-icon[data-kind=slide] { color:#f7a94a; background:rgba(247,169,74,.12); } .collab-doc-list__file-icon[data-kind=form] { color:#b78cff; background:rgba(183,140,255,.12); }
 .collab-doc-list__kind { padding:4px 8px; border-radius:5px; background:var(--app-surface-raised); color:var(--app-text-muted); } .collab-doc-list__visibility { color:var(--app-text-muted); } .collab-doc-list__visibility::first-letter { color:var(--td-brand-color); } .collab-doc-list__actions { white-space:nowrap; text-align:right; } .collab-doc-list__share, .collab-doc-list__del { padding:5px 9px; margin-left:6px; border-radius:5px; cursor:pointer; font-size:11px; } .collab-doc-list__share { background:transparent; color:var(--td-brand-color); border:1px solid color-mix(in srgb, var(--td-brand-color) 45%, var(--app-border)); } .collab-doc-list__share:hover { background:color-mix(in srgb, var(--td-brand-color) 12%, transparent); } .collab-doc-list__del { background:transparent; color:var(--td-error-color-7); border:1px solid transparent; } .collab-doc-list__del:hover { border-color:color-mix(in srgb, var(--td-error-color) 40%, var(--app-border)); }
 .collab-doc-list__empty { text-align:center; padding:64px 24px !important; } .collab-doc-list__empty-icon, .collab-doc-list__empty strong, .collab-doc-list__empty small { display:block; } .collab-doc-list__empty-icon { color:var(--app-text-muted); font-size:30px; margin-bottom:10px; } .collab-doc-list__empty strong { color:var(--app-text); font-size:14px; } .collab-doc-list__empty small { margin-top:6px; color:var(--app-text-muted); }
-@media (max-width:760px) { .collab-doc-list { padding:24px 14px 40px; } .collab-doc-list__header, .collab-doc-list__toolbar { align-items:flex-start; flex-direction:column; } .collab-doc-list__header-meta { display:none; } .collab-doc-list__create { flex-wrap:wrap; } .collab-doc-list__create-heading, .collab-doc-list__title-input, .collab-doc-list__kind-select, .collab-doc-list__kb-input, .collab-doc-list__create-btn { flex:1 1 100%; } .collab-doc-list__table { overflow-x:auto; } .collab-doc-list__table table { min-width:700px; } }
+@media (max-width:760px) { .collab-doc-list { padding:24px 14px 40px; } .collab-doc-list__header, .collab-doc-list__toolbar { align-items:flex-start; flex-direction:column; } .collab-doc-list__header-meta { display:none; } .collab-doc-list__create { flex-wrap:wrap; } .collab-doc-list__create-heading, .collab-doc-list__title-input, .collab-doc-list__kind-select, .collab-doc-list__create-btn { flex:1 1 100%; } .collab-doc-list__table { overflow-x:auto; } .collab-doc-list__table table { min-width:700px; } }
 </style>

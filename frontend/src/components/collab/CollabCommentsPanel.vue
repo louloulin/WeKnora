@@ -129,7 +129,7 @@ const props = defineProps<{
 // attach the comment mark to the selected text range.
 const emit = defineEmits<{ created: [comment: CollabDocComment]; deleted: [comment: CollabDocComment]; loaded: [comments: CollabDocComment[]] }>()
 
-const open = ref(true)
+const open = ref(false)
 const loading = ref(false)
 const submitting = ref(false)
 const error = ref<string | null>(null)
