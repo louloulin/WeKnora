@@ -13,7 +13,14 @@
 -->
 <template>
   <div class="collab-sheet-editor">
-    <div class="collab-sheet-editor__toolbar">
+    <CollabEditorRibbon
+      v-model="sheetActiveTab"
+      :tabs="sheetRibbonTabs"
+      aria-label="表格工具栏"
+      test-id-prefix="sheet"
+      :collapsible="true"
+    >
+      <template #file>
       <span class="collab-sheet-editor__title">{{ title }}</span>
       <span class="collab-sheet-editor__kind">{{ kindLabel }}</span>
       <span class="collab-sheet-editor__connection" :class="{ connected: connected && !saveError }">
@@ -22,13 +29,11 @@
       <span class="collab-sheet-editor__savetag" :class="savetagClass">
         {{ saveLabel }}
       </span>
-      <button class="collab-sheet-editor__add-col" @click="addColumn" type="button">+ 列</button>
-      <button class="collab-sheet-editor__add-row" @click="addRow" type="button">+ 行</button>
-      <button class="collab-sheet-editor__add-col" @click="delLastColumn" type="button" :disabled="cols.length <= 1">- 列</button>
-      <button class="collab-sheet-editor__add-row" @click="delLastRow" type="button" :disabled="rows.length <= 1">- 行</button>
-      <button class="collab-sheet-editor__upload" :disabled="uploading" @click="triggerUpload" type="button">
-        {{ uploading ? '上传中...' : '上传 .xlsx' }}
-      </button>
+      
+      
+      
+      
+      
       <input
         ref="fileInput"
         type="file"
@@ -36,24 +41,22 @@
         style="display:none"
         @change="onUploadFile"
       />
-      <button class="collab-sheet-editor__export" :disabled="downloading" @click="exportXlsx" type="button">
-        {{ downloading ? '下载中...' : '下载 .xlsx' }}
-      </button>
-      <button class="collab-sheet-editor__feature" @click="openFreezeModal" type="button" title="冻结窗格">冻结</button>
-      <button class="collab-sheet-editor__feature" @click="openFilterModal" type="button" title="数据筛选">筛选</button>
-      <button class="collab-sheet-editor__feature" @click="openCfModal" type="button" title="条件格式">条件格式</button>
-      <button class="collab-sheet-editor__feature" @click="openDvModal" type="button" title="数据验证">数据验证</button>
-      <button class="collab-sheet-editor__feature" @click="openSparkModal" type="button" title="迷你图">迷你图</button>
-      <button class="collab-sheet-editor__feature" @click="openPageSetupModal" type="button" title="页面布局">页面</button>
-      <button class="collab-sheet-editor__feature" @click="openSheetManageModal" type="button" title="工作表管理">工作表</button>
-      <button class="collab-sheet-editor__feature" @click="openNoteModal" type="button" title="单元格批注">批注</button>
-      <button class="collab-sheet-editor__feature" @click="openHyperlinkModal" type="button" title="超链接">链接</button>
-      <button class="collab-sheet-editor__feature" @click="openFindModal" type="button" title="查找替换" data-testid="sheet-find-btn">查找</button>
-      <button class="collab-sheet-editor__feature" @click="openSortModal" type="button" title="按列排序" data-testid="sheet-sort-btn">排序</button>
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
+      
       <!-- v0.7.110 — XLSX 数据透视 (单 row + 单 value MVP) -->
-      <button class="collab-sheet-editor__feature" @click="openPivotModal" type="button" title="数据透视表" data-testid="sheet-pivot-btn">透视</button>
-      <button class="collab-sheet-editor__feature" @click="openNamesModal" type="button" title="命名区域管理" data-testid="sheet-names-btn">命名</button>
-      <button class="collab-sheet-editor__feature" @click="openTableModal" type="button" title="插入表对象">表格</button>
+      
+      
+      
       <span class="collab-sheet-editor__peers">
         <span
           v-for="p in peers"
@@ -63,6 +66,102 @@
           :title="p.displayName"
         >{{ initialOf(p.displayName) }}</span>
       </span>
+      <section v-show="sheetActiveTab === 'file'" class="collab-sheet-editor__group">
+        <span class="collab-sheet-editor__group-label">行列</span>
+        <div class="collab-sheet-editor__group-btns">
+          <button class="collab-sheet-editor__add-col" @click="addColumn" type="button">+ 列</button>
+          <button class="collab-sheet-editor__add-row" @click="addRow" type="button">+ 行</button>
+          <button class="collab-sheet-editor__add-col" @click="delLastColumn" type="button" :disabled="cols.length <= 1">- 列</button>
+          <button class="collab-sheet-editor__add-row" @click="delLastRow" type="button" :disabled="rows.length <= 1">- 行</button>
+        </div>
+      </section>
+      <section v-show="sheetActiveTab === 'file'" class="collab-sheet-editor__group">
+        <span class="collab-sheet-editor__group-label">文件</span>
+        <div class="collab-sheet-editor__group-btns">
+          <button class="collab-sheet-editor__upload" :disabled="uploading" @click="triggerUpload" type="button">
+            {{ uploading ? '上传中...' : '上传 .xlsx' }}
+          </button>
+          <button class="collab-sheet-editor__export" :disabled="downloading" @click="exportXlsx" type="button">
+            {{ downloading ? '下载中...' : '下载 .xlsx' }}
+          </button>
+        </div>
+      </section>
+      </template>
+      <template #edit>
+      <section v-show="sheetActiveTab === 'edit'" class="collab-sheet-editor__group">
+      <button class="collab-sheet-editor__feature" @click="openNoteModal" type="button" title="单元格批注">批注</button>
+      <button class="collab-sheet-editor__feature" @click="openHyperlinkModal" type="button" title="超链接">链接</button>
+      <button class="collab-sheet-editor__feature" @click="openFindModal" type="button" title="查找替换" data-testid="sheet-find-btn">查找</button>
+      <button class="collab-sheet-editor__feature" @click="openSortModal" type="button" title="按列排序" data-testid="sheet-sort-btn">排序</button>
+      <button class="collab-sheet-editor__feature" @click="openNamesModal" type="button" title="命名区域管理" data-testid="sheet-names-btn">命名</button>
+      <button class="collab-sheet-editor__feature" @click="openTableModal" type="button" title="插入表对象">表格</button>
+      </section>
+      </template>
+      <template #data>
+      <section v-show="sheetActiveTab === 'data'" class="collab-sheet-editor__group">
+      <button class="collab-sheet-editor__feature" @click="openFilterModal" type="button" title="数据筛选">筛选</button>
+      <button class="collab-sheet-editor__feature" @click="openCfModal" type="button" title="条件格式">条件格式</button>
+      <button class="collab-sheet-editor__feature" @click="openDvModal" type="button" title="数据验证">数据验证</button>
+      <button class="collab-sheet-editor__feature" @click="openSparkModal" type="button" title="迷你图">迷你图</button>
+      <button class="collab-sheet-editor__feature" @click="openPivotModal" type="button" title="数据透视表" data-testid="sheet-pivot-btn">透视</button>
+      </section>
+      </template>
+      <template #view>
+      <section v-show="sheetActiveTab === 'view'" class="collab-sheet-editor__group">
+      <button class="collab-sheet-editor__feature" @click="openFreezeModal" type="button" title="冻结窗格">冻结</button>
+      <button class="collab-sheet-editor__feature" @click="openPageSetupModal" type="button" title="页面布局">页面</button>
+      <button class="collab-sheet-editor__feature" @click="openSheetManageModal" type="button" title="工作表管理">工作表</button>
+      </section>
+      </template>
+      <template #insert>
+      <section v-show="sheetActiveTab === 'insert'" class="collab-sheet-editor__group">
+        <span class="collab-sheet-editor__group-label">插入</span>
+        <div class="collab-sheet-editor__group-btns">
+          <button class="collab-sheet-editor__feature collab-sheet-editor__btn--icon" @click="onInsertImageUrl" type="button" title="插入图片"><CollabIcon name="IconPicture" :size="28" /><span>图片</span></button>
+          <button class="collab-sheet-editor__feature collab-sheet-editor__btn--icon" @click="openHyperlinkModal" type="button" title="超链接"><CollabIcon name="IconLink" :size="28" /><span>链接</span></button>
+          <button class="collab-sheet-editor__feature collab-sheet-editor__btn--icon" @click="openTableModal" type="button" title="插入表对象"><CollabIcon name="IconTable" :size="28" /><span>表格</span></button>
+          <button class="collab-sheet-editor__feature collab-sheet-editor__btn--icon" @click="openNoteModal" type="button" title="单元格批注"><CollabIcon name="IconComment" :size="28" /><span>批注</span></button>
+        </div>
+      </section>
+      </template>
+
+      <template #page>
+      <section v-show="sheetActiveTab === 'page'" class="collab-sheet-editor__group">
+        <span class="collab-sheet-editor__group-label">页面布局</span>
+        <div class="collab-sheet-editor__group-btns">
+          <button class="collab-sheet-editor__feature collab-sheet-editor__btn--icon" @click="openPageSetupModal" type="button" title="页面设置"><CollabIcon name="IconPageWidth" :size="28" /><span>页面</span></button>
+          <button class="collab-sheet-editor__feature collab-sheet-editor__btn--icon" @click="openSheetManageModal" type="button" title="工作表管理"><CollabIcon name="IconDoc" :size="28" /><span>工作表</span></button>
+        </div>
+      </section>
+      </template>
+
+      <template #formula>
+      <section v-show="sheetActiveTab === 'formula'" class="collab-sheet-editor__group">
+        <span class="collab-sheet-editor__group-label">公式</span>
+        <div class="collab-sheet-editor__group-btns">
+          <button class="collab-sheet-editor__feature collab-sheet-editor__btn--icon" type="button" @click="onInsertFunction('SUM')">SUM</button>
+          <button class="collab-sheet-editor__feature collab-sheet-editor__btn--icon" type="button" @click="onInsertFunction('AVERAGE')">AVG</button>
+          <button class="collab-sheet-editor__feature collab-sheet-editor__btn--icon" type="button" @click="onInsertFunction('COUNT')">COUNT</button>
+          <button class="collab-sheet-editor__feature collab-sheet-editor__btn--icon" type="button" @click="onInsertFunction('IF')">IF</button>
+        </div>
+      </section>
+      </template>
+
+    </CollabEditorRibbon>
+
+    <!-- v0.7.74 — Sheet bottom status bar (GenOffice style: cell ref / sheet name / zoom) -->
+    <div class="collab-sheet-editor__statusbar">
+      <span class="collab-sheet-editor__statusbar-item">单元格 {{ selectedRi >= 0 && selectedCi >= 0 ? cellLabel(selectedRi, selectedCi) : '—' }}</span>
+      <span class="collab-sheet-editor__statusbar-sep">·</span>
+      <span class="collab-sheet-editor__statusbar-item">工作表 {{ activeSheetName }}</span>
+      <span class="collab-sheet-editor__statusbar-sep">·</span>
+      <span class="collab-sheet-editor__statusbar-item">{{ connectionLabel }}</span>
+      <span class="collab-sheet-editor__statusbar-spacer"></span>
+      <span class="collab-sheet-editor__statusbar-item">{{ rows.length }} 行 × {{ cols.length }} 列</span>
+      <span class="collab-sheet-editor__statusbar-sep">·</span>
+      <button class="collab-sheet-editor__statusbar-btn" type="button" data-testid="sheet-zoom-out" @click="onZoomOut">−</button>
+      <span class="collab-sheet-editor__statusbar-zoom">{{ sheetZoomPercent }}%</span>
+      <button class="collab-sheet-editor__statusbar-btn" type="button" data-testid="sheet-zoom-in" @click="onZoomIn">＋</button>
     </div>
     <!-- Sheet tabs (multi-sheet support) -->
     <div v-if="!loading && sheets.length > 1" class="collab-sheet-editor__tabs">
@@ -593,6 +692,40 @@
 </template>
 
 <script setup lang="ts">
+// v0.7.74 — SHEET 顶部 Ribbon 4 tab (文件/编辑/数据/视图) — 复用 CollabEditorRibbon
+import CollabEditorRibbon from '@/components/collab/CollabEditorRibbon.vue'
+import CollabIcon from '@/components/collab/CollabIcon.vue'
+type SheetRibbonTabId = 'file' | 'edit' | 'insert' | 'page' | 'data' | 'formula' | 'view'
+const sheetRibbonTabs: { id: SheetRibbonTabId; label: string }[] = [
+  { id: 'file',    label: '文件' },
+  { id: 'edit',    label: '编辑' },
+  { id: 'insert',  label: '插入' },
+  { id: 'page',    label: '页面布局' },
+  { id: 'data',    label: '数据' },
+  { id: 'formula', label: '公式' },
+  { id: 'view',    label: '视图' },
+]
+const sheetActiveTab = ref<SheetRibbonTabId>('file')
+const onInsertImageUrl = () => { featureDialog.value = 'hyperlink' /* 复用 hyperlink 模态占位 */ }
+const onInsertFunction = (name: string) => {
+  const input = document.querySelector('.collab-sheet-editor__cell-input:focus') as HTMLInputElement | null
+  if (!input) return
+  const pos = input.selectionStart ?? 0
+  const v = input.value
+  input.value = v.slice(0, pos) + name + '()' + v.slice(pos)
+  input.focus()
+  const np = pos + name.length + 1
+  input.setSelectionRange(np, np)
+}
+const sheetZoom = ref(1)
+const sheetZoomPercent = computed(() => Math.round(sheetZoom.value * 100))
+const onZoomIn = () => { sheetZoom.value = Math.min(2, +(sheetZoom.value + 0.1).toFixed(2)); applySheetZoom() }
+const onZoomOut = () => { sheetZoom.value = Math.max(0.5, +(sheetZoom.value - 0.1).toFixed(2)); applySheetZoom() }
+const applySheetZoom = () => {
+  const grid = document.querySelector('.collab-sheet-editor__grid')
+  if (grid) (grid as HTMLElement).style.zoom = String(sheetZoom.value)
+}
+
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import * as Y from 'yjs'
 import CollabCommentsPanel from '@/components/collab/CollabCommentsPanel.vue'
@@ -2462,7 +2595,65 @@ onBeforeUnmount(teardown)
 </script>
 
 <style scoped>
-.collab-sheet-editor { display: flex; flex-direction: column; height: 100%; }
+/* v0.7.79 — Sheet editor root: 浅色背景 + 系统字体（Word Mac 风格） */
+.collab-sheet-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--app-surface-raised, #ffffff);
+  color: var(--app-text, #1f232b);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+/* Group 容器（GenOffice 风格：不显示 label，垂直居中按钮，2px 间距） */
+.collab-sheet-editor__group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 2px 6px;
+  flex-shrink: 0;
+}
+.collab-sheet-editor__group-label {
+  display: none;
+}
+.collab-sheet-editor__group-btns {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+}
+
+/* 大按钮（GenOffice 28px 图标标准） */
+.collab-sheet-editor__btn--icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px 7px 6px;
+  min-width: 36px;
+  font-size: 12px;
+  color: var(--app-text, #1f232b);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.collab-sheet-editor__btn--icon:hover {
+  background: var(--rb-hover, rgba(24, 90, 189, 0.08));
+}
+.collab-sheet-editor__btn--icon svg {
+  display: block;
+  width: 28px;
+  height: 28px;
+}
+.collab-sheet-editor__btn--icon span {
+  white-space: nowrap;
+  line-height: 1.15;
+}
 .collab-sheet-editor__toolbar {
   display: flex; align-items: center; gap: 8px; padding: 8px 12px;
   border-bottom: 1px solid var(--td-component-stroke);
@@ -2586,6 +2777,81 @@ onBeforeUnmount(teardown)
   outline: 2px solid var(--td-brand-color-7);
   outline-offset: -2px;
 }
+
+/* v0.7.74 — Sheet Ribbon group label + container */
+.collab-sheet-editor__group {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 4px 10px 6px;
+  min-width: 80px;
+  border-left: 1px solid var(--app-border, #2c313b);
+}
+.collab-sheet-editor__group:first-of-type {
+  border-left: 0;
+}
+.collab-sheet-editor__group-label {
+  font-size: 10px;
+  color: #7c8696;
+  text-align: center;
+  user-select: none;
+}
+.collab-sheet-editor__btn--icon {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 10px 6px;
+  min-width: 56px;
+  font-size: 11px;
+  color: var(--app-text, #dce4ed);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.collab-sheet-editor__btn--icon:hover {
+  background: rgba(90, 168, 255, 0.10);
+  border-color: rgba(90, 168, 255, 0.30);
+}
+.collab-sheet-editor__btn--icon svg { display: block; }
+.collab-sheet-editor__btn--icon span { white-space: nowrap; line-height: 1.2; }
+.collab-sheet-editor__group-btns {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* v0.7.74 — Sheet bottom status bar */
+.collab-sheet-editor__statusbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 14px;
+  background: var(--app-surface, #161a22);
+  border-top: 1px solid var(--app-border, #2c313b);
+  color: var(--app-text-secondary, #9ca6b4);
+  font-size: 11px;
+  user-select: none;
+  height: 26px;
+  flex: none;
+}
+.collab-sheet-editor__statusbar-item { white-space: nowrap; }
+.collab-sheet-editor__statusbar-sep { opacity: 0.4; }
+.collab-sheet-editor__statusbar-spacer { flex: 1; }
+.collab-sheet-editor__statusbar-btn {
+  border: 0;
+  background: transparent;
+  color: var(--app-text-secondary, #9ca6b4);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 6px;
+  line-height: 1;
+}
+.collab-sheet-editor__statusbar-btn:hover { color: var(--td-brand-color, #5aa8ff); }
+.collab-sheet-editor__statusbar-zoom { min-width: 42px; text-align: center; font-variant-numeric: tabular-nums; }
 .collab-sheet-editor__feature { background: var(--app-surface-raised); color: var(--app-text); border: 1px solid var(--app-border-strong); padding: 2px 8px; border-radius: 4px; cursor: pointer; }
 .collab-sheet-editor__feature:hover { background: var(--td-bg-color-container-hover); }
 .collab-sheet-editor__modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; }
