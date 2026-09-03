@@ -51,15 +51,14 @@
         </div>
       </div>
       <div class="collab-editor-view__main">
-        <header class="collab-editor-view__topbar">
+        <header v-if="doc.doc_kind !== 'slide'" class="collab-editor-view__topbar">
           <div class="collab-editor-view__topbar-title"><span class="collab-editor-view__topbar-kind">{{ kindLabel(doc.doc_kind) }}</span><strong>{{ doc.title }}</strong><span class="collab-editor-view__saved">已保存</span></div>
           <div class="collab-editor-view__topbar-actions"><span class="collab-editor-view__presence"><i></i>{{ displayName }}</span><button type="button" @click="shareVisible = !shareVisible">分享</button><button type="button" class="collab-editor-view__more" aria-label="更多操作">•••</button></div>
         </header>
-        <CollabSlideThemePanel
-          v-if="doc.doc_kind === 'slide'"
-          class="collab-editor-view__slide-theme"
-          @theme:apply="onSlideThemeApply"
-        />
+        <!-- Slide Konva editor already ships its own branded title bar,
+             ribbon tabs, and theme switcher; hiding the parent topbar in
+             slide mode keeps a single source of truth for layout.
+             The design-tab theme gallery lives inside Konva editor. -->
         <CollabDocProEditor v-if="doc.doc_kind === 'doc'" :doc-id="doc.id" :title="doc.title" :token="token" :display-name="displayName" />
         <CollabSheetEditor v-else-if="doc.doc_kind === 'sheet'" :doc-id="doc.id" :title="doc.title" :token="token" :display-name="displayName" />
         <CollabSlideKonvaEditor

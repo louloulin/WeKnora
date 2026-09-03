@@ -21,6 +21,197 @@
 -->
 <template>
   <div class="collab-doc-pro">
+    <CollabEditorRibbon
+      v-model="activeTab"
+      :tabs="docRibbonTabs"
+      aria-label="文档工具栏"
+      test-id-prefix="doc"
+      :collapsible="true"
+    >
+      <!-- ===== 文件 tab ===== -->
+      <template #file>
+        <div class="collab-doc-pro__ribbon-group">
+          <span class="collab-doc-pro__ribbon-group-label">文件</span>
+          <button data-testid="doc-download-btn" class="collab-doc-pro__btn" type="button" :disabled="downloading" @click="onDownload">
+            {{ downloading ? '下载中...' : '下载 .docx' }}
+          </button>
+          <button data-testid="doc-upload-btn" class="collab-doc-pro__btn" type="button" :disabled="uploading" @click="triggerDocUpload">
+            {{ uploading ? '上传中...' : '上传 .docx / .txt / .md' }}
+          </button>
+          <button data-testid="doc-save-btn" class="collab-doc-pro__btn" type="button" :disabled="uploading" @click="onForceSave">
+            {{ uploading ? '保存中...' : '立即保存' }}
+          </button>
+          <button data-testid="doc-history-btn" class="collab-doc-pro__btn" type="button" @click="onToggleHistory">版本历史</button>
+        </div>
+        <div class="collab-doc-pro__ribbon-group">
+          <span class="collab-doc-pro__ribbon-group-label">页面</span>
+          <button data-testid="doc-page-setup-btn" class="collab-doc-pro__btn" type="button" @click="openSectionsModal">页面设置</button>
+          <button data-testid="doc-hf-btn-ribbon" class="collab-doc-pro__btn" type="button" @click="openHfModal">页眉页脚</button>
+        </div>
+      </template>
+
+      <!-- ===== 开始 tab (字体/段落/样式/撤销重做) ===== -->
+      <template #home>
+        <div class="collab-doc-pro__ribbon-group">
+          <span class="collab-doc-pro__ribbon-group-label">撤销</span>
+          <button data-testid="doc-undo-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="runNode('undo')" title="撤销 (Ctrl+Z)">
+            <CollabIcon name="IconUndo" :size="28" /><span>撤销</span>
+          </button>
+          <button data-testid="doc-redo-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="runNode('redo')" title="重做 (Ctrl+Y)">
+            <CollabIcon name="IconRedo" :size="28" /><span>重做</span>
+          </button>
+        </div>
+        <div class="collab-doc-pro__ribbon-group">
+          <span class="collab-doc-pro__ribbon-group-label">段落</span>
+          <button data-testid="doc-align-left-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="onAlign('left')" title="左对齐">
+            <CollabIcon name="IconAlignLeft" :size="28" /><span>左对齐</span>
+          </button>
+          <button data-testid="doc-align-center-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="onAlign('center')" title="居中">
+            <CollabIcon name="IconAlignCenter" :size="28" /><span>居中</span>
+          </button>
+          <button data-testid="doc-align-right-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="onAlign('right')" title="右对齐">
+            <CollabIcon name="IconAlignRight" :size="28" /><span>右对齐</span>
+          </button>
+        </div>
+        <div class="collab-doc-pro__ribbon-group">
+          <span class="collab-doc-pro__ribbon-group-label">格式</span>
+          <button data-testid="doc-case-ribbon-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" data-testid-case="case" :disabled="!editor" title="大小写切换 (Shift+F3)" @click="onCycleCase">
+            <CollabIcon name="IconChangeCase" :size="28" /><span>大小写</span>
+          </button>
+          <button data-testid="doc-clear-fmt-ribbon-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" :disabled="!editor || !canClearFormat" title="清除格式 (Ctrl+Space)" @click="onClearFormat">
+            <CollabIcon name="IconClearFormat" :size="28" /><span>清除</span>
+          </button>
+        </div>
+      </template>
+
+      <!-- ===== 插入 tab (表格/图片/链接/页码/页眉页脚/分页符/数学公式) ===== -->
+      <template #insert>
+        <div class="collab-doc-pro__ribbon-group">
+          <span class="collab-doc-pro__ribbon-group-label">插入</span>
+          <button data-testid="doc-insert-table-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="onInsertTable" title="插入表格">
+            <CollabIcon name="IconTable" :size="28" /><span>表格</span>
+          </button>
+          <button data-testid="doc-insert-image-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="onInsertImageUrl" title="插入图片">
+            <CollabIcon name="IconPicture" :size="28" /><span>图片</span>
+          </button>
+          <button data-testid="doc-insert-image-file-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="onInsertImageFile" title="插入本地图片">
+            <CollabIcon name="IconPaperclip" :size="28" /><span>本地</span>
+          </button>
+          <button data-testid="doc-insert-link-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" :disabled="!editor" @click="onSetLink" title="插入链接">
+            <CollabIcon name="IconLink" :size="28" /><span>链接</span>
+          </button>
+        </div>
+        <div class="collab-doc-pro__ribbon-group">
+          <span class="collab-doc-pro__ribbon-group-label">布局</span>
+          <button data-testid="doc-page-break-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="onInsertPageBreak">
+            <CollabIcon name="IconPageBreak" :size="28" /><span>分页符</span>
+          </button>
+          <button data-testid="doc-math-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="onOpenMath">
+            <CollabIcon name="IconCaret" :size="28" /><span>公式</span>
+          </button>
+        </div>
+      </template>
+
+      <!-- ===== 绘图 tab (形状/笔迹) ===== -->
+      <template #draw>
+        <div class="collab-doc-pro__ribbon-group">
+          <span class="collab-doc-pro__ribbon-group-label">形状</span>
+          <button data-testid="doc-shape-rect-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" :disabled="!editor" @click="onInsertShape('rect')" title="插入矩形">
+            <CollabIcon name="IconShapes" :size="28" /><span>矩形</span>
+          </button>
+          <button data-testid="doc-shape-ellipse-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" :disabled="!editor" @click="onInsertShape('ellipse')" title="插入椭圆">
+            <CollabIcon name="IconShapes" :size="28" /><span>椭圆</span>
+          </button>
+        </div>
+        <div class="collab-doc-pro__ribbon-group">
+          <span class="collab-doc-pro__ribbon-group-label">笔迹</span>
+          <button data-testid="doc-pen-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" disabled title="手写笔（即将推出）">
+            <CollabIcon name="IconPen" :size="28" /><span>笔</span>
+          </button>
+          <button data-testid="doc-highlighter-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" disabled title="荧光笔（即将推出）">
+            <CollabIcon name="IconHighlighterPen" :size="28" /><span>荧光</span>
+          </button>
+          <button data-testid="doc-eraser-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" disabled title="橡皮（即将推出）">
+            <CollabIcon name="IconEraser" :size="28" /><span>橡皮</span>
+          </button>
+        </div>
+      </template>
+
+      <!-- ===== 设计 tab (主题) ===== -->
+      <template #design>
+        <CollabDocThemePanel
+          :active-theme="activeDocTheme"
+          @apply="onApplyDocTheme"
+        />
+      </template>
+
+      <!-- ===== 审阅 tab (修订/记录修订/对比/保护) ===== -->
+      <template #review>
+        <div class="collab-doc-pro__ribbon-group">
+          <span class="collab-doc-pro__ribbon-group-label">修订</span>
+          <button data-testid="doc-track-changes-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="onToggleTrackChanges">
+            <CollabIcon name="IconTrackChanges" :size="28" /><span>{{ trackChangesOn ? '记录中' : '记录修订' }}</span>
+          </button>
+          <button data-testid="doc-revisions-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="openRevisionsPanel">
+            <CollabIcon name="IconComment" :size="28" /><span>修订 ({{ revisionCount }})</span>
+          </button>
+        </div>
+        <div class="collab-doc-pro__ribbon-group">
+          <span class="collab-doc-pro__ribbon-group-label">比较与保护</span>
+          <button data-testid="doc-compare-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="openCompareModal">
+            <CollabIcon name="IconCompare" :size="28" /><span>对比</span>
+          </button>
+          <button data-testid="doc-protect-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="openProtectModal">
+            <CollabIcon name="IconLock" :size="28" /><span>{{ protectionEnabled ? '已保护' : '保护' }}</span>
+          </button>
+        </div>
+      </template>
+
+      <!-- ===== 视图 tab (大纲/查找/标尺/网格线/缩放) ===== -->
+      <template #view>
+        <div class="collab-doc-pro__ribbon-group">
+          <span class="collab-doc-pro__ribbon-group-label">导航</span>
+          <button data-testid="doc-outline-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="onToggleOutline">
+            <CollabIcon name="IconNavPane" :size="28" /><span>大纲</span>
+          </button>
+          <button data-testid="doc-find-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="openFindPanel">
+            <CollabIcon name="IconReplace" :size="28" /><span>查找</span>
+          </button>
+        </div>
+        <div class="collab-doc-pro__ribbon-group">
+          <span class="collab-doc-pro__ribbon-group-label">视图</span>
+          <button data-testid="doc-ruler-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="rulerVisible = !rulerVisible">
+            <CollabIcon name="IconRuler" :size="28" /><span>标尺</span>
+          </button>
+          <button data-testid="doc-gridlines-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="gridlinesVisible = !gridlinesVisible">
+            <CollabIcon name="IconGridlines" :size="28" /><span>网格</span>
+          </button>
+        </div>
+        <div class="collab-doc-pro__ribbon-group">
+          <span class="collab-doc-pro__ribbon-group-label">缩放</span>
+          <button data-testid="doc-zoom-out-ribbon-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="onZoomOut" title="缩小">
+            <CollabIcon name="IconZoomOut" :size="28" /><span>缩小</span>
+          </button>
+          <button data-testid="doc-zoom-in-ribbon-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="onZoomIn" title="放大">
+            <CollabIcon name="IconZoomIn" :size="28" /><span>放大</span>
+          </button>
+          <button data-testid="doc-zoom-100-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="onZoom100" title="100%">
+            <CollabIcon name="IconZoom100" :size="28" /><span>100%</span>
+          </button>
+        </div>
+      </template>
+
+      <!-- ===== AI tab ===== -->
+      <template #ai>
+        <div class="collab-doc-pro__ribbon-group">
+          <span class="collab-doc-pro__ribbon-group-label">AI 助手</span>
+          <button data-testid="doc-ai-btn" class="collab-doc-pro__btn collab-doc-pro__btn--ai collab-doc-pro__btn--icon" type="button" :disabled="!aiOriginal" @click="onOpenAi">
+            <CollabIcon name="IconAiPanel" :size="28" /><span>问 AI</span>
+          </button>
+        </div>
+      </template>
+    </CollabEditorRibbon>
+
     <div class="collab-doc-pro__toolbar">
       <span class="collab-doc-pro__title">{{ title }}</span>
       <span class="collab-doc-pro__kind">{{ kindLabel }}</span>
@@ -143,30 +334,39 @@
         <span class="collab-doc-pro__sep"></span>
         <button class="collab-doc-pro__fmt" :class="{ active: isNodeActive('bulletList') }" @click="runNode('toggleBulletList')" type="button" title="无序列表">• 列表</button>
         <button class="collab-doc-pro__fmt" :class="{ active: isNodeActive('orderedList') }" @click="runNode('toggleOrderedList')" type="button" title="有序列表">1. 列表</button>
-        <button class="collab-doc-pro__fmt" :class="{ active: isNodeActive('taskList') }" @click="runNode('toggleTaskList')" type="button" title="任务列表">☑</button>
-        <button class="collab-doc-pro__fmt" :class="{ active: isNodeActive('blockquote') }" @click="runNode('toggleBlockquote')" type="button" title="引用">❝</button>
-        <button class="collab-doc-pro__fmt" :class="{ active: isNodeActive('codeBlock') }" @click="runNode('toggleCodeBlock')" type="button" title="代码块">{}</button>
+        <button class="collab-doc-pro__fmt" :class="{ active: isNodeActive('taskList') }" @click="runNode('toggleTaskList')" type="button" title="任务列表"><CollabIcon name="IconCheckbox" :size="14" /></button>
+        <button class="collab-doc-pro__fmt" :class="{ active: isNodeActive('blockquote') }" @click="runNode('toggleBlockquote')" type="button" title="引用"><CollabIcon name="IconQuote" :size="14" /></button>
+        <button class="collab-doc-pro__fmt" :class="{ active: isNodeActive('codeBlock') }" @click="runNode('toggleCodeBlock')" type="button" title="代码块"><CollabIcon name="IconCode" :size="14" /></button>
         <span class="collab-doc-pro__sep"></span>
-        <button class="collab-doc-pro__fmt" :class="{ active: isMarkActive('link') }" @click="onSetLink" type="button" title="链接">🔗</button>
-        <button class="collab-doc-pro__fmt" @click="onInsertTable" type="button" title="插入表格">⊞</button>
-        <button class="collab-doc-pro__fmt" @click="onSetColumnWidth" type="button" title="调整列宽 (px)">⇔ 列宽</button>
-        <button class="collab-doc-pro__fmt" @click="onApplyTablePreset" type="button" title="表格样式 (蓝/灰/无)">🎨 样式</button>
-        <button class="collab-doc-pro__fmt" @click="onToggleRepeatHeader" type="button" title="跨页重复表头">⇕ 表头</button>
-        <button class="collab-doc-pro__fmt" @click="onInsertImageUrl" type="button" title="插入图片">🖼</button>
-      <button class="collab-doc-pro__btn" @click="onInsertImageFile" type="button" title="插入本地图片">📁 图片</button>
+        <button class="collab-doc-pro__fmt" :class="{ active: isMarkActive('link') }" @click="onSetLink" type="button" title="链接"><CollabIcon name="IconLink" :size="14" /></button>
+        <button class="collab-doc-pro__fmt" @click="onInsertTable" type="button" title="插入表格"><CollabIcon name="IconTable" :size="14" /></button>
+        <button class="collab-doc-pro__fmt" @click="onSetColumnWidth" type="button" title="调整列宽 (px)"><CollabIcon name="IconColumnWidth" :size="14" /> 列宽</button>
+        <button class="collab-doc-pro__fmt" @click="onApplyTablePreset" type="button" title="表格样式 (蓝/灰/无)"><CollabIcon name="IconPalette" :size="14" /> 样式</button>
+        <button class="collab-doc-pro__fmt" @click="onToggleRepeatHeader" type="button" title="跨页重复表头"><CollabIcon name="IconHeaderRow" :size="14" /> 表头</button>
+        <button class="collab-doc-pro__fmt" @click="onInsertImageUrl" type="button" title="插入图片"><CollabIcon name="IconPicture" :size="14" /></button>
+      <button class="collab-doc-pro__btn" @click="onInsertImageFile" type="button" title="插入本地图片"><CollabIcon name="IconPicture" :size="14" /> 本地</button>
       <input ref="fileImageInput" type="file" accept="image/*" style="display:none" @change="onImageFileChosen" />
-        <button class="collab-doc-pro__fmt" @click="onAlign('left')" type="button" title="左对齐">⇤</button>
-        <button class="collab-doc-pro__fmt" @click="onAlign('center')" type="button" title="居中">≡</button>
-        <button class="collab-doc-pro__fmt" @click="onAlign('right')" type="button" title="右对齐">⇥</button>
+        <button class="collab-doc-pro__fmt" @click="onAlign('left')" type="button" title="左对齐"><CollabIcon name="IconAlignLeft" :size="14" /></button>
+        <button class="collab-doc-pro__fmt" @click="onAlign('center')" type="button" title="居中"><CollabIcon name="IconAlignCenter" :size="14" /></button>
+        <button class="collab-doc-pro__fmt" @click="onAlign('right')" type="button" title="右对齐"><CollabIcon name="IconAlignRight" :size="14" /></button>
         <span class="collab-doc-pro__sep"></span>
-        <button class="collab-doc-pro__fmt" @click="runNode('undo')" type="button" title="撤销 (Ctrl+Z)">↶</button>
-        <button class="collab-doc-pro__fmt" @click="runNode('redo')" type="button" title="重做 (Ctrl+Y)">↷</button>
-        <button class="collab-doc-pro__fmt" type="button" data-testid="doc-move-up" :disabled="!editor" title="上移段落 (Alt+Shift+↑)" @click="onMoveBlock(-1)">↑</button>
-        <button class="collab-doc-pro__fmt" type="button" data-testid="doc-move-down" :disabled="!editor" title="下移段落 (Alt+Shift+↓)" @click="onMoveBlock(1)">↓</button>
-        <button class="collab-doc-pro__fmt" type="button" data-testid="doc-case" :disabled="!editor" title="大小写切换 (Shift+F3)" @click="onCycleCase">Aa</button>
-        <button class="collab-doc-pro__fmt" type="button" data-testid="doc-clear-fmt" :disabled="!editor || !canClearFormat" title="清除格式 (Ctrl+Space)" @click="onClearFormat">⌫</button>
+        <button class="collab-doc-pro__fmt" @click="runNode('undo')" type="button" title="撤销 (Ctrl+Z)"><CollabIcon name="IconUndo" :size="14" /></button>
+        <button class="collab-doc-pro__fmt" @click="runNode('redo')" type="button" title="重做 (Ctrl+Y)"><CollabIcon name="IconRedo" :size="14" /></button>
+        <button class="collab-doc-pro__fmt" type="button" data-testid="doc-move-up" :disabled="!editor" title="上移段落 (Alt+Shift+↑)" @click="onMoveBlock(-1)">▲</button>
+        <button class="collab-doc-pro__fmt" type="button" data-testid="doc-move-down" :disabled="!editor" title="下移段落 (Alt+Shift+↓)" @click="onMoveBlock(1)">▼</button>
+        <button class="collab-doc-pro__fmt" type="button" data-testid="doc-case" :disabled="!editor" title="大小写切换 (Shift+F3)" @click="onCycleCase"><CollabIcon name="IconChangeCase" :size="14" /></button>
+        <button class="collab-doc-pro__fmt" type="button" data-testid="doc-clear-fmt" :disabled="!editor || !canClearFormat" title="清除格式 (Ctrl+Space)" @click="onClearFormat"><CollabIcon name="IconClearFormat" :size="14" /></button>
       </div>
       <div class="collab-doc-pro__surface-wrap">
+      <CollabDocRuler
+        v-if="rulerVisible"
+        :visible="rulerVisible"
+        :ruler-width="820"
+        :left-margin="rulerLeftMargin"
+        :right-margin="rulerRightMargin"
+        @update:left-margin="rulerLeftMargin = $event"
+        @update:right-margin="rulerRightMargin = $event"
+      />
       <EditorContent :editor="editor" class="collab-doc-pro__surface" />
       <CollabAiPolishDialog
         v-if="aiOpen"
@@ -570,10 +770,83 @@
       @deleted="onCommentDeleted"
       @loaded="onCommentsLoaded"
     />
+
+    <!-- v0.7.74 — DOC bottom status bar (GenOffice style: page / word count / zoom) -->
+    <div class="collab-doc-pro__statusbar" v-if="editor">
+      <span class="collab-doc-pro__statusbar-item">页 {{ pageNumber }} / {{ pageCount }}</span>
+      <span class="collab-doc-pro__statusbar-sep">·</span>
+      <span class="collab-doc-pro__statusbar-item">字数 {{ wordCount }}</span>
+      <span class="collab-doc-pro__statusbar-sep">·</span>
+      <span class="collab-doc-pro__statusbar-item">{{ connectionLabel }}</span>
+      <span class="collab-doc-pro__statusbar-spacer"></span>
+      <span class="collab-doc-pro__statusbar-item">{{ protectionEnabled ? '🔒 已保护' : '可编辑' }}</span>
+      <span class="collab-doc-pro__statusbar-sep">·</span>
+      <button class="collab-doc-pro__statusbar-btn" type="button" data-testid="doc-zoom-out" @click="onZoomOut" title="缩小">−</button>
+      <span class="collab-doc-pro__statusbar-zoom">{{ zoomPercent }}%</span>
+      <button class="collab-doc-pro__statusbar-btn" type="button" data-testid="doc-zoom-in" @click="onZoomIn" title="放大">＋</button>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
+// v0.7.74 — DOC Ribbon 顶部 tab (文件/编辑/审阅/AI) — 桥接到 CollabEditorRibbon
+import CollabEditorRibbon from '@/components/collab/CollabEditorRibbon.vue'
+import CollabIcon from '@/components/collab/CollabIcon.vue'
+import CollabDocThemePanel from '@/components/collab/CollabDocThemePanel.vue'
+import CollabDocRuler from '@/components/collab/CollabDocRuler.vue'
+type DocRibbonTabId = 'file' | 'home' | 'insert' | 'draw' | 'design' | 'review' | 'view' | 'ai'
+const docRibbonTabs: { id: DocRibbonTabId; label: string }[] = [
+  { id: 'file',   label: '文件' },
+  { id: 'home',   label: '开始' },
+  { id: 'insert', label: '插入' },
+  { id: 'draw',   label: '绘图' },
+  { id: 'design', label: '设计' },
+  { id: 'review', label: '审阅' },
+  { id: 'view',   label: '视图' },
+  { id: 'ai',     label: 'AI'   },
+]
+const activeTab = ref<DocRibbonTabId>('file')
+// v0.7.78 — DOC 8-tab ribbon 扩展（开始/插入/绘图/设计/视图）+ 视图开关
+const rulerVisible = ref(false)
+const rulerLeftMargin = ref(64)
+const rulerRightMargin = ref(64)
+const gridlinesVisible = ref(false)
+const onZoom100 = () => { zoom.value = 1; applyZoom() }
+// 主题（用 8 个固定主题色，DOC 也用与 PPT 相同色板）
+type DocThemeId = 'office' | 'ember' | 'indigo' | 'forest' | 'cream' | 'rose' | 'graphite' | 'midnight'
+const DOC_THEMES: Record<DocThemeId, { name: string; accent: string; bg: string; fg: string }> = {
+  office:   { name: 'Office',   accent: '#5aa8ff', bg: '#ffffff', fg: '#1a1a1a' },
+  ember:    { name: 'Ember',    accent: '#f06b3f', bg: '#fffaf6', fg: '#1a1a1a' },
+  indigo:   { name: 'Indigo',   accent: '#6366f1', bg: '#f5f5ff', fg: '#1a1a1a' },
+  forest:   { name: 'Forest',   accent: '#2f9e44', bg: '#f4faf4', fg: '#1a1a1a' },
+  cream:    { name: 'Cream',    accent: '#b58863', bg: '#fdf6e3', fg: '#1a1a1a' },
+  rose:     { name: 'Rose',     accent: '#e64980', bg: '#fff0f6', fg: '#1a1a1a' },
+  graphite: { name: 'Graphite', accent: '#adb5bd', bg: '#f8f9fa', fg: '#1a1a1a' },
+  midnight: { name: 'Midnight', accent: '#7c3aed', bg: '#1e1b4b', fg: '#e9ecef' },
+}
+const activeDocTheme = ref<DocThemeId>('office')
+const onApplyDocTheme = (themeId: DocThemeId) => {
+  activeDocTheme.value = themeId
+  const theme = DOC_THEMES[themeId]
+  const surface = document.querySelector('.collab-doc-pro__surface') as HTMLElement | null
+  if (surface) {
+    surface.style.setProperty('--doc-theme-accent', theme.accent)
+    surface.style.setProperty('--doc-theme-bg', theme.bg)
+    surface.style.setProperty('--doc-theme-fg', theme.fg)
+    surface.style.background = theme.bg
+    surface.style.color = theme.fg
+  }
+}
+// 形状插入（DOC 简易 MVP）
+const onInsertShape = (kind: 'rect' | 'ellipse') => {
+  const ed = editor.value
+  if (!ed) return
+  const svg = kind === 'rect'
+    ? '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="80"><rect x="2" y="2" width="116" height="76" fill="#5aa8ff" stroke="#3a7bd5" stroke-width="2"/></svg>'
+    : '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="80"><ellipse cx="60" cy="40" rx="58" ry="38" fill="#5aa8ff" stroke="#3a7bd5" stroke-width="2"/></svg>'
+  ed.chain().focus().insertContent(`<p>${svg}</p>`).run()
+}
+
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { Editor, EditorContent, Mark } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
@@ -675,6 +948,24 @@ const aiAnchor = ref({ x: 0, y: 0 })
 const aiOriginal = ref('')
 let aiTargetIndex: number | null = null
 const historyOpen = ref(false)
+const zoom = ref(1)
+const zoomPercent = computed(() => Math.round(zoom.value * 100))
+const pageNumber = ref(1)
+const wordCount = ref(0)
+const pageCount = ref(1)
+const onZoomIn = () => { zoom.value = Math.min(2, +(zoom.value + 0.1).toFixed(2)); applyZoom() }
+const onZoomOut = () => { zoom.value = Math.max(0.5, +(zoom.value - 0.1).toFixed(2)); applyZoom() }
+const applyZoom = () => {
+  const surface = document.querySelector('.collab-doc-pro__surface')
+  if (surface) (surface as HTMLElement).style.zoom = String(zoom.value)
+}
+const refreshStats = () => {
+  const ed = editor.value
+  if (!ed) return
+  const txt = ed.state.doc.textContent
+  wordCount.value = txt.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean).length
+  pageCount.value = Math.max(1, Math.ceil(ed.state.doc.content.size / 800))
+}
 
 // v0.7.71 — DOC heading outline (mirrors genoffice NavPane.tsx, Vue port).
 // collectHeadings reads the live ProseMirror doc; outlineTick bumps on every
@@ -1675,12 +1966,12 @@ const initEditor = (paragraphs: DocxAdapterParagraph[]) => {
       Mark.create({
         name: 'ins', inclusive: false,
         addAttributes: () => ({ author: { default: 'admin' }, date: { default: null } }),
-        renderHTML: (attrs) => ['ins', { 'data-author': attrs.author }, 0],
+        renderHTML: ({ HTMLAttributes }) => ['ins', { 'data-author': HTMLAttributes.author }, 0],
       }),
       Mark.create({
         name: 'del', inclusive: false,
         addAttributes: () => ({ author: { default: 'admin' }, date: { default: null } }),
-        renderHTML: (attrs) => ['del', { 'data-author': attrs.author }, 0],
+        renderHTML: ({ HTMLAttributes }) => ['del', { 'data-author': HTMLAttributes.author }, 0],
       }),
       Link,
       Underline,
@@ -1828,7 +2119,9 @@ const initEditor = (paragraphs: DocxAdapterParagraph[]) => {
   // the deleted text with a `del` mark (Word's track-changes behavior: the
   // text stays visible but is marked as deleted; OOXML emits <w:del><w:delText>).
   if (typeof window !== 'undefined') {
-    const view = editor.value.view
+    const currentEditor = editor.value
+    if (!currentEditor) return
+    const view = currentEditor.view
     const origDispatch = view.dispatch.bind(view)
     ;(view as any).dispatch = (tr: any) => {
       if (!trackChangesOn.value || !tr.docChanged || tr.getMeta('trackIgnore')) {
@@ -1836,7 +2129,7 @@ const initEditor = (paragraphs: DocxAdapterParagraph[]) => {
       }
       // Capture pure-delete ranges from the OLD doc.
       const deletes: Array<{ insertAt: number; text: string }> = []
-      const oldDoc = editor.value.state.doc
+      const oldDoc = currentEditor.state.doc
       for (let i = 0; i < tr.steps.length; i++) {
         const step = tr.steps[i]
         const j = step.toJSON?.() as {
@@ -1858,15 +2151,15 @@ const initEditor = (paragraphs: DocxAdapterParagraph[]) => {
       // Apply the original transaction
       origDispatch(tr)
       // Dispatch follow-up wrap transaction(s) for deletes
-      const delType = editor.value.schema.marks.del
+      const delType = currentEditor.schema.marks.del
       if (deletes.length && delType) {
         const author = props.displayName || 'admin'
         const date = new Date().toISOString()
-        const wrapTr = editor.value.state.tr
+        const wrapTr = currentEditor.state.tr
         // Sort descending so earlier insertions don't shift later insertion sites.
         for (const d of deletes.slice().sort((a, b) => b.insertAt - a.insertAt)) {
           const mark = delType.create({ author, date, id: String(++trackChangeSeq) })
-          wrapTr.insert(d.insertAt, editor.value.schema.text(d.text, [mark]))
+          wrapTr.insert(d.insertAt, currentEditor.schema.text(d.text, [mark]))
         }
         wrapTr.setMeta('trackIgnore', true)
         ;(view as any).dispatch.call(view, wrapTr)
@@ -2106,6 +2399,82 @@ onBeforeUnmount(teardown)
 
 <style scoped>
 
+/* v0.7.74 — DOC Ribbon group styling (matches GenOffice ribbon-vertical-divider + group label). */
+/* v0.7.78 — DOC 大按钮（图标 + 文字下方，仿 GenOffice BIG=28） */
+/* v0.7.79 — DOC 大按钮：GenOffice .rb-big 标准（28px 图标 + 12px 文字 + 紧凑 padding） */
+.collab-doc-pro__btn--icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px 7px 6px;
+  min-width: 36px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--app-text, #1f232b);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.collab-doc-pro__btn--icon:hover:not(:disabled) {
+  background: var(--rb-hover, rgba(24, 90, 189, 0.08));
+  border-color: transparent;
+}
+.collab-doc-pro__btn--icon:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.collab-doc-pro__btn--icon svg {
+  display: block;
+  width: 28px;
+  height: 28px;
+}
+.collab-doc-pro__btn--icon span {
+  white-space: nowrap;
+  line-height: 1.15;
+}
+
+.collab-doc-pro__ribbon-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 10px 6px;
+  gap: 4px;
+  min-width: 64px;
+  border-left: 1px solid var(--app-border, #2c313b);
+}
+.collab-doc-pro__ribbon-group:first-child {
+  border-left: 0;
+}
+.collab-doc-pro__ribbon-group-label {
+  font-size: 10px;
+  color: #7c8696;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+.collab-doc-pro__ribbon-group .collab-doc-pro__btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--app-text, #dce4ed);
+}
+.collab-doc-pro__ribbon-group .collab-doc-pro__btn:hover {
+  background: rgba(90, 168, 255, 0.08);
+  border-color: rgba(90, 168, 255, 0.3);
+}
+.collab-doc-pro__ribbon-group .collab-doc-pro__btn--ai {
+  color: #5aa8ff;
+  font-weight: 600;
+}
+.collab-doc-pro__ribbon-group .collab-doc-pro__btn--ai:hover {
+  background: rgba(90, 168, 255, 0.15);
+}
+
+
 .collab-doc-pro__revisions-item-head { display: flex; align-items: center; gap: 6px; padding: 4px 0; flex-wrap: wrap; }
 /* v0.7.106 — per-revision timestamp rendered between snippet and actions. */
 .collab-doc-pro__revisions-date { color: var(--td-text-color-secondary, #888); font-size: 11px; white-space: nowrap; }
@@ -2237,8 +2606,35 @@ onBeforeUnmount(teardown)
   border-bottom: 1px solid var(--app-border);
   background: var(--app-surface-raised);
 }
-.collab-doc-pro__surface-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--app-page-bg); }
-.collab-doc-pro__surface { flex: 1; overflow: auto; padding: 24px 32px; max-width: 880px; margin: 0 auto; width: 100%; }
+/* v0.7.79 — DOC 编辑区：Word 风格白纸感（默认白底，dark mode 下保留深色） */
+.collab-doc-pro__surface-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #eef1f5; /* Word canvas gray */
+}
+:root[theme-mode='dark'] .collab-doc-pro__surface-wrap {
+  background: #1d2024;
+}
+.collab-doc-pro__surface {
+  flex: 1;
+  overflow: auto;
+  padding: 48px 64px;
+  max-width: 880px;
+  margin: 24px auto;
+  width: 100%;
+  background: #ffffff; /* Word paper white */
+  color: #1a1a1a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.06);
+  border-radius: 2px;
+  min-height: calc(100% - 48px);
+}
+:root[theme-mode='dark'] .collab-doc-pro__surface {
+  background: #2a2d33;
+  color: #e9ecef;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.4);
+}
 /* v0.7.77 — keep the comments panel pinned to its content height so
    the editor surface can claim the remaining viewport without being
    squeezed by a tall comments tree. */
