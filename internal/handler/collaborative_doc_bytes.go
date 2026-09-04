@@ -198,7 +198,14 @@ func (h *CollabDocBytesHandler) download(c *gin.Context, version int) {
 		return
 	}
 	if row == nil {
-		c.Error(errors.NewNotFoundError("no file uploaded yet"))
+		// v0.7.189 — 空文档（刚创建还未上传过 .docx/.xlsx/.pptx/.form.json）
+		// 不再返回 404，而是返回 200 + 空 body + X-Collab-Doc-Empty=1 header。
+		// 这样前端 fetch 不会在控制台报 404 噪音，编辑器能进入"空文档"
+		// 状态等待用户输入。ShareDownload 仍然返回 404 保持分享链接的
+		// 完整性检查不变。
+		c.Header("X-Collab-Doc-Version", "0")
+		c.Header("X-Collab-Doc-Empty", "1")
+		c.Data(http.StatusOK, "application/octet-stream", []byte{})
 		return
 	}
 	mime := mimeForKind(row.Format)

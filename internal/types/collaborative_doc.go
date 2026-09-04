@@ -336,12 +336,16 @@ func (c CollabDocComment) Validate() error {
 }
 
 // CreateCollabDocCommentRequest is the body for POST /collaborative-docs/:id/comments.
+// v0.7.197 — MentionedUserIDs carries @-mention recipients captured by the
+// client (CollabCommentsPanel). The Create handler fires a notification per
+// id (best-effort; failures do not fail the comment write).
 type CreateCollabDocCommentRequest struct {
-	ThreadID   string            `json:"thread_id"`
-	ParentID   *uint64           `json:"parent_id,omitempty"`
-	AnchorType CommentAnchorType `json:"anchor_type" binding:"required"`
-	AnchorRef  string            `json:"anchor_ref"`
-	Body       string            `json:"body" binding:"required"`
+	ThreadID         string            `json:"thread_id"`
+	ParentID         *uint64           `json:"parent_id,omitempty"`
+	AnchorType       CommentAnchorType `json:"anchor_type" binding:"required"`
+	AnchorRef        string            `json:"anchor_ref"`
+	Body             string            `json:"body" binding:"required"`
+	MentionedUserIDs []string          `json:"mentioned_user_ids,omitempty"`
 }
 
 // UpdateCollabDocCommentRequest is the body for PATCH .../comments/:commentID.

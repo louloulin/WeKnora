@@ -33,8 +33,8 @@ func NewNotificationHandler(svc interfaces.NotificationService) *NotificationHan
 //	kind        optional filter: one of the closed Kind set
 //	since_days  optional: only rows newer than N days
 func (h *NotificationHandler) List(c *gin.Context) {
-	tenantID := c.GetUint64("tenant_id")
-	userID := c.GetString("user_id")
+	tenantID := c.GetUint64(types.TenantIDContextKey.String())
+	userID := c.GetString(types.UserIDContextKey.String())
 	if tenantID == 0 || userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthenticated"})
 		return
@@ -79,8 +79,8 @@ func (h *NotificationHandler) List(c *gin.Context) {
 // this every 30s. The response is intentionally tiny so the polling
 // cost is negligible even with thousands of active users.
 func (h *NotificationHandler) UnreadCount(c *gin.Context) {
-	tenantID := c.GetUint64("tenant_id")
-	userID := c.GetString("user_id")
+	tenantID := c.GetUint64(types.TenantIDContextKey.String())
+	userID := c.GetString(types.UserIDContextKey.String())
 	if tenantID == 0 || userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthenticated"})
 		return
@@ -96,8 +96,8 @@ func (h *NotificationHandler) UnreadCount(c *gin.Context) {
 
 // MarkRead handles POST /notifications/:id/read.
 func (h *NotificationHandler) MarkRead(c *gin.Context) {
-	tenantID := c.GetUint64("tenant_id")
-	userID := c.GetString("user_id")
+	tenantID := c.GetUint64(types.TenantIDContextKey.String())
+	userID := c.GetString(types.UserIDContextKey.String())
 	if tenantID == 0 || userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthenticated"})
 		return
@@ -116,8 +116,8 @@ func (h *NotificationHandler) MarkRead(c *gin.Context) {
 
 // MarkDismissed handles POST /notifications/:id/dismiss.
 func (h *NotificationHandler) MarkDismissed(c *gin.Context) {
-	tenantID := c.GetUint64("tenant_id")
-	userID := c.GetString("user_id")
+	tenantID := c.GetUint64(types.TenantIDContextKey.String())
+	userID := c.GetString(types.UserIDContextKey.String())
 	if tenantID == 0 || userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthenticated"})
 		return
@@ -136,8 +136,8 @@ func (h *NotificationHandler) MarkDismissed(c *gin.Context) {
 
 // MarkAllRead handles POST /notifications/read-all.
 func (h *NotificationHandler) MarkAllRead(c *gin.Context) {
-	tenantID := c.GetUint64("tenant_id")
-	userID := c.GetString("user_id")
+	tenantID := c.GetUint64(types.TenantIDContextKey.String())
+	userID := c.GetString(types.UserIDContextKey.String())
 	if tenantID == 0 || userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthenticated"})
 		return
@@ -155,8 +155,8 @@ func (h *NotificationHandler) MarkAllRead(c *gin.Context) {
 // tooling / GDPR right-to-erasure; the bell dropdown does NOT call
 // this endpoint (it uses MarkDismissed so the audit trail stays).
 func (h *NotificationHandler) DeleteHard(c *gin.Context) {
-	tenantID := c.GetUint64("tenant_id")
-	userID := c.GetString("user_id")
+	tenantID := c.GetUint64(types.TenantIDContextKey.String())
+	userID := c.GetString(types.UserIDContextKey.String())
 	if tenantID == 0 || userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthenticated"})
 		return

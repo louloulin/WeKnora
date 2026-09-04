@@ -10,21 +10,30 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"net/http"
+	"strings"
 	"strconv"
 
 	"github.com/Tencent/WeKnora/internal/application/service"
+	"github.com/Tencent/WeKnora/internal/logger"
 	"github.com/Tencent/WeKnora/internal/types"
+	"github.com/Tencent/WeKnora/internal/types/interfaces"
 	"github.com/gin-gonic/gin"
 )
 
 // CollabDocCommentHandler exposes the comment REST surface.
 type CollabDocCommentHandler struct {
-	svc *service.CollabDocService
+	svc       *service.CollabDocService
+	notifSvc  interfaces.NotificationService
 }
 
 // NewCollabDocCommentHandler wires the comment handler.
-func NewCollabDocCommentHandler(svc *service.CollabDocService) *CollabDocCommentHandler {
-	return &CollabDocCommentHandler{svc: svc}
+// notifSvc is optional (may be nil in lite deployments) — when nil,
+// @-mention notification fan-out is silently skipped.
+func NewCollabDocCommentHandler(
+	svc *service.CollabDocService,
+	notifSvc interfaces.NotificationService,
+) *CollabDocCommentHandler {
+	return &CollabDocCommentHandler{svc: svc, notifSvc: notifSvc}
 }
 
 // Register attaches the comment routes under the existing collab-docs router.
@@ -110,8 +119,69 @@ func (h *CollabDocCommentHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// v0.7.197 — @-mention fan-out: one notification per recipient.
+	// Best-effort: failures here never fail the comment write itself.
+	if h.notifSvc != nil && len(req.MentionedUserIDs) > 0 {
+		authorIDStr := strconv.FormatUint(userID, 10)
+		h.fanOutMentions(c, tenantID, authorIDStr, docID, name, comment, req.MentionedUserIDs)
+	}
 	c.JSON(http.StatusCreated, comment)
 }
+
+// fanOutMentions emits a single notification per @-mentioned recipient.
+// It de-duplicates ids, skips the author themselves, and swallows each
+// per-recipient error so one bad row cannot poison the rest. The
+// notification kind is `wiki.mentioned` — reused for cross-product
+// parity (wiki + collab docs share the same bell dropdown).
+func (h *CollabDocCommentHandler) fanOutMentions(
+	c *gin.Context,
+	tenantID uint64,
+	authorID string,
+	docID string,
+	authorName string,
+	comment *types.CollabDocComment,
+	rawIDs []string,
+) {
+	ctx := c.Request.Context()
+	seen := make(map[string]struct{}, len(rawIDs))
+	for _, rid := range rawIDs {
+		rid = strings.TrimSpace(rid)
+		if rid == "" || rid == authorID {
+			continue
+		}
+		if _, dup := seen[rid]; dup {
+			continue
+		}
+		seen[rid] = struct{}{}
+
+		body := comment.Body
+		if len(body) > 140 {
+			body = body[:140] + "…"
+		}
+		displayName := strings.TrimSpace(authorName)
+		if displayName == "" {
+			displayName = "某人"
+		}
+		title := displayName + " 在协作文档中提到了你"
+		authorIDCopy := authorID
+		n := &types.Notification{
+			TenantID:        tenantID,
+			RecipientUserID: rid,
+			Kind:            "wiki.mentioned",
+			Title:           title,
+			Body:            body,
+			ActorUserID:     &authorIDCopy,
+			ResourceType:    "collab_doc",
+			ResourceID:      docID,
+			Status:          types.NotificationStatusUnread,
+		}
+		if err := h.notifSvc.Create(ctx, n); err != nil {
+			logger.Warnf(ctx, "[collab_comment] mention fan-out failed: doc=%s recipient=%s err=%v",
+				docID, rid, err)
+		}
+	}
+}
+
 
 func (h *CollabDocCommentHandler) List(c *gin.Context) {
 	tenantID, userID, ok := collabCommentCaller(c)
