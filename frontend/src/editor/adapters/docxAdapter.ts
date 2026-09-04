@@ -105,6 +105,17 @@ export interface DocxAdapterParagraph {
    * mark highlight when a doc with existing comments is opened.
    */
   commentIds?: string[]
+  /**
+   * v0.7.198 — original runs (with author/date for ins / del wrappers) so
+   * opening a doc with track-changes history can re-emit the `ins` / `del`
+   * TipTap marks instead of dropping the revision metadata. Mirrors the
+   * engine's Run model: text + ins / del info + comment ids.
+   */
+  runs?: Array<{
+    text: string
+    ins?: { author: string; date?: string; id?: string }
+    del?: { author: string; date?: string; id?: string }
+  }>
 }
 
 export interface DocxAdapterDocument {
@@ -122,14 +133,22 @@ export interface DocxAdapterDocument {
 /** Open a .docx from raw bytes. */
 export async function openDocx(bytes: Uint8Array): Promise<DocxAdapterDocument> {
   const parsed = await parseDocx(new Uint8Array(bytes))
-  const paragraphs: DocxAdapterParagraph[] = parsed.blocks.map((b, i) => ({
-    index: i,
-    kind: b.type,
-    level: b.level,
-    text: paragraphText(b),
-    hidden: !!b.hidden,
-    commentIds: collectCommentIds(b),
-  }))
+  const paragraphs: DocxAdapterParagraph[] = parsed.blocks.map((b, i) => {
+    const runs = collectRuns(b).map((r) => ({
+      text: r.text ?? '',
+      ins: r.ins ? { author: r.ins.author, date: r.ins.date, id: r.ins.id } : undefined,
+      del: r.del ? { author: r.del.author, date: r.del.date, id: r.del.id } : undefined,
+    }))
+    return {
+      index: i,
+      kind: b.type,
+      level: b.level,
+      text: paragraphText(b),
+      hidden: !!b.hidden,
+      commentIds: collectCommentIds(b),
+      runs: runs.length ? runs : undefined,
+    }
+  })
   return { paragraphs, parsed, patched: new Map() }
 }
 

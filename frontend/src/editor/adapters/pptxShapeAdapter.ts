@@ -88,6 +88,14 @@ export interface PptxShape {
   fontSize?: number
   /** Font color (hex without leading #) when explicitly set on the run. */
   fontColor?: string
+  /** Paragraph alignment (left | center | right | justify). Mirrors
+   *  el.text.paragraphs[0].align. PowerPoint's Title/Subtitle layouts
+   *  default to center, but the engine only emits `align` when the run
+   *  carries explicit <a:pPr algn="...">; placeholders that inherit
+   *  center from the layout arrive here undefined. The Konva renderer
+   *  treats undefined as 'left', which makes inherited-center placeholders
+   *  look visibly off. See v0.7.160 fix in CollabSlideKonvaEditor. */
+  align?: 'left' | 'center' | 'right' | 'justify'
   /** Picture media ref (when type === 'picture'). */
   mediaRef?: string
   /** base64 dataURL for picture (resolved at openPptx time). */
@@ -245,13 +253,17 @@ function shapeFromTextElement(el: TextElement, rectOverride?: { x: number; y: nu
     stroke: hexFromResolved((el.stroke as { color?: string } | undefined)?.color),
     strokeWidth: el.stroke?.width,
     fontSize,
-    // Pick a readable text color from the run; fall back to #f8fafc when the
-    // shape carries no explicit color so light text shows up on dark slides.
-    fontColor: hexFromResolved((firstRun as { color?: string } | undefined)?.color) ?? 'f8fafc',
+    fontColor: hexFromResolved((firstRun as { color?: string } | undefined)?.color),
     spIndex: el.anchor?.spIndex ?? -1,
     sourceType: el.type,
     preset,
     rotation,
+    // v0.7.160 — capture paragraph alignment so the renderer can apply
+    // inherited alignment (e.g. Title Slide layout's center). The engine
+    // only emits `align` for explicit <a:pPr algn>; placeholder inheritance
+    // from layout is handled in the renderer by applying a layout-aware
+    // fallback (see CollabSlideKonvaEditor alignForPlaceholder).
+    align: el.text?.paragraphs?.[0]?.align,
   }
 }
 
