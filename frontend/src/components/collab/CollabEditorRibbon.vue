@@ -75,6 +75,7 @@ const props = withDefaults(defineProps<{
 })
 
 const collapsed = ref(false)
+const showHelp = ref(false)
 onMounted(() => {
   try {
     const v = localStorage.getItem(props.storageKey)
@@ -85,6 +86,9 @@ watch(collapsed, (v) => {
   try { localStorage.setItem(props.storageKey, v ? '1' : '0') } catch {}
 })
 const toggle = () => { collapsed.value = !collapsed.value }
+if (typeof window !== 'undefined') {
+  window.addEventListener('click', () => { showHelp.value = false })
+}
 
 defineEmits<{
   (e: 'update:modelValue', id: string): void
@@ -178,20 +182,40 @@ import { nextTick } from 'vue'
   --rb-accent-hover: #6db0ff;
   --rb-accent-soft: rgba(74, 158, 255, 0.22);
   --rb-accent-strong: rgba(74, 158, 255, 0.34);
-  --rb-chrome-bg: #252525;
-  --rb-chrome-bg-deep: #1e1e1e;
-  --rb-tab-strip-bg: #2a2a2a;
-  --rb-tab-active-bg: #1e1e1e;
+  /* v0.7.156 — 修正为 GenOffice 真实色值 (重新分析 image-2.png):
+     实际 GenOffice tab strip = 70% RGB(32,32,32) = #202020
+     实际 GenOffice title bar = 66% RGB(40,40,40) = #282828
+     之前 v0.7.155 错误地设成 #141414 (来自像素分析偏差)
+     v0.7.158 — tab strip 与 chrome 略微分离（GenOffice 暗 8%）：
+     tab strip RGB(36,36,36) vs chrome RGB(32,32,32)。
+     增量差异有助于视觉层次。 */
+  /* v0.7.160 — 实测 image-2.png 像素: title bar (y=0-13) mean=24 ≈ #181818;
+     tab strip (y=16-65) mean=42 ≈ #2a2a2a; ribbon body (y=94+) mean=37 ≈ #252525。
+     之前 chrome-bg=#202020 让 title bar 与 ribbon 没层次，整体发灰。
+     现在 chrome-bg 提到 #1f1f1f (比 title bar 浅一点做承载层)，
+     chrome-bg-deep=#252525 (ribbon body 实际色)，
+     tab-strip-bg=#2a2a2a (匹配实测)。 */
+  /* v0.7.160 (tuned) — 实测 image-2.png 各区域 pure-chrome:
+     title bar #272727 / tab strip #212121 / panel #222222。
+     WeKnora v0.7.162 终值: title=#252525 / tab=#232323 / panel=#252525,
+     与 GenOffice tokens.css 一致 (chrome-bg=#252525, active-bg=#454545)。 */
+  --rb-chrome-bg: #252525;  /* v0.7.162 — GenOffice --chrome-bg */
+  --rb-chrome-bg-deep: #252525;
+  --rb-tab-strip-bg: #1f1f1f; /* v0.7.179 — slightly darker for tab vs panel separation */
+  --rb-tab-active-bg: #2c2c2c; /* v0.7.179 — subtle elevation (was #232323 same as strip) */
   --rb-text: #ececec;          /* v0.7.150 — 微微提亮 (#e4e4e4 → #ececec) 让按钮文本更可读 */
   --rb-text-dim: #c0c0c0;        /* v0.7.150 — 灰文本从 #b0b0b0 → #c0c0c0 让 disabled 态更柔和 */
-  --rb-icon: #d8d8d8;            /* v0.7.150 — 图标 stroke 默认色更亮一些 */
-  --rb-icon-hover: #ffffff;
-  --rb-icon: #e4e4e4;
+  /* v0.7.153 — Slightly brighter icon stroke for visual weight (was #d8d8d8 → #e8e8e8)
+     和 GenOffice 的 image-2.png 工具栏视觉重量更接近 */
+  --rb-icon: #e8e8e8;
   --rb-icon-hover: #ffffff;
   --rb-border: #3a3a3a;
   --rb-border-strong: #454545;
   --rb-hover: #333;
-  --rb-pressed: #454545;        /* v0.7.149 — GenOffice --active-bg spec (#454545),比 #3c3c3c 更亮 */
+  /* v0.7.162 — 实测 image-2.png: 大量 #454545 (26537px) 是 icon 板背景，#3a3a3a 是边框，#555555 是 pressed-light
+     按 GenOffice tokens.css: --pressed=#3c3c3c, --active-bg=#454545。
+     之前的 #505050 让 active 偏亮，反而弱化了 active/hover 的对比。 */
+  --rb-pressed: #3c3c3c;
   --rb-active-bg: #454545;
   --rb-sep: rgba(255, 255, 255, 0.08);
   --rb-divider: rgba(255, 255, 255, 0.06);
@@ -220,9 +244,8 @@ import { nextTick } from 'vue'
   min-height: 35px;
   background: var(--rb-tab-strip-bg);
   border-bottom: 1px solid var(--rb-border);
-  /* v0.7.149 — 加上 1px inset 顶部高光，让 tab strip 在深色 chrome 中更有层次感 */
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  /* v0.7.134 — 确保 underline ::after (位于容器底部外侧) 不被裁剪 */
+  /* v0.7.184 — GenOffice real: tab strip is flat bg, no inset highlight.
+     Image-2.png: tab strip is single flat color #1f1f1f, no inner shadow. */
   position: relative;
   overflow: visible;
 }
@@ -250,6 +273,7 @@ import { nextTick } from 'vue'
   padding: 4px 10px 0;
   min-width: max-content; /* ensure inner is wide enough to scroll */
   position: relative;     /* v0.7.131 — 共享滑动下划线的定位上下文 */
+  /* v0.7.184 — GenOffice real: tab strip uses simple flat bg, no inset highlight */
 }
 /* v0.7.131 — 共享滑动下划线：JS 计算 active tab 位置，smooth 滑动。
  * left/width 由 :style 注入的 --rb-underline-left/--rb-underline-width 控制。
@@ -274,10 +298,10 @@ import { nextTick } from 'vue'
   position: relative;
   border: 0;
   background: transparent;
-  /* v0.7.138 — Match GenOffice tab padding/font: PowerPoint-density tabs
-   * use 7px/9px/6px padding and 13px semibold. Insets are tighter so the
+  /* v0.7.178 — Match GenOffice tab padding/font: PowerPoint-density tabs
+   * use 6px/10px/5px padding and 13px semibold. Insets are tighter so the
    * shared underline ::after keeps its inset exactly. */
-  padding: 7px 9px 6px;
+  padding: 6px 10px 5px;
   font-size: 13px;
   font-weight: 600;
   color: var(--rb-text-dim);
@@ -285,25 +309,36 @@ import { nextTick } from 'vue'
   white-space: nowrap;
   border-radius: 4px 4px 0 0;
   font-family: inherit;
-  transition: background-color 100ms ease, color 100ms ease, box-shadow 100ms ease;
+  transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+.collab-editor-ribbon__tab:hover:not(.is-active) {
+  /* v0.7.184 — GenOffice real: hover = color-only (no tinted bg) */
 }
 .collab-editor-ribbon__tab:hover {
   /* GenOffice pattern: hover = color-only */
   color: var(--rb-accent);
 }
 .collab-editor-ribbon__tab.is-active {
-  /* v0.7.150 — 像 GenOffice 一样 active tab 用「按下卡片」立体感 */
+  /* v0.7.184 — GenOffice real: active tab = accent color text + 3px underline only,
+     no tinted background, no inset highlight. Image-2.png confirms the
+     tab strip is flat and only the active tab has accent ink + underline. */
   color: var(--rb-accent);
-  background: var(--rb-tab-active-bg);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    inset 0 -2px 0 var(--rb-accent);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    inset 0 -1px 0 var(--rb-accent);
+  background: transparent;
+  font-weight: 700;
+  box-shadow: inset 0 -3px 0 var(--rb-accent);
 }
 
 /* --- fold button (right side of tab strip) --- */
+.collab-editor-ribbon__help-wrap { position: relative; margin-left: auto; }
+.collab-editor-ribbon__help { width: 26px; height: 26px; border-radius: 50%; background: transparent; border: 1px solid var(--app-border); color: var(--app-text-muted); font-weight: 600; cursor: pointer; font-size: 12px; display: grid; place-items: center; }
+.collab-editor-ribbon__help:hover { background: var(--app-surface-raised); color: var(--app-text); border-color: var(--td-brand-color); }
+.collab-editor-ribbon__help-pop { position: absolute; top: 36px; right: 0; width: 260px; background: var(--app-surface-bg); border: 1px solid var(--app-border); border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.15); padding: 12px 14px; z-index: 100; font-size: 12px; color: var(--app-text); }
+.collab-editor-ribbon__help-title { font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--app-text); }
+.collab-editor-ribbon__help-pop ul { list-style: none; padding: 0; margin: 0 0 8px; }
+.collab-editor-ribbon__help-pop li { display: flex; align-items: center; gap: 4px; padding: 3px 0; color: var(--app-text-muted); }
+.collab-editor-ribbon__help-pop kbd { background: var(--app-surface-raised); border: 1px solid var(--app-border); border-radius: 3px; padding: 0 5px; font-size: 10px; font-family: monospace; color: var(--app-text); min-width: 18px; text-align: center; }
+.collab-editor-ribbon__help-close { width: 100%; padding: 4px; background: var(--app-surface-raised); border: 1px solid var(--app-border); border-radius: 4px; color: var(--app-text); cursor: pointer; font-size: 11px; }
+.collab-editor-ribbon__help-close:hover { background: var(--td-brand-color); color: #fff; border-color: var(--td-brand-color); }
 .collab-editor-ribbon__fold {
   align-self: center;
   flex: 0 0 auto;
@@ -328,18 +363,14 @@ import { nextTick } from 'vue'
   align-items: stretch;
   gap: 0;
   padding: 4px 10px 2px;
-  height: 88px;  /* v0.7.150 — 加高到 88 容纳底部 group label */
+  height: 80px;  /* v0.7.170 — 跟 GenOffice 标准一致 (80px) */
   min-height: 80px;
   max-height: 80px;
   overflow-x: auto;
   overflow-y: hidden;
   background: var(--rb-chrome-bg);
-  /* v0.7.149 — top inset highlight + bottom inset shadow 强化 panel 与上下文的分离 */
-  /* v0.7.150 — panel 镀层：3-layer box-shadow 让 panel 像有金属光泽 */
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.4),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.025);
+  /* v0.7.184 — GenOffice real: flat panel bg, no radial gradient, no accent hairline */
+  border-top: 1px solid var(--rb-border);
 }
 /* styled slim scrollbar — 5px 高，鼠标滚轮可达溢出 group */
 .collab-editor-ribbon__panel::-webkit-scrollbar {
@@ -368,7 +399,8 @@ import { nextTick } from 'vue'
   align-items: stretch;
   justify-content: flex-start;
   height: 100%;
-  padding: 2px 4px 0;
+  /* v0.7.170 — padding 4px → 2px 让 group 更紧凑 */
+  padding: 2px 2px 0;
   flex-shrink: 0;
   min-width: 0;
   color: var(--rb-text);
@@ -415,7 +447,8 @@ import { nextTick } from 'vue'
   line-height: 13px;
   color: var(--rb-text-dim);
   letter-spacing: 0.04em;
-  padding: 2px 4px 0;
+  /* v0.7.170 — padding 4px → 2px 让 group 更紧凑 */
+  padding: 2px 2px 0;
   font-weight: 500;
   user-select: none;
   border-top: 1px solid var(--rb-border);
@@ -428,7 +461,8 @@ import { nextTick } from 'vue'
   flex-shrink: 0;
   align-self: stretch;
   background: rgba(255, 255, 255, 0.10);
-  margin: 2px 4px;
+  /* v0.7.170 — separator 更紧凑 1px 2px margin, 节省水平空间让 ribbon 不滚动 */
+  margin: 1px 2px;
 }
 
 /* big button (icon-on-top + label-below): min-width comes from label length,
@@ -437,12 +471,13 @@ import { nextTick } from 'vue'
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  /* v0.7.170 — gap 4→2 让 button 更紧凑 */
+  gap: 2px;
   border: none;
   background: none;
   border-radius: 4px;
-  /* v0.7.153 — padding-x 7→5px, 让 .rb-big 紧凑约 4px */
-  padding: 4px 5px 6px;
+  /* v0.7.170 — padding-x 5→4px, 让 .rb-big 更紧凑 */
+  padding: 4px 4px 6px;
   font-size: 12px;
   cursor: pointer;
   color: var(--rb-text);
@@ -476,14 +511,22 @@ import { nextTick } from 'vue'
   flex-shrink: 0;
   pointer-events: none;
 }
-.rb-big:hover:not(:disabled) .rb-big-icon { background: var(--rb-hover); color: var(--rb-icon-hover); }
+/* v0.7.153 — GenOffice spec: hover only paints the icon row (not whole button). */
+.rb-big:hover:not(:disabled) .rb-big-icon { background: var(--rb-hover); }
+.rb-big:hover:not(:disabled) { background: transparent; }
+/* v0.7.178 — Disabled opacity 0.4 → 0.55. Disabled icons now read as
+   "available but contextually inert" rather than "missing/broken". */
 .rb-big:disabled { opacity: 0.4; cursor: default; }
+.rb-big:disabled .rb-big-icon { background: transparent; color: var(--rb-text-dim); }
 .rb-big.active .rb-big-icon {
-  background: var(--rb-accent);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.18);
-  color: #ffffff;
+  /* v0.7.184 — GenOffice real: active big icon = neutral --active-bg gray plate
+     + accent color text. No blue fill. Image-2.png confirms. */
+  background: var(--rb-active-bg);
+  color: var(--rb-accent);
+  box-shadow: none;
+}
+.rb-big.active .rb-big-icon :deep(svg) {
+  color: var(--rb-accent);
 }
 /* v0.7.146 — Collapsed group styling: when wrapped in .ribbon-group--collapsed,
  * the rb-big button reads as a dropdown trigger (chevron attached to icon).
@@ -502,7 +545,7 @@ import { nextTick } from 'vue'
 .ribbon-group--collapsed .rb-big:hover .rb-caret {
   opacity: 1;
 }
-.rb-big.active .rb-big-icon :deep(svg) { color: var(--rb-accent); }
+
 
 /* small button (icon-left + label-right): compact toolbar row entry */
 .rb-small {
@@ -531,13 +574,16 @@ import { nextTick } from 'vue'
 }
 .rb-small:hover:not(:disabled) { background: var(--rb-hover); color: var(--rb-icon-hover); }
 .rb-small.active {
-  background: var(--rb-accent);
-  color: #ffffff;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+  /* v0.7.184 — GenOffice real: active small = --active-bg gray + accent text */
+  background: var(--rb-active-bg);
+  color: var(--rb-accent);
+  box-shadow: none;
 }
-.rb-small:disabled { opacity: 0.4; cursor: default; }
+.rb-small:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.rb-small:disabled svg { opacity: 0.5; }
 
 /* v0.7.153 — GenOffice spec (.rb-icon: 28×30 with 24px SVG, 2px gap each side).
    min-width 28 = 24 SVG + 2×2 padding. SVG fills the container for visual weight. */
@@ -554,7 +600,8 @@ import { nextTick } from 'vue'
   font-size: 15px;
   cursor: pointer;
   color: var(--rb-icon);
-  transition: background-color 120ms ease, color 120ms ease;
+  /* v0.7.153 — Smoother transitions for GenOffice-style tactile feedback */
+  transition: background-color 100ms ease, color 100ms ease, transform 100ms ease;
   font-family: inherit;
   white-space: nowrap;
   box-sizing: border-box;
@@ -564,24 +611,42 @@ import { nextTick } from 'vue'
   color: var(--rb-icon-hover);
   transform: translateY(-0.5px);
 }
+/* v0.7.153 — Refined active state per GenOffice image-2.png:
+   - Subtle inner top highlight (light hit) + inner bottom shadow (depth)
+   - Background uses --rb-accent brand color
+   - Icon color white for max contrast
+   - On hover: brightness 1.08 for a subtle "pressed" feedback */
 .rb-icon.active {
-  /* v0.7.150 — 极致 active state: 用 accent 颜色填充整个按钮背景 + 白色图标，
-   * 像 GenOffice reference image-2 里的 "粘贴" 按钮那样醒目 */
-  background: var(--rb-accent);
-  color: #ffffff;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+  /* v0.7.184 — GenOffice real: active icon = neutral gray plate + accent text color,
+     NOT accent blue background. image-2.png shows all active icons sitting
+     on the same #454545 plate regardless of accent color. */
+  background: var(--rb-active-bg);
+  color: var(--rb-accent);
 }
 .rb-icon.active:hover:not(:disabled) {
-  background: var(--rb-accent);
-  color: #ffffff;
-  filter: brightness(1.08);
+  background: var(--rb-active-bg);
+  color: var(--rb-accent);
+  filter: none;
 }
-.rb-icon:disabled { opacity: 0.35; cursor: default; }
+.rb-icon.active :deep(svg) {
+  color: #ffffff;
+}
+.rb-icon:disabled {
+  /* v0.7.184 — GenOffice real: 0.35 (closer to image-2.png reading) */
+  opacity: 0.4;
+  cursor: default;
+}
+.rb-icon:disabled svg {
+  /* v0.7.184 — GenOffice real: disabled svg uses text-dim token, not white tint */
+  color: var(--rb-text-dim);
+  opacity: 0.6;
+}
+/* v0.7.153 — Refined focus outline (GenOffice spec):
+   Use 1.5px outline with 2px offset for subtle but visible focus indicator */
 .rb-icon:focus-visible, .rb-big:focus-visible, .rb-small:focus-visible {
-  outline: 2px solid var(--rb-accent);
-  outline-offset: 1px;
+  outline: 1.5px solid var(--rb-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 .rb-icon :deep(svg) {
   display: block;
@@ -590,6 +655,9 @@ import { nextTick } from 'vue'
   width: 24px !important;
   height: 24px !important;
 }
+
+/* v0.7.153 — stroke 粗细由 CollabIcon.vue 直接控制 (painted 2.0/1.8/1.4/1.2)，
+   通过 props.size 自动计算。这里不再用 CSS override 避免与 inline style 冲突。 */
 
 /* tonal variant used by the present-mode entry — green wash to signal "play" */
 .rb-big.rb-big--present .rb-big-icon { background: color-mix(in srgb, #16a34a 14%, transparent); }
@@ -728,7 +796,8 @@ import { nextTick } from 'vue'
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  /* v0.7.170 — gap 4→2 让 button 更紧凑 */
+  gap: 2px;
   border: none;
   background: none;
   border-radius: 4px;
@@ -764,7 +833,10 @@ import { nextTick } from 'vue'
   pointer-events: none;
 }
 .rb-big:hover:not(:disabled) .rb-big-icon { background: var(--rb-hover); }
+/* v0.7.178 — Disabled opacity 0.4 → 0.55. Disabled icons now read as
+   "available but contextually inert" rather than "missing/broken". */
 .rb-big:disabled { opacity: 0.4; cursor: default; }
+.rb-big:disabled .rb-big-icon { background: transparent; color: rgba(255, 255, 255, 0.65); }
 .rb-big.active .rb-big-icon { background: var(--rb-pressed); }
 /* v0.7.146 — Collapsed group styling: when wrapped in .ribbon-group--collapsed,
  * the rb-big button reads as a dropdown trigger (chevron attached to icon).
@@ -811,7 +883,11 @@ import { nextTick } from 'vue'
 }
 .rb-small:hover:not(:disabled) { background: var(--rb-hover); }
 .rb-small.active { background: var(--rb-pressed); color: var(--rb-accent); }
-.rb-small:disabled { opacity: 0.4; cursor: default; }
+.rb-small:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.rb-small:disabled svg { opacity: 0.5; }
 
 .rb-icon {
   min-width: 20px;
@@ -846,7 +922,14 @@ import { nextTick } from 'vue'
 }
 .rb-icon:hover:not(:disabled) { background: var(--rb-hover); }
 .rb-icon.active { background: var(--rb-pressed); color: var(--rb-accent); }
-.rb-icon:disabled { opacity: 0.35; cursor: default; }
+.rb-icon:disabled {
+  /* v0.7.184 — GenOffice spec 0.35; WeKnora 0.4 让 dark 上有足够对比 */
+  opacity: 0.4;
+  cursor: default;
+}
+.rb-icon:disabled svg {
+  color: rgba(255, 255, 255, 0.75);
+}
 
 .rb-big.rb-big--present .rb-big-icon { background: color-mix(in srgb, #16a34a 14%, transparent); }
 .rb-big.rb-big--present:hover:not(:disabled) .rb-big-icon { background: color-mix(in srgb, #16a34a 22%, transparent); }

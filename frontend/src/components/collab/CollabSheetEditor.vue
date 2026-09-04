@@ -19,7 +19,8 @@
       aria-label="表格工具栏"
       test-id-prefix="sheet"
       :collapsible="true"
-    >
+    
+      :theme="globalTheme">
       <template #file>
       <span class="collab-sheet-editor__title">{{ title }}</span>
       <span class="collab-sheet-editor__kind">{{ kindLabel }}</span>
@@ -67,7 +68,7 @@
         >{{ initialOf(p.displayName) }}</span>
       </span>
       <section v-show="sheetActiveTab === 'file'" class="collab-sheet-editor__group">
-        <span class="collab-sheet-editor__group-label">行列</span>
+        <span class="collab-sheet-editor__group-label ribbon-group-label">行列</span>
         <div class="collab-sheet-editor__group-btns">
           <button class="collab-sheet-editor__add-col" @click="addColumn" type="button">+ 列</button>
           <button class="collab-sheet-editor__add-row" @click="addRow" type="button">+ 行</button>
@@ -76,7 +77,7 @@
         </div>
       </section>
       <section v-show="sheetActiveTab === 'file'" class="collab-sheet-editor__group">
-        <span class="collab-sheet-editor__group-label">文件</span>
+        <span class="collab-sheet-editor__group-label ribbon-group-label">文件</span>
         <div class="collab-sheet-editor__group-btns">
           <button class="collab-sheet-editor__upload" :disabled="uploading" @click="triggerUpload" type="button">
             {{ uploading ? '上传中...' : '上传 .xlsx' }}
@@ -115,11 +116,12 @@
       </template>
       <template #insert>
       <section v-show="sheetActiveTab === 'insert'" class="collab-sheet-editor__group">
-        <span class="collab-sheet-editor__group-label">插入</span>
+        <span class="collab-sheet-editor__group-label ribbon-group-label">插入</span>
         <div class="collab-sheet-editor__group-btns">
           <button class="collab-sheet-editor__feature collab-sheet-editor__btn--icon" @click="onInsertImageUrl" type="button" title="插入图片"><CollabIcon name="IconPicture" :size="28" /><span>图片</span></button>
           <button class="collab-sheet-editor__feature collab-sheet-editor__btn--icon" @click="openHyperlinkModal" type="button" title="超链接"><CollabIcon name="IconLink" :size="28" /><span>链接</span></button>
           <button class="collab-sheet-editor__feature collab-sheet-editor__btn--icon" @click="openTableModal" type="button" title="插入表对象"><CollabIcon name="IconTable" :size="28" /><span>表格</span></button>
+          <button class="collab-sheet-editor__feature collab-sheet-editor__btn--icon" @click="openChartModal" type="button" title="插入图表（柱状/折线/饼图）" data-testid="sheet-chart-btn"><CollabIcon name="IconChart" :size="28" /><span>图表</span></button>
           <button class="collab-sheet-editor__feature collab-sheet-editor__btn--icon" @click="openNoteModal" type="button" title="单元格批注"><CollabIcon name="IconComment" :size="28" /><span>批注</span></button>
         </div>
       </section>
@@ -127,7 +129,7 @@
 
       <template #page>
       <section v-show="sheetActiveTab === 'page'" class="collab-sheet-editor__group">
-        <span class="collab-sheet-editor__group-label">页面布局</span>
+        <span class="collab-sheet-editor__group-label ribbon-group-label">页面布局</span>
         <div class="collab-sheet-editor__group-btns">
           <button class="collab-sheet-editor__feature collab-sheet-editor__btn--icon" @click="openPageSetupModal" type="button" title="页面设置"><CollabIcon name="IconPageWidth" :size="28" /><span>页面</span></button>
           <button class="collab-sheet-editor__feature collab-sheet-editor__btn--icon" @click="openSheetManageModal" type="button" title="工作表管理"><CollabIcon name="IconDoc" :size="28" /><span>工作表</span></button>
@@ -137,7 +139,7 @@
 
       <template #formula>
       <section v-show="sheetActiveTab === 'formula'" class="collab-sheet-editor__group">
-        <span class="collab-sheet-editor__group-label">公式</span>
+        <span class="collab-sheet-editor__group-label ribbon-group-label">公式</span>
         <div class="collab-sheet-editor__group-btns">
           <button class="collab-sheet-editor__feature collab-sheet-editor__btn--icon" type="button" @click="onInsertFunction('SUM')">SUM</button>
           <button class="collab-sheet-editor__feature collab-sheet-editor__btn--icon" type="button" @click="onInsertFunction('AVERAGE')">AVG</button>
@@ -192,6 +194,7 @@
         <h3 v-else-if="featureDialog === 'sort'">按列排序 ({{ activeSheetName }})</h3>
         <h3 v-else-if="featureDialog === 'names'">命名区域 (workbook)</h3>
         <h3 v-else-if="featureDialog === 'table'">插入表格对象 ({{ activeSheetName }})</h3>
+        <h3 v-else-if="featureDialog === 'chart'">插入图表 ({{ activeSheetName }})</h3>
 
         <template v-if="featureDialog === 'freeze'">
           <label>冻结上方行数 <input v-model.number="freezeRowsInput" type="number" min="0" max="50" /></label>
@@ -514,6 +517,92 @@
           </div>
         </template>
 
+        <!-- v0.7.190 — Chart modal -->
+        <template v-else-if="featureDialog === 'chart'">
+          <div class="collab-sheet-editor__modal-body">
+            <label>图表类型：
+              <select v-model="chartType" data-testid="sheet-chart-type">
+                <option value="bar">柱状图</option>
+                <option value="h-bar">横向柱状图</option>
+                <option value="line">折线图</option>
+                <option value="area">面积图</option>
+                <option value="pie">饼图</option>
+                <option value="doughnut">环形图</option>
+                <option value="scatter">散点图</option>
+              </select>
+            </label>
+            <div class="collab-sheet-editor__chart-source">
+              数据来源：<strong>{{ selectedRangeA1 || `整个工作表 (${chartData.length} 个数字)` }}</strong>
+            </div>
+            <div class="collab-sheet-editor__chart-preview" data-testid="sheet-chart-preview">
+              <div v-if="!chartData.length" class="collab-sheet-editor__chart-empty">没有数字可绘制。请在 sheet 中输入数字或选中数字区域后再插入图表。</div>
+              <svg v-else-if="chartType === 'bar' && chartBarsSvg" :viewBox="`0 0 ${chartBarsSvg.w} ${chartBarsSvg.h}`" :width="chartBarsSvg.w" :height="chartBarsSvg.h">
+                <line :x1="chartBarsSvg.pad" :y1="chartBarsSvg.h - chartBarsSvg.pad" :x2="chartBarsSvg.w - chartBarsSvg.pad" :y2="chartBarsSvg.h - chartBarsSvg.pad" stroke="#cbd5e1" />
+                <g v-for="(b, i) in chartBarsSvg.bars" :key="i">
+                  <rect :x="b.x" :y="b.y" :width="b.w" :height="b.h" fill="#3b82f6" rx="2">
+                    <title>{{ b.l }}: {{ b.v }}</title>
+                  </rect>
+                </g>
+              </svg>
+              <svg v-else-if="chartType === 'line' && chartLineSvg" :viewBox="`0 0 ${chartLineSvg.w} ${chartLineSvg.h}`" :width="chartLineSvg.w" :height="chartLineSvg.h">
+                <line :x1="chartLineSvg.pad" :y1="chartLineSvg.h - chartLineSvg.pad" :x2="chartLineSvg.w - chartLineSvg.pad" :y2="chartLineSvg.h - chartLineSvg.pad" stroke="#cbd5e1" />
+                <polyline :points="chartLineSvg.points.map(p => p.x + ',' + p.y).join(' ')" fill="none" stroke="#10b981" stroke-width="2" />
+                <g v-for="(p, i) in chartLineSvg.points" :key="i">
+                  <circle :cx="p.x" :cy="p.y" r="3" fill="#10b981"><title>{{ p.l }}: {{ p.v }}</title></circle>
+                </g>
+              </svg>
+              <svg v-else-if="chartType === 'pie' && chartPieSvg" :viewBox="`0 0 ${chartPieSvg.w} ${chartPieSvg.h}`" :width="chartPieSvg.w" :height="chartPieSvg.h">
+                <g v-for="(s, i) in chartPieSvg.slices" :key="i">
+                  <path :d="s.d" :fill="s.color" stroke="#fff" stroke-width="1"><title>{{ s.label }}: {{ s.v }} ({{ s.pct }}%)</title></path>
+                </g>
+                <g transform="translate(230 40)">
+                  <text v-for="(s, i) in chartPieSvg.slices" :key="i" :y="i * 18" font-size="11" fill="#0f172a">
+                    <rect :x="-12" :y="-10" width="10" height="10" :fill="s.color" />
+                    {{ s.label }} ({{ s.pct }}%)
+                  </text>
+                </g>
+              </svg>
+              <!-- v0.7.198 — h-bar preview -->
+              <svg v-else-if="chartType === 'h-bar' && chartHBarSvg" :viewBox="`0 0 ${chartHBarSvg.w} ${chartHBarSvg.h}`" :width="chartHBarSvg.w" :height="chartHBarSvg.h">
+                <g v-for="(b, i) in chartHBarSvg.bars" :key="i">
+                  <text :x="chartHBarSvg.pad + 45" :y="b.y + b.h / 2 + 3" font-size="10" text-anchor="end" fill="#475569">{{ b.label }}</text>
+                  <rect :x="b.x" :y="b.y" :width="b.w" :height="b.h" fill="#6366f1" rx="2"><title>{{ b.label }}: {{ b.value }}</title></rect>
+                </g>
+              </svg>
+              <!-- v0.7.198 — area preview -->
+              <svg v-else-if="chartType === 'area' && chartAreaSvg" :viewBox="`0 0 ${chartAreaSvg.w} ${chartAreaSvg.h}`" :width="chartAreaSvg.w" :height="chartAreaSvg.h">
+                <line :x1="chartAreaSvg.pad" :y1="chartAreaSvg.h - chartAreaSvg.pad" :x2="chartAreaSvg.w - chartAreaSvg.pad" :y2="chartAreaSvg.h - chartAreaSvg.pad" stroke="#cbd5e1" />
+                <path :d="chartAreaSvg.fillPath" fill="rgba(16,185,129,0.22)" stroke="#10b981" stroke-width="2" />
+              </svg>
+              <!-- v0.7.198 — doughnut preview -->
+              <svg v-else-if="chartType === 'doughnut' && chartDoughnutSvg" :viewBox="`0 0 ${chartDoughnutSvg.w} ${chartDoughnutSvg.h}`" :width="chartDoughnutSvg.w" :height="chartDoughnutSvg.h">
+                <g v-for="(s, i) in chartDoughnutSvg.slices" :key="i">
+                  <path :d="s.d" :fill="`hsl(${(i * 47) % 360}, 60%, 55%)`" stroke="#fff" stroke-width="1"><title>{{ s.label }}: {{ s.v }} ({{ s.pct }}%)</title></path>
+                </g>
+                <g transform="translate(230 40)">
+                  <text v-for="(s, i) in chartDoughnutSvg.slices" :key="i" :y="i * 18" font-size="11" fill="#0f172a">
+                    <rect :x="-12" :y="-10" width="10" height="10" :fill="`hsl(${(i * 47) % 360}, 60%, 55%)`" />
+                    {{ s.label }} ({{ s.pct }}%)
+                  </text>
+                </g>
+              </svg>
+              <!-- v0.7.198 — scatter preview -->
+              <svg v-else-if="chartType === 'scatter' && chartScatterSvg" :viewBox="`0 0 ${chartScatterSvg.w} ${chartScatterSvg.h}`" :width="chartScatterSvg.w" :height="chartScatterSvg.h">
+                <line :x1="chartScatterSvg.pad" :y1="chartScatterSvg.pad" :x2="chartScatterSvg.pad" :y2="chartScatterSvg.h - chartScatterSvg.pad" stroke="#cbd5e1" />
+                <line :x1="chartScatterSvg.pad" :y1="chartScatterSvg.h - chartScatterSvg.pad" :x2="chartScatterSvg.w - chartScatterSvg.pad" :y2="chartScatterSvg.h - chartScatterSvg.pad" stroke="#cbd5e1" />
+                <g v-for="(p, i) in chartScatterSvg.points" :key="i">
+                  <circle :cx="p.cx" :cy="p.cy" r="4" fill="#f59e0b" stroke="#fff" stroke-width="1"><title>{{ p.label }}: {{ p.v }}</title></circle>
+                  <text :x="p.cx" :y="chartScatterSvg.h - chartScatterSvg.pad + 12" font-size="9" text-anchor="middle" fill="#475569">{{ p.label }}</text>
+                </g>
+              </svg>
+            </div>
+          </div>
+          <div class="collab-sheet-editor__modal-actions">
+            <button type="button" @click="featureDialog = null">取消</button>
+            <button type="button" :disabled="!chartData.length" @click="onChartCommit" data-testid="sheet-chart-insert-btn">插入图表</button>
+          </div>
+        </template>
+
         <!-- v0.7.45 — Table modal -->
         <template v-else-if="featureDialog === 'table'">
           <div class="collab-sheet-editor__modal-body">
@@ -548,6 +637,96 @@
             <button type="button" @click="onTableCommit">添加</button>
           </div>
         </template>
+      </div>
+    </div>
+
+    <!-- v0.7.198 — 浮动图表覆盖层：用户插入的 chart overlay。
+         能力扩展：
+           - 拖动：mousedown on overlay head → 全局 mousemove 监听 → moveChartOverlay
+           - 多类型：bar / h-bar / line / area / pie / doughnut / scatter
+           - 持久化：状态写在 ydoc.getMap('sheet-charts')，多客户端同步 + 刷新保留
+    -->
+    <div
+      v-for="ov in chartOverlays"
+      :key="ov.id"
+      class="collab-sheet-editor__chart-overlay"
+      :style="{ left: ov.x + 'px', top: ov.y + 'px', width: ov.w + 'px', height: ov.h + 'px' }"
+      :data-testid="`sheet-chart-overlay-${ov.id}`"
+      :data-chart-kind="ov.kind"
+    >
+      <div
+        class="collab-sheet-editor__chart-overlay-head"
+        @mousedown.prevent="onChartHeadMouseDown($event, ov.id)"
+        :data-testid="`sheet-chart-drag-handle-${ov.id}`"
+        style="cursor: grab;"
+      >
+        <span>{{ CHART_KIND_LABELS[ov.kind] }} ({{ ov.data.length }})</span>
+        <button type="button" @click.stop="removeChart(ov.id)" :data-testid="`sheet-chart-remove-${ov.id}`" title="删除图表">×</button>
+      </div>
+      <div class="collab-sheet-editor__chart-overlay-body">
+        <!-- Vertical bar -->
+        <svg v-if="ov.kind === 'bar'" :viewBox="`0 0 ${(ov.data.length * 28) + 40} 160`" width="100%" :height="ov.h - 28">
+          <line :x1="20" :y1="150" :x2="(ov.data.length * 28) + 30" :y2="150" stroke="#cbd5e1" />
+          <g v-for="(d, i) in ov.data" :key="i">
+            <rect :x="20 + i * 28" :y="150 - (d.value / Math.max(...ov.data.map(x => x.value)) * 130)" width="22" :height="(d.value / Math.max(...ov.data.map(x => x.value)) * 130)" fill="#3b82f6" rx="2" />
+            <text :x="20 + i * 28 + 11" :y="158" font-size="9" text-anchor="middle" fill="#475569">{{ d.label }}</text>
+          </g>
+        </svg>
+        <!-- Horizontal bar -->
+        <svg v-else-if="ov.kind === 'h-bar'" :viewBox="`0 0 ${ov.w - 16} ${ov.h - 40}`" width="100%" :height="ov.h - 36">
+          <line :x1="80" :y1="ov.h - 50" :x2="ov.w - 16" :y2="ov.h - 50" stroke="#cbd5e1" />
+          <g v-for="(d, i) in ov.data" :key="i">
+            <text :x="76" :y="(ov.h - 50) - ov.data.length * 12 + i * 12 + 4" font-size="9" text-anchor="end" fill="#475569">{{ d.label }}</text>
+            <rect :x="80" :y="(ov.h - 50) - ov.data.length * 12 + i * 12 - 6" :width="((d.value / Math.max(...ov.data.map(x => x.value))) * (ov.w - 110))" height="9" fill="#6366f1" rx="2" />
+          </g>
+        </svg>
+        <!-- Line -->
+        <svg v-else-if="ov.kind === 'line'" :viewBox="`0 0 ${(ov.data.length * 28) + 40} 160`" width="100%" :height="ov.h - 28">
+          <polyline :points="ov.data.map((d, i) => (20 + i * 28) + ',' + (150 - (d.value / Math.max(...ov.data.map(x => x.value)) * 130))).join(' ')" fill="none" stroke="#10b981" stroke-width="2" />
+          <g v-for="(d, i) in ov.data" :key="i">
+            <circle :cx="20 + i * 28" :cy="150 - (d.value / Math.max(...ov.data.map(x => x.value)) * 130)" r="3" fill="#10b981" />
+          </g>
+        </svg>
+        <!-- Area (filled line) -->
+        <svg v-else-if="ov.kind === 'area'" :viewBox="`0 0 ${(ov.data.length * 28) + 40} 160`" width="100%" :height="ov.h - 28">
+          <path
+            :d="`M 20 150 L ${ov.data.map((d, i) => (20 + i * 28) + ',' + (150 - (d.value / Math.max(...ov.data.map(x => x.value)) * 130))).join(' L ')} L ${20 + (ov.data.length - 1) * 28} 150 Z`"
+            fill="rgba(16,185,129,0.18)"
+            stroke="#10b981"
+            stroke-width="2"
+          />
+          <g v-for="(d, i) in ov.data" :key="i">
+            <circle :cx="20 + i * 28" :cy="150 - (d.value / Math.max(...ov.data.map(x => x.value)) * 130)" r="3" fill="#10b981" />
+          </g>
+        </svg>
+        <!-- Pie -->
+        <svg v-else-if="ov.kind === 'pie'" viewBox="0 0 200 160" width="100%" :height="ov.h - 28">
+          <g v-for="(d, i) in ov.data" :key="i" v-show="d.value > 0">
+            <path :d="computePieSlice(ov.data, i, 80, 80, 60)" :fill="`hsl(${(i * 47) % 360}, 60%, 55%)`" stroke="#fff" stroke-width="1" />
+          </g>
+        </svg>
+        <!-- Doughnut (pie with hole) -->
+        <svg v-else-if="ov.kind === 'doughnut'" viewBox="0 0 200 160" width="100%" :height="ov.h - 28">
+          <g v-for="(d, i) in ov.data" :key="i" v-show="d.value > 0">
+            <path :d="computePieSlice(ov.data, i, 80, 80, 60, 28)" :fill="`hsl(${(i * 47) % 360}, 60%, 55%)`" stroke="#fff" stroke-width="1" />
+          </g>
+        </svg>
+        <!-- Scatter (X = label index, Y = value) -->
+        <svg v-else-if="ov.kind === 'scatter'" viewBox="0 0 240 160" width="100%" :height="ov.h - 28">
+          <line :x1="20" :y1="20" :x2="20" :y2="150" stroke="#cbd5e1" />
+          <line :x1="20" :y1="150" :x2="220" :y2="150" stroke="#cbd5e1" />
+          <g v-for="(d, i) in ov.data" :key="i">
+            <circle
+              :cx="20 + (i / Math.max(ov.data.length - 1, 1)) * 200"
+              :cy="150 - (d.value / Math.max(...ov.data.map(x => x.value)) * 130)"
+              r="4"
+              fill="#f59e0b"
+              stroke="#fff"
+              stroke-width="1"
+            />
+            <text :x="20 + (i / Math.max(ov.data.length - 1, 1)) * 200" :y="158" font-size="9" text-anchor="middle" fill="#475569">{{ d.label }}</text>
+          </g>
+        </svg>
       </div>
     </div>
 
@@ -707,6 +886,191 @@ const sheetRibbonTabs: { id: SheetRibbonTabId; label: string }[] = [
 ]
 const sheetActiveTab = ref<SheetRibbonTabId>('file')
 const onInsertImageUrl = () => { featureDialog.value = 'hyperlink' /* 复用 hyperlink 模态占位 */ }
+/**
+ * v0.7.190 — 图表插入（柱状/折线/饼图）。
+ * 数据来源：selectedRange（已选中的单元格区域），若无选区则取整张 sheet。
+ * 渲染：纯 SVG，无第三方库依赖。图表插入后以浮动层覆盖在 sheet 上。
+ */
+/**
+ * v0.7.198 — Chart type set extended: bar (vertical column), h-bar (horizontal
+ * bar), line, area (filled line), pie, doughnut, scatter. Each renders as a
+ * pure-SVG overlay; the underlying data model stays a flat (label, value)
+ * series with scatter reinterpreting value as Y and label index as X.
+ */
+export type ChartKind = 'bar' | 'h-bar' | 'line' | 'area' | 'pie' | 'doughnut' | 'scatter'
+const chartType = ref<ChartKind>('bar')
+const CHART_KIND_LABELS: Record<ChartKind, string> = {
+  bar: '柱状图', 'h-bar': '横向柱状图', line: '折线图', area: '面积图',
+  pie: '饼图', doughnut: '环形图', scatter: '散点图',
+}
+
+interface ChartDatum { label: string; value: number }
+const chartData = computed<ChartDatum[]>(() => {
+  const data: ChartDatum[] = []
+  // 优先取选中区域；无选区时扫描整个 sheet
+  if (selectedRange.value) {
+    const { r0, c0, r1, c1 } = selectedRange.value
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        const raw = rows.value[r]?.[c]
+        const n = Number(raw)
+        if (raw != null && raw !== '' && Number.isFinite(n)) {
+          data.push({ label: cellLabel(r, c), value: n })
+        }
+      }
+    }
+  } else {
+    for (let r = 0; r < rows.value.length; r++) {
+      for (let c = 0; c < cols.value.length; c++) {
+        const raw = rows.value[r]?.[c]
+        const n = Number(raw)
+        if (raw != null && raw !== '' && Number.isFinite(n)) {
+          data.push({ label: cellLabel(r, c), value: n })
+        }
+      }
+    }
+  }
+  return data
+})
+
+const openChartModal = () => { featureDialog.value = 'chart' }
+
+/** SVG 柱状图：data → bars，宽度自适应 360×220。 */
+const chartBarsSvg = computed(() => {
+  const w = 360, h = 220, pad = 28
+  const data = chartData.value
+  if (!data.length) return null
+  const max = Math.max(...data.map(d => d.value), 1)
+  const min = Math.min(...data.map(d => d.value), 0)
+  const range = (max - min) || 1
+  const bw = (w - pad * 2) / data.length
+  const bars = data.map((d, i) => {
+    const x = pad + i * bw + bw * 0.1
+    const barW = bw * 0.8
+    const yTop = h - pad - ((d.value - min) / range) * (h - pad * 2)
+    const yBot = h - pad
+    return { x, y: yTop, w: barW, h: yBot - yTop, v: d.value, l: d.label }
+  })
+  return { w, h, pad, max, min, bars }
+})
+
+/** SVG 折线图。 */
+const chartLineSvg = computed(() => {
+  const w = 360, h = 220, pad = 28
+  const data = chartData.value
+  if (!data.length) return null
+  const max = Math.max(...data.map(d => d.value), 1)
+  const min = Math.min(...data.map(d => d.value), 0)
+  const range = (max - min) || 1
+  const step = (w - pad * 2) / Math.max(data.length - 1, 1)
+  const points = data.map((d, i) => {
+    const x = pad + i * step
+    const y = h - pad - ((d.value - min) / range) * (h - pad * 2)
+    return { x, y, v: d.value, l: d.label }
+  })
+  return { w, h, pad, max, min, points }
+})
+
+/** SVG 饼图。 */
+const chartPieSvg = computed(() => {
+  const data = chartData.value.filter(d => d.value > 0)
+  if (!data.length) return null
+  const total = data.reduce((s, d) => s + d.value, 0) || 1
+  const cx = 130, cy = 110, r = 80
+  let acc = 0
+  const slices = data.map((d, i) => {
+    const a0 = (acc / total) * Math.PI * 2 - Math.PI / 2
+    acc += d.value
+    const a1 = (acc / total) * Math.PI * 2 - Math.PI / 2
+    const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0)
+    const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1)
+    const large = (a1 - a0) > Math.PI ? 1 : 0
+    const d_path = `M ${cx} ${cy} L ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1} Z`
+    return { d: d_path, color: `hsl(${(i * 47) % 360}, 60%, 55%)`, label: d.label, v: d.value, pct: ((d.value / total) * 100).toFixed(1) }
+  })
+  return { cx, cy, r, slices, w: 360, h: 220 }
+})
+
+/**
+ * v0.7.198 — SVG arc path for one pie wedge. innerR (optional) renders the
+ * wedge as a doughnut ring; default 0 keeps the classic filled slice.
+ */
+const computePieSlice = (data: ChartDatum[], index: number, cx: number, cy: number, r: number, innerR = 0): string => {
+  const filtered = data.filter(d => d.value > 0)
+  const total = filtered.reduce((s, d) => s + d.value, 0) || 1
+  let acc = 0
+  for (let i = 0; i < index; i++) acc += filtered[i]?.value || 0
+  const a0 = (acc / total) * Math.PI * 2 - Math.PI / 2
+  const a1 = ((acc + (filtered[index]?.value || 0)) / total) * Math.PI * 2 - Math.PI / 2
+  const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0)
+  const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1)
+  const large = (a1 - a0) > Math.PI ? 1 : 0
+  if (innerR > 0) {
+    const ix0 = cx + innerR * Math.cos(a1), iy0 = cy + innerR * Math.sin(a1)
+    const ix1 = cx + innerR * Math.cos(a0), iy1 = cy + innerR * Math.sin(a0)
+    return `M ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1} L ${ix0} ${iy0} A ${innerR} ${innerR} 0 ${large} 0 ${ix1} ${iy1} Z`
+  }
+  return `M ${cx} ${cy} L ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1} Z`
+}
+
+/** v0.7.198 — pure-SVG preview builders for the chart modal's preview pane.
+ *  The modal uses these for live preview; the overlay templates render
+ *  inline SVG via the same shape math.
+ */
+const chartAreaSvg = computed(() => {
+  const w = 360, h = 220, pad = 28
+  const data = chartData.value
+  if (!data.length) return null
+  const max = Math.max(...data.map(d => d.value), 1)
+  const step = (w - pad * 2) / Math.max(data.length - 1, 1)
+  const path = data.map((d, i) => `${i === 0 ? 'M' : 'L'} ${pad + i * step} ${h - pad - (d.value / max) * (h - pad * 2)}`).join(' ')
+  const fillPath = `${path} L ${pad + (data.length - 1) * step} ${h - pad} L ${pad} ${h - pad} Z`
+  return { w, h, pad, path, fillPath, max }
+})
+const chartHBarSvg = computed(() => {
+  const w = 360, h = 220, pad = 28
+  const data = chartData.value
+  if (!data.length) return null
+  const max = Math.max(...data.map(d => d.value), 1)
+  const rowH = Math.min(20, (h - pad * 2) / data.length)
+  const bars = data.map((d, i) => ({
+    x: pad + 50,
+    y: pad + i * rowH,
+    w: ((d.value / max) * (w - pad * 2 - 50)),
+    h: rowH - 4,
+    label: d.label,
+    value: d.value,
+  }))
+  return { w, h, pad, bars }
+})
+const chartDoughnutSvg = computed(() => {
+  const data = chartData.value.filter(d => d.value > 0)
+  if (!data.length) return null
+  const total = data.reduce((s, d) => s + d.value, 0) || 1
+  const cx = 130, cy = 110, r = 80, innerR = 30
+  let acc = 0
+  const slices = data.map((d, i) => {
+    const a0 = (acc / total) * Math.PI * 2 - Math.PI / 2
+    acc += d.value
+    const a1 = (acc / total) * Math.PI * 2 - Math.PI / 2
+    return { d: computePieSlice(data, i, cx, cy, r, innerR), label: d.label, v: d.value, pct: ((d.value / total) * 100).toFixed(1) }
+  })
+  return { cx, cy, r, slices, w: 360, h: 220 }
+})
+const chartScatterSvg = computed(() => {
+  const w = 360, h = 220, pad = 28
+  const data = chartData.value
+  if (!data.length) return null
+  const max = Math.max(...data.map(d => d.value), 1)
+  const points = data.map((d, i) => ({
+    cx: pad + (i / Math.max(data.length - 1, 1)) * (w - pad * 2),
+    cy: h - pad - (d.value / max) * (h - pad * 2),
+    label: d.label,
+    v: d.value,
+  }))
+  return { w, h, pad, points, max }
+})
+
 const onInsertFunction = (name: string) => {
   const input = document.querySelector('.collab-sheet-editor__cell-input:focus') as HTMLInputElement | null
   if (!input) return
@@ -727,6 +1091,7 @@ const applySheetZoom = () => {
 }
 
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useTheme } from '@/composables/useTheme'
 import * as Y from 'yjs'
 import CollabCommentsPanel from '@/components/collab/CollabCommentsPanel.vue'
 import { MessagePlugin } from 'tdesign-vue-next'
@@ -1738,6 +2103,102 @@ const onTableCommit = () => {
   tableNameInput.value = ''
   scheduleSave()
 }
+/**
+ * v0.7.198 — chart overlay state lives in a Y.Map so collaborators see each
+ * other's charts in real time and the layout survives reloads. The local
+ * ref mirrors Y for reactive rendering; write paths funnel through
+ * setChartOverlays/upsertChartOverlay/removeChartOverlay so the Y.Doc is the
+ * source of truth.
+ */
+interface ChartOverlay {
+  id: string
+  kind: ChartKind
+  data: ChartDatum[]
+  x: number
+  y: number
+  w: number
+  h: number
+  range?: { r0: number; c0: number; r1: number; c1: number } | null
+  title?: string
+}
+const chartOverlays = ref<ChartOverlay[]>([])
+let chartOverlayMap: Y.Map<ChartOverlay> | null = null
+const Y_CHARTS_KEY = 'sheet-charts'
+
+const initChartOverlays = () => {
+  if (!handle) return
+  if (!chartOverlayMap) chartOverlayMap = handle.ydoc.getMap<ChartOverlay>(Y_CHARTS_KEY)
+  const sync = () => {
+    chartOverlays.value = Array.from(chartOverlayMap!.values())
+  }
+  sync()
+  chartOverlayMap.observe(sync)
+}
+const upsertChartOverlay = (overlay: ChartOverlay) => {
+  if (!chartOverlayMap) return
+  handle!.ydoc.transact(() => {
+    chartOverlayMap!.set(overlay.id, overlay)
+  })
+}
+const moveChartOverlay = (id: string, x: number, y: number) => {
+  const cur = chartOverlayMap?.get(id)
+  if (!cur) return
+  upsertChartOverlay({ ...cur, x, y })
+}
+const removeChartOverlay = (id: string) => {
+  if (!chartOverlayMap) return
+  handle!.ydoc.transact(() => {
+    chartOverlayMap!.delete(id)
+  })
+}
+/**
+ * v0.7.198 — Drag-to-move support for chart overlays. mousedown on the
+ * overlay head records the cursor offset; the global mousemove handler
+ * translates to the parent container coords and persists via moveChartOverlay
+ * (which writes to Y.Doc so collaborators see the move in real time).
+ */
+let chartDrag: { id: string; offsetX: number; offsetY: number } | null = null
+const onChartHeadMouseDown = (ev: MouseEvent, id: string) => {
+  const target = ev.currentTarget as HTMLElement
+  const overlay = target.closest('.collab-sheet-editor__chart-overlay') as HTMLElement | null
+  if (!overlay) return
+  const r = overlay.getBoundingClientRect()
+  chartDrag = { id, offsetX: ev.clientX - r.left, offsetY: ev.clientY - r.top }
+  ev.preventDefault()
+}
+const onChartMouseMove = (ev: MouseEvent) => {
+  if (!chartDrag) return
+  // Clamp the overlay to the sheet area so it doesn't get lost off-screen.
+  const wrap = document.querySelector('.collab-sheet-editor__sheet-area') as HTMLElement | null
+  const maxX = wrap ? wrap.clientWidth - 60 : window.innerWidth
+  const maxY = wrap ? wrap.clientHeight - 30 : window.innerHeight
+  const x = Math.max(0, Math.min(ev.clientX - chartDrag.offsetX, maxX))
+  const y = Math.max(0, Math.min(ev.clientY - chartDrag.offsetY, maxY))
+  moveChartOverlay(chartDrag.id, x, y)
+}
+const onChartMouseUp = () => {
+  if (chartDrag) chartDrag = null
+}
+
+const onChartCommit = () => {
+  if (!chartData.value.length) return
+  upsertChartOverlay({
+    id: 'chart-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+    kind: chartType.value,
+    data: chartData.value,
+    x: 80 + chartOverlays.value.length * 30,
+    y: 60 + chartOverlays.value.length * 30,
+    w: 240,
+    h: 180,
+    range: selectedRange.value ? { ...selectedRange.value } : null,
+    title: selectedRange.value
+      ? `${cellLabel(selectedRange.value.r0, selectedRange.value.c0)}:${cellLabel(selectedRange.value.r1, selectedRange.value.c1)}`
+      : activeSheetName,
+  })
+  featureDialog.value = null
+}
+const removeChart = (id: string) => removeChartOverlay(id)
+
 const onTableClear = () => {
   tablesBySheet.value[activeSheet.value] = []
   featureDialog.value = null
@@ -1974,6 +2435,11 @@ const setup = async () => {
   ysheets = handle.ydoc.getArray<string>('sheet:names')
   ysheetSnapshot = handle.ydoc.getMap<string>('sheet:names:manifest')
   ydefinedNames = handle.ydoc.getArray<Y.Map<unknown>>('sheet:definedNames')
+  initChartOverlays()
+  if (typeof window !== 'undefined') {
+    window.addEventListener('mousemove', onChartMouseMove)
+    window.addEventListener('mouseup', onChartMouseUp)
+  }
 
   loading.value = true
   try {
@@ -2576,6 +3042,15 @@ const onUploadFile = async (e: Event) => {
 }
 
 const teardown = () => {
+  chartOverlays.value = []
+  if (chartOverlayMap) {
+    try { chartOverlayMap.unobserve() } catch {}
+    chartOverlayMap = null
+  }
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('mousemove', onChartMouseMove)
+    window.removeEventListener('mouseup', onChartMouseUp)
+  }
   if (saveTimer) {
     clearTimeout(saveTimer)
     saveTimer = null
@@ -2592,6 +3067,18 @@ const teardown = () => {
 setup()
 watch(() => props.docId, () => { teardown(); setup() })
 onBeforeUnmount(teardown)
+
+// v0.7.185 — 把 ribbon theme 同步到全局 (theme-mode 切换会立刻反映)。
+// Slide 编辑器内部还会基于 slide 自身的 luminance 决定，但 DOC/SHEET 没有
+// 这种 per-doc 判定，必须直接跟全局 — 否则 dark 模式下 ribbon 是浅色、surface 是
+// 暗色，会出现"反的"视觉。
+const { currentTheme } = useTheme()
+const globalTheme = computed<'light' | 'dark'>(() => {
+  const t = currentTheme.value
+  if (t === 'light' || t === 'dark') return t
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+})
+
 </script>
 
 <style scoped>
@@ -2859,6 +3346,65 @@ onBeforeUnmount(teardown)
 .collab-sheet-editor__modal h3 { margin-top: 0; font-size: 16px; }
 .collab-sheet-editor__modal label { display: block; margin: 8px 0; font-size: 14px; }
 .collab-sheet-editor__modal input, .collab-sheet-editor__modal select { margin-left: 8px; padding: 4px 6px; border: 1px solid var(--app-border-strong); border-radius: 4px; background: var(--app-control-bg); color: var(--app-text); }
+.collab-sheet-editor__chart-source {
+  font-size: 12px;
+  color: var(--app-text-muted);
+  margin-bottom: 10px;
+}
+.collab-sheet-editor__chart-preview {
+  background: var(--app-surface-raised);
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  padding: 10px;
+  min-height: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.collab-sheet-editor__chart-empty {
+  color: var(--app-text-muted);
+  font-size: 12px;
+  text-align: center;
+  padding: 30px 12px;
+}
+.collab-sheet-editor__chart-overlay {
+  position: absolute;
+  width: 360px;
+  background: var(--app-surface-bg);
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .15);
+  z-index: 5;
+  pointer-events: auto;
+}
+.collab-sheet-editor__chart-overlay-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--app-border);
+  font-size: 11px;
+  color: var(--app-text-muted);
+  background: var(--app-surface-raised);
+  border-radius: 8px 8px 0 0;
+}
+.collab-sheet-editor__chart-overlay-head button {
+  background: transparent;
+  border: 0;
+  color: var(--app-text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 6px;
+  line-height: 1;
+}
+.collab-sheet-editor__chart-overlay-head button:hover {
+  color: var(--td-error-color, #ef4444);
+}
+.collab-sheet-editor__chart-overlay svg {
+  display: block;
+  width: 100%;
+  height: 140px;
+}
 .collab-sheet-editor__modal-actions { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; }
 .collab-sheet-editor__modal-actions button { padding: 4px 12px; border: 1px solid var(--app-border-strong); border-radius: 4px; background: var(--app-control-bg); color: var(--app-text); cursor: pointer; }
 .collab-sheet-editor__modal-actions button:hover { background: var(--td-bg-color-container-hover); }

@@ -10,6 +10,23 @@
 -->
 <template>
   <div class="collab-form-editor">
+    <!-- v0.7.187 — ribbon 风格 tab 栏（与其他编辑器视觉对齐） -->
+    <nav class="collab-form-editor__ribbon" role="tablist" aria-label="收集表工具栏">
+      <button
+        type="button"
+        role="tab"
+        :class="['collab-form-editor__ribbon-tab', { active: formRibbonTab === 'edit' }]"
+        @click="formRibbonTab = 'edit'"
+        data-testid="form-tab-edit"
+      >编辑</button>
+      <button
+        type="button"
+        role="tab"
+        :class="['collab-form-editor__ribbon-tab', { active: formRibbonTab === 'response' }]"
+        @click="formRibbonTab = 'response'; responsesVisible = true"
+        data-testid="form-tab-response"
+      >响应</button>
+    </nav>
     <div class="collab-form-editor__toolbar">
       <span class="collab-form-editor__title">{{ title }}</span>
       <span class="collab-form-editor__kind">{{ kindLabel }}</span>
@@ -22,57 +39,30 @@
       <span class="collab-form-editor__savetag" :class="savetagClass">
         {{ saveLabel }}
       </span>
-      <button
-        class="collab-form-editor__add-question"
-        @click="addQuestion('text')"
-        type="button"
-      >
-        + 文本题
-      </button>
-      <button
-        class="collab-form-editor__add-question"
-        @click="addQuestion('single')"
-        type="button"
-      >
-        + 单选题
-      </button>
-      <button
-        class="collab-form-editor__add-question"
-        @click="addQuestion('multi')"
-        type="button"
-      >
-        + 多选题
-      </button>
-      <button
-        class="collab-form-editor__add-question"
-        @click="addQuestion('rating')"
-        type="button"
-      >
-        + 评分题
-      </button>
-      <button
-        class="collab-form-editor__add-question"
-        @click="addQuestion('date')"
-        type="button"
-      >
-        + 日期题
-      </button>
-      <button
-        class="collab-form-editor__export"
-        @click="exportForm"
-        type="button"
-        :disabled="downloading"
-      >
-        {{ downloading ? "下载中..." : "下载 .form.json" }}
-      </button>
-      <button
-        class="collab-form-editor__responses-btn"
-        @click="responsesVisible = !responsesVisible"
-        type="button"
-        data-testid="form-responses-btn"
-      >
-        {{ responsesVisible ? "隐藏响应" : "查看响应" }}
-      </button>
+      <div v-show="formRibbonTab === 'edit'" class="collab-form-editor__group">
+        <div class="collab-form-editor__group-btns">
+          <button class="collab-form-editor__add-question" @click="addQuestion('text')" type="button" data-tip="添加文本题">+ 文本题</button>
+          <button class="collab-form-editor__add-question" @click="addQuestion('single')" type="button" data-tip="添加单选题">+ 单选题</button>
+          <button class="collab-form-editor__add-question" @click="addQuestion('multi')" type="button" data-tip="添加多选题">+ 多选题</button>
+          <button class="collab-form-editor__add-question" @click="addQuestion('rating')" type="button" data-tip="添加评分题">+ 评分题</button>
+          <button class="collab-form-editor__add-question" @click="addQuestion('date')" type="button" data-tip="添加日期题">+ 日期题</button>
+        </div>
+        <span class="ribbon-group-label ribbon-group-label--visible">添加题目</span>
+      </div>
+      <div v-show="formRibbonTab === 'edit'" class="collab-form-editor__group">
+        <div class="collab-form-editor__group-btns">
+          <button class="collab-form-editor__export" @click="exportForm" type="button" :disabled="downloading" data-tip="下载 .form.json">{{ downloading ? "下载中..." : "下载 .form.json" }}</button>
+          <button class="collab-form-editor__responses-btn" @click="responsesVisible = !responsesVisible" type="button" data-testid="form-responses-btn" data-tip="切换响应面板">{{ responsesVisible ? "隐藏响应" : "查看响应" }}</button>
+        </div>
+        <span class="ribbon-group-label ribbon-group-label--visible">操作</span>
+      </div>
+      <div v-show="formRibbonTab === 'response'" class="collab-form-editor__group">
+        <div class="collab-form-editor__group-btns">
+          <button class="collab-form-editor__responses-btn" @click="responsesVisible = true" type="button" data-tip="显示响应面板">显示响应面板</button>
+          <button class="collab-form-editor__responses-btn" @click="responsesVisible = false" type="button" data-tip="隐藏响应面板">隐藏响应面板</button>
+        </div>
+        <span class="ribbon-group-label ribbon-group-label--visible">响应</span>
+      </div>
       <span class="collab-form-editor__peers">
         <span
           v-for="p in peers"
@@ -331,6 +321,8 @@ const props = defineProps<{
 }>();
 
 const responsesVisible = ref(false);
+/** v0.7.187 — ribbon tab 栏当前 tab (edit / response) */
+const formRibbonTab = ref<"edit" | "response">("edit");
 
 const connected = ref(false);
 const peers = ref<
@@ -713,6 +705,45 @@ onBeforeUnmount(() => {
 .collab-form-editor__savetag.saving {
   background: color-mix(in srgb, #1677ff 14%, var(--app-surface-raised));
   color: #56a9ff;
+}
+.collab-form-editor__ribbon {
+  display: flex;
+  gap: 0;
+  background: var(--app-surface-raised);
+  border-bottom: 1px solid var(--app-border);
+  padding: 0 16px;
+}
+.collab-form-editor__ribbon-tab {
+  padding: 8px 18px;
+  background: transparent;
+  border: 0;
+  color: var(--app-text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  position: relative;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+.collab-form-editor__ribbon-tab:hover { color: var(--app-text); }
+.collab-form-editor__ribbon-tab.active {
+  color: var(--td-brand-color);
+  border-bottom-color: var(--td-brand-color);
+}
+.collab-form-editor__group {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 4px 10px;
+  border-left: 1px solid var(--app-border);
+  margin: 0;
+  position: relative;
+}
+.collab-form-editor__group:first-of-type { border-left: 0; }
+.collab-form-editor__group-btns {
+  display: flex;
+  gap: 4px;
+  align-items: center;
 }
 .collab-form-editor__add-question {
   padding: 4px 8px;

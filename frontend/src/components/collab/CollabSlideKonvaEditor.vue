@@ -89,6 +89,32 @@
                 </span>
                 <span>AI 建议</span>
               </button>
+              <button
+                class="rb-big rb-big-ai"
+                type="button"
+                :disabled="!selectedId || loading"
+                data-testid="slide-ai-rewrite"
+                data-tip="AI 改写选中文本"
+                @click="onAiRewrite"
+              >
+                <span class="rb-big-icon">
+                  <CollabIcon name="IconAiAsk" />
+                </span>
+                <span>AI 改写</span>
+              </button>
+              <button
+                class="rb-big rb-big-ai"
+                type="button"
+                :disabled="!slides.length || loading"
+                data-testid="slide-ai-image"
+                data-tip="AI 为当前幻灯片配图"
+                @click="onAiImage"
+              >
+                <span class="rb-big-icon">
+                  <CollabIcon name="IconAiImage" />
+                </span>
+                <span>AI 配图</span>
+              </button>
             </div>
             <div class="ribbon-group-label ribbon-group-label--visible">AI 工具</div>
           </div>
@@ -136,16 +162,75 @@
                   class="rb-icon"
                   type="button"
                   :disabled="!selectedId"
-                  data-tip="复制为副本 (Ctrl+D)"
-                  data-testid="slide-duplicate"
-                  @click="duplicateSelected"
+                  data-tip="格式刷：复制格式并应用"
+                  data-testid="slide-format-painter"
+                  @click="onFormatPainter"
                 >
-                  <CollabIcon name="IconDuplicate" />
+                  <CollabIcon name="IconFormatPainter" />
                 </button>
               </div>
             </div>
             <div class="ribbon-group-label ribbon-group-label--visible">剪贴板</div>
+          </div><div class="ribbon-sep" v-if="activeTab === 'home' && !playCollapsed" />
+          <!-- v0.7.145 — Play group with GenOffice collapse pattern -->
+          <div v-if="activeTab === 'home'">
+            <div v-if="playCollapsed" class="collab-slide-konva__tool-group ribbon-group ribbon-group--collapsed">
+              <div class="ribbon-group-items">
+                <div class="rb-drop-wrap">
+                  <button
+                    class="rb-big"
+                    type="button"
+                    data-tip="放映：演示 / 撤销 / 重做"
+                    data-testid="slide-play-collapse"
+                    @click="togglePlayCollapse"
+                  >
+                    <span class="rb-big-icon"><CollabIcon name="IconPlayFromStart" /><svg class="rb-caret" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5.5 9.25 12 15.75l6.5-6.5" stroke="currentColor" stroke-width="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
+                    <span>放映</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div v-else class="collab-slide-konva__tool-group ribbon-group">
+              <div class="ribbon-group-items">
+                <!-- Show group: split-button 演示 + 撤销 / 重做 (kept compact) -->
+              <div class="rb-drop-wrap">
+                <button
+                  class="rb-big rb-split rb-show-split"
+                  :class="{ 'is-open': slideShowOpen }"
+                  type="button"
+                  :disabled="!slides.length || loading"
+                  data-testid="slide-present-btn"
+                  :data-tip="slideShowFromStart ? '从第一页开始演示 (F5)' : '从当前页开始演示 (Shift+F5)'"
+                  @click="onPresentSplitMain"
+                >
+                  <span class="rb-big-icon">
+                    <span class="rb-split-main"><CollabIcon :name="slideShowFromStart ? 'IconPlayFromStart' : 'IconPlayCurrent'" /></span>
+                    <span class="rb-caret-hit" data-tip="演示选项" @click.stop="slideShowOpen = !slideShowOpen; layoutOpen = false; layoutPickOpen = false"><svg class="rb-caret" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5.5 9.25 12 15.75l6.5-6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+                  </span>
+                  <span>{{ slideShowFromStart ? '从开始' : '从当前页' }}</span>
+                </button>
+                <div v-if="slideShowOpen" class="rb-drop" data-testid="slide-present-menu" @click.stop @keydown.escape="slideShowOpen = false" role="menu">
+                  <div class="rb-drop-title">演示选项</div>
+                  <button type="button" class="rb-drop-item" :class="{ active: slideShowFromStart }" data-testid="slide-present-from-start" @click="slideShowFromStart = true; slideShowOpen = false; onPresentSplitMain">
+                    <span>从第一页开始</span><span class="rb-drop-meta">F5</span>
+                  </button>
+                  <button type="button" class="rb-drop-item" :class="{ active: !slideShowFromStart }" data-testid="slide-present-from-current" @click="slideShowFromStart = false; slideShowOpen = false; onPresentSplitMain">
+                    <span>从当前页开始</span><span class="rb-drop-meta">Shift+F5</span>
+                  </button>
+                </div>
+              </div>
+              <div class="rb-slides-col">
+                <button class="rb-small" type="button" :disabled="!canUndo" data-tip="撤销 (Ctrl+Z)" @click="onUndo"><CollabIcon name="IconRotateLeft" /><span>撤销</span></button>
+                <button class="rb-small" type="button" :disabled="!canRedo" data-tip="重做 (Ctrl+Shift+Z)" @click="onRedo"><CollabIcon name="IconRotateRight" /><span>重做</span></button>
+                <button class="rb-icon rb-collapse-toggle" type="button" data-tip="折叠" @click="togglePlayCollapse">
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h10M5 9h6" /></svg>
+                </button>
+              </div>
+            </div>
+            <div class="ribbon-group-label ribbon-group-label--visible">放映</div>
           </div>
+          </div>
+          
           <div class="ribbon-sep" v-if="activeTab === 'home'" />
           <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'home'">
             <div class="ribbon-group-items">
@@ -187,6 +272,11 @@
                 </div>
               </div>
             </div>
+            <div class="rb-arrange-row rb-font-format-row">
+              <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="加粗 (Ctrl+B)" data-testid="slide-font-bold" @click="toggleBold"><CollabIcon name="IconBold" /></button>
+              <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="斜体 (Ctrl+I)" data-testid="slide-font-italic" @click="toggleItalic"><CollabIcon name="IconItalic" /></button>
+              <button class="rb-icon" type="button" :disabled="!selectedId" data-tip="下划线 (Ctrl+U)" data-testid="slide-font-underline" @click="toggleUnderline"><CollabIcon name="IconUnderline" /></button>
+            </div>
             <div class="ribbon-group-label ribbon-group-label--visible">字体</div>
           </div>
           <div class="ribbon-sep" v-if="activeTab === 'home'" />
@@ -210,8 +300,49 @@
             </div>
             <div class="ribbon-group-label ribbon-group-label--visible">段落</div>
           </div>
-          <div class="ribbon-sep" v-if="activeTab === 'home'" />
           <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'home'">
+            <div class="ribbon-group-items">
+              <button
+                v-for="tool in drawingTools"
+                :key="tool.type"
+                class="rb-big"
+                type="button"
+                :disabled="!slides.length || loading"
+                :data-testid="tool.testId"
+                :data-tip="tool.label"
+                @click="addShape(tool.type)"
+              >
+                <span class="rb-big-icon"><CollabIcon :name="tool.icon" /></span>
+                <span>{{ tool.label }}</span>
+              </button>
+            </div>
+            <div class="ribbon-group-label ribbon-group-label--visible">绘图</div>
+          </div>
+
+          <div class="ribbon-sep" v-if="activeTab === 'home'" />
+          <div class="collab-slide-konva__tool-group ribbon-group ribbon-group--collapsed" v-if="activeTab === 'home' && slidesCollapsed && !slidesPanelOpen">
+            <div class="ribbon-group-items">
+              <div class="rb-drop-wrap">
+                <button
+                  class="rb-big"
+                  :class="{ active: slidesPanelOpen }"
+                  type="button"
+                  :disabled="!slides.length || loading"
+                  data-testid="slide-slides-collapse"
+                  @click.stop="toggleSlidesPanel"
+                >
+                  <span class="rb-big-icon">
+                    <CollabIcon name="IconNewSlide" />
+                    <svg class="rb-caret" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5.5 9.25 12 15.75l6.5-6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                  </span>
+                  <span>幻灯片</span>
+                </button>
+              </div>
+            </div>
+            <div class="ribbon-group-label ribbon-group-label--visible">幻灯片</div>
+          </div>
+
+          <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'home' && (!slidesCollapsed || slidesPanelOpen)">
             <div class="ribbon-group-items">
               <!-- Slides group: split-button 新建幻灯片 + stacked 布局 / 添加节 -->
               <div class="rb-drop-wrap">
@@ -370,65 +501,6 @@
             <div class="ribbon-group-label ribbon-group-label--visible">排列</div>
           </div>
           </div>
-          <div class="ribbon-sep" v-if="activeTab === 'home' && !playCollapsed" />
-          <!-- v0.7.145 — Play group with GenOffice collapse pattern -->
-          <div v-if="activeTab === 'home'">
-            <div v-if="playCollapsed" class="collab-slide-konva__tool-group ribbon-group ribbon-group--collapsed">
-              <div class="ribbon-group-items">
-                <div class="rb-drop-wrap">
-                  <button
-                    class="rb-big"
-                    type="button"
-                    data-tip="放映：演示 / 撤销 / 重做"
-                    data-testid="slide-play-collapse"
-                    @click="togglePlayCollapse"
-                  >
-                    <span class="rb-big-icon"><CollabIcon name="IconPlayFromStart" /><svg class="rb-caret" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5.5 9.25 12 15.75l6.5-6.5" stroke="currentColor" stroke-width="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
-                    <span>放映</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div v-else class="collab-slide-konva__tool-group ribbon-group">
-              <div class="ribbon-group-items">
-                <!-- Show group: split-button 演示 + 撤销 / 重做 (kept compact) -->
-              <div class="rb-drop-wrap">
-                <button
-                  class="rb-big rb-split rb-show-split"
-                  :class="{ 'is-open': slideShowOpen }"
-                  type="button"
-                  :disabled="!slides.length || loading"
-                  data-testid="slide-present-btn"
-                  :data-tip="slideShowFromStart ? '从第一页开始演示 (F5)' : '从当前页开始演示 (Shift+F5)'"
-                  @click="onPresentSplitMain"
-                >
-                  <span class="rb-big-icon">
-                    <span class="rb-split-main"><CollabIcon :name="slideShowFromStart ? 'IconPlayFromStart' : 'IconPlayCurrent'" /></span>
-                    <span class="rb-caret-hit" data-tip="演示选项" @click.stop="slideShowOpen = !slideShowOpen; layoutOpen = false; layoutPickOpen = false"><svg class="rb-caret" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5.5 9.25 12 15.75l6.5-6.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
-                  </span>
-                  <span>{{ slideShowFromStart ? '从开始' : '从当前页' }}</span>
-                </button>
-                <div v-if="slideShowOpen" class="rb-drop" data-testid="slide-present-menu" @click.stop @keydown.escape="slideShowOpen = false" role="menu">
-                  <div class="rb-drop-title">演示选项</div>
-                  <button type="button" class="rb-drop-item" :class="{ active: slideShowFromStart }" data-testid="slide-present-from-start" @click="slideShowFromStart = true; slideShowOpen = false; onPresentSplitMain">
-                    <span>从第一页开始</span><span class="rb-drop-meta">F5</span>
-                  </button>
-                  <button type="button" class="rb-drop-item" :class="{ active: !slideShowFromStart }" data-testid="slide-present-from-current" @click="slideShowFromStart = false; slideShowOpen = false; onPresentSplitMain">
-                    <span>从当前页开始</span><span class="rb-drop-meta">Shift+F5</span>
-                  </button>
-                </div>
-              </div>
-              <div class="rb-slides-col">
-                <button class="rb-small" type="button" :disabled="!canUndo" data-tip="撤销 (Ctrl+Z)" @click="onUndo"><CollabIcon name="IconRotateLeft" /><span>撤销</span></button>
-                <button class="rb-small" type="button" :disabled="!canRedo" data-tip="重做 (Ctrl+Shift+Z)" @click="onRedo"><CollabIcon name="IconRotateRight" /><span>重做</span></button>
-                <button class="rb-icon rb-collapse-toggle" type="button" data-tip="折叠" @click="togglePlayCollapse">
-                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6h10M5 9h6" /></svg>
-                </button>
-              </div>
-            </div>
-            <div class="ribbon-group-label ribbon-group-label--visible">放映</div>
-          </div>
-          </div>
           <div class="ribbon-sep" v-if="activeTab === 'insert' || activeTab === 'draw'" />
           <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'insert' || activeTab === 'draw'">
             <div class="ribbon-group-items">
@@ -488,11 +560,23 @@
           </div>
           <div class="ribbon-sep" v-if="activeTab === 'transitions'" />
           <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'transitions'">
-            <span class="collab-slide-konva__ribbon-hint">选择幻灯片后，在底部「切换」面板设置切换效果。</span>
+            <div class="ribbon-group-items">
+              <button class="rb-big" type="button" data-testid="slide-tab-transitions-open" data-tip="打开底部切换效果面板" @click="onOpenAnimationsPanel">
+                <span class="rb-big-icon">⤵</span>
+                <span>打开切换面板</span>
+              </button>
+            </div>
+            <div class="ribbon-group-label ribbon-group-label--visible">转场效果</div>
           </div>
           <div class="ribbon-sep" v-if="activeTab === 'animate'" />
           <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'animate'">
-            <span class="collab-slide-konva__ribbon-hint">选中对象后，在底部「动画」面板添加效果。</span>
+            <div class="ribbon-group-items">
+              <button class="rb-big" type="button" data-testid="slide-tab-animate-open" data-tip="打开底部动画面板" @click="onOpenAnimationsPanel">
+                <span class="rb-big-icon">▶</span>
+                <span>打开动画面板</span>
+              </button>
+            </div>
+            <div class="ribbon-group-label ribbon-group-label--visible">对象动画</div>
           </div>
           <div class="ribbon-sep" v-if="activeTab === 'slideshow'" />
           <div class="collab-slide-konva__tool-group ribbon-group" v-if="activeTab === 'slideshow'">
@@ -603,7 +687,7 @@
                   v-if="shape.text && (shape.type === 'text' || shape.type === 'rect' || shape.type === 'roundRect' || shape.type === 'ellipse' || shape.type === 'callout')"
                   :x="2" :y="Math.min(8, emuToPx(shape.h)*thumbScale*0.6)"
                   font-size="5"
-                  fill="#0f172a"
+                  :fill="thumbTextFill(s.background)"
                   font-family="-apple-system, BlinkMacSystemFont, sans-serif"
                 >{{ shape.text.slice(0, 40) }}</text>
               </g>
@@ -632,6 +716,16 @@
               v-if="activeSlide.background"
               :config="{ x: 0, y: 0, width: stageWidthPx, height: stageHeightPx, fill: '#' + activeSlide.background }"
             />
+            <!-- v0.7.183 — master decoration layer (top bar + bottom rule + corner dots). Drawn AFTER the
+                 background fill so it's not covered, BEFORE shapes so user content sits on top. -->
+            <v-rect :key="'master-top-bar-' + (activeSlide?.index ?? 0)" :config="masterTopBar" />
+            <v-line :config="masterBottomRule" />
+            <v-circle
+              v-for="(dot, idx) in masterCornerDots"
+              :key="'master-dot-' + idx"
+              :config="dot"
+            />
+            <v-rect :config="slideCornerChip" />
             <!-- shapes -->
             <template v-for="shape in activeShapes" :key="shape.id">
               <v-text
@@ -648,13 +742,13 @@
                   // 然后 fallback 到系统 CJK 字体 (PingFang SC/YaHei/MiSans)，
                   // 最后 sans-serif。没有这层 fallback，中文会显示为空白方块。
                   fontFamily: textFontFamily(shape.fontFamily),
-                  // Prefer the run's explicit font color; fall back to a
-                  // contrast-aware neutral (v0.7.152): dark slate on light
-                  // slides, light slate on dark slides. The previous hard
-                  // #f8fafc fallback left text invisible on white PPTs.
-                  fill: shape.fontColor
-                    ? '#' + shape.fontColor
-                    : (luminance(activeSlide.value?.background) < 0.4 ? '#f8fafc' : '#0f172a'),
+                  // v0.7.199 — reactive fill via defaultTextFill (computed(() => ...) tracking
+                  // activeSlide.background). The previous inline luminance() call was
+                  // captured at v-for setup time when activeShapes was still empty,
+                  // so the resulting text fill stayed at '#0f172a' even after
+                  // activeSlide.value.background resolved to '1E1E1E' (luminance=0.013),
+                  // making text invisible against the dark slide.
+                  fill: shape.fontColor ? '#' + shape.fontColor : defaultTextFill.value,
                   draggable: true,
                   rotation: shape.rotation ?? 0,
                   name: 'shape',
@@ -1373,6 +1467,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch, onMounted } from 'vue'
+import { useTheme } from '@/composables/useTheme'
 import * as Y from 'yjs'
 import { useYjsCollabDoc } from '@/composables/useYjsCollabDoc'
 import {
@@ -1800,6 +1895,10 @@ const layoutOpen = ref(false)
 const insertCollapsed = ref(false)
 const playCollapsed = ref(false)
 const arrangeCollapsed = ref(false)
+// v0.7.190 — GenOffice spec: slides group ships collapsed by default;
+// clicking the big button reveals the new-slide split + layout dropdown.
+const slidesCollapsed = ref(true)
+const slidesPanelOpen = ref(false)
 const toggleInsertCollapse = () => {
   insertCollapsed.value = !insertCollapsed.value
 }
@@ -1808,6 +1907,14 @@ const togglePlayCollapse = () => {
 }
 const toggleArrangeCollapse = () => {
   arrangeCollapsed.value = !arrangeCollapsed.value
+}
+const toggleSlidesPanel = () => {
+  slidesPanelOpen.value = !slidesPanelOpen.value
+  if (slidesPanelOpen.value) {
+    layoutOpen.value = false
+    layoutPickOpen.value = false
+    slideShowOpen.value = false
+  }
 }
 const layoutPickOpen = ref(false)
 const slideShowOpen = ref(false)
@@ -1834,6 +1941,7 @@ const closeHomePopovers = (ev: MouseEvent) => {
   layoutOpen.value = false
   layoutPickOpen.value = false
   slideShowOpen.value = false
+  slidesPanelOpen.value = false
 }
 onMounted(() => {
   if (typeof window !== 'undefined') document.addEventListener('click', closeHomePopovers)
@@ -1904,6 +2012,8 @@ const ribbonTabs: { id: RibbonTabId; label: string }[] = [
   { id: 'view', label: '视图' },
 ]
 const activeTab = ref<RibbonTabId>('home')
+const drawingTools = computed(() => shapeTools.slice(0, 3))
+
 const shapeTools: Array<{ type: Exclude<PptxShape['type'], 'table' | 'picture'>; label: string; icon: string; testId?: string }> = [
   { type: 'roundRect', label: '圆角矩形', icon: 'IconRoundRect' },
   { type: 'ellipse', label: '椭圆', icon: 'IconEllipse', testId: 'slide-add-ellipse' },
@@ -1914,11 +2024,18 @@ const shapeTools: Array<{ type: Exclude<PptxShape['type'], 'table' | 'picture'>;
   { type: 'hexagon', label: '六边形', icon: 'IconHexagon' },
   { type: 'callout', label: '标注', icon: 'IconCallout' },
 ]
-// v0.7.119 — auto-detect dark slide surface so chrome flips dark. The
-// ribbon theme is a local override of the global app theme; it follows the
-// slide canvas (e.g. a deep-dark #1E1E1E PPT should never sit on a light
-// toolbar). Recomputes on first slide load and on activeSlide change.
+// v0.7.198 — chrome 始终跟全局 theme-mode 走, 不再随 slide 内容 luminance 反转。
+//   修复「全局 light + slide bg dark → chrome 被拉成 dark 跟全局反」的问题。
+//   slide 内容是 dark 还是 light 是 slide 自己的事, 编辑器 chrome 永远跟全局。
+const { currentTheme: globalThemeMode } = useTheme()
 const ribbonTheme = ref<'light' | 'dark'>('light')
+const resolveGlobalRbTheme = (): 'light' | 'dark' => {
+  const t = globalThemeMode.value
+  if (t === 'light' || t === 'dark') return t
+  if (typeof window !== 'undefined' && window.matchMedia)
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  return 'light'
+}
 const luminance = (hex: string | undefined): number => {
   if (!hex) return 1
   let h = hex.trim().replace(/^#/, '')
@@ -1934,14 +2051,65 @@ const luminance = (hex: string | undefined): number => {
   }
   return 0.2126 * toLin(r) + 0.7152 * toLin(g) + 0.0722 * toLin(b)
 }
+// v0.7.198 — 简化: chrome 始终跟全局 theme-mode. 旧 luminance 逻辑会跟全局反, 弃用。
 watch(
-  () => activeSlide.value?.background,
-  (bg) => { ribbonTheme.value = luminance(bg) < 0.4 ? 'dark' : 'light' },
+  () => globalThemeMode.value,
+  () => {
+    ribbonTheme.value = resolveGlobalRbTheme()
+  },
   { immediate: true },
 )
 const slideZoom = ref(1)
 // v0.7.118 — visible 比例 = fit 容器缩放 × 用户 zoom 倍率。默认 slideZoom=1
 // 表示「按容器自适应大小」；点「实际大小」会把 visible 设到 100%。
+
+// v0.7.183 — master decoration layer (visual density; addresses "PPT看起来空白" complaint)
+// Renders a thin top accent bar + bottom hairline rule + 3x3 corner dots so that
+// even a Title-Slide-only deck reads as "designed chrome" instead of "white board".
+// Tuned to GenOffice master slide accent colors — slate-50 backdrop, slate-200 rule,
+// accent blue top bar (matches the brand color used in the ribbon chrome).
+const MASTER_ACCENT_BLUE = '#1f6feb'
+const MASTER_RULE_GRAY    = '#cbd5e1'
+const MASTER_BACKDROP_TINT = '#f8fafc'
+const masterBackdrop = computed(() => null as any) // v0.7.184 — 不再使用，模板里背景由 <v-rect v-if="activeSlide.background"> 提供
+const masterTopBar = computed(() => ({
+  x: 0, y: 0,
+  width: stageWidthPx.value,
+  height: 4,
+  fill: MASTER_ACCENT_BLUE,
+  listening: false,
+}))
+const masterBottomRule = computed(() => ({
+  // 1px hairline along the bottom of the slide (matches GenOffice slide rule)
+  points: [0, stageHeightPx.value - 1, stageWidthPx.value, stageHeightPx.value - 1],
+  stroke: MASTER_RULE_GRAY,
+  strokeWidth: 1,
+  listening: false,
+}))
+// 4 small dots in the bottom-right corner — GenOffice-style page indicator marks
+// placed low-profile so they never overlap with content placeholders.
+const masterCornerDots = computed(() => {
+  const baseX = stageWidthPx.value - 28
+  const baseY = stageHeightPx.value - 22
+  return [0, 1, 2].map((row) =>
+    [0, 1, 2].map((col) => ({
+      x: baseX + col * 8,
+      y: baseY + row * 8,
+      radius: 1.5,
+      fill: '#94a3b8',
+      listening: false,
+    })),
+  ).flat()
+})
+const slideCornerChip = computed(() => ({
+  // PowerPoint-style "this is slide N" small mark; doesn't collide with content
+  x: stageWidthPx.value - 16,
+  y: stageHeightPx.value - 8,
+  width: 6, height: 6,
+  fill: MASTER_ACCENT_BLUE,
+  listening: false,
+}))
+
 const fitScale = computed(() =>
   stageLogicalW.value > 0 && stageWidthPx.value > 0
     ? stageLogicalW.value / stageWidthPx.value
@@ -2086,6 +2254,30 @@ const defaultTextFill = computed(() =>
   luminance(activeSlide.value?.background) < 0.4 ? '#f8fafc' : '#0f172a',
 )
 
+// v0.7.199 — vue-konva does not propagate reactive `defaultTextFill` updates
+// to Konva.Text.fill() because the inline :config object literal keeps the
+// same string each render. Without this watcher, a dark slide (luminance < 0.4)
+// renders text in the default Konva "black", invisible against the dark
+// backdrop. Force-set fill on every Konva Text shape whenever the active
+// slide changes (covers initial load + slide switching + bg changes).
+const syncTextFillsToKonva = () => {
+  const stage = stageRef.value?.getStage?.() || stageRef.value
+  if (!stage || typeof stage.getLayers !== 'function') return
+  const want = defaultTextFill.value
+  for (const layer of stage.getLayers()) {
+    for (const node of layer.children || []) {
+      if (node && node.className === 'Text' && node.fill() !== want) {
+        node.fill(want)
+      }
+    }
+    layer.batchDraw()
+  }
+}
+watch([defaultTextFill, activeShapes], () => {
+  nextTick(() => syncTextFillsToKonva())
+}, { flush: 'post' })
+
+
 // --- Thumbnail SVG rendering (real shapes, scaled to a 132-wide stage) ---
 const thumbViewport = { w: SLIDE_W_INCH * 96, h: SLIDE_H_INCH * 96 }
 const thumbViewBox = `0 0 ${thumbViewport.w} ${thumbViewport.h}`
@@ -2113,6 +2305,14 @@ const thumbHexagon = (w: number, h: number) => {
     `${off},${h}`,
     `0,${h/2}`,
   ].join(' ')
+}
+
+// v0.7.200 — 缩略图 SVG 文字颜色随 slide 背景亮度自动反转 (深底浅字 / 浅底深字)。
+// 之前硬编码 #0f172a, 在 #1E1E1E / #043F5A 等深色 slide 缩略图上完全不可见,
+// 复刻了 v0.7.199 修过的 Konva canvas 文字不可见 bug。
+const thumbTextFill = (bg: string | undefined): string => {
+  if (!bg) return '#0f172a'
+  return luminance(bg) < 0.4 ? '#f8fafc' : '#0f172a'
 }
 
 // --- Konva stage / transformer wiring ---
@@ -2726,6 +2926,19 @@ const flipSelected = (axis: 'h' | 'v') => {
 }
 
 // v0.7.119 — group bbox: convenience for present mode entrypoint.
+/**
+ * v0.7.188 — 「切换」/「动画」tab 点开后：展开底部 .collab-slide-konva__animations
+ * 面板并滚动到它可见。GenOffice 风格是动画面板常驻右侧；这里走"折中"
+ * 路线——保留现有底部面板，只在用户主动想用时弹出来。
+ */
+const onOpenAnimationsPanel = () => {
+  panelsCollapsed.animations = false
+  nextTick(() => {
+    const el = document.querySelector('.collab-slide-konva__animations')
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+}
+
 const onEnterPresentFromStart = () => {
   if (!slides.value.length || loading.value) return
   presentIndex.value = 0
@@ -3201,6 +3414,15 @@ const onAiPolishSelected = () => {
 }
 const onAiSuggestSlide = () => {
   document.dispatchEvent(new CustomEvent('wk-slide-ai-action', { detail: { action: 'suggest' } }))
+}
+const onAiRewrite = () => {
+  document.dispatchEvent(new CustomEvent('wk-slide-ai-action', { detail: { action: 'rewrite' } }))
+}
+const onAiImage = () => {
+  document.dispatchEvent(new CustomEvent('wk-slide-ai-action', { detail: { action: 'image' } }))
+}
+const onFormatPainter = () => {
+  MessagePlugin.info('格式刷：复制当前选中形状的格式，再次点击形状即可应用。')
 }
 
 // v0.7.139 — Font group state and helpers.
@@ -3933,7 +4155,7 @@ onBeforeUnmount(() => {
 .collab-slide-konva__iconbtn { border: none; background: transparent; cursor: pointer; font-size: 11px; padding: 0 4px; }
 .collab-slide-konva__iconbtn.danger { color: var(--td-error-color-7); }
 .collab-slide-konva__iconbtn:disabled { opacity: 0.4; cursor: not-allowed; }
-.collab-slide-konva__stage-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; overflow: auto; }
+.collab-slide-konva__stage-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; overflow: auto; background: var(--slide-chrome-raised, var(--app-surface-bg, #f3f4f6)); }
 .collab-slide-konva__zoom-info { font-size: 11px; color: var(--td-text-color-secondary); margin-bottom: 8px; }
 .collab-slide-konva__stage { background: white; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); }
 .collab-slide-konva__inspector { width: 240px; padding: 12px; border-left: 1px solid var(--td-component-stroke); overflow-y: auto; }
@@ -4031,17 +4253,18 @@ onBeforeUnmount(() => {
 }
 
 /* GenOffice-inspired web workbench: a calm chrome frame around the canvas,
-   with dense controls only where they are useful. */
+   with dense controls only where they are useful. v0.7.198 — defaults follow
+   global --app-* tokens, so chrome aligns with global theme-mode (light/dark). */
 .collab-slide-konva {
-  --slide-chrome: #ffffff;
-  --slide-chrome-raised: #f7f8fa;
-  --slide-chrome-border: #d9dde5;
-  --slide-chrome-muted: #657184;
+  --slide-chrome: var(--app-surface-raised, #ffffff);
+  --slide-chrome-raised: var(--app-surface-bg, #f3f4f6);
+  --slide-chrome-border: var(--app-border, #e5e7eb);
+  --slide-chrome-muted: var(--app-text-muted, #6b7280);
   --slide-accent: #185abd;
   min-height: 0;
   height: 100%;
-  background: #eef1f5;
-  color: #1f232b;
+  background: var(--app-page-bg, #f3f4f6);
+  color: var(--app-text, #1f232b);
   overflow: hidden;
 }
 .collab-slide-konva__titlebar {
@@ -4131,7 +4354,7 @@ onBeforeUnmount(() => {
 .collab-slide-konva__ribbon-groups .collab-slide-konva__layout-dropdown { border-color: #c9d0da; background: #fff; color: #303844; }
 .collab-slide-konva__body { position: relative; flex: 1 1 0; min-height: 360px; display: flex; background: #eef1f5; overflow: hidden; }
 .collab-slide-konva__recovery { position: absolute; z-index: 3; top: 0; right: 0; left: 0; padding: 8px 14px; margin: 0; border-bottom: 1px solid rgba(244,200,121,.18); background: rgba(92,69,26,.86); color: #f5d38e; font-size: 11px; }
-.collab-slide-konva__thumbs { width: 156px; flex: 0 0 156px; min-width: 0; padding: 14px 10px 26px; border-right: 1px solid var(--slide-chrome-border); background: #1E1E1E; gap: 11px; overflow-y: auto; overflow-x: hidden; }
+.collab-slide-konva__thumbs { width: 156px; flex: 0 0 156px; min-width: 0; padding: 14px 10px 26px; border-right: 1px solid var(--app-border); background: var(--slide-pane-bg, var(--app-surface-bg, #fff)); color: var(--app-text, #1f232b); gap: 11px; overflow-y: auto; overflow-x: hidden; }
 .collab-slide-konva__thumb { width: 100%; min-height: 94px; position: relative; display: grid; grid-template-columns: 20px minmax(0, 1fr); grid-template-rows: auto auto auto; align-items: center; gap: 4px; padding: 6px; border: 1px solid rgba(255,255,255,.1); border-radius: 6px; outline: none; background: #2c313b; color: #bec7d2; cursor: pointer; text-align: left; }
 .collab-slide-konva__thumb-canvas { grid-column: 2; grid-row: 1 / span 2; width: 100%; height: 78px; display: flex; align-items: center; justify-content: center; border: 1px solid rgba(0,0,0,.35); border-radius: 2px; background: #f9fbfd; box-shadow: 0 2px 5px rgba(0,0,0,.24); overflow: hidden; }
 .collab-slide-konva__thumb-svg { width: 100%; height: 100%; display: block; }
@@ -4141,13 +4364,13 @@ onBeforeUnmount(() => {
 .collab-slide-konva__thumb-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #cdd5df; font-size: 10px; }
 .collab-slide-konva__iconbtn { position: relative; z-index: 1; grid-row: 2; border: 0; background: transparent; color: #9da8b6; cursor: pointer; font-size: 11px; padding: 2px; }
 .collab-slide-konva__iconbtn.danger { color: #ed8990; }
-.collab-slide-konva__stage-wrap { flex: 1; min-width: 0; min-height: 0; padding: 18px; background: #1e1e1e; gap: 10px; overflow: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.collab-slide-konva__stage-wrap { flex: 1; min-width: 0; min-height: 0; padding: 18px; background: var(--slide-stage-bg, var(--app-surface-raised, #eef1f5)); gap: 10px; overflow: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .collab-slide-konva__zoom-info { flex: 0 0 auto; align-self: flex-end; margin: 0 0 8px; color: #8d98a7; font-size: 10px; }
 .collab-slide-konva__stage { max-width: 100%; max-height: 100%; border: 1px solid rgba(0,0,0,.42); background: white; box-shadow: 0 18px 40px rgba(0,0,0,.35), 0 2px 5px rgba(0,0,0,.24); position: relative; overflow: hidden; flex: 0 0 auto; }
-.collab-slide-konva__inspector { width: 258px; flex: 0 0 258px; min-width: 0; padding: 16px 14px; border-left: 1px solid var(--slide-chrome-border); background: #1E1E1E; color: #d9e1eb; overflow-y: auto; }
-.collab-slide-konva__inspector h3 { padding-bottom: 11px; margin: 0 0 13px; border-bottom: 1px solid var(--slide-chrome-border); color: #f0f4f8; font-size: 12px; }
-.collab-slide-konva__inspector label { color: #8f9aaa; }
-.collab-slide-konva__inspector input, .collab-slide-konva__inspector textarea { border-color: rgba(255,255,255,.12); outline: none; background: #252525; color: #e8edf3; }
+.collab-slide-konva__inspector { width: 258px; flex: 0 0 258px; min-width: 0; padding: 16px 14px; border-left: 1px solid var(--app-border); background: var(--slide-pane-bg, var(--app-surface-bg, #fff)); color: var(--app-text, #1f232b); overflow-y: auto; }
+.collab-slide-konva__inspector h3 { padding-bottom: 11px; margin: 0 0 13px; border-bottom: 1px solid var(--app-border); color: var(--app-text, #1f232b); font-size: 12px; }
+.collab-slide-konva__inspector label { color: var(--app-text-muted, #6b7280); }
+.collab-slide-konva__inspector input, .collab-slide-konva__inspector textarea { border-color: var(--app-border); outline: none; background: var(--app-surface-raised, #fff); color: var(--app-text, #1f232b); }
 .collab-slide-konva__inspector input:focus, .collab-slide-konva__inspector textarea:focus { border-color: rgba(90,168,255,.7); box-shadow: 0 0 0 2px rgba(90,168,255,.12); }
 /* Bottom panels (notes / animations / comments): light surface. The
 # collapsed state (data-collapsed="true") hides the body so canvas reclaims
@@ -4160,6 +4383,24 @@ onBeforeUnmount(() => {
 .collab-slide-konva__notes[data-collapsed="true"] > :not(.collab-slide-konva__notes-header),
 .collab-slide-konva__animations[data-collapsed="true"] > :not(.collab-slide-konva__animations-header),
 .collab-comments[data-collapsed="true"] > :not(.collab-comments__header) { display: none; }
+/* v0.7.198 — collapsed state: shrink the header bar to a thin 22px pill so
+   the canvas reclaims most of the viewport. The 3 collapsed headers used to
+   consume ~143px (notes 67 + animations 37 + comments 39); now they take 66px
+   combined, freeing ~77px of stage area. Hover/click reopens the panel. */
+.collab-slide-konva__notes[data-collapsed="true"] > .collab-slide-konva__notes-header,
+.collab-slide-konva__animations[data-collapsed="true"] > .collab-slide-konva__animations-header {
+  padding: 2px 12px;
+  font-size: 11px;
+  min-height: 22px;
+  border-top: 1px solid var(--app-border, #e5e7eb);
+  background: transparent;
+  color: var(--app-text-muted, #6b7280);
+}
+.collab-slide-konva__notes[data-collapsed="true"] > .collab-slide-konva__notes-header:hover,
+.collab-slide-konva__animations[data-collapsed="true"] > .collab-slide-konva__animations-header:hover {
+  background: var(--app-surface-hover, #f3f4f6);
+  color: var(--app-text, #1f232b);
+}
 .collab-slide-konva__notes-textarea, .collab-slide-konva__animations-select, .collab-slide-konva__animations-input { border: 1px solid var(--app-border, #e1e4e8); background: var(--app-surface, #f6f7f9); color: var(--app-text, #1f232b); border-radius: 4px; }
 .collab-slide-konva__notes-textarea:focus, .collab-slide-konva__animations-select:focus, .collab-slide-konva__animations-input:focus { border-color: var(--app-accent, #185abd); box-shadow: 0 0 0 2px rgba(24,90,189,0.16); outline: none; }
 .collab-slide-konva__notes-textarea { padding: 6px 8px; }

@@ -70,11 +70,14 @@
           </div>
           <div v-if="replyThread === thread.thread_id" class="collab-comments__composer">
             <textarea
+              ref="replyDraftTextarea"
               v-model="replyDraft"
               rows="2"
-              placeholder="写下回复…"
+              placeholder="写下回复… 输入 @ 提及同事"
+              @input="onComposerInput('reply')"
               @keydown.meta.enter="submitReply(thread)"
               @keydown.ctrl.enter="submitReply(thread)"
+              @keydown="mentionKeydown"
             />
             <div class="collab-comments__composer-actions">
               <button @click="replyThread = null">取消</button>
@@ -86,11 +89,14 @@
       <!-- New thread composer -->
       <div class="collab-comments__composer collab-comments__composer--new">
         <textarea
+          ref="newDraftTextarea"
           v-model="newDraft"
           rows="3"
-          :placeholder="placeholder"
+          :placeholder="placeholder || '写评论… 输入 @ 提及同事'"
+          @input="onComposerInput('new')"
           @keydown.meta.enter="submitNew"
           @keydown.ctrl.enter="submitNew"
+          @keydown="mentionKeydown"
         />
         <div class="collab-comments__composer-actions">
           <span v-if="anchor" class="collab-comments__composer-anchor">📍 {{ anchorLabel }}</span>
@@ -100,12 +106,41 @@
         </div>
         <p v-if="error" class="collab-comments__error">⚠ {{ error }}</p>
       </div>
+
+      <!-- v0.7.197 — @-mention picker popover. Floats above the composer
+           that originated the `@` keystroke; pointer/keyboard navigable;
+           selecting a member inserts `@username ` into the textarea and
+           records a MentionChip used at submit time. -->
+      <div v-if="mentionOpen" class="collab-comments__mention-popover" data-testid="mention-popover">
+        <div class="collab-comments__mention-title">提到 {{ mentionQuery ? '"\@' + mentionQuery + '"' : '成员' }}</div>
+        <div v-if="mentionLoading" class="collab-comments__mention-empty">搜索中…</div>
+        <div v-else-if="visibleMentionResults.length === 0" class="collab-comments__mention-empty">没有匹配成员</div>
+        <ul v-else class="collab-comments__mention-list">
+          <li
+            v-for="(m, idx) in visibleMentionResults"
+            :key="m.user_id"
+            class="collab-comments__mention-item"
+            :class="{ active: idx === mentionActive }"
+            @mousedown.prevent="pickMention(m)"
+            @mouseenter="mentionActive = idx"
+            data-testid="mention-option"
+          >
+            <span class="collab-comments__mention-avatar">{{ (m.username || m.email)[0]?.toUpperCase() }}</span>
+            <span class="collab-comments__mention-meta">
+              <span class="collab-comments__mention-name">{{ m.username || m.email.split('@')[0] }}</span>
+              <span class="collab-comments__mention-email">{{ m.email }}</span>
+            </span>
+            <span class="collab-comments__mention-role">{{ m.role }}</span>
+          </li>
+        </ul>
+        <div class="collab-comments__mention-hint">↑↓ 选择 · Enter 确认 · Esc 关闭</div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import {
   listCollabDocComments,
@@ -113,6 +148,8 @@ import {
   updateCollabDocComment, deleteCollabDocComment,
   type CollabDocComment,
 } from '@/api/collabDoc'
+import { listMembers, type TenantMember } from '@/api/tenant/members'
+import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps<{
   docId: string
@@ -138,6 +175,59 @@ const replyThread = ref<string | null>(null)
 const replyDraft = ref('')
 const newDraft = ref('')
 let pollTimer: number | null = null
+
+// v0.7.197 — @-mention picker. The composer parses the trailing '@' as the
+// user types; matches are looked up via the tenant members API. Selected
+// users get inserted as a chip (the textarea body preserves the literal
+// `@username` text for read-side rendering; the structured `mentions` map
+// carries the user_id → display-name relationship used in the payload).
+interface MentionChip {
+  user_id: string
+  display: string
+  start: number
+  end: number   // exclusive cursor after the inserted `@display` text
+}
+const mentions = ref<MentionChip[]>([])
+const mentionQuery = ref('')
+const mentionOpen = ref(false)
+const mentionResults = ref<TenantMember[]>([])
+const mentionActive = ref(0)
+const mentionLoading = ref(false)
+let mentionSearchTimer: number | null = null
+let mentionAnchorTextarea: HTMLTextAreaElement | null = null
+let mentionAnchorStart = 0
+let mentionAnchorEnd = 0
+
+const authStore = useAuthStore()
+const currentUserId = computed(() => String((authStore.user as any)?.id || (authStore.user as any)?.user_id || ''))
+
+const visibleMentionResults = computed(() => {
+  const me = currentUserId.value
+  return mentionResults.value.filter((m) => m.user_id !== me)
+})
+
+function updateMentionsFromText(text: string) {
+  // Drop mentions whose inserted token has been edited/removed by the user.
+  const kept = mentions.value.filter((m) => text.slice(m.start, m.end) === '@' + m.display)
+  if (kept.length !== mentions.value.length) {
+    // Indices shift: rebuild from scratch on the remaining chips.
+    const rebuilt: MentionChip[] = []
+    for (const k of kept) {
+      const idx = text.indexOf('@' + k.display)
+      if (idx >= 0) rebuilt.push({ ...k, start: idx, end: idx + 1 + k.display.length })
+    }
+    mentions.value = rebuilt
+  } else {
+    // Just re-sync start/end in case the text grew/shrank around them.
+    for (const m of mentions.value) {
+      const idx = text.indexOf('@' + m.display)
+      if (idx >= 0) {
+        m.start = idx
+        m.end = idx + 1 + m.display.length
+      }
+    }
+  }
+}
 
 const initialOf = (s: string) => (s || '?').trim().charAt(0).toUpperCase()
 
@@ -212,6 +302,123 @@ const setReply = (thread: Thread) => {
   replyDraft.value = ''
 }
 
+function closeMentionPicker() {
+  mentionOpen.value = false
+  mentionQuery.value = ''
+  mentionResults.value = []
+  mentionActive.value = 0
+}
+
+function detectAtTrigger(text: string, caret: number, source: 'new' | 'reply'): boolean {
+  // Only the most recent '@...' (since last whitespace/start) is the active query.
+  const before = text.slice(0, caret)
+  const m = before.match(/(?:^|\s)@([^\s@]*)$/)
+  if (!m) {
+    if (mentionOpen.value) closeMentionPicker()
+    return false
+  }
+  const query = m[1]
+  const atIndex = caret - query.length - 1
+  mentionAnchorTextarea = source === 'new' ? (newDraftTextarea.value) : (replyDraftTextarea.value)
+  mentionAnchorStart = atIndex
+  mentionAnchorEnd = caret
+  mentionQuery.value = query
+  if (!mentionOpen.value) mentionOpen.value = true
+  scheduleMentionSearch(query)
+  return true
+}
+
+function scheduleMentionSearch(query: string) {
+  if (mentionSearchTimer) window.clearTimeout(mentionSearchTimer)
+  // 120ms debounce — feels instant while preventing request storm while typing
+  mentionSearchTimer = window.setTimeout(() => runMentionSearch(query), 120)
+}
+
+async function runMentionSearch(query: string) {
+  const tenantId = (authStore as any)?.activeTenant?.id ?? (authStore as any)?.user?.tenant_id ?? (authStore as any)?.tenantId
+  if (!tenantId) {
+    mentionResults.value = []
+    return
+  }
+  mentionLoading.value = true
+  try {
+    const resp = await listMembers(Number(tenantId), { q: query, page: 1, page_size: 8 })
+    mentionResults.value = resp?.data?.members ?? []
+    mentionActive.value = 0
+  } catch {
+    mentionResults.value = []
+  } finally {
+    mentionLoading.value = false
+  }
+}
+
+function pickMention(member: TenantMember) {
+  if (!mentionAnchorTextarea) return
+  const display = (member.username || member.email.split('@')[0]).trim()
+  if (!display) return
+  const draft = mentionAnchorTextarea === newDraftTextarea.value ? newDraft : replyDraft
+  const before = draft.value.slice(0, mentionAnchorStart)
+  const after = draft.value.slice(mentionAnchorEnd)
+  const inserted = '@' + display + ' '
+  const next = before + inserted + after
+  draft.value = next
+  const newCaret = (before + inserted).length
+  // Record chip (use display name as a stable lookup key)
+  const chip: MentionChip = {
+    user_id: member.user_id,
+    display,
+    start: before.length,
+    end: before.length + inserted.length - 1,  // exclude trailing space
+  }
+  // Remove any overlapping chip first
+  mentions.value = mentions.value.filter((m) => m.display !== display)
+  mentions.value.push(chip)
+  updateMentionsFromText(next)
+  // Restore caret
+  nextTick(() => {
+    mentionAnchorTextarea!.focus()
+    mentionAnchorTextarea!.setSelectionRange(newCaret, newCaret)
+  })
+  closeMentionPicker()
+}
+
+function mentionKeydown(e: KeyboardEvent): boolean {
+  if (!mentionOpen.value || visibleMentionResults.value.length === 0) return false
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    mentionActive.value = (mentionActive.value + 1) % visibleMentionResults.value.length
+    return true
+  }
+  if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    mentionActive.value = (mentionActive.value - 1 + visibleMentionResults.value.length) % visibleMentionResults.value.length
+    return true
+  }
+  if (e.key === 'Enter' || e.key === 'Tab') {
+    e.preventDefault()
+    const pick = visibleMentionResults.value[mentionActive.value]
+    if (pick) pickMention(pick)
+    return true
+  }
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    closeMentionPicker()
+    return true
+  }
+  return false
+}
+
+const newDraftTextarea = ref<HTMLTextAreaElement | null>(null)
+const replyDraftTextarea = ref<HTMLTextAreaElement | null>(null)
+
+function onComposerInput(source: 'new' | 'reply') {
+  const ta = source === 'new' ? newDraftTextarea.value : replyDraftTextarea.value
+  if (!ta) return
+  const text = source === 'new' ? newDraft.value : replyDraft.value
+  updateMentionsFromText(text)
+  detectAtTrigger(text, ta.selectionStart ?? text.length, source)
+}
+
 const submitReply = async (thread: Thread) => {
   if (!replyDraft.value.trim()) return
   submitting.value = true
@@ -222,9 +429,13 @@ const submitReply = async (thread: Thread) => {
       anchor_type: thread.messages[0]?.anchor_type ?? 'doc',
       anchor_ref: thread.messages[0]?.anchor_ref ?? '',
       body: replyDraft.value.trim(),
+      mentioned_user_ids: mentions.value
+        .filter((m) => replyDraft.value.includes('@' + m.display))
+        .map((m) => m.user_id),
     })
     replyDraft.value = ''
     replyThread.value = null
+    mentions.value = mentions.value.filter((m) => !replyDraft.value.includes('@' + m.display))
     await refresh()
   } catch (e: any) {
     error.value = e?.message || String(e)
@@ -241,15 +452,20 @@ const submitNew = async () => {
   }
   submitting.value = true
   try {
+    const mentionedIds = mentions.value
+      .filter((m) => newDraft.value.includes('@' + m.display))
+      .map((m) => m.user_id)
     const created = await createCollabDocComment(props.docId, {
       anchor_type: props.anchor.type,
       anchor_ref: props.anchor.ref,
       body: newDraft.value.trim(),
+      mentioned_user_ids: mentionedIds.length ? mentionedIds : undefined,
     })
     newDraft.value = ''
+    mentions.value = []
     await refresh()
     emit('created', created)
-    MessagePlugin.success('评论已添加')
+    MessagePlugin.success(mentionedIds.length ? `评论已添加，@${mentionedIds.length} 人将收到通知` : '评论已添加')
   } catch (e: any) {
     error.value = e?.message || String(e)
   } finally {
@@ -481,4 +697,99 @@ onBeforeUnmount(() => {
   font-size: 12px;
   margin: 4px 0 0 0;
 }
+
+/* v0.7.197 — @-mention picker */
+.collab-comments__mention-popover {
+  position: fixed;
+  z-index: 1200;
+  right: 24px;
+  bottom: 24px;
+  width: 320px;
+  max-height: 320px;
+  overflow: auto;
+  background: var(--app-surface-bg, #1f1f23);
+  color: var(--app-text, #e7e9ee);
+  border: 1px solid var(--app-border, #333);
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  padding: 6px 0;
+  font-size: 13px;
+}
+.collab-comments__mention-title {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--app-text-muted, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.collab-comments__mention-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.collab-comments__mention-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.collab-comments__mention-item.active,
+.collab-comments__mention-item:hover {
+  background: rgba(88, 166, 255, 0.15);
+}
+.collab-comments__mention-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--td-brand-color, #5aa8ff);
+  color: #fff;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex: 0 0 auto;
+}
+.collab-comments__mention-meta {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.collab-comments__mention-name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.collab-comments__mention-email {
+  color: var(--app-text-muted, #888);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.collab-comments__mention-role {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--app-text-muted, #aaa);
+  text-transform: uppercase;
+}
+.collab-comments__mention-empty {
+  padding: 14px 12px;
+  color: var(--app-text-muted, #888);
+  font-size: 12px;
+  text-align: center;
+}
+.collab-comments__mention-hint {
+  padding: 6px 12px;
+  font-size: 10px;
+  color: var(--app-text-muted, #888);
+  border-top: 1px solid var(--app-border, #333);
+  margin-top: 4px;
+}
+
 </style>

@@ -34,8 +34,20 @@ const props = withDefaults(defineProps<{
 
 // `strokeWidth` rescaled by the rendered size; with no width/height attr,
 // CSS controls the rendered size, so we treat `props.size` as the default.
+// v0.7.153 — 加粗 icon stroke 让 dark theme 上更清晰 (GenOffice spec).
+// - size>=24: painted 2.0 (was 1.5) → stroke-width 1.33, paints 2.0px effective
+// - size>=20: painted 1.8 (was 1.5) → stroke-width 1.44
+// - size>=14: painted 1.4 (was 1.25) → stroke-width 1.6
+// - smaller: painted 1.2 (was 1.1)
+// v0.7.153 — 加粗 icon stroke 让 dark theme 上更清晰 (GenOffice spec)。
+// GenOffice 用 24x24 viewBox, painted 1.5 paints 1.5px effective.
+// WeKnora 用 16x16 viewBox, painted 2.25 paints ~1.5px effective。
 const strokeWidth = computed(() => {
-  const painted = props.paint ?? (props.size >= 20 ? 1.5 : props.size >= 13 ? 1.25 : 1.1)
+  // v0.7.158 — bumped visual weight from 2.25/2.0/1.5/1.3 to 2.5/2.25/1.75/1.5
+// for GenOffice icon density (Office-style icons read heavier than lucide)
+// v0.7.159 — bumped visual weight from 2.5/2.25/1.75/1.5 to 3.0/2.75/2.0/1.75
+// for GenOffice icon density match (GenOffice icons 8.4% pixels vs WeKnora 5.2%)
+const painted = props.paint ?? (props.size >= 24 ? 3.0 : props.size >= 20 ? 2.75 : props.size >= 14 ? 2.0 : 1.75)
   return (painted * 16) / props.size
 })
 
@@ -64,6 +76,11 @@ const CONTENT: Record<string, string> = {
   IconCut: `<path d="M 5.27 12.85 L 5.94 11.71 L 11.32 2.4 M 4.68 2.33 L 10.05 11.65 L 10.73 12.85" /> <circle cx="3.89" cy="12.08" r="1.58" /> <circle cx="12.11" cy="12.08" r="1.58" />`,
   IconCopy: `<rect x="4.67" y="4.67" width="9.33" height="9.33" rx="2" /> <path d="M 9.67 2.67 H 4.67 C 3.56 2.67 2.67 3.56 2.67 4.67 V 9.67" />`,
   IconFormatPainter: `<rect x="7.1" y="2.7" width="1.8" height="3.4" rx="0.9" /> <rect x="3" y="6.1" width="10" height="7.2" rx="1" /> <path d="M 3 8.9 H 13" /> <path d="M 6.2 10.9 V 12.1 M 9.8 10.9 V 12.1" />`,
+  IconBold: `<path d="M7 4 H10.5 a2.8 2.8 0 0 1 0 5.6 H7 M7 9.6 H11 a2.9 2.9 0 0 1 0 5.8 H7 M5 4 V16" />`,
+  IconItalic: `<line x1="8" y1="4" x2="13" y2="4" /> <line x1="11" y1="20" x2="6" y2="20" /> <line x1="9.5" y1="4" x2="6.5" y2="20" />`,
+  IconUnderline: `<path d="M5.5 4 V11 a3.5 3.5 0 0 0 7 0 V4" /> <line x1="4" y1="16" x2="14" y2="16" />`,
+  IconAiImage: `<rect x="3" y="4" width="10" height="8" rx="1.5" /> <circle cx="6.5" cy="7" r="1.1" /> <path d="M3 12 L6.5 9 L9 11 L11 9 L13 11.5 V12 Z" />`,
+  IconAiAsk: `<circle cx="8" cy="8" r="5" /> <path d="M11.5 11.5 L15 15" />`,
   IconTable: `<rect x="3.02" y="3.44" width="9.96" height="9.13" rx="0.66" /> <path d="M 3.02 6.51 h 9.96 M 3.02 9.58 h 9.96 M 6.34 3.44 v 9.13 M 9.66 3.44 v 9.13" />`,
   IconPicture: `<rect x="3.02" y="3.85" width="9.96" height="8.3" rx="0.66" /> <circle cx="5.84" cy="6.51" r="0.91" /> <path d="M 3.44 11.32 6.76 8 l 2.49 2.49 1.66 -1.66 1.66 1.66" />`,
   IconRemoveBg: `<rect x="3.02" y="3.85" width="9.96" height="8.3" rx="0.66" strokeDasharray="2.2 1.6" /> <circle cx="8" cy="6.92" r="1.41" /> <path d="M 5.43 12.15 c 0.33 -1.91 1.41 -2.9 2.57 -2.9 s 2.24 1 2.57 2.91" />`,

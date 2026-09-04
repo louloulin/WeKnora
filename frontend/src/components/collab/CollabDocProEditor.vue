@@ -27,11 +27,12 @@
       aria-label="文档工具栏"
       test-id-prefix="doc"
       :collapsible="true"
-    >
+    
+      :theme="globalTheme">
       <!-- ===== 文件 tab ===== -->
       <template #file>
         <div class="collab-doc-pro__ribbon-group">
-          <span class="collab-doc-pro__ribbon-group-label">文件</span>
+          <span class="collab-doc-pro__ribbon-group-label ribbon-group-label">文件</span>
           <button data-testid="doc-download-btn" class="collab-doc-pro__btn" type="button" :disabled="downloading" @click="onDownload">
             {{ downloading ? '下载中...' : '下载 .docx' }}
           </button>
@@ -44,7 +45,7 @@
           <button data-testid="doc-history-btn" class="collab-doc-pro__btn" type="button" @click="onToggleHistory">版本历史</button>
         </div>
         <div class="collab-doc-pro__ribbon-group">
-          <span class="collab-doc-pro__ribbon-group-label">页面</span>
+          <span class="collab-doc-pro__ribbon-group-label ribbon-group-label">页面</span>
           <button data-testid="doc-page-setup-btn" class="collab-doc-pro__btn" type="button" @click="openSectionsModal">页面设置</button>
           <button data-testid="doc-hf-btn-ribbon" class="collab-doc-pro__btn" type="button" @click="openHfModal">页眉页脚</button>
         </div>
@@ -53,7 +54,7 @@
       <!-- ===== 开始 tab (字体/段落/样式/撤销重做) ===== -->
       <template #home>
         <div class="collab-doc-pro__ribbon-group">
-          <span class="collab-doc-pro__ribbon-group-label">撤销</span>
+          <span class="collab-doc-pro__ribbon-group-label ribbon-group-label">撤销</span>
           <button data-testid="doc-undo-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="runNode('undo')" title="撤销 (Ctrl+Z)">
             <CollabIcon name="IconUndo" :size="28" /><span>撤销</span>
           </button>
@@ -62,7 +63,7 @@
           </button>
         </div>
         <div class="collab-doc-pro__ribbon-group">
-          <span class="collab-doc-pro__ribbon-group-label">段落</span>
+          <span class="collab-doc-pro__ribbon-group-label ribbon-group-label">段落</span>
           <button data-testid="doc-align-left-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="onAlign('left')" title="左对齐">
             <CollabIcon name="IconAlignLeft" :size="28" /><span>左对齐</span>
           </button>
@@ -74,7 +75,7 @@
           </button>
         </div>
         <div class="collab-doc-pro__ribbon-group">
-          <span class="collab-doc-pro__ribbon-group-label">格式</span>
+          <span class="collab-doc-pro__ribbon-group-label ribbon-group-label">格式</span>
           <button data-testid="doc-case-ribbon-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" data-testid-case="case" :disabled="!editor" title="大小写切换 (Shift+F3)" @click="onCycleCase">
             <CollabIcon name="IconChangeCase" :size="28" /><span>大小写</span>
           </button>
@@ -87,7 +88,7 @@
       <!-- ===== 插入 tab (表格/图片/链接/页码/页眉页脚/分页符/数学公式) ===== -->
       <template #insert>
         <div class="collab-doc-pro__ribbon-group">
-          <span class="collab-doc-pro__ribbon-group-label">插入</span>
+          <span class="collab-doc-pro__ribbon-group-label ribbon-group-label">插入</span>
           <button data-testid="doc-insert-table-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="onInsertTable" title="插入表格">
             <CollabIcon name="IconTable" :size="28" /><span>表格</span>
           </button>
@@ -102,7 +103,7 @@
           </button>
         </div>
         <div class="collab-doc-pro__ribbon-group">
-          <span class="collab-doc-pro__ribbon-group-label">布局</span>
+          <span class="collab-doc-pro__ribbon-group-label ribbon-group-label">布局</span>
           <button data-testid="doc-page-break-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="onInsertPageBreak">
             <CollabIcon name="IconPageBreak" :size="28" /><span>分页符</span>
           </button>
@@ -115,7 +116,7 @@
       <!-- ===== 绘图 tab (形状/笔迹) ===== -->
       <template #draw>
         <div class="collab-doc-pro__ribbon-group">
-          <span class="collab-doc-pro__ribbon-group-label">形状</span>
+          <span class="collab-doc-pro__ribbon-group-label ribbon-group-label">形状</span>
           <button data-testid="doc-shape-rect-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" :disabled="!editor" @click="onInsertShape('rect')" title="插入矩形">
             <CollabIcon name="IconShapes" :size="28" /><span>矩形</span>
           </button>
@@ -124,7 +125,7 @@
           </button>
         </div>
         <div class="collab-doc-pro__ribbon-group">
-          <span class="collab-doc-pro__ribbon-group-label">笔迹</span>
+          <span class="collab-doc-pro__ribbon-group-label ribbon-group-label">笔迹</span>
           <button data-testid="doc-pen-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" disabled title="手写笔（即将推出）">
             <CollabIcon name="IconPen" :size="28" /><span>笔</span>
           </button>
@@ -148,7 +149,7 @@
       <!-- ===== 审阅 tab (修订/记录修订/对比/保护) ===== -->
       <template #review>
         <div class="collab-doc-pro__ribbon-group">
-          <span class="collab-doc-pro__ribbon-group-label">修订</span>
+          <span class="collab-doc-pro__ribbon-group-label ribbon-group-label">修订</span>
           <button data-testid="doc-track-changes-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="onToggleTrackChanges">
             <CollabIcon name="IconTrackChanges" :size="28" /><span>{{ trackChangesOn ? '记录中' : '记录修订' }}</span>
           </button>
@@ -157,7 +158,7 @@
           </button>
         </div>
         <div class="collab-doc-pro__ribbon-group">
-          <span class="collab-doc-pro__ribbon-group-label">比较与保护</span>
+          <span class="collab-doc-pro__ribbon-group-label ribbon-group-label">比较与保护</span>
           <button data-testid="doc-compare-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="openCompareModal">
             <CollabIcon name="IconCompare" :size="28" /><span>对比</span>
           </button>
@@ -170,7 +171,7 @@
       <!-- ===== 视图 tab (大纲/查找/标尺/网格线/缩放) ===== -->
       <template #view>
         <div class="collab-doc-pro__ribbon-group">
-          <span class="collab-doc-pro__ribbon-group-label">导航</span>
+          <span class="collab-doc-pro__ribbon-group-label ribbon-group-label">导航</span>
           <button data-testid="doc-outline-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="onToggleOutline">
             <CollabIcon name="IconNavPane" :size="28" /><span>大纲</span>
           </button>
@@ -179,7 +180,7 @@
           </button>
         </div>
         <div class="collab-doc-pro__ribbon-group">
-          <span class="collab-doc-pro__ribbon-group-label">视图</span>
+          <span class="collab-doc-pro__ribbon-group-label ribbon-group-label">视图</span>
           <button data-testid="doc-ruler-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="rulerVisible = !rulerVisible">
             <CollabIcon name="IconRuler" :size="28" /><span>标尺</span>
           </button>
@@ -188,7 +189,7 @@
           </button>
         </div>
         <div class="collab-doc-pro__ribbon-group">
-          <span class="collab-doc-pro__ribbon-group-label">缩放</span>
+          <span class="collab-doc-pro__ribbon-group-label ribbon-group-label">缩放</span>
           <button data-testid="doc-zoom-out-ribbon-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" @click="onZoomOut" title="缩小">
             <CollabIcon name="IconZoomOut" :size="28" /><span>缩小</span>
           </button>
@@ -204,9 +205,18 @@
       <!-- ===== AI tab ===== -->
       <template #ai>
         <div class="collab-doc-pro__ribbon-group">
-          <span class="collab-doc-pro__ribbon-group-label">AI 助手</span>
+          <span class="collab-doc-pro__ribbon-group-label ribbon-group-label">AI 助手</span>
           <button data-testid="doc-ai-btn" class="collab-doc-pro__btn collab-doc-pro__btn--ai collab-doc-pro__btn--icon" type="button" :disabled="!aiOriginal" @click="onOpenAi">
             <CollabIcon name="IconAiPanel" :size="28" /><span>问 AI</span>
+          </button>
+          <button data-testid="doc-ai-polish-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" :disabled="!aiOriginal" @click="onOpenAiPolish" title="AI 润色选中文本">
+            <CollabIcon name="IconMagic" :size="28" /><span>润色</span>
+          </button>
+          <button data-testid="doc-ai-summarize-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" :disabled="!aiOriginal" @click="onOpenAiSummarize" title="AI 总结文档">
+            <CollabIcon name="IconList" :size="28" /><span>总结</span>
+          </button>
+          <button data-testid="doc-ai-translate-btn" class="collab-doc-pro__btn collab-doc-pro__btn--icon" type="button" :disabled="!aiOriginal" @click="onOpenAiTranslate" title="AI 翻译为英文">
+            <CollabIcon name="IconGlobe" :size="28" /><span>翻译</span>
           </button>
         </div>
       </template>
@@ -370,10 +380,11 @@
       <EditorContent :editor="editor" class="collab-doc-pro__surface" />
       <CollabAiPolishDialog
         v-if="aiOpen"
+        :initial-hint="aiHint"
         :open="aiOpen"
         :anchor="aiAnchor"
         :original="aiOriginal"
-        @close="aiOpen = false"
+        @close="aiOpen = false; aiHint = ''"
         @accept="onAcceptAi"
       />
       </div>
@@ -658,42 +669,42 @@
           <div v-if="sectionsList[sectionsSelected]" class="collab-doc-pro__sections-detail" data-testid="doc-sections-detail">
             <div class="collab-doc-pro__sections-row">
               <span class="collab-doc-pro__sections-label">纸张</span>
-              <span class="collab-doc-pro__sections-value">{{ paperLabel(sectionsList[sectionsSelected]!.settings) }}</span>
+              <span class="collab-doc-pro__sections-value">{{ paperLabel(sectionsList[sectionsSelected].settings) }}</span>
             </div>
             <div class="collab-doc-pro__sections-row">
               <span class="collab-doc-pro__sections-label">方向</span>
-              <span class="collab-doc-pro__sections-value">{{ sectionsList[sectionsSelected]!.settings.orientation === 'landscape' ? '横向' : '纵向' }}</span>
+              <span class="collab-doc-pro__sections-value">{{ sectionsList[sectionsSelected].settings.orientation === 'landscape' ? '横向' : '纵向' }}</span>
             </div>
             <div class="collab-doc-pro__sections-row">
               <span class="collab-doc-pro__sections-label">分节方式</span>
-              <span class="collab-doc-pro__sections-value">{{ sectionsList[sectionsSelected]!.startType }}</span>
+              <span class="collab-doc-pro__sections-value">{{ sectionsList[sectionsSelected].startType }}</span>
             </div>
             <div class="collab-doc-pro__sections-row">
               <span class="collab-doc-pro__sections-label">上 / 下边距</span>
               <span class="collab-doc-pro__sections-value">
-                {{ fromTwips(sectionsList[sectionsSelected]!.settings.marginTop, 'inches') }}″ /
-                {{ fromTwips(sectionsList[sectionsSelected]!.settings.marginBottom, 'inches') }}″
+                {{ fromTwips(sectionsList[sectionsSelected].settings.marginTop, 'inches') }}″ /
+                {{ fromTwips(sectionsList[sectionsSelected].settings.marginBottom, 'inches') }}″
               </span>
             </div>
             <div class="collab-doc-pro__sections-row">
               <span class="collab-doc-pro__sections-label">左 / 右边距</span>
               <span class="collab-doc-pro__sections-value">
-                {{ fromTwips(sectionsList[sectionsSelected]!.settings.marginLeft, 'inches') }}″ /
-                {{ fromTwips(sectionsList[sectionsSelected]!.settings.marginRight, 'inches') }}″
+                {{ fromTwips(sectionsList[sectionsSelected].settings.marginLeft, 'inches') }}″ /
+                {{ fromTwips(sectionsList[sectionsSelected].settings.marginRight, 'inches') }}″
               </span>
             </div>
             <div class="collab-doc-pro__sections-row">
               <span class="collab-doc-pro__sections-label">分栏</span>
-              <span class="collab-doc-pro__sections-value">{{ sectionsList[sectionsSelected]!.settings.columns }} 栏</span>
+              <span class="collab-doc-pro__sections-value">{{ sectionsList[sectionsSelected].settings.columns }} 栏</span>
             </div>
             <div class="collab-doc-pro__sections-row">
               <span class="collab-doc-pro__sections-label">首页独立</span>
-              <span class="collab-doc-pro__sections-value">{{ sectionsList[sectionsSelected]!.titlePg ? '是' : '否' }}</span>
+              <span class="collab-doc-pro__sections-value">{{ sectionsList[sectionsSelected].titlePg ? '是' : '否' }}</span>
             </div>
             <div class="collab-doc-pro__sections-row">
               <span class="collab-doc-pro__sections-label">块范围</span>
               <span class="collab-doc-pro__sections-value">
-                #{{ sectionsList[sectionsSelected]!.firstBlockIndex }} – #{{ sectionsList[sectionsSelected]!.lastBlockIndex }}
+                #{{ sectionsList[sectionsSelected].firstBlockIndex }} – #{{ sectionsList[sectionsSelected].lastBlockIndex }}
               </span>
             </div>
           </div>
@@ -848,6 +859,7 @@ const onInsertShape = (kind: 'rect' | 'ellipse') => {
 }
 
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { useTheme } from '@/composables/useTheme'
 import { Editor, EditorContent, Mark } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
@@ -946,6 +958,8 @@ const loadRecovery = ref<string | null>(null)
 const aiOpen = ref(false)
 const aiAnchor = ref({ x: 0, y: 0 })
 const aiOriginal = ref('')
+/** v0.7.191 — AI 快捷按钮预填提示词 */
+const aiHint = ref('')
 let aiTargetIndex: number | null = null
 const historyOpen = ref(false)
 const zoom = ref(1)
@@ -1904,10 +1918,29 @@ const setup = async () => {
   handle = useYjsCollabDoc({ docId: props.docId, token: props.token, displayName: props.displayName })
   ydoc = handle.ydoc
   connected.value = Boolean(handle.connected.value)
-  peers.value = (handle.peers.value ?? []) as Array<{ clientId: number; displayName: string; color: string }>
+  peers.value = (handle.peers.value ?? [])
+
+/** v0.7.191 — AI 润色/总结/翻译快捷入口，复用现有 CollabAiPolishDialog */
+// v0.7.191 — AI 润色/总结/翻译复用 onOpenAi，传递 hint 到 dialog。
+// CollabAiPolishDialog 通过 initialHint prop 预填提示词。
+const onOpenAiPolish = () => {
+  if (!aiOriginal.value) return
+  aiHint.value = '请润色以下文本，保持原意但更流畅、专业:'
+  onOpenAi()
+}
+const onOpenAiSummarize = () => {
+  if (!aiOriginal.value) return
+  aiHint.value = '请用 3-5 个要点总结以下内容:'
+  onOpenAi()
+}
+const onOpenAiTranslate = () => {
+  if (!aiOriginal.value) return
+  aiHint.value = '请将以下内容翻译成英文:'
+  onOpenAi()
+}
   error.value = (handle.error.value ?? null) as string | null
   watch(handle.connected, (v) => (connected.value = Boolean(v)))
-  watch(handle.peers, (v) => (peers.value = (v ?? []) as Array<{ clientId: number; displayName: string; color: string }>))
+  watch(handle.peers, (v) => (peers.value = v ?? []))
   // v0.7.38 — remote selection range awareness (DOC per-paragraph).
   if (handle.remoteSelections) {
     remoteSelections.value = handle.remoteSelections.value as any
@@ -1946,10 +1979,52 @@ const setup = async () => {
     currentProtection.value = doc.parsed.protection ?? null
     pendingProtection.value = currentProtection.value
     initEditor(doc.paragraphs)
+    // v0.7.198 — y-websocket Collaboration extension can clobber the initial
+    // content with an empty ydoc if the server hasn't echoed any state yet.
+    // Wait for the first sync, then re-seed paragraphs if the editor is still
+    // empty despite having parsed content (genoffice byte-preserving pattern).
+    seedContentIfEmpty(doc)
   } catch (e: any) {
     loadError.value = e?.message || String(e)
   } finally {
     loading.value = false
+  }
+}
+
+/**
+ * v0.7.198 — If the editor is empty after Yjs syncs with the websocket,
+ * the server has no state for this doc yet, so we fall back to seeding the
+ * parsed .docx paragraphs. Without this, Session 2 (or any new browser)
+ * sees a blank TipTap even though the docx bytes were saved successfully.
+ *
+ * genoffice solves this by always writing bytes to the server; we mirror
+ * that here by re-seeding paragraphs *after* the first provider sync.
+ */
+const seedContentIfEmpty = (loadedDoc: DocxAdapterDocument | null) => {
+  if (!loadedDoc) return
+  const provider = handle?.provider
+  if (!provider || !editor.value) return
+  const trySeed = () => {
+    if (!editor.value || !loadedDoc) return
+    const current = editor.value.getJSON()?.content ?? []
+    const hasRealContent = current.some((n: any) => {
+      const arr = Array.isArray(n?.content) ? n.content : []
+      return arr.length > 0
+    })
+    if (!hasRealContent && loadedDoc.paragraphs.length > 0) {
+      editor.value.commands.setContent(paragraphsToContent(loadedDoc.paragraphs), false)
+      patchedMap.clear()
+    }
+  }
+  if (provider.synced) {
+    // Sync already happened — seed immediately.
+    queueMicrotask(trySeed)
+  } else {
+    provider.once('sync', () => queueMicrotask(trySeed))
+    // v0.7.198 — defensive timeout: 4s is plenty for the local websocket
+    // round-trip; if we never sync (offline) we still seed so the user can
+    // see content instead of staring at an empty editor.
+    setTimeout(trySeed, 4000)
   }
 }
 
@@ -2190,18 +2265,38 @@ const paragraphsToContent = (paragraphs: DocxAdapterParagraph[]) => {
   const nodes: any[] = []
   for (const p of paragraphs) {
     if (p.hidden) continue
-    const text = p.text || ''
     // v0.7.50 — restore the comment mark highlight for paragraphs that carry
     // comment ids in the original .docx (run-level + cross-paragraph ranges).
-    const marks = p.commentIds?.length
+    const commentMarks = p.commentIds?.length
       ? [{ type: 'comment', attrs: { ids: p.commentIds.join(' ') } }]
       : undefined
-    const textNode = (t: string) => (t ? [{ type: 'text', text: t, ...(marks ? { marks } : {}) }] : [])
+    // v0.7.198 — build per-run text nodes so ins / del marks survive the
+    // openDocx round-trip. Word splits tracked insertions into one w:r per
+    // character (each with its own w:ins w:id), so we emit a text node per
+    // run with the matching author / date attributes.
+    const buildContent = (runs: typeof p.runs): any[] => {
+      if (runs && runs.length) {
+        const out: any[] = []
+        for (const r of runs) {
+          if (!r.text) continue
+          const marks: any[] = []
+          if (r.ins) marks.push({ type: 'ins', attrs: { author: r.ins.author, date: r.ins.date ?? null, id: r.ins.id ?? null } })
+          if (r.del) marks.push({ type: 'del', attrs: { author: r.del.author, date: r.del.date ?? null, id: r.del.id ?? null } })
+          if (commentMarks) marks.push(...commentMarks)
+          out.push({ type: 'text', text: r.text, ...(marks.length ? { marks } : {}) })
+        }
+        return out
+      }
+      // Fallback: single text node (no per-run marks).
+      const text = p.text || ''
+      return text ? [{ type: 'text', text, ...(commentMarks ? { marks: commentMarks } : {}) }] : []
+    }
+    const content = buildContent(p.runs)
     if (p.kind === 'heading' && p.level) {
       nodes.push({
         type: 'heading',
         attrs: { level: p.level, 'data-docx-index': p.index },
-        content: textNode(text),
+        content,
       })
     } else if (p.kind === 'listItem') {
       nodes.push({
@@ -2209,14 +2304,14 @@ const paragraphsToContent = (paragraphs: DocxAdapterParagraph[]) => {
         content: [{
           type: 'listItem',
           attrs: { 'data-docx-index': p.index },
-          content: [{ type: 'paragraph', content: textNode(text) }],
+          content: [{ type: 'paragraph', content }],
         }],
       })
     } else {
       nodes.push({
         type: 'paragraph',
         attrs: { 'data-docx-index': p.index },
-        content: textNode(text),
+        content,
       })
     }
   }
@@ -2395,6 +2490,18 @@ const teardown = () => {
 setup()
 watch(() => props.docId, () => { teardown(); setup() })
 onBeforeUnmount(teardown)
+
+// v0.7.185 — 把 ribbon theme 同步到全局 (theme-mode 切换会立刻反映)。
+// Slide 编辑器内部还会基于 slide 自身的 luminance 决定，但 DOC/SHEET 没有
+// 这种 per-doc 判定，必须直接跟全局 — 否则 dark 模式下 ribbon 是浅色、surface 是
+// 暗色，会出现"反的"视觉。
+const { currentTheme } = useTheme()
+const globalTheme = computed<'light' | 'dark'>(() => {
+  const t = currentTheme.value
+  if (t === 'light' || t === 'dark') return t
+  return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+})
+
 </script>
 
 <style scoped>
