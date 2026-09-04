@@ -55,7 +55,12 @@ const router = createRouter({
       redirect: "/platform/knowledge-bases",
     },
     {
-      path: "/platform/collab-documents/:id?",
+      // `/platform/collaborative-documents*` 和 `/platform/collab-documents*`
+      // 两种 URL 形式都映射到 `/collab-documents*`。v0.7.186 — 修复
+      // "Vue Router warn: No match found"：产品里"协作文档"的拼写
+      // 是 collaborative，平台路径历史上有 collab- 短缩形式。
+      path: "/platform/collaborative-documents/:id?",
+      alias: ["/platform/collab-documents/:id?"],
       redirect: (to) => ({
         path: to.params.id
           ? `/collab-documents/${encodeURIComponent(String(to.params.id))}`

@@ -24,6 +24,11 @@
     <section class="collab-doc-list__toolbar">
       <div class="collab-doc-list__filters"><button v-for="k in kinds" :key="k.value" :class="{ active: filter.kind === k.value }" @click="filter.kind = k.value; reload()">{{ k.label }}</button></div>
       <label class="collab-doc-list__search"><span>⌕</span><input v-model="search" placeholder="搜索文档" aria-label="搜索文档" /></label>
+      <div class="collab-doc-list__sort" role="group" aria-label="排序方式">
+        <button type="button" :class="{ active: sortOrder === 'newest' }" @click="sortOrder = 'newest'" data-testid="doc-list-sort-newest" title="最新编辑优先">最新 ↓</button>
+        <button type="button" :class="{ active: sortOrder === 'oldest' }" @click="sortOrder = 'oldest'" data-testid="doc-list-sort-oldest" title="最早编辑优先">最旧 ↑</button>
+        <button type="button" :class="{ active: sortOrder === 'name' }" @click="sortOrder = 'name'" data-testid="doc-list-sort-name" title="按名称排序">A→Z</button>
+      </div>
     </section>
     <section class="collab-doc-list__table">
       <div class="collab-doc-list__table-head"><strong>我的文档</strong><span>{{ filteredItems.length }} 个文件</span></div>
@@ -57,6 +62,8 @@ const newTitle = ref('')
 const newKind = ref<CollabDocKind>('doc')
 const creating = ref(false)
 const search = ref('')
+type SortOrder = 'newest' | 'oldest' | 'name'
+const sortOrder = ref<SortOrder>('newest')
 
 const kinds = [
   { value: '' as CollabDocKind | '', label: '全部' },
@@ -69,8 +76,15 @@ const kinds = [
 const filter = reactive<{ kind: CollabDocKind | '' }>({ kind: '' })
 const filteredItems = computed(() => {
   const query = search.value.trim().toLowerCase()
-  if (!query) return items.value
-  return items.value.filter((item) => item.title.toLowerCase().includes(query))
+  const arr = query ? items.value.filter((item) => item.title.toLowerCase().includes(query)) : items.value.slice()
+  if (sortOrder.value === 'newest') {
+    arr.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''))
+  } else if (sortOrder.value === 'oldest') {
+    arr.sort((a, b) => (a.updated_at || '').localeCompare(b.updated_at || ''))
+  } else {
+    arr.sort((a, b) => a.title.localeCompare(b.title, 'zh'))
+  }
+  return arr
 })
 
 const reload = async () => {
@@ -175,7 +189,11 @@ onMounted(reload)
 .collab-doc-list__create-btn { min-height:38px; padding:0 16px; background:var(--td-brand-color); color:var(--td-text-color-anti); border:1px solid var(--td-brand-color); border-radius:7px; cursor:pointer; font-weight:600; white-space:nowrap; }
 .collab-doc-list__create-btn:hover { background:var(--td-brand-color-active); } .collab-doc-list__create-btn:disabled { opacity:.55; cursor:not-allowed; }
 .collab-doc-list__toolbar { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:28px; margin-bottom:12px; }
-.collab-doc-list__filters { display:flex; gap:4px; } .collab-doc-list__filters button { padding:7px 13px; border:1px solid transparent; border-radius:6px; background:transparent; color:var(--app-text-muted); cursor:pointer; font-size:13px; } .collab-doc-list__filters button:hover { background:var(--app-surface-raised); color:var(--app-text); } .collab-doc-list__filters button.active { background:color-mix(in srgb, var(--td-brand-color) 14%, var(--app-surface-raised)); color:var(--td-brand-color); border-color:color-mix(in srgb, var(--td-brand-color) 35%, var(--app-border)); }
+.collab-doc-list__filters { display:flex; gap:4px; } .collab-doc-list__sort { display:flex; gap:4px; }
+.collab-doc-list__sort button { padding:6px 10px; border:1px solid transparent; border-radius:6px; background:transparent; color:var(--app-text-muted); cursor:pointer; font-size:12px; }
+.collab-doc-list__sort button:hover { background:var(--app-surface-raised); color:var(--app-text); }
+.collab-doc-list__sort button.active { background:color-mix(in srgb, var(--td-brand-color) 14%, var(--app-surface-raised)); color:var(--td-brand-color); border-color:color-mix(in srgb, var(--td-brand-color) 35%, var(--app-border)); }
+.collab-doc-list__filters button { padding:7px 13px; border:1px solid transparent; border-radius:6px; background:transparent; color:var(--app-text-muted); cursor:pointer; font-size:13px; } .collab-doc-list__filters button:hover { background:var(--app-surface-raised); color:var(--app-text); } .collab-doc-list__filters button.active { background:color-mix(in srgb, var(--td-brand-color) 14%, var(--app-surface-raised)); color:var(--td-brand-color); border-color:color-mix(in srgb, var(--td-brand-color) 35%, var(--app-border)); }
 .collab-doc-list__search { display:flex; align-items:center; gap:7px; min-width:190px; padding:0 10px; border:1px solid var(--app-border); border-radius:7px; background:var(--app-surface-raised); color:var(--app-text-muted); } .collab-doc-list__search input { width:100%; min-height:32px; border:0; outline:0; background:transparent; color:var(--app-text); font-size:12px; }
 .collab-doc-list__table { overflow:hidden; background:var(--app-surface-bg); border:1px solid var(--app-border); border-radius:12px; box-shadow:0 10px 28px rgba(0,0,0,.12); } .collab-doc-list__table-head { display:flex; align-items:center; justify-content:space-between; padding:18px 20px 14px; } .collab-doc-list__table-head strong { font-size:15px; } .collab-doc-list__table-head span { color:var(--app-text-muted); font-size:12px; }
 .collab-doc-list__table table { width:100%; border-collapse:collapse; } .collab-doc-list__table th { padding:10px 20px; background:var(--app-surface-raised); color:var(--app-text-muted); text-align:left; font-size:11px; font-weight:600; } .collab-doc-list__table td { padding:13px 20px; border-top:1px solid var(--app-border); color:var(--app-text-muted); font-size:12px; } .collab-doc-list__table tr:hover td { background:color-mix(in srgb, var(--td-brand-color) 4%, var(--app-surface-bg)); }

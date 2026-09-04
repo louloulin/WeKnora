@@ -175,6 +175,14 @@ export interface CreateCollabDocCommentRequest {
   anchor_type: CommentAnchorType;
   anchor_ref?: string;
   body: string;
+  /**
+   * v0.7.197 — User IDs captured when the composer typed `@` and
+   * picked from the mention popover. Each id is sent through the
+   * backend's mention fan-out → emits a `wiki.mentioned` notification.
+   * Best-effort: the comment write succeeds even if some notifications
+   * fail to deliver.
+   */
+  mentioned_user_ids?: string[];
 }
 
 export interface UpdateCollabDocCommentRequest {

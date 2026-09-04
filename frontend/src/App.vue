@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { MessagePlugin, NotifyPlugin } from 'tdesign-vue-next'
 import ManualKnowledgeEditor from '@/components/manual-knowledge-editor.vue'
+import GlobalNotificationBell from '@/components/GlobalNotificationBell.vue'
 import UploadConfirmHost from '@/components/UploadConfirmHost.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useSettingsStore } from '@/stores/settings'
@@ -276,6 +277,10 @@ onUnmounted(() => {
       <RouterView />
       <ManualKnowledgeEditor />
       <UploadConfirmHost />
+      <!-- v0.7.196 — 通知中心：浮动固定在右上角，全局可见 -->
+      <div class="global-notification-bell-host">
+        <GlobalNotificationBell />
+      </div>
     </div>
   </t-config-provider>
 </template>
@@ -284,8 +289,13 @@ html {
   color-scheme: var(--app-color-scheme, light);
 }
 
-body,
-html,
+/* v0.7.196 通知中心：浮动固定右上角，全局可见。
+   注意：只对 host 容器自身生效，绝不能把 body/html 也套进来
+   （v0.7.196 第一次接入时用了 `body,html,.global-notification-bell-host` 合并选择器，
+    导致整个 HTML 元素被定位到右上角且 pointer-events:none，整个站点点击失效）。 */
+.global-notification-bell-host { position: fixed; top: 12px; right: 16px; z-index: 9999; pointer-events: none; }
+.global-notification-bell-host > * { pointer-events: auto; }
+
 #app {
   width: 100%;
   height: 100%;

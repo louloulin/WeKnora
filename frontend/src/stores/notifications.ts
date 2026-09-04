@@ -49,7 +49,20 @@ export const useNotificationStore = defineStore('notifications', () => {
 
   function startPolling() {
     if (pollTimer) return
-    void refreshUnread()
+    // v0.7.197 — Bell mounts early (before user login completes on first
+    // paint). Wait for a token to land in localStorage before the first
+    // poll, otherwise the request goes out with no Authorization header
+    // and the badge stays stuck on zero. The setInterval below re-checks
+    // every POLL_INTERVAL_MS so a late login is still picked up within
+    // 30s, but a 1.5s warm-up covers the typical login round-trip.
+    const warmup = () => {
+      if (typeof window !== 'undefined' && !window.localStorage.getItem('weknora_token')) {
+        window.setTimeout(warmup, 500)
+        return
+      }
+      void refreshUnread()
+    }
+    window.setTimeout(warmup, 1500)
     pollTimer = setInterval(() => {
       void refreshUnread()
     }, POLL_INTERVAL_MS)

@@ -53,7 +53,7 @@
       <div class="collab-editor-view__main">
         <header v-if="doc.doc_kind !== 'slide'" class="collab-editor-view__topbar">
           <div class="collab-editor-view__topbar-title"><span class="collab-editor-view__topbar-kind">{{ kindLabel(doc.doc_kind) }}</span><strong>{{ doc.title }}</strong><span class="collab-editor-view__saved">已保存</span></div>
-          <div class="collab-editor-view__topbar-actions"><span class="collab-editor-view__presence"><i></i>{{ displayName }}</span><button type="button" @click="shareVisible = !shareVisible">分享</button><button type="button" class="collab-editor-view__more" aria-label="更多操作">•••</button></div>
+          <div class="collab-editor-view__topbar-actions"><div class="collab-editor-view__peers" v-if="peers.length" data-testid="editor-peers"><span v-for="(p, pi) in peers.slice(0, 5)" :key="p.client_id" class="collab-editor-view__peer" :style="{ backgroundColor: p.color, zIndex: 10 - pi }" :title="p.display_name">{{ p.display_name?.[0] || '?' }}</span><span v-if="peers.length > 5" class="collab-editor-view__peer-more">+{{ peers.length - 5 }}</span></div><span class="collab-editor-view__presence"><i></i>{{ displayName }}</span><button type="button" @click="onQuickShare" :disabled="sharing" data-testid="quick-share-btn" title="生成可分享链接并复制">📋 快速分享</button><button type="button" @click="shareVisible = !shareVisible">分享设置</button><button type="button" class="collab-editor-view__more" aria-label="更多操作">•••</button></div>
         </header>
         <!-- Slide Konva editor already ships its own branded title bar,
              ribbon tabs, and theme switcher; hiding the parent topbar in
@@ -85,7 +85,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { getCollabDoc, type CollabDoc } from '@/api/collabDoc'
+import { enableCollabDocShare, getCollabDoc, listCollabDocPresence, type CollabDoc, type CollabDocSession } from '@/api/collabDoc'
 import CollabDocProEditor from '@/components/collab/CollabDocProEditor.vue'
 import CollabSheetEditor from '@/components/collab/CollabSheetEditor.vue'
 import CollabSlideKonvaEditor from '@/components/collab/CollabSlideKonvaEditor.vue'
@@ -98,6 +98,9 @@ import { useAuthStore } from '@/stores/auth'
 import type { SlideThemePreset } from '@/editor/slides/themes/genofficeThemes'
 
 const route = useRoute()
+import { onBeforeUnmount } from 'vue'
+const peers = ref<CollabDocSession[]>([])
+let presenceTimer: number | undefined
 const doc = ref<CollabDoc | null>(null)
 const loading = ref(true)
 const auditVisible = ref(false)
@@ -180,7 +183,7 @@ onMounted(load)
 <style scoped>
 .collab-editor-view__slide-theme { margin: 8px 12px 0; padding: 8px; border: 1px solid var(--td-component-stroke); border-radius: 6px; background: var(--app-surface-raised); }
 .collab-editor-view { display: flex; height: 100%; min-height: 0; background: var(--app-page-bg); color: var(--app-text); }
-.collab-editor-view__sidebar { width: 220px; flex: 0 0 220px; box-sizing: border-box; padding: 18px 14px; border-right: 1px solid var(--app-border); display: flex; flex-direction: column; gap: 10px; background: var(--app-surface-bg); overflow-y: auto; }
+.collab-editor-view__sidebar { width: 156px; flex: 0 0 156px; box-sizing: border-box; padding: 18px 14px; border-right: 1px solid var(--app-border); display: flex; flex-direction: column; gap: 10px; background: var(--app-surface-bg); overflow-y: auto; }
 .collab-editor-view__back { display: inline-flex; align-items: center; gap: 5px; width: fit-content; margin-bottom: 10px; font-size: 12px; color: var(--app-text-muted); text-decoration: none; }
 .collab-editor-view__back:hover { color: var(--td-brand-color); }
 .collab-editor-view__identity { display:flex; align-items:center; gap:9px; }
@@ -195,7 +198,11 @@ onMounted(load)
 .collab-editor-view__sync-kb:disabled { opacity: .55; cursor: not-allowed; }
 .collab-editor-view__main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; }
 .collab-editor-view__topbar { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:50px; padding:0 18px; border-bottom:1px solid var(--app-border); background:var(--app-surface-bg); }
-.collab-editor-view__topbar-title, .collab-editor-view__topbar-actions { display:flex; align-items:center; gap:10px; min-width:0; } .collab-editor-view__topbar-title strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; } .collab-editor-view__topbar-kind { padding:3px 6px; border-radius:4px; background:var(--app-surface-raised); color:var(--app-text-muted); font-size:10px; } .collab-editor-view__saved { color:var(--app-text-muted); font-size:11px; } .collab-editor-view__presence { display:flex; align-items:center; gap:5px; color:var(--app-text-muted); font-size:11px; } .collab-editor-view__presence i { width:7px; height:7px; border-radius:50%; background:var(--td-brand-color); }
+.collab-editor-view__topbar-title, .collab-editor-view__topbar-actions { display:flex; align-items:center; gap:10px; min-width:0; } .collab-editor-view__topbar-title strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; } .collab-editor-view__topbar-kind { padding:3px 6px; border-radius:4px; background:var(--app-surface-raised); color:var(--app-text-muted); font-size:10px; } .collab-editor-view__saved { color:var(--app-text-muted); font-size:11px; } .collab-editor-view__peers { display:inline-flex; align-items:center; margin-right:6px; }
+.collab-editor-view__peer { width:24px; height:24px; display:inline-grid; place-items:center; border-radius:50%; color:#fff; font-size:11px; font-weight:600; border:2px solid var(--app-surface-bg); margin-left:-6px; box-shadow:0 1px 2px rgba(0,0,0,.1); user-select:none; }
+.collab-editor-view__peer:first-child { margin-left:0; }
+.collab-editor-view__peer-more { width:24px; height:24px; display:inline-grid; place-items:center; border-radius:50%; background:var(--app-surface-raised); color:var(--app-text-muted); font-size:10px; font-weight:600; border:2px solid var(--app-surface-bg); margin-left:-6px; }
+.collab-editor-view__presence { display:flex; align-items:center; gap:5px; color:var(--app-text-muted); font-size:11px; } .collab-editor-view__presence i { width:7px; height:7px; border-radius:50%; background:var(--td-brand-color); }
 .collab-editor-view__topbar-actions button { padding:6px 11px; border:1px solid var(--app-border); border-radius:6px; background:var(--app-surface-raised); color:var(--app-text); cursor:pointer; font-size:12px; } .collab-editor-view__topbar-actions button:hover { border-color:var(--td-brand-color); color:var(--td-brand-color); } .collab-editor-view__topbar-actions .collab-editor-view__more { padding:6px 8px; border-color:transparent; background:transparent; color:var(--app-text-muted); letter-spacing:2px; }
 .collab-editor-view__loading, .collab-editor-view__error { padding: 24px; color: var(--app-text-muted); }
 .collab-editor-view__error { color: var(--td-error-color-7); }
